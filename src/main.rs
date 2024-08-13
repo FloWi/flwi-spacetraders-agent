@@ -94,16 +94,8 @@ async fn get_authenticated_client(
             let _ = db::save_registration(pool, registration_response.clone()).await;
 
             Ok(StClient::new(create_client(Some(
-                registration_response.clone().token,
+                registration_response.clone().data.token,
             ))))
         }
     }
 }
-
-/*
-DATABASE_URL=postgresql://postgres:spacetraders-password@localhost:25432/spacetraders?sslmode=disable
-RUST_LOG=info,flwi_spacetraders_leaderboard::pagination\=trace,tower_http\=trace
-SPACETRADERS_AGENT_FACTION=GALACTIC
-SPACETRADERS_AGENT_SYMBOL=FLWI
-SPACETRADERS_REGISTRATION_EMAIL=spacetraders.io@flwi.de
- */

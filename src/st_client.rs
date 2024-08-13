@@ -27,7 +27,7 @@ impl StClient {
     pub async fn register(
         &self,
         registration_request: RegistrationRequest,
-    ) -> Result<RegistrationResponse> {
+    ) -> Result<Data<RegistrationResponse>> {
         let response = self
             .client
             .post("https://api.spacetraders.io/v2/register")
@@ -39,7 +39,7 @@ impl StClient {
         if response.status().is_success() {
             let content = response.json::<Data<RegistrationResponse>>().await?;
 
-            Ok(content.data)
+            Ok(content)
         } else {
             let body = response.text().await?;
 

@@ -9,6 +9,7 @@ use tracing::{event, Level};
 
 use crate::api_client::api_model::RegistrationResponse;
 use crate::configuration::AgentConfiguration;
+use crate::st_client::Data;
 use crate::st_model::StStatusResponse;
 
 pub async fn prepare_database_schema(
@@ -178,14 +179,14 @@ select token
 
 pub(crate) async fn save_registration(
     pool: &Pool<Postgres>,
-    api_registration_response: RegistrationResponse,
+    api_registration_response: Data<RegistrationResponse>,
 ) -> Result<()> {
     sqlx::query!(
         r#"
 insert into registration (token, entry)
 values ($1, $2)
         "#,
-        api_registration_response.token,
+        api_registration_response.data.token,
         Json(api_registration_response.clone()) as _
     )
     .execute(pool)
