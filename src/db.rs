@@ -156,7 +156,7 @@ struct DbStatus {
 
 pub struct DbRegistrationResponse {
     pub token: String,
-    pub entry: Json<RegistrationResponse>,
+    pub entry: Json<Data<RegistrationResponse>>,
 }
 
 pub(crate) async fn load_registration(
@@ -166,7 +166,7 @@ pub(crate) async fn load_registration(
         DbRegistrationResponse,
         r#"
 select token
-     , entry as "entry: Json<RegistrationResponse>"
+     , entry as "entry: Json<Data<RegistrationResponse>>"
   from registration
   limit 1
         "#,

@@ -10,7 +10,7 @@ use crate::cli_args::{Cli, Commands};
 use crate::configuration::AgentConfiguration;
 use crate::reqwest_helpers::create_client;
 use crate::st_client::StClient;
-use crate::st_model::FactionSymbol;
+use crate::st_model::{AgentSymbol, FactionSymbol};
 
 mod cli_args;
 mod configuration;
@@ -47,7 +47,7 @@ async fn main() -> Result<()> {
 
                 let status = unauthenticated_client.get_status().await?;
 
-                let pool = db::prepare_database_schema(status, cfg).await?;
+                let pool = db::prepare_database_schema(status, cfg.clone()).await?;
 
                 let authenticated_client = get_authenticated_client(
                     &pool,
@@ -56,8 +56,10 @@ async fn main() -> Result<()> {
                     spacetraders_agent_symbol,
                     spacetraders_registration_email,
                 )
-                .await;
+                .await?;
 
+                let my_agent = authenticated_client.get_agent().await?;
+                dbg!(my_agent);
                 Ok(())
             }
         },
@@ -71,11 +73,25 @@ async fn get_authenticated_client(
     spacetraders_agent_symbol: String,
     spacetraders_registration_email: String,
 ) -> Result<StClient> {
+    event!(Level::INFO, "Trying to load registration from database",);
+
     let maybe_existing_reqistration = db::load_registration(pool).await?;
 
     match maybe_existing_reqistration {
-        Some(db_entry) => Ok(StClient::new(create_client(Some(db_entry.token)))),
+        Some(db_entry) => {
+            event!(
+                Level::INFO,
+                "Found registration infos in database. Creating authenticated client",
+            );
+
+            Ok(StClient::new(create_client(Some(db_entry.token))))
+        }
         None => {
+            event!(
+                Level::INFO,
+                "No registration infos found in database. Registering new agent",
+            );
+
             let registration_response = unauthenticated_client
                 .register(RegistrationRequest {
                     faction: FactionSymbol(spacetraders_agent_faction),

@@ -1,7 +1,7 @@
 use crate::cli_args::Commands;
 use crate::st_model::StStatusResponse;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AgentConfiguration {
     pub database_url: String,
     pub spacetraders_agent_faction: String,

@@ -43,6 +43,7 @@ pub struct GetConstructionResponse {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInfoResponseData {
+    pub account_id: Option<String>,
     pub symbol: String,
     pub headquarters: String,
     pub credits: i64,

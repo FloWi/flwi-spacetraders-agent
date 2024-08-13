@@ -63,6 +63,16 @@ impl StClient {
             .await?)
     }
 
+    pub(crate) async fn get_agent(&self) -> Result<AgentInfoResponse> {
+        Ok(self
+            .client
+            .get(format!("https://api.spacetraders.io/v2/my/agent",))
+            .send()
+            .await?
+            .json()
+            .await?)
+    }
+
     pub(crate) async fn get_construction_site(
         &self,
         waypoint_symbol: &WaypointSymbol,
