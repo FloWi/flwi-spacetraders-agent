@@ -4,6 +4,9 @@ use crate::st_model::StStatusResponse;
 #[derive(Debug)]
 pub struct AgentConfiguration {
     pub database_url: String,
+    pub spacetraders_agent_faction: String,
+    pub spacetraders_agent_symbol: String,
+    pub spacetraders_registration_email: String,
 }
 
 impl AgentConfiguration {
@@ -21,7 +24,17 @@ impl AgentConfiguration {
 
     pub fn new(commands: Commands) -> Self {
         match commands {
-            Commands::RunAgent { database_url } => Self { database_url },
+            Commands::RunAgent {
+                database_url,
+                spacetraders_agent_faction,
+                spacetraders_agent_symbol,
+                spacetraders_registration_email,
+            } => Self {
+                database_url,
+                spacetraders_agent_faction,
+                spacetraders_agent_symbol,
+                spacetraders_registration_email,
+            },
         }
     }
 }

@@ -1,14 +1,13 @@
-use axum::http::Extensions;
 use std::sync::Arc;
 
+use axum::http::Extensions;
 use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 use reqwest::{Client, Request};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, Middleware, Next};
 use reqwest_retry::policies::ExponentialBackoff;
 use reqwest_retry::RetryTransientMiddleware;
 
-
-pub(crate) fn create_client() -> ClientWithMiddleware {
+pub(crate) fn create_client(maybe_bearer_token: Option<String>) -> ClientWithMiddleware {
     let reqwest_client = Client::builder().build().unwrap();
 
     let limiter = RateLimiter::direct(Quota::per_second(std::num::NonZeroU32::new(2u32).unwrap()));
@@ -20,11 +19,45 @@ pub(crate) fn create_client() -> ClientWithMiddleware {
 
     let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
 
-    let client = ClientBuilder::new(reqwest_client)
+    let client_builder = ClientBuilder::new(reqwest_client)
         .with(RetryTransientMiddleware::new_with_policy(retry_policy))
-        .with(rate_limiting_middleware)
-        .build();
+        .with(rate_limiting_middleware);
+
+    let client = match maybe_bearer_token {
+        None => client_builder.build(),
+        Some(token) => client_builder
+            .with(AuthenticatedHeaderMiddleware::new(token))
+            .build(),
+    };
+
     client
+}
+
+struct AuthenticatedHeaderMiddleware {
+    bearer_token: String,
+}
+
+impl AuthenticatedHeaderMiddleware {
+    pub fn new(bearer_token: String) -> Self {
+        Self { bearer_token }
+    }
+}
+
+#[async_trait::async_trait]
+impl Middleware for AuthenticatedHeaderMiddleware {
+    async fn handle(
+        &self,
+        mut req: Request,
+        extensions: &mut Extensions,
+        next: Next<'_>,
+    ) -> reqwest_middleware::Result<reqwest::Response> {
+        req.headers_mut().insert(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", self.bearer_token).parse().unwrap(),
+        );
+
+        next.run(req, extensions).await
+    }
 }
 
 struct RateLimitingMiddleware {

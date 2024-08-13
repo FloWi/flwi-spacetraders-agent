@@ -1,12 +1,19 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use reqwest_middleware::ClientWithMiddleware;
+use serde::{Deserialize, Serialize};
 
+use crate::api_client::api_model::{RegistrationRequest, RegistrationResponse};
+use crate::pagination::PaginationInput;
 use crate::st_model::{
     extract_system_symbol, AgentInfoResponse, AgentSymbol, GetConstructionResponse,
     ListAgentsResponse, ListWaypointsInSystemResponse, StStatusResponse, SystemSymbol,
     WaypointSymbol,
 };
-use crate::pagination::PaginationInput;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Data<T> {
+    pub data: T,
+}
 
 pub struct StClient {
     pub(crate) client: ClientWithMiddleware,
@@ -15,6 +22,29 @@ pub struct StClient {
 impl StClient {
     pub fn new(client: ClientWithMiddleware) -> Self {
         StClient { client }
+    }
+
+    pub async fn register(
+        &self,
+        registration_request: RegistrationRequest,
+    ) -> Result<RegistrationResponse> {
+        let response = self
+            .client
+            .post("https://api.spacetraders.io/v2/register")
+            .json(&registration_request)
+            .send()
+            .await
+            .expect("broken");
+
+        if response.status().is_success() {
+            let content = response.json::<Data<RegistrationResponse>>().await?;
+
+            Ok(content.data)
+        } else {
+            let body = response.text().await?;
+
+            bail!(body);
+        }
     }
 
     pub(crate) async fn get_public_agent(
@@ -118,5 +148,42 @@ impl StClient {
             .await?
             .json()
             .await?)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::api_client::api_model::RegistrationResponse;
+
+    use super::*;
+
+    #[test]
+    fn test_decode_registration_response() {
+        let registration_json = r#"{"data":{"token":"eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZGVudGlmaWVyIjoiRkxXSV9URVNUIiwidmVyc2lvbiI6InYyLjIuMCIsInJlc2V0X2RhdGUiOiIyMDI0LTA4LTExIiwiaWF0IjoxNzIzNTc1ODU4LCJzdWIiOiJhZ2VudC10b2tlbiJ9.F4tX2JIVHUVjfchJur2H1ikkXOh6zBIUx5JFjiBbnSp_CrcMyIeuOvPlYT5EdLEx0ioTVGavcYYu-FWcj2TwljvW4L6b2RmC7PFAaJv-imJ0c01q6-mcKUE8i83w0E-L1m1v856DNimEjb29dyc1mFgCRlbbw2217T2khjjRJ-WVi25sMS9Zx_knQWFC5NgssyZAE-f9nRNgMl44zsKybkzBupd7lkUk8a0mZzmdbnGBkuME0tKwNKT0yOTqYe6dnXRioHc9lOMz5jBUgThCqf-DEsX_zuLs2lwjo39_40OmelzCc8Nr43VGvTgYh-8yee6gea3JTyaNQg8k1fzQUA","agent":{"accountId":"clzsskbz7ih38s60ci1xwiau1","symbol":"FLWI_TEST","headquarters":"X1-GY87-A1","credits":175000,"startingFaction":"ASTRO","shipCount":0},"contract":{"id":"clzsskc1rih3as60c14qqqqf5","factionSymbol":"ASTRO","type":"PROCUREMENT","terms":{"deadline":"2024-08-20T19:04:18.647Z","payment":{"onAccepted":1440,"onFulfilled":7784},"deliver":[{"tradeSymbol":"COPPER_ORE","destinationSymbol":"X1-GY87-H48","unitsRequired":43,"unitsFulfilled":0}]},"accepted":false,"fulfilled":false,"expiration":"2024-08-14T19:04:18.647Z","deadlineToAccept":"2024-08-14T19:04:18.647Z"},"faction":{"symbol":"ASTRO","name":"Astro-Salvage Alliance","description":"The Astro-Salvage Alliance is a group of scavengers and salvagers who search the galaxy for ancient artifacts and valuable technology, often combing through old ship battlegrounds and derelict space stations.","headquarters":"X1-VS9","traits":[{"symbol":"SCAVENGERS","name":"Scavengers","description":"Skilled at finding and salvaging valuable resources and materials from abandoned or derelict ships, space stations, and other structures. Resourceful and able to make the most out of what others have left behind."},{"symbol":"TREASURE_HUNTERS","name":"Treasure Hunters","description":"Always on the lookout for valuable artifacts, ancient relics, and other rare and valuable items. Curious and willing to take risks in order to uncover hidden treasures and secrets of the universe."},{"symbol":"RESOURCEFUL","name":"Resourceful","description":"Known for their ingenuity and ability to make the most out of limited resources. Able to improvise and adapt to changing circumstances, using whatever is available to them in order to overcome challenges and achieve their goals."},{"symbol":"DEXTEROUS","name":"Dexterous","description":"Skilled in the use of their hands and able to perform complex tasks with precision and accuracy. Known for their manual dexterity and ability to manipulate objects with ease, making them valuable in a wide range of tasks and activities."}],"isRecruiting":true},"ship":{"symbol":"FLWI_TEST-1","nav":{"systemSymbol":"X1-GY87","waypointSymbol":"X1-GY87-A1","route":{"origin":{"symbol":"X1-GY87-A1","type":"PLANET","systemSymbol":"X1-GY87","x":-6,"y":25},"destination":{"symbol":"X1-GY87-A1","type":"PLANET","systemSymbol":"X1-GY87","x":-6,"y":25},"arrival":"2024-08-13T19:04:18.732Z","departureTime":"2024-08-13T19:04:18.732Z"},"status":"DOCKED","flightMode":"CRUISE"},"crew":{"current":57,"capacity":80,"required":57,"rotation":"STRICT","morale":100,"wages":0},"fuel":{"current":400,"capacity":400,"consumed":{"amount":0,"timestamp":"2024-08-13T19:04:18.732Z"}},"cooldown":{"shipSymbol":"FLWI_TEST-1","totalSeconds":0,"remainingSeconds":0},"frame":{"symbol":"FRAME_FRIGATE","name":"Frigate","description":"A medium-sized, multi-purpose spacecraft, often used for combat, transport, or support operations.","moduleSlots":8,"mountingPoints":5,"fuelCapacity":400,"condition":1,"integrity":1,"requirements":{"power":8,"crew":25}},"reactor":{"symbol":"REACTOR_FISSION_I","name":"Fission Reactor I","description":"A basic fission power reactor, used to generate electricity from nuclear fission reactions.","condition":1,"integrity":1,"powerOutput":31,"requirements":{"crew":8}},"engine":{"symbol":"ENGINE_ION_DRIVE_II","name":"Ion Drive II","description":"An advanced propulsion system that uses ionized particles to generate high-speed, low-thrust acceleration, with improved efficiency and performance.","condition":1,"integrity":1,"speed":30,"requirements":{"power":6,"crew":8}},"modules":[{"symbol":"MODULE_CARGO_HOLD_II","name":"Expanded Cargo Hold","description":"An expanded cargo hold module that provides more efficient storage space for a ship's cargo.","capacity":40,"requirements":{"crew":2,"power":2,"slots":2}},{"symbol":"MODULE_CREW_QUARTERS_I","name":"Crew Quarters","description":"A module that provides living space and amenities for the crew.","capacity":40,"requirements":{"crew":2,"power":1,"slots":1}},{"symbol":"MODULE_CREW_QUARTERS_I","name":"Crew Quarters","description":"A module that provides living space and amenities for the crew.","capacity":40,"requirements":{"crew":2,"power":1,"slots":1}},{"symbol":"MODULE_MINERAL_PROCESSOR_I","name":"Mineral Processor","description":"Crushes and processes extracted minerals and ores into their component parts, filters out impurities, and containerizes them into raw storage units.","requirements":{"crew":0,"power":1,"slots":2}},{"symbol":"MODULE_GAS_PROCESSOR_I","name":"Gas Processor","description":"Filters and processes extracted gases into their component parts, filters out impurities, and containerizes them into raw storage units.","requirements":{"crew":0,"power":1,"slots":2}}],"mounts":[{"symbol":"MOUNT_SENSOR_ARRAY_II","name":"Sensor Array II","description":"An advanced sensor array that improves a ship's ability to detect and track other objects in space with greater accuracy and range.","strength":4,"requirements":{"crew":2,"power":2}},{"symbol":"MOUNT_GAS_SIPHON_II","name":"Gas Siphon II","description":"An advanced gas siphon that can extract gas from gas giants and other gas-rich bodies more efficiently and at a higher rate.","strength":20,"requirements":{"crew":2,"power":2}},{"symbol":"MOUNT_MINING_LASER_II","name":"Mining Laser II","description":"An advanced mining laser that is more efficient and effective at extracting valuable minerals from asteroids and other space objects.","strength":5,"requirements":{"crew":2,"power":2}},{"symbol":"MOUNT_SURVEYOR_II","name":"Surveyor II","description":"An advanced survey probe that can be used to gather information about a mineral deposit with greater accuracy.","strength":2,"deposits":["QUARTZ_SAND","SILICON_CRYSTALS","PRECIOUS_STONES","ICE_WATER","AMMONIA_ICE","IRON_ORE","COPPER_ORE","SILVER_ORE","ALUMINUM_ORE","GOLD_ORE","PLATINUM_ORE","DIAMONDS","URANITE_ORE"],"requirements":{"crew":4,"power":3}}],"registration":{"name":"FLWI_TEST-1","factionSymbol":"ASTRO","role":"COMMAND"},"cargo":{"capacity":40,"units":0,"inventory":[]}}}}"#;
+
+        let registration: Data<RegistrationResponse> =
+            serde_json::from_str(registration_json).unwrap();
+
+        let Data { data: registration } = registration;
+
+        assert!(registration
+            .token
+            .starts_with("eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9"));
+
+        assert_eq!(
+            registration.agent.account_id,
+            Some("clzsskbz7ih38s60ci1xwiau1".to_string())
+        );
+
+        assert_eq!(registration.contract.id, "clzsskc1rih3as60c14qqqqf5");
+
+        assert_eq!(registration.faction.symbol, "ASTRO");
+
+        assert_eq!(registration.ship.symbol, "FLWI_TEST-1");
+
+        assert_eq!(
+            registration.ship.nav.system_symbol,
+            SystemSymbol("X1-GY87".to_string())
+        );
     }
 }

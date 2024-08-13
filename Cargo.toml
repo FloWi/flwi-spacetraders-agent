@@ -7,7 +7,7 @@ edition = "2021"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12.4", features = ["json"] }
 serde = { version = "1.0.197", features = ["derive"] }
-reqwest-middleware = "0.3.1"
+reqwest-middleware = { version = "0.3.1", features = ["json"] }
 governor = "0.6.3"
 async-trait = "0.1.78"
 task-local-extensions = "0.1.0"

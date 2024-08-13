@@ -7,6 +7,7 @@ use sqlx::{ConnectOptions, Pool, Postgres};
 use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
+use crate::api_client::api_model::RegistrationResponse;
 use crate::configuration::AgentConfiguration;
 use crate::st_model::StStatusResponse;
 
@@ -14,9 +15,12 @@ pub async fn prepare_database_schema(
     api_status: StStatusResponse,
     cfg: AgentConfiguration,
 ) -> Result<Pool<Postgres>> {
-    println!("Got status: {:?}", api_status);
-    println!("Agent config: {:?}", cfg);
-    println!(
+    event!(Level::INFO, "Got status: {:?}", api_status);
+
+    event!(Level::INFO, "Agent config: {:?}", cfg);
+
+    event!(
+        Level::INFO,
         "Postgres connection string: '{:?}'",
         cfg.pg_connection_string()
     );
@@ -147,4 +151,45 @@ on conflict (reset_date) do nothing
 struct DbStatus {
     reset_date: String,
     entry: Json<StStatusResponse>,
+}
+
+pub struct DbRegistrationResponse {
+    pub token: String,
+    pub entry: Json<RegistrationResponse>,
+}
+
+pub(crate) async fn load_registration(
+    pool: &Pool<Postgres>,
+) -> Result<Option<DbRegistrationResponse>> {
+    let maybe_result = sqlx::query_as!(
+        DbRegistrationResponse,
+        r#"
+select token
+     , entry as "entry: Json<RegistrationResponse>"
+  from registration
+  limit 1
+        "#,
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(maybe_result)
+}
+
+pub(crate) async fn save_registration(
+    pool: &Pool<Postgres>,
+    api_registration_response: RegistrationResponse,
+) -> Result<()> {
+    sqlx::query!(
+        r#"
+insert into registration (token, entry)
+values ($1, $2)
+        "#,
+        api_registration_response.token,
+        Json(api_registration_response.clone()) as _
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
