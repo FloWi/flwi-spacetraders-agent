@@ -1,0 +1,28 @@
+services:
+  postgres:
+    profiles: ["agent"]
+    # our SQL database
+    container_name: spacetraders-postgres
+    # based on postgres:15
+    image: postgres:16
+    ports:
+      - "25432:5432"
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=spacetraders
+      - POSTGRES_PASSWORD=spacetraders-password
+    command: postgres -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all -c max_connections=200
+  grafana:
+    profiles: ["agent"]
+    image: grafana/grafana-oss
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      #      - GF_SERVER_ROOT_URL=http://my.grafana.server/
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,frser-sqlite-datasource
+    volumes:
+      - ./grafana-storage:/var/lib/grafana
+      - ./server/db/:/spacetraders-db

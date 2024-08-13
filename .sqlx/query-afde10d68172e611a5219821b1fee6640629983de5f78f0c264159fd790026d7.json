@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into status (reset_date, entry)\nvalues ($1, $2)\non conflict (reset_date) do nothing\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Json"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "afde10d68172e611a5219821b1fee6640629983de5f78f0c264159fd790026d7"
+}
