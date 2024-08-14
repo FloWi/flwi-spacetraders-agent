@@ -4,13 +4,13 @@ use clap::{Parser, Subcommand};
 
 #[derive(Clone, Parser)]
 #[command(version, about, long_about = None)]
-pub(crate) struct Cli {
+pub struct Cli {
     #[command(subcommand)]
-    pub(crate) command: Commands,
+    pub command: Commands,
 }
 
 #[derive(Clone, Subcommand)]
-pub(crate) enum Commands {
+pub enum Commands {
     /// runs the agent
     RunAgent {
         #[arg(long, env("DATABASE_URL"))]

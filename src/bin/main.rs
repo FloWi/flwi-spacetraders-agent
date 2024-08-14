@@ -5,22 +5,14 @@ use tracing::{event, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use utoipa::OpenApi;
 
-use crate::api_client::api_model::RegistrationRequest;
-use crate::cli_args::{Cli, Commands};
-use crate::configuration::AgentConfiguration;
-use crate::reqwest_helpers::create_client;
-use crate::st_client::StClient;
-use crate::st_model::{AgentSymbol, FactionSymbol};
-
-mod cli_args;
-mod configuration;
-mod db;
-mod pagination;
-mod reqwest_helpers;
-mod st_client;
-mod st_model;
-
-mod api_client;
+use flwi_spacetraders_agent::api_client::api_model::RegistrationRequest;
+use flwi_spacetraders_agent::cli_args;
+use flwi_spacetraders_agent::cli_args::{Cli, Commands};
+use flwi_spacetraders_agent::configuration::AgentConfiguration;
+use flwi_spacetraders_agent::db;
+use flwi_spacetraders_agent::reqwest_helpers::create_client;
+use flwi_spacetraders_agent::st_client::StClient;
+use flwi_spacetraders_agent::st_model::{AgentSymbol, FactionSymbol};
 
 #[tokio::main]
 async fn main() -> Result<()> {

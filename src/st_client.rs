@@ -63,7 +63,7 @@ impl StClient {
             .await?)
     }
 
-    pub(crate) async fn get_agent(&self) -> Result<AgentInfoResponse> {
+    pub async fn get_agent(&self) -> Result<AgentInfoResponse> {
         Ok(self
             .client
             .get(format!("https://api.spacetraders.io/v2/my/agent",))
@@ -150,7 +150,7 @@ impl StClient {
         resp.json().await.unwrap()
     }
 
-    pub(crate) async fn get_status(&self) -> Result<StStatusResponse> {
+    pub async fn get_status(&self) -> Result<StStatusResponse> {
         Ok(self
             .client
             .get("https://api.spacetraders.io/v2/")

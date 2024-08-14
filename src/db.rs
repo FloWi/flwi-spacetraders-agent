@@ -159,9 +159,7 @@ pub struct DbRegistrationResponse {
     pub entry: Json<Data<RegistrationResponse>>,
 }
 
-pub(crate) async fn load_registration(
-    pool: &Pool<Postgres>,
-) -> Result<Option<DbRegistrationResponse>> {
+pub async fn load_registration(pool: &Pool<Postgres>) -> Result<Option<DbRegistrationResponse>> {
     let maybe_result = sqlx::query_as!(
         DbRegistrationResponse,
         r#"
@@ -177,7 +175,7 @@ select token
     Ok(maybe_result)
 }
 
-pub(crate) async fn save_registration(
+pub async fn save_registration(
     pool: &Pool<Postgres>,
     api_registration_response: Data<RegistrationResponse>,
 ) -> Result<()> {

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into registration (token, entry)\nvalues ($1, $2)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Json"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dd19b5e60088f8ab63ccb523a466d6a1b5e54fb0430255ec04f6fd5e42bb8cd2"
+}

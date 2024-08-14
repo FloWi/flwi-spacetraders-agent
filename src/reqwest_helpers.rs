@@ -7,7 +7,7 @@ use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, Middleware, Next};
 use reqwest_retry::policies::ExponentialBackoff;
 use reqwest_retry::RetryTransientMiddleware;
 
-pub(crate) fn create_client(maybe_bearer_token: Option<String>) -> ClientWithMiddleware {
+pub fn create_client(maybe_bearer_token: Option<String>) -> ClientWithMiddleware {
     let reqwest_client = Client::builder().build().unwrap();
 
     let limiter = RateLimiter::direct(Quota::per_second(std::num::NonZeroU32::new(2u32).unwrap()));
