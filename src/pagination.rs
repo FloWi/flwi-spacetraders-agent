@@ -1,48 +1,135 @@
+use std::any::type_name;
 use std::future::Future;
 
+use anyhow::{Context, Error, Result};
 use futures::future::join_all;
-use tracing::{event, span, Level};
+use futures::future::{self, TryFutureExt};
+use serde::Deserialize;
+use tracing::log::trace;
+use tracing::{event, span, trace_span, Instrument, Level};
 
 use crate::st_model::GetMeta;
 
+#[derive(Debug, Clone)]
 pub struct PaginationInput {
-    pub(crate) page: u32,
-    pub(crate) limit: u32,
+    pub page: u32,
+    pub limit: u32,
 }
 
-pub async fn paginate<F, T: GetMeta>(call: impl Fn(PaginationInput) -> F) -> Vec<T>
+#[derive(Deserialize)]
+pub struct PaginatedResponse<T> {
+    data: Vec<T>,
+    meta: Meta,
+}
+
+#[derive(Deserialize)]
+struct Meta {
+    total: u64,
+    page: u64,
+    limit: u64,
+}
+
+pub async fn fetch_all_pages<T, F, Fut>(
+    mut fetch_page: F,
+    initial_input: PaginationInput,
+) -> Result<Vec<T>>
 where
-    F: Future<Output = T>,
+    T: for<'de> Deserialize<'de>,
+    F: FnMut(PaginationInput) -> Fut,
+    Fut: Future<Output = Result<PaginatedResponse<T>>>,
 {
-    let span = span!(Level::TRACE, "pagination");
-    let _ = span.enter();
+    let mut all_data = Vec::new();
+    let mut current_input = initial_input;
 
-    event!(Level::TRACE, "Start downloading all pages");
+    let output_parameter_type_name = type_name::<T>();
 
-    let first_page = call(PaginationInput { page: 1, limit: 20 }).await;
-    let meta = first_page.get_meta();
+    let span = trace_span!("pagination");
 
-    let total_number_pages = (meta.total as f32 / meta.limit as f32).ceil() as u32;
+    let mut total_number_of_pages = 1;
 
-    let futures: Vec<_> = (2..=total_number_pages)
-        .into_iter()
-        .map(|p| {
-            event!(Level::TRACE, "Downloading page {p} of {total_number_pages}",);
-            call(PaginationInput { page: p, limit: 20 })
-        })
-        .collect();
-    let rest_results: Vec<_> = join_all(futures).await.into_iter().collect();
+    async move {
+        event!(
+            Level::TRACE,
+            "Start downloading all pages of type {}",
+            output_parameter_type_name
+        );
 
-    event!(
-        Level::TRACE,
-        "Done downloading rest of {total_number_pages} pages"
-    );
+        while current_input.page <= total_number_of_pages {
+            let response = fetch_page(current_input.clone()).await?;
+            total_number_of_pages =
+                (response.meta.total as f32 / response.meta.limit as f32).ceil() as u32;
 
-    //let futures: Vec<_> = resp.leaderboards.most_credits.iter().map(|a| get_static_agent_info(&client, AgentSymbol(a.agent_symbol.to_string()))).collect();
+            event!(
+                Level::TRACE,
+                "Downloaded page {} of {}",
+                current_input.page,
+                total_number_of_pages
+            );
 
-    // let results: Vec<_> = join_all(futures).await.into_iter().collect();
+            all_data.extend(response.data);
 
-    let mut result = vec![first_page];
-    result.extend(rest_results);
-    result
+            current_input.page += 1;
+        }
+
+        event!(
+            Level::TRACE,
+            "Done downloading all {} pages",
+            total_number_of_pages
+        );
+        Ok(all_data)
+    }
+    .instrument(span)
+    .await
+}
+
+pub async fn collect_results<T, U, F, Fut>(
+    collection: impl IntoIterator<Item = T>,
+    f: F,
+) -> Result<Vec<U>>
+where
+    F: Fn(T) -> Fut + Clone, // Add Clone bound here
+    Fut: Future<Output = Result<U>>,
+    T: std::fmt::Debug,
+    U: std::fmt::Debug,
+{
+    let collection: Vec<T> = collection.into_iter().collect();
+    let total = collection.len();
+
+    let input_parameter_type_name = type_name::<T>();
+    let output_parameter_type_name = type_name::<U>();
+
+    let span = trace_span!("collect_results",);
+
+    async move {
+        trace!(
+            "Start processing all {} items of type {} to collect type Vec<{}>",
+            total,
+            input_parameter_type_name,
+            output_parameter_type_name
+        );
+        let results = future::try_join_all(collection.into_iter().enumerate().map(
+            move |(index, item)| {
+                // Use move here
+                let f = f.clone(); // Clone f for each iteration
+                async move {
+                    trace!("Processing item {} of {} {:?}", index + 1, total, item);
+                    let result = f(item).await;
+                    trace!("Finished processing item {} of {}", index + 1, total);
+                    result
+                }
+            },
+        ))
+        .await?;
+
+        trace!(
+            "Finished processing all {} items of type {} to collect type Vec<{}>",
+            total,
+            input_parameter_type_name,
+            output_parameter_type_name
+        );
+
+        Ok(results)
+    }
+    .instrument(span)
+    .await
 }

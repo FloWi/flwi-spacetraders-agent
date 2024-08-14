@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -10,9 +12,35 @@ pub struct SystemSymbol(pub String);
 pub struct WaypointSymbol(pub String);
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WaypointTraitSymbol(pub String);
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WaypointTrait {
+    pub symbol: WaypointTraitSymbol,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WaypointModifierSymbol(pub String);
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WaypointModifier {
+    pub symbol: WaypointModifierSymbol,
+    pub name: String,
+    pub description: String,
+}
+
+impl WaypointSymbol {
+    pub fn system_symbol(&self) -> SystemSymbol {
+        SystemSymbol(self.0.splitn(3, "-").take(2).join("-"))
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FactionSymbol(pub String);
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInfoResponse {
     pub data: AgentInfoResponseData,
@@ -26,7 +54,7 @@ pub struct ConstructionMaterial {
     pub fulfilled: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct GetConstructionResponseData {
     pub symbol: String,
@@ -34,13 +62,13 @@ pub struct GetConstructionResponseData {
     pub is_complete: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct GetConstructionResponse {
     pub data: GetConstructionResponseData,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInfoResponseData {
     pub account_id: Option<String>,
@@ -92,13 +120,6 @@ pub struct AgentCharts {
     pub chart_count: i32,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct ListWaypointsInSystemResponse {
-    pub data: Vec<ListWaypointsInSystemResponseData>,
-    pub meta: Meta,
-}
-
 #[derive(Deserialize, Serialize, Debug, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Meta {
@@ -107,7 +128,7 @@ pub struct Meta {
     pub limit: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Chart {
     pub waypoint_symbol: Option<String>,
@@ -115,30 +136,35 @@ pub struct Chart {
     pub submitted_on: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Faction {
     pub symbol: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Orbital {
+    pub symbol: WaypointSymbol,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct ListWaypointsInSystemResponseData {
-    pub symbol: String,
+pub struct WaypointInSystemResponseData {
+    pub symbol: WaypointSymbol,
     #[serde(rename = "type")]
     pub r#type: String,
-    pub system_symbol: String,
+    pub system_symbol: SystemSymbol,
     pub x: i64,
     pub y: i64,
-    //pub orbitals: Vec<WaypointSymbol>,
+    pub orbitals: Vec<Orbital>,
     pub orbits: Option<WaypointSymbol>,
     pub faction: Faction,
-    //pub traits: Vec<Struct>,
-    //pub modifiers: Vec<Struct>,
+    pub traits: Vec<WaypointTrait>,
+    pub modifiers: Vec<WaypointModifier>,
     pub chart: Chart,
     pub is_under_construction: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ListAgentsResponse {
     pub data: Vec<AgentInfoResponseData>,
@@ -147,12 +173,6 @@ pub struct ListAgentsResponse {
 
 pub trait GetMeta {
     fn get_meta(&self) -> Meta;
-}
-
-impl GetMeta for ListWaypointsInSystemResponse {
-    fn get_meta(&self) -> Meta {
-        self.meta
-    }
 }
 
 impl GetMeta for ListAgentsResponse {
@@ -166,4 +186,92 @@ pub(crate) fn extract_system_symbol(waypoint_symbol: &WaypointSymbol) -> SystemS
     // Join the first two parts with '-'
     let first_two_parts = parts[..2].join("-");
     SystemSymbol(first_two_parts)
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMarketResponse {
+    pub data: MarketData,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketData {
+    pub symbol: String,
+    pub exports: Vec<TradeGood>,
+    pub imports: Vec<TradeGood>,
+    pub exchange: Vec<TradeGood>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transactions: Option<Vec<Transaction>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trade_goods: Option<Vec<MarketTradeGood>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TradeGood {
+    pub symbol: String,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Transaction {
+    pub waypoint_symbol: String,
+    pub ship_symbol: String,
+    pub trade_symbol: String,
+    #[serde(rename = "type")]
+    pub transaction_type: TransactionType,
+    pub units: i32,
+    pub price_per_unit: i32,
+    pub total_price: i32,
+    pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TransactionType {
+    Purchase,
+    Sell,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketTradeGood {
+    pub symbol: String,
+    #[serde(rename = "type")]
+    pub trade_good_type: TradeGoodType,
+    pub trade_volume: i32,
+    pub supply: SupplyLevel,
+    pub activity: Option<ActivityLevel>,
+    pub purchase_price: i32,
+    pub sell_price: i32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TradeGoodType {
+    Export,
+    Import,
+    Exchange,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SupplyLevel {
+    Scarce,
+    Limited,
+    Moderate,
+    High,
+    Abundant,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ActivityLevel {
+    Weak,
+    Growing,
+    Strong,
+    Restricted,
 }

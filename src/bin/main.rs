@@ -10,9 +10,12 @@ use flwi_spacetraders_agent::cli_args;
 use flwi_spacetraders_agent::cli_args::{Cli, Commands};
 use flwi_spacetraders_agent::configuration::AgentConfiguration;
 use flwi_spacetraders_agent::db;
+use flwi_spacetraders_agent::pagination::{collect_results, fetch_all_pages, PaginationInput};
 use flwi_spacetraders_agent::reqwest_helpers::create_client;
 use flwi_spacetraders_agent::st_client::StClient;
-use flwi_spacetraders_agent::st_model::{AgentSymbol, FactionSymbol};
+use flwi_spacetraders_agent::st_model::{
+    AgentSymbol, FactionSymbol, WaypointSymbol, WaypointTrait, WaypointTraitSymbol,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -27,7 +30,7 @@ async fn main() -> Result<()> {
                 spacetraders_registration_email,
             } => {
                 tracing_subscriber::registry()
-                    .with(fmt::layer())
+                    .with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE))
                     .with(EnvFilter::from_default_env())
                     .init();
 
@@ -51,7 +54,48 @@ async fn main() -> Result<()> {
                 .await?;
 
                 let my_agent = authenticated_client.get_agent().await?;
-                dbg!(my_agent);
+                dbg!(my_agent.clone());
+
+                let headquarters_waypoint_symbol =
+                    WaypointSymbol(my_agent.data.headquarters.clone());
+                let headquarters_system_symbol = headquarters_waypoint_symbol.system_symbol();
+
+                let waypoints_of_system = fetch_all_pages(
+                    |page| {
+                        authenticated_client
+                            .list_waypoints_of_system_page(&headquarters_system_symbol, page)
+                    },
+                    PaginationInput { page: 1, limit: 20 },
+                )
+                .await?;
+
+                let marketplaces: Vec<_> = waypoints_of_system
+                    .iter()
+                    .filter(|wp| {
+                        wp.traits.iter().any(|wp_trait| {
+                            wp_trait.symbol == WaypointTraitSymbol("MARKETPLACE".to_string())
+                        })
+                    })
+                    .map(|wp| wp.symbol.clone())
+                    .collect();
+
+                let market_data: Vec<_> =
+                    collect_results(marketplaces.clone(), |waypoint_symbol| {
+                        authenticated_client.get_marketplace(waypoint_symbol)
+                    })
+                    .await?
+                    .iter()
+                    .map(|md| md.data.clone())
+                    .collect();
+
+                println!("marketplaces: \n{}", serde_json::to_string(&marketplaces)?);
+                println!("market_data: \n{}", serde_json::to_string(&market_data)?);
+
+                println!(
+                    "all waypoints of home systme: \n{}",
+                    serde_json::to_string(&waypoints_of_system)?
+                );
+
                 Ok(())
             }
         },

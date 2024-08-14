@@ -30,3 +30,5 @@ tower-http = { version = "0.5.2", features = ["cors", "trace", "fs"] }
 serde_json = { version = "1.0.116", features = ["raw_value"] }
 clap = { version = "4.5.4", features = ["derive", "env"] }
 reqwest-retry = "0.6.1"
+bonsai-bt = "0.6.3"
+serde_path_to_error = "0.1.16"

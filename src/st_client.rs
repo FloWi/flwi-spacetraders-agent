@@ -3,11 +3,11 @@ use reqwest_middleware::ClientWithMiddleware;
 use serde::{Deserialize, Serialize};
 
 use crate::api_client::api_model::{RegistrationRequest, RegistrationResponse};
-use crate::pagination::PaginationInput;
+use crate::pagination::{PaginatedResponse, PaginationInput};
 use crate::st_model::{
     extract_system_symbol, AgentInfoResponse, AgentSymbol, GetConstructionResponse,
-    ListAgentsResponse, ListWaypointsInSystemResponse, StStatusResponse, SystemSymbol,
-    WaypointSymbol,
+    GetMarketResponse, ListAgentsResponse, MarketData, StStatusResponse, SystemSymbol,
+    WaypointInSystemResponseData, WaypointSymbol,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,7 +16,7 @@ pub struct Data<T> {
 }
 
 pub struct StClient {
-    pub(crate) client: ClientWithMiddleware,
+    pub client: ClientWithMiddleware,
 }
 
 impl StClient {
@@ -47,10 +47,7 @@ impl StClient {
         }
     }
 
-    pub(crate) async fn get_public_agent(
-        &self,
-        agent_symbol: &AgentSymbol,
-    ) -> Result<AgentInfoResponse> {
+    pub async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentInfoResponse> {
         Ok(self
             .client
             .get(format!(
@@ -73,7 +70,7 @@ impl StClient {
             .await?)
     }
 
-    pub(crate) async fn get_construction_site(
+    pub async fn get_construction_site(
         &self,
         waypoint_symbol: &WaypointSymbol,
     ) -> Result<GetConstructionResponse> {
@@ -90,29 +87,29 @@ impl StClient {
         Ok(construction_site_info)
     }
 
-    pub(crate) async fn get_waypoints_of_type_jump_gate(
-        &self,
-        system_symbol: SystemSymbol,
-    ) -> Result<ListWaypointsInSystemResponse> {
-        let query_param_list = [("type", "JUMP_GATE")];
-        let request = self
-            .client
-            .get(format!(
-                "https://api.spacetraders.io/v2/systems/{}/waypoints",
-                system_symbol.0
-            ))
-            .query(&query_param_list);
-        let resp = request.send().await;
+    // pub async fn get_waypoints_of_type_jump_gate(
+    //     &self,
+    //     system_symbol: SystemSymbol,
+    // ) -> Result<ListWaypointsInSystemResponse> {
+    //     let query_param_list = [("type", "JUMP_GATE")];
+    //     let request = self
+    //         .client
+    //         .get(format!(
+    //             "https://api.spacetraders.io/v2/systems/{}/waypoints",
+    //             system_symbol.0
+    //         ))
+    //         .query(&query_param_list);
+    //     let resp = request.send().await;
+    //
+    //     //TODO: implement pagination
+    //     Ok(resp?.json().await?)
+    // }
 
-        //TODO: implement pagination
-        Ok(resp?.json().await?)
-    }
-
-    pub(crate) async fn list_waypoints_of_system_page(
+    pub async fn list_waypoints_of_system_page(
         &self,
         system_symbol: &SystemSymbol,
         pagination_input: PaginationInput,
-    ) -> Result<ListWaypointsInSystemResponse> {
+    ) -> Result<PaginatedResponse<WaypointInSystemResponseData>> {
         let query_param_list = [
             ("page", pagination_input.page.to_string()),
             ("limit", pagination_input.limit.to_string()),
@@ -128,13 +125,33 @@ impl StClient {
 
         let resp = request.send().await?;
 
-        Ok(resp.json().await?)
+        let body = resp.text().await?;
+        let jd = &mut serde_json::Deserializer::from_str(body.as_str());
+        let result = serde_path_to_error::deserialize(jd);
+
+        result.map_err(|err| anyhow::Error::msg(err.to_string()))
     }
 
-    pub(crate) async fn list_agents_page(
+    pub async fn get_marketplace(
         &self,
-        pagination_input: PaginationInput,
-    ) -> ListAgentsResponse {
+        waypoint_symbol: WaypointSymbol,
+    ) -> Result<GetMarketResponse> {
+        let request = self.client.get(format!(
+            "https://api.spacetraders.io/v2/systems/{}/waypoints/{}/market",
+            waypoint_symbol.system_symbol().0,
+            waypoint_symbol.0
+        ));
+
+        let resp = request.send().await?;
+
+        let body = resp.text().await?;
+        let jd = &mut serde_json::Deserializer::from_str(body.as_str());
+        let result = serde_path_to_error::deserialize(jd);
+
+        result.map_err(|err| anyhow::Error::msg(err.to_string()))
+    }
+
+    pub async fn list_agents_page(&self, pagination_input: PaginationInput) -> ListAgentsResponse {
         let query_param_list = [
             ("page", pagination_input.page.to_string()),
             ("limit", pagination_input.limit.to_string()),
@@ -163,7 +180,10 @@ impl StClient {
 
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
+
     use crate::api_client::api_model::RegistrationResponse;
+    use crate::st_model::MarketData;
 
     use super::*;
 
@@ -194,6 +214,47 @@ mod test {
         assert_eq!(
             registration.ship.nav.system_symbol,
             SystemSymbol("X1-GY87".to_string())
+        );
+    }
+
+    #[test]
+    fn test_decode_get_market_response() {
+        let registration_json = r#"{"data":{"symbol":"X1-BM40-A2","imports":[{"symbol":"SHIP_PLATING","name":"Ship Plating","description":"High-quality metal plating used in the construction of ship hulls and other structural components."},{"symbol":"SHIP_PARTS","name":"Ship Parts","description":"Various components and hardware required for spacecraft maintenance, upgrades, and construction."}],"exports":[],"exchange":[{"symbol":"FUEL","name":"Fuel","description":"High-energy fuel used in spacecraft propulsion systems to enable long-distance space travel."}]}}"#;
+
+        let market_data_from_afar: Data<MarketData> =
+            serde_json::from_str(registration_json).unwrap();
+
+        let Data { data: market_data } = market_data_from_afar;
+
+        assert_eq!(
+            market_data
+                .exchange
+                .clone()
+                .iter()
+                .map(|tg| tg.symbol.clone())
+                .collect::<Vec<String>>(),
+            vec!["FUEL"]
+        );
+
+        assert_eq!(
+            market_data
+                .exports
+                .clone()
+                .iter()
+                .map(|tg| tg.symbol.clone())
+                .collect::<Vec<String>>(),
+            Vec::<String>::new()
+        );
+
+        assert_eq!(
+            market_data
+                .imports
+                .clone()
+                .iter()
+                .map(|tg| tg.symbol.clone())
+                .sorted()
+                .collect::<Vec<String>>(),
+            vec!["SHIP_PARTS", "SHIP_PLATING"]
         );
     }
 }
