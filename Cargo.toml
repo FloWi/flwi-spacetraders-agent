@@ -32,3 +32,5 @@ clap = { version = "4.5.4", features = ["derive", "env"] }
 reqwest-retry = "0.6.1"
 bonsai-bt = "0.6.3"
 serde_path_to_error = "0.1.16"
+metrics = "0.23.0"
+metrics-exporter-prometheus = "0.15.3"

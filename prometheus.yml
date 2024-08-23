@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'spacetraders_service'
+    static_configs:
+      - targets: [ 'host.docker.internal:9000' ]
+    metric_relabel_configs:
+      # Generic rule for system endpoints
+      - source_labels: [ url ]
+        regex: 'https://api\.spacetraders\.io/v2/systems/([^/]+)(/.*)?'
+        target_label: url
+        replacement: 'https://api.spacetraders.io/v2/systems/:system_id$2'
+
+      # Generic rule for waypoint endpoints
+      - source_labels: [ url ]
+        regex: 'https://api\.spacetraders\.io/v2/systems/([^/]+)/waypoints/([^/]+)(/.*)?'
+        target_label: url
+        replacement: 'https://api.spacetraders.io/v2/systems/:system_id/waypoints/:waypoint_id$3'
+
+      # Generic rule for agent endpoints
+      - source_labels: [ url ]
+        regex: 'https://api\.spacetraders\.io/v2/agents/([^/]+)(/.*)?'
+        target_label: url
+        replacement: 'https://api.spacetraders.io/v2/agents/:agent_id$2'

@@ -1,3 +1,4 @@
 /target
 grafana-storage
 postgres-data
+server/prometheus-storage
