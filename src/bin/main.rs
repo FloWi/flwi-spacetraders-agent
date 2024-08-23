@@ -1,5 +1,8 @@
+use crate::db::upsert_waypoints_of_system;
 use anyhow::{Context, Result};
+use chrono::Local;
 use clap::Parser;
+use flwi_spacetraders_agent::db::insert_market_data;
 use sqlx::{ConnectOptions, Executor, Pool, Postgres};
 use tracing::{event, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -14,7 +17,8 @@ use flwi_spacetraders_agent::pagination::{collect_results, fetch_all_pages, Pagi
 use flwi_spacetraders_agent::reqwest_helpers::create_client;
 use flwi_spacetraders_agent::st_client::StClient;
 use flwi_spacetraders_agent::st_model::{
-    AgentSymbol, FactionSymbol, WaypointSymbol, WaypointTrait, WaypointTraitSymbol,
+    AgentSymbol, FactionSymbol, MarketData, WaypointInSystemResponseData, WaypointSymbol,
+    WaypointTrait, WaypointTraitSymbol,
 };
 
 #[tokio::main]
@@ -60,6 +64,8 @@ async fn main() -> Result<()> {
                     WaypointSymbol(my_agent.data.headquarters.clone());
                 let headquarters_system_symbol = headquarters_waypoint_symbol.system_symbol();
 
+                let now = Local::now().to_utc();
+
                 let waypoints_of_system = fetch_all_pages(
                     |page| {
                         authenticated_client
@@ -68,6 +74,10 @@ async fn main() -> Result<()> {
                     PaginationInput { page: 1, limit: 20 },
                 )
                 .await?;
+
+                let _ = upsert_waypoints_of_system(&pool, waypoints_of_system.clone(), now).await;
+
+                let now = Local::now().to_utc();
 
                 let marketplaces: Vec<_> = waypoints_of_system
                     .iter()
@@ -88,14 +98,7 @@ async fn main() -> Result<()> {
                     .map(|md| md.data.clone())
                     .collect();
 
-                println!("marketplaces: \n{}", serde_json::to_string(&marketplaces)?);
-                println!("market_data: \n{}", serde_json::to_string(&market_data)?);
-
-                println!(
-                    "all waypoints of home systme: \n{}",
-                    serde_json::to_string(&waypoints_of_system)?
-                );
-
+                let _ = insert_market_data(&pool, market_data.clone(), now).await;
                 Ok(())
             }
         },

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into waypoints\nselect *\nfrom jsonb_populate_recordset(NULL::waypoints, $1)\non conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "135c2244a6d73942cc4ef855a2b04de29ef32c58d2a40e95cffddf9ca4a55206"
+}

@@ -1,6 +1,11 @@
 use std::time::Duration;
 
 use anyhow::{Context, Error, Result};
+use chrono::{DateTime, NaiveDateTime, Utc};
+use futures::StreamExt;
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::types::Json;
 use sqlx::{ConnectOptions, Pool, Postgres};
@@ -10,7 +15,9 @@ use tracing::{event, Level};
 use crate::api_client::api_model::RegistrationResponse;
 use crate::configuration::AgentConfiguration;
 use crate::st_client::Data;
-use crate::st_model::StStatusResponse;
+use crate::st_model::{
+    MarketData, StStatusResponse, SystemSymbol, WaypointInSystemResponseData, WaypointSymbol,
+};
 
 pub async fn prepare_database_schema(
     api_status: StStatusResponse,
@@ -191,4 +198,132 @@ values ($1, $2)
     .await?;
 
     Ok(())
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbWaypointEntry {
+    system_symbol: String,
+    waypoint_symbol: String,
+    entry: Json<WaypointInSystemResponseData>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbMarketEntry {
+    waypoint_symbol: String,
+    entry: Json<MarketData>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+pub async fn upsert_waypoints_of_system(
+    pool: &Pool<Postgres>,
+    waypoints: Vec<WaypointInSystemResponseData>,
+    now: DateTime<Utc>,
+) -> Result<()> {
+    let db_entries: Vec<DbWaypointEntry> = waypoints
+        .iter()
+        .map(|wp| DbWaypointEntry {
+            system_symbol: wp.system_symbol.0.clone(),
+            waypoint_symbol: wp.symbol.0.clone(),
+            entry: Json(wp.clone()),
+            created_at: now,
+            updated_at: now,
+        })
+        .collect();
+
+    let (first_vec, rest) = db_entries.split_at(1);
+
+    if let Some(first) = first_vec.get(0) {
+        // insert first entry manually to get sqlx compile-time check
+
+        sqlx::query!(
+            r#"
+insert into waypoints (system_symbol, waypoint_symbol, entry, created_at, updated_at)
+values ($1, $2, $3, $4, $5)
+on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+        "#,
+            first.system_symbol,
+            first.waypoint_symbol,
+            first.entry as _,
+            now,
+            now,
+        )
+        .execute(pool)
+        .await?;
+
+        let json_array = serde_json::to_value(&rest)?;
+        let debug_string = json_array.to_string();
+
+        sqlx::query!(
+            r#"
+insert into waypoints
+select *
+from jsonb_populate_recordset(NULL::waypoints, $1)
+on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+            "#,
+            json_array
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    } else {
+        Ok(())
+    }
+}
+
+pub async fn insert_market_data(
+    pool: &Pool<Postgres>,
+    market_entries: Vec<MarketData>,
+    now: DateTime<Utc>,
+) -> Result<()> {
+    let db_entries: Vec<DbMarketEntry> = market_entries
+        .iter()
+        .map(|me| DbMarketEntry {
+            waypoint_symbol: me.symbol.clone(),
+            entry: Json(me.clone()),
+
+            created_at: now,
+            updated_at: now,
+        })
+        .collect();
+
+    let (first_vec, rest) = db_entries.split_at(1);
+
+    if let Some(first) = first_vec.get(0) {
+        // insert first entry manually to get sqlx compile-time check
+        sqlx::query!(
+            r#"
+insert into markets (waypoint_symbol, entry, created_at, updated_at)
+values ($1, $2, $3, $4)
+        "#,
+            first.waypoint_symbol,
+            first.entry as _,
+            now,
+            now,
+        )
+        .execute(pool)
+        .await?;
+
+        let json_array = serde_json::to_value(&rest)?;
+        let debug_string = json_array.clone().to_string();
+
+        sqlx::query!(
+            r#"
+insert into markets
+select *
+from jsonb_populate_recordset(NULL::markets, $1)
+on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+            "#,
+            json_array
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    } else {
+        Ok(())
+    }
 }
