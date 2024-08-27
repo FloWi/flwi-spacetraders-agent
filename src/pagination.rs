@@ -82,6 +82,58 @@ where
     .await
 }
 
+pub async fn fetch_all_pages_into_queue<T, F, Fut>(
+    mut fetch_page: F,
+    initial_input: PaginationInput,
+    tx: tokio::sync::mpsc::Sender<Vec<T>>,
+) -> Result<()>
+where
+    T: for<'de> Deserialize<'de> + std::marker::Send + std::marker::Sync + 'static,
+    F: FnMut(PaginationInput) -> Fut,
+    Fut: Future<Output = Result<PaginatedResponse<T>>>,
+{
+    let mut current_input = initial_input;
+
+    let output_parameter_type_name = type_name::<T>();
+
+    let span = trace_span!("pagination");
+
+    let mut total_number_of_pages = 1;
+
+    async move {
+        event!(
+            Level::TRACE,
+            "Start downloading all pages of type {}",
+            output_parameter_type_name
+        );
+
+        while current_input.page <= total_number_of_pages {
+            let response = fetch_page(current_input.clone()).await?;
+            total_number_of_pages =
+                (response.meta.total as f32 / response.meta.limit as f32).ceil() as u32;
+
+            event!(
+                Level::TRACE,
+                "Downloaded page {} of {}",
+                current_input.page,
+                total_number_of_pages
+            );
+
+            tx.send(response.data).await?;
+            current_input.page += 1;
+        }
+
+        event!(
+            Level::TRACE,
+            "Done downloading all {} pages",
+            total_number_of_pages
+        );
+        Ok(())
+    }
+    .instrument(span)
+    .await
+}
+
 pub async fn collect_results<T, U, F, Fut>(
     collection: impl IntoIterator<Item = T>,
     f: F,

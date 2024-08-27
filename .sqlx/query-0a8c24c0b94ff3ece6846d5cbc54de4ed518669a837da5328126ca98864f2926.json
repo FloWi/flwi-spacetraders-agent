@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into markets\nselect *\nfrom jsonb_populate_recordset(NULL::markets, $1)\non conflict (waypoint_symbol) do UPDATE set entry = excluded.entry\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0a8c24c0b94ff3ece6846d5cbc54de4ed518669a837da5328126ca98864f2926"
+}

@@ -17,6 +17,7 @@ use crate::configuration::AgentConfiguration;
 use crate::st_client::Data;
 use crate::st_model::{
     MarketData, StStatusResponse, SystemSymbol, WaypointInSystemResponseData, WaypointSymbol,
+    WaypointTraitSymbol,
 };
 
 pub async fn prepare_database_schema(
@@ -217,6 +218,17 @@ pub struct DbMarketEntry {
     updated_at: DateTime<Utc>,
 }
 
+pub async fn upsert_waypoints_from_receiver(
+    pool: &Pool<Postgres>,
+    mut rx: tokio::sync::mpsc::Receiver<Vec<WaypointInSystemResponseData>>,
+    now: DateTime<Utc>,
+) -> Result<()> {
+    while let Some(entries) = rx.recv().await {
+        upsert_waypoints_of_system(pool, entries, now).await?;
+    }
+    Ok(())
+}
+
 pub async fn upsert_waypoints_of_system(
     pool: &Pool<Postgres>,
     waypoints: Vec<WaypointInSystemResponseData>,
@@ -296,12 +308,11 @@ pub async fn insert_market_data(
         // insert first entry manually to get sqlx compile-time check
         sqlx::query!(
             r#"
-insert into markets (waypoint_symbol, entry, created_at, updated_at)
-values ($1, $2, $3, $4)
+insert into markets (waypoint_symbol, entry, created_at)
+values ($1, $2, $3)
         "#,
             first.waypoint_symbol,
             first.entry as _,
-            now,
             now,
         )
         .execute(pool)
@@ -315,7 +326,7 @@ values ($1, $2, $3, $4)
 insert into markets
 select *
 from jsonb_populate_recordset(NULL::markets, $1)
-on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry
             "#,
             json_array
         )
@@ -326,4 +337,26 @@ on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at =
     } else {
         Ok(())
     }
+}
+
+pub async fn select_waypoints_of_system_with_trait(
+    pool: &Pool<Postgres>,
+    system_symbol: SystemSymbol,
+    trait_symbol: WaypointTraitSymbol,
+) -> Result<Vec<WaypointSymbol>> {
+    // lots of typecasting necessary to convince sqlx that $1 _is_ a text parameter :-/
+    let waypoint_symbols: Vec<String> = sqlx::query_scalar!(
+        r#"
+        SELECT waypoint_symbol
+        FROM waypoints
+        WHERE jsonb_path_exists(entry, ('$.traits[*] ? (@.symbol == "' || $1::text || '")')::jsonpath)
+        AND system_symbol = $2
+    "#,
+        trait_symbol.0,
+        system_symbol.0
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(waypoint_symbols.into_iter().map(WaypointSymbol).collect())
 }

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into markets (waypoint_symbol, entry, created_at)\nvalues ($1, $2, $3)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "96ae744493ee390f47124cd985f17066008c6ec2178822f3a3465e205d9279ba"
+}
