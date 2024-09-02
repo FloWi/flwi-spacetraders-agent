@@ -1,11 +1,14 @@
-use std::sync::Arc;
-
+use axum::http;
 use axum::http::Extensions;
 use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
-use reqwest::{Client, Request};
+use log::{debug, error};
+use reqwest::header::{HeaderValue, CONTENT_LENGTH, CONTENT_TYPE};
+use reqwest::{Client, Request, Response};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, Middleware, Next};
 use reqwest_retry::policies::ExponentialBackoff;
 use reqwest_retry::RetryTransientMiddleware;
+use std::sync::Arc;
+use std::time::Instant;
 
 pub fn create_client(maybe_bearer_token: Option<String>) -> ClientWithMiddleware {
     let reqwest_client = Client::builder().build().unwrap();
@@ -21,6 +24,8 @@ pub fn create_client(maybe_bearer_token: Option<String>) -> ClientWithMiddleware
 
     let client_builder = ClientBuilder::new(reqwest_client)
         .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+        .with(EmptyPostMiddleware)
+        .with(ErrorLoggingMiddleware)
         .with(rate_limiting_middleware);
 
     let client = match maybe_bearer_token {
@@ -80,5 +85,80 @@ impl Middleware for RateLimitingMiddleware {
         let res = next.run(req, extensions).await;
         // println!("   got response: {:?}", res);
         res
+    }
+}
+
+/// The spacetraders api expects POST requests with an empty body
+/// to have a content-type of application/json and a content-length of 0.
+#[derive(Clone)]
+pub struct EmptyPostMiddleware;
+
+impl EmptyPostMiddleware {
+    pub fn new() -> Self {
+        EmptyPostMiddleware
+    }
+}
+
+#[async_trait::async_trait]
+impl Middleware for EmptyPostMiddleware {
+    async fn handle(
+        &self,
+        mut req: Request,
+        extensions: &mut Extensions,
+        next: Next<'_>,
+    ) -> reqwest_middleware::Result<reqwest::Response> {
+        if req.method() == http::Method::POST && req.body().is_none() {
+            let headers = req.headers_mut();
+            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
+            *req.body_mut() = Some(vec![].into());
+        }
+        next.run(req, extensions).await
+    }
+}
+
+pub struct ErrorLoggingMiddleware;
+
+#[async_trait::async_trait]
+impl Middleware for ErrorLoggingMiddleware {
+    async fn handle(
+        &self,
+        req: Request,
+        extensions: &mut Extensions,
+        next: Next<'_>,
+    ) -> reqwest_middleware::Result<Response> {
+        let start = Instant::now();
+        let method = req.method().clone();
+        let url = req.url().clone();
+
+        let result = next.run(req, extensions).await;
+
+        let duration = start.elapsed();
+
+        match &result {
+            Ok(resp) if !resp.status().is_success() => {
+                error!(
+                    "Request failed: {} {} - Status: {}, Duration: {:?}",
+                    method,
+                    url,
+                    resp.status(),
+                    duration
+                );
+            }
+            Err(e) => {
+                error!(
+                    "Request error: {} {} - Error: {}, Duration: {:?}",
+                    method, url, e, duration
+                );
+            }
+            _ => {
+                debug!(
+                    "Request succeeded: {} {} - Duration: {:?}",
+                    method, url, duration
+                );
+            }
+        }
+
+        result
     }
 }

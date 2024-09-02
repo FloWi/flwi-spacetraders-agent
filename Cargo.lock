@@ -737,6 +737,7 @@ dependencies = [
  "futures",
  "governor",
  "itertools 0.13.0",
+ "log",
  "metrics",
  "metrics-exporter-prometheus",
  "reqwest",
