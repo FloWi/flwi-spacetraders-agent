@@ -23,7 +23,6 @@ services:
     ports:
       - '3000:3000'
     environment:
-      #      - GF_SERVER_ROOT_URL=http://my.grafana.server/
       - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,frser-sqlite-datasource
     volumes:
       - ./server/grafana-storage:/var/lib/grafana

@@ -1,6 +1,10 @@
+use crate::api_client::api_model::Waypoint;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
+use serde_json::json;
+use std::fmt::Display;
+use std::hash::Hash;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AgentSymbol(pub String);
@@ -274,4 +278,47 @@ pub enum ActivityLevel {
     Growing,
     Strong,
     Restricted,
+}
+
+pub trait LabelledCoordinate<T: Clone + PartialEq + Eq + Hash> {
+    fn x(&self) -> i64;
+    fn y(&self) -> i64;
+    fn label(&self) -> &T;
+
+    fn distance_to(&self, b: &Self) -> u32 {
+        let dx = (b.x() - self.x()) as f64;
+        let dy = (b.y() - self.y()) as f64;
+        (dx * dx + dy * dy).sqrt().round() as u32
+    }
+
+    // New method to create a serializable representation
+    fn to_serializable(&self) -> SerializableCoordinate<T> {
+        SerializableCoordinate {
+            x: self.x(),
+            y: self.y(),
+            label: self.label().clone(),
+        }
+    }
+}
+
+impl LabelledCoordinate<WaypointSymbol> for WaypointInSystemResponseData {
+    fn x(&self) -> i64 {
+        self.x
+    }
+
+    fn y(&self) -> i64 {
+        self.y
+    }
+
+    fn label(&self) -> &WaypointSymbol {
+        &self.symbol
+    }
+}
+
+// Serializable struct that represents any LabelledCoordinate
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SerializableCoordinate<T> {
+    x: i64,
+    y: i64,
+    label: T,
 }

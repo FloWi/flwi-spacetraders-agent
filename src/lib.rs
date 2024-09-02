@@ -9,3 +9,5 @@ pub mod st_client;
 pub mod st_model;
 pub mod supply_chain;
 extern crate serde;
+pub mod exploration;
+pub mod marketplaces;

@@ -2,7 +2,10 @@ use crate::db::upsert_waypoints_of_system;
 use anyhow::{Context, Result};
 use chrono::Local;
 use clap::Parser;
-use flwi_spacetraders_agent::db::{insert_market_data, upsert_waypoints_from_receiver};
+use flwi_spacetraders_agent::db::{
+    insert_market_data, select_latest_marketplace_entry_of_system, select_waypoints_of_system,
+    upsert_waypoints_from_receiver, DbWaypointEntry,
+};
 use sqlx::{ConnectOptions, Executor, Pool, Postgres};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -10,11 +13,15 @@ use tracing::{event, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use utoipa::OpenApi;
 
-use flwi_spacetraders_agent::api_client::api_model::{NavStatus, RegistrationRequest, Ship};
+use flwi_spacetraders_agent::api_client::api_model::{
+    NavStatus, RegistrationRequest, Ship, Waypoint,
+};
 use flwi_spacetraders_agent::cli_args;
 use flwi_spacetraders_agent::cli_args::{Cli, Commands};
 use flwi_spacetraders_agent::configuration::AgentConfiguration;
 use flwi_spacetraders_agent::db;
+use flwi_spacetraders_agent::exploration::exploration::generate_exploration_route;
+use flwi_spacetraders_agent::marketplaces::marketplaces::find_marketplaces_for_exploration;
 use flwi_spacetraders_agent::pagination::{
     collect_results, fetch_all_pages, fetch_all_pages_into_queue, PaginatedResponse,
     PaginationInput,
@@ -23,8 +30,8 @@ use flwi_spacetraders_agent::reqwest_helpers::create_client;
 use flwi_spacetraders_agent::ship::{MyShip, ShipOperations};
 use flwi_spacetraders_agent::st_client::StClient;
 use flwi_spacetraders_agent::st_model::{
-    AgentSymbol, FactionSymbol, MarketData, SystemSymbol, WaypointInSystemResponseData,
-    WaypointSymbol, WaypointTrait, WaypointTraitSymbol,
+    AgentSymbol, FactionSymbol, LabelledCoordinate, MarketData, SerializableCoordinate,
+    SystemSymbol, WaypointInSystemResponseData, WaypointSymbol, WaypointTrait, WaypointTraitSymbol,
 };
 
 #[tokio::main]
@@ -58,7 +65,7 @@ async fn main() -> Result<()> {
                     &pool,
                     unauthenticated_client,
                     spacetraders_agent_faction,
-                    spacetraders_agent_symbol,
+                    spacetraders_agent_symbol.clone(),
                     spacetraders_registration_email,
                 )
                 .await?;
@@ -81,21 +88,23 @@ async fn main() -> Result<()> {
 
                 let marketplaces_of_system = db::select_waypoints_of_system_with_trait(
                     &pool,
-                    headquarters_system_symbol,
+                    headquarters_system_symbol.clone(),
                     WaypointTraitSymbol("MARKETPLACE".to_string()),
                 )
                 .await?;
 
-                let market_data: Vec<_> =
-                    collect_results(marketplaces_of_system.clone(), |waypoint_symbol| {
-                        authenticated_client.get_marketplace(waypoint_symbol)
-                    })
-                    .await?
-                    .iter()
-                    .map(|md| md.data.clone())
-                    .collect();
+                //TODO: only check far-away marketplaces once
 
-                let _ = insert_market_data(&pool, market_data.clone(), now).await;
+                // let market_data: Vec<_> =
+                //     collect_results(marketplaces_of_system.clone(), |waypoint_symbol| {
+                //         authenticated_client.get_marketplace(waypoint_symbol)
+                //     })
+                //     .await?
+                //     .iter()
+                //     .map(|md| md.data.clone())
+                //     .collect();
+                //
+                // let _ = insert_market_data(&pool, market_data.clone(), now).await;
 
                 let ships = collect_all_ships(&authenticated_client).await?;
                 let client = Arc::new(authenticated_client);
@@ -105,8 +114,41 @@ async fn main() -> Result<()> {
                     .map(|s| ShipOperations::new(MyShip::new(s.clone()), Arc::clone(&client)))
                     .collect();
 
-                let command_ship: &mut ShipOperations =
-                    my_ships.iter_mut().find(|s| s.symbol == "FLWI-1").unwrap();
+                let command_ship_name = spacetraders_agent_symbol + "-1";
+
+                let marketplace_entries = select_latest_marketplace_entry_of_system(
+                    &pool,
+                    headquarters_system_symbol.clone(),
+                )
+                .await?;
+
+                let marketplaces_to_explore =
+                    find_marketplaces_for_exploration(marketplace_entries);
+
+                let waypoint_entries_of_home_system =
+                    select_waypoints_of_system(&pool, headquarters_system_symbol).await?;
+
+                let exploration_route = generate_exploration_route(
+                    marketplaces_to_explore,
+                    waypoint_entries_of_home_system
+                        .iter()
+                        .map(|db| db.entry.0.clone())
+                        .collect(),
+                );
+
+                let stripped_down_route: Vec<SerializableCoordinate<WaypointSymbol>> =
+                    exploration_route
+                        .into_iter()
+                        .map(|wp| wp.to_serializable())
+                        .collect();
+
+                let json_route = serde_json::to_string(&stripped_down_route)?;
+                println!("Explorer Route: \n{}", json_route);
+
+                let command_ship: &mut ShipOperations = my_ships
+                    .iter_mut()
+                    .find(|s| s.symbol == command_ship_name)
+                    .unwrap();
 
                 match command_ship.nav.status {
                     NavStatus::InTransit => {
@@ -124,8 +166,8 @@ async fn main() -> Result<()> {
                     }
                 }
 
-                let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
-                dbg!(my_ships);
+                //let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
+                //dbg!(my_ships);
                 Ok(())
             }
         },

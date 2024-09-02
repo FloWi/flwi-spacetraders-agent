@@ -12,7 +12,7 @@ use sqlx::{ConnectOptions, Pool, Postgres};
 use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
-use crate::api_client::api_model::RegistrationResponse;
+use crate::api_client::api_model::{RegistrationResponse, Waypoint};
 use crate::configuration::AgentConfiguration;
 use crate::st_client::Data;
 use crate::st_model::{
@@ -205,17 +205,16 @@ values ($1, $2)
 pub struct DbWaypointEntry {
     system_symbol: String,
     waypoint_symbol: String,
-    entry: Json<WaypointInSystemResponseData>,
+    pub entry: Json<WaypointInSystemResponseData>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
 
 #[derive(Serialize, Clone, Debug, Deserialize)]
 pub struct DbMarketEntry {
-    waypoint_symbol: String,
-    entry: Json<MarketData>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    pub waypoint_symbol: String,
+    pub entry: Json<MarketData>,
+    pub created_at: DateTime<Utc>,
 }
 
 pub async fn upsert_waypoints_from_receiver(
@@ -297,7 +296,6 @@ pub async fn insert_market_data(
             entry: Json(me.clone()),
 
             created_at: now,
-            updated_at: now,
         })
         .collect();
 
@@ -337,6 +335,29 @@ from jsonb_populate_recordset(NULL::markets, $1)
     }
 }
 
+pub async fn select_waypoints_of_system(
+    pool: &Pool<Postgres>,
+    system_symbol: SystemSymbol,
+) -> Result<Vec<DbWaypointEntry>> {
+    let waypoint_entries: Vec<DbWaypointEntry> = sqlx::query_as!(
+        DbWaypointEntry,
+        r#"
+select system_symbol
+     , waypoint_symbol
+     , entry as "entry: Json<WaypointInSystemResponseData>"
+     , created_at
+     , updated_at
+from waypoints
+where system_symbol = $1
+    "#,
+        system_symbol.0
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(waypoint_entries)
+}
+
 pub async fn select_waypoints_of_system_with_trait(
     pool: &Pool<Postgres>,
     system_symbol: SystemSymbol,
@@ -357,4 +378,34 @@ pub async fn select_waypoints_of_system_with_trait(
     .await?;
 
     Ok(waypoint_symbols.into_iter().map(WaypointSymbol).collect())
+}
+
+pub async fn select_latest_marketplace_entry_of_system(
+    pool: &Pool<Postgres>,
+    system_symbol: SystemSymbol,
+) -> Result<Vec<DbMarketEntry>> {
+    let market_data_entries: Vec<DbMarketEntry> = sqlx::query_as!(
+        DbMarketEntry,
+        r#"
+with latest_markets as (select DISTINCT ON (waypoint_symbol) waypoint_symbol, entry, created_at
+                        from markets m
+                        order by waypoint_symbol, entry, created_at desc)
+   , market_entries as (select w.system_symbol
+                             , m.waypoint_symbol
+                             , m.entry
+                             , m.created_at
+                        from latest_markets m
+                                 join waypoints w on m.waypoint_symbol = w.waypoint_symbol)
+select waypoint_symbol
+     , entry as "entry: Json<MarketData>"
+     , created_at
+from market_entries
+where system_symbol = $1
+    "#,
+        system_symbol.0
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(market_data_entries)
 }
