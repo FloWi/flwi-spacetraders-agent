@@ -4,20 +4,23 @@ use chrono::Local;
 use clap::Parser;
 use flwi_spacetraders_agent::db::{insert_market_data, upsert_waypoints_from_receiver};
 use sqlx::{ConnectOptions, Executor, Pool, Postgres};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use utoipa::OpenApi;
 
-use flwi_spacetraders_agent::api_client::api_model::RegistrationRequest;
+use flwi_spacetraders_agent::api_client::api_model::{NavStatus, RegistrationRequest, Ship};
 use flwi_spacetraders_agent::cli_args;
 use flwi_spacetraders_agent::cli_args::{Cli, Commands};
 use flwi_spacetraders_agent::configuration::AgentConfiguration;
 use flwi_spacetraders_agent::db;
 use flwi_spacetraders_agent::pagination::{
-    collect_results, fetch_all_pages, fetch_all_pages_into_queue, PaginationInput,
+    collect_results, fetch_all_pages, fetch_all_pages_into_queue, PaginatedResponse,
+    PaginationInput,
 };
 use flwi_spacetraders_agent::reqwest_helpers::create_client;
+use flwi_spacetraders_agent::ship::{MyShip, ShipOperations};
 use flwi_spacetraders_agent::st_client::StClient;
 use flwi_spacetraders_agent::st_model::{
     AgentSymbol, FactionSymbol, MarketData, SystemSymbol, WaypointInSystemResponseData,
@@ -93,6 +96,36 @@ async fn main() -> Result<()> {
                     .collect();
 
                 let _ = insert_market_data(&pool, market_data.clone(), now).await;
+
+                let ships = collect_all_ships(&authenticated_client).await?;
+                let client = Arc::new(authenticated_client);
+
+                let mut my_ships: Vec<_> = ships
+                    .iter()
+                    .map(|s| ShipOperations::new(MyShip::new(s.clone()), Arc::clone(&client)))
+                    .collect();
+
+                let command_ship: &mut ShipOperations =
+                    my_ships.iter_mut().find(|s| s.symbol == "FLWI-1").unwrap();
+
+                match command_ship.nav.status {
+                    NavStatus::InTransit => {
+                        println!("Ship is in transit")
+                    }
+                    NavStatus::InOrbit => {
+                        println!("Ship is in orbit - docking");
+                        command_ship.dock().await?;
+                        assert_eq!(command_ship.nav.status, NavStatus::Docked);
+                    }
+                    NavStatus::Docked => {
+                        println!("Ship is docket - orbiting");
+                        command_ship.orbit().await?;
+                        assert_eq!(command_ship.nav.status, NavStatus::InOrbit);
+                    }
+                }
+
+                let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
+                dbg!(my_ships);
                 Ok(())
             }
         },
@@ -104,7 +137,6 @@ async fn collect_all_waypoints_of_home_system(
     pool: &Pool<Postgres>,
     headquarters_system_symbol: SystemSymbol,
 ) -> Result<()> {
-    let now = Local::now().to_utc();
     let (tx, rx) = mpsc::channel(100); // Buffer up to 100 pages
 
     let producer = fetch_all_pages_into_queue(
@@ -113,8 +145,14 @@ async fn collect_all_waypoints_of_home_system(
         tx,
     );
 
-    tokio::join!(producer, upsert_waypoints_from_receiver(pool, rx, now));
+    tokio::join!(producer, upsert_waypoints_from_receiver(pool, rx));
     Ok(())
+}
+
+async fn collect_all_ships(client: &StClient) -> Result<Vec<Ship>> {
+    let ships: Vec<Ship> = fetch_all_pages(|p| client.list_ships(p)).await?;
+
+    Ok(ships)
 }
 
 async fn get_authenticated_client(

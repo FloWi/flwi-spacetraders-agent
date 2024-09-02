@@ -4,6 +4,8 @@ pub mod configuration;
 pub mod db;
 pub mod pagination;
 pub mod reqwest_helpers;
+pub mod ship;
 pub mod st_client;
 pub mod st_model;
 pub mod supply_chain;
+extern crate serde;

@@ -120,8 +120,43 @@ pub struct Nav {
     pub system_symbol: SystemSymbol,
     pub waypoint_symbol: WaypointSymbol,
     pub route: Route,
-    pub status: String,
-    pub flight_mode: String,
+    pub status: NavStatus,
+    pub flight_mode: FlightMode,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum NavStatus {
+    InTransit,
+    InOrbit,
+    Docked,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum FlightMode {
+    Drift,
+    Stealth,
+    Cruise,
+    Burn,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavResponse {
+    pub(crate) nav: Nav,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DockShipResponse {
+    pub(crate) data: NavResponse,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrbitShipResponse {
+    pub(crate) data: NavResponse,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

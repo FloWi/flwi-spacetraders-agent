@@ -1,20 +1,24 @@
-use anyhow::{bail, Result};
-use reqwest_middleware::ClientWithMiddleware;
-use serde::{Deserialize, Serialize};
-
-use crate::api_client::api_model::{RegistrationRequest, RegistrationResponse};
+use crate::api_client::api_model::{
+    DockShipResponse, OrbitShipResponse, RegistrationRequest, RegistrationResponse, Ship,
+};
 use crate::pagination::{PaginatedResponse, PaginationInput};
 use crate::st_model::{
     extract_system_symbol, AgentInfoResponse, AgentSymbol, GetConstructionResponse,
     GetMarketResponse, ListAgentsResponse, MarketData, StStatusResponse, SystemSymbol,
     WaypointInSystemResponseData, WaypointSymbol,
 };
+use anyhow::{bail, Context, Result};
+use reqwest_middleware::ClientWithMiddleware;
+use reqwest_middleware::RequestBuilder;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Data<T> {
     pub data: T,
 }
 
+#[derive(Debug, Clone)]
 pub struct StClient {
     pub client: ClientWithMiddleware,
 }
@@ -105,6 +109,63 @@ impl StClient {
     //     Ok(resp?.json().await?)
     // }
 
+    async fn make_api_call<T: DeserializeOwned>(request: RequestBuilder) -> Result<T> {
+        let resp = request.send().await.context("Failed to send request")?;
+
+        let status = resp.status();
+        let body = resp.text().await.context("Failed to get response body")?;
+
+        if !status.is_success() {
+            anyhow::bail!("API request failed. Status: {}, Body: {}", status, body);
+        }
+
+        serde_json::from_str(&body)
+            .with_context(|| format!("Failed to deserialize response: {}", body))
+    }
+
+    pub async fn dock_ship(&self, ship_symbol: String) -> Result<DockShipResponse> {
+        Self::make_api_call(
+            self.client.post(
+                format!(
+                    "https://api.spacetraders.io/v2/my/ships/{}/dock",
+                    ship_symbol
+                )
+                .to_string(),
+            ),
+        )
+        .await
+    }
+
+    pub async fn orbit_ship(&self, ship_symbol: String) -> Result<OrbitShipResponse> {
+        Self::make_api_call(
+            self.client.post(
+                format!(
+                    "https://api.spacetraders.io/v2/my/ships/{}/orbit",
+                    ship_symbol
+                )
+                .to_string(),
+            ),
+        )
+        .await
+    }
+
+    pub async fn list_ships(
+        &self,
+        pagination_input: PaginationInput,
+    ) -> Result<PaginatedResponse<Ship>> {
+        let query_param_list = [
+            ("page", pagination_input.page.to_string()),
+            ("limit", pagination_input.limit.to_string()),
+        ];
+
+        let request = self
+            .client
+            .get("https://api.spacetraders.io/v2/my/ships".to_string())
+            .query(&query_param_list);
+
+        Self::make_api_call(request).await
+    }
+
     pub async fn list_waypoints_of_system_page(
         &self,
         system_symbol: &SystemSymbol,
@@ -123,13 +184,7 @@ impl StClient {
             ))
             .query(&query_param_list);
 
-        let resp = request.send().await?;
-
-        let body = resp.text().await?;
-        let jd = &mut serde_json::Deserializer::from_str(body.as_str());
-        let result = serde_path_to_error::deserialize(jd);
-
-        result.map_err(|err| anyhow::Error::msg(err.to_string()))
+        Self::make_api_call(request).await
     }
 
     pub async fn get_marketplace(
@@ -142,16 +197,13 @@ impl StClient {
             waypoint_symbol.0
         ));
 
-        let resp = request.send().await?;
-
-        let body = resp.text().await?;
-        let jd = &mut serde_json::Deserializer::from_str(body.as_str());
-        let result = serde_path_to_error::deserialize(jd);
-
-        result.map_err(|err| anyhow::Error::msg(err.to_string()))
+        Self::make_api_call(request).await
     }
 
-    pub async fn list_agents_page(&self, pagination_input: PaginationInput) -> ListAgentsResponse {
+    pub async fn list_agents_page(
+        &self,
+        pagination_input: PaginationInput,
+    ) -> Result<ListAgentsResponse> {
         let query_param_list = [
             ("page", pagination_input.page.to_string()),
             ("limit", pagination_input.limit.to_string()),
@@ -162,9 +214,7 @@ impl StClient {
             .get("https://api.spacetraders.io/v2/agents".to_string())
             .query(&query_param_list);
 
-        let resp = request.send().await.unwrap();
-
-        resp.json().await.unwrap()
+        Self::make_api_call(request).await
     }
 
     pub async fn get_status(&self) -> Result<StStatusResponse> {
