@@ -220,10 +220,9 @@ pub struct DbMarketEntry {
 
 pub async fn upsert_waypoints_from_receiver(
     pool: &Pool<Postgres>,
-    mut rx: tokio::sync::mpsc::Receiver<Vec<WaypointInSystemResponseData>>,
-    now: DateTime<Utc>,
+    mut rx: tokio::sync::mpsc::Receiver<(Vec<WaypointInSystemResponseData>, DateTime<Utc>)>,
 ) -> Result<()> {
-    while let Some(entries) = rx.recv().await {
+    while let Some((entries, now)) = rx.recv().await {
         upsert_waypoints_of_system(pool, entries, now).await?;
     }
     Ok(())
@@ -326,7 +325,6 @@ values ($1, $2, $3)
 insert into markets
 select *
 from jsonb_populate_recordset(NULL::markets, $1)
-on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry
             "#,
             json_array
         )

@@ -2,6 +2,7 @@ use std::any::type_name;
 use std::future::Future;
 
 use anyhow::{Context, Error, Result};
+use chrono::{DateTime, Local, Utc};
 use futures::future::join_all;
 use futures::future::{self, TryFutureExt};
 use serde::Deserialize;
@@ -18,7 +19,7 @@ pub struct PaginationInput {
 
 #[derive(Deserialize)]
 pub struct PaginatedResponse<T> {
-    data: Vec<T>,
+    pub data: Vec<T>,
     meta: Meta,
 }
 
@@ -29,15 +30,14 @@ struct Meta {
     limit: u64,
 }
 
-pub async fn fetch_all_pages<T, F, Fut>(
-    mut fetch_page: F,
-    initial_input: PaginationInput,
-) -> Result<Vec<T>>
+pub async fn fetch_all_pages<T, F, Fut>(mut fetch_page: F) -> Result<Vec<T>>
 where
     T: for<'de> Deserialize<'de>,
     F: FnMut(PaginationInput) -> Fut,
     Fut: Future<Output = Result<PaginatedResponse<T>>>,
 {
+    let initial_input = PaginationInput { page: 1, limit: 20 };
+
     let mut all_data = Vec::new();
     let mut current_input = initial_input;
 
@@ -85,10 +85,10 @@ where
 pub async fn fetch_all_pages_into_queue<T, F, Fut>(
     mut fetch_page: F,
     initial_input: PaginationInput,
-    tx: tokio::sync::mpsc::Sender<Vec<T>>,
+    tx: tokio::sync::mpsc::Sender<(Vec<T>, DateTime<Utc>)>,
 ) -> Result<()>
 where
-    T: for<'de> Deserialize<'de> + std::marker::Send + std::marker::Sync + 'static,
+    T: for<'de> Deserialize<'de> + Send + Sync + 'static,
     F: FnMut(PaginationInput) -> Fut,
     Fut: Future<Output = Result<PaginatedResponse<T>>>,
 {
@@ -108,6 +108,7 @@ where
         );
 
         while current_input.page <= total_number_of_pages {
+            let now = Local::now().to_utc();
             let response = fetch_page(current_input.clone()).await?;
             total_number_of_pages =
                 (response.meta.total as f32 / response.meta.limit as f32).ceil() as u32;
@@ -119,7 +120,7 @@ where
                 total_number_of_pages
             );
 
-            tx.send(response.data).await?;
+            tx.send((response.data, now)).await?;
             current_input.page += 1;
         }
 
