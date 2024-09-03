@@ -4,7 +4,7 @@ use chrono::Local;
 use clap::Parser;
 use flwi_spacetraders_agent::db::{
     insert_market_data, select_latest_marketplace_entry_of_system, select_waypoints_of_system,
-    upsert_waypoints_from_receiver, DbWaypointEntry,
+    upsert_systems_from_receiver, upsert_waypoints_from_receiver, DbWaypointEntry,
 };
 use sqlx::{ConnectOptions, Executor, Pool, Postgres};
 use std::sync::Arc;
@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
 
                 let status = unauthenticated_client.get_status().await?;
 
-                let pool = db::prepare_database_schema(status, cfg.clone()).await?;
+                let pool = db::prepare_database_schema(&status, cfg.clone()).await?;
 
                 let authenticated_client = get_authenticated_client(
                     &pool,
@@ -86,6 +86,27 @@ async fn main() -> Result<()> {
                     headquarters_system_symbol.clone(),
                 )
                 .await?;
+
+                let number_systems_in_db = db::select_count_of_systems(&pool).await?;
+
+                let need_collect_systems = status.stats.systems as i64 != number_systems_in_db;
+
+                if need_collect_systems {
+                    event!(
+                        Level::INFO,
+                        "Not all {} systems are in database. Currently stored: {}",
+                        status.stats.systems,
+                        number_systems_in_db,
+                    );
+
+                    let _ = collect_all_systems(&authenticated_client, &pool).await?;
+                } else {
+                    event!(
+                        Level::INFO,
+                        "No need to collect systems - all {} systems are already in db",
+                        number_systems_in_db
+                    );
+                }
 
                 // let marketplaces_of_system = db::select_waypoints_of_system_with_trait(
                 //     &pool,
@@ -200,6 +221,19 @@ async fn main() -> Result<()> {
             }
         },
     }
+}
+
+async fn collect_all_systems(client: &StClient, pool: &Pool<Postgres>) -> Result<()> {
+    let (tx, rx) = mpsc::channel(100); // Buffer up to 100 pages
+
+    let producer = fetch_all_pages_into_queue(
+        |page| client.list_systems_page(page),
+        PaginationInput { page: 1, limit: 20 },
+        tx,
+    );
+
+    tokio::join!(producer, upsert_systems_from_receiver(pool, rx));
+    Ok(())
 }
 
 async fn collect_all_waypoints_of_home_system(

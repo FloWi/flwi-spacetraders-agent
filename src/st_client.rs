@@ -5,7 +5,7 @@ use crate::pagination::{PaginatedResponse, PaginationInput};
 use crate::st_model::{
     extract_system_symbol, AgentInfoResponse, AgentSymbol, GetConstructionResponse,
     GetMarketResponse, ListAgentsResponse, MarketData, StStatusResponse, SystemSymbol,
-    WaypointInSystemResponseData, WaypointSymbol,
+    SystemsPageData, WaypointInSystemResponseData, WaypointSymbol,
 };
 use anyhow::{bail, Context, Result};
 use reqwest_middleware::ClientWithMiddleware;
@@ -182,6 +182,23 @@ impl StClient {
                 "https://api.spacetraders.io/v2/systems/{}/waypoints",
                 system_symbol.0
             ))
+            .query(&query_param_list);
+
+        Self::make_api_call(request).await
+    }
+
+    pub async fn list_systems_page(
+        &self,
+        pagination_input: PaginationInput,
+    ) -> Result<PaginatedResponse<SystemsPageData>> {
+        let query_param_list = [
+            ("page", pagination_input.page.to_string()),
+            ("limit", pagination_input.limit.to_string()),
+        ];
+
+        let request = self
+            .client
+            .get("https://api.spacetraders.io/v2/systems".to_string())
             .query(&query_param_list);
 
         Self::make_api_call(request).await

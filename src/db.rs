@@ -16,12 +16,12 @@ use crate::api_client::api_model::{RegistrationResponse, Waypoint};
 use crate::configuration::AgentConfiguration;
 use crate::st_client::Data;
 use crate::st_model::{
-    MarketData, StStatusResponse, SystemSymbol, WaypointInSystemResponseData, WaypointSymbol,
-    WaypointTraitSymbol,
+    MarketData, StStatusResponse, SystemSymbol, SystemsPageData, WaypointInSystemResponseData,
+    WaypointSymbol, WaypointTraitSymbol,
 };
 
 pub async fn prepare_database_schema(
-    api_status: StStatusResponse,
+    api_status: &StStatusResponse,
     cfg: AgentConfiguration,
 ) -> Result<Pool<Postgres>> {
     event!(Level::INFO, "Got status: {:?}", api_status);
@@ -141,6 +141,21 @@ select reset_date
     Ok(maybe_result)
 }
 
+pub async fn select_count_of_systems(pool: &Pool<Postgres>) -> Result<i64> {
+    let row = sqlx::query!(
+        r#"
+select count(*) as count
+  from systems
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row
+        .count
+        .ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))?)
+}
+
 async fn insert_status(pool: &Pool<Postgres>, db_status: DbStatus) -> Result<()> {
     sqlx::query!(
         r#"
@@ -211,6 +226,14 @@ pub struct DbWaypointEntry {
 }
 
 #[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbSystemEntry {
+    system_symbol: String,
+    pub entry: Json<SystemsPageData>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
 pub struct DbMarketEntry {
     pub waypoint_symbol: String,
     pub entry: Json<MarketData>,
@@ -223,6 +246,49 @@ pub async fn upsert_waypoints_from_receiver(
 ) -> Result<()> {
     while let Some((entries, now)) = rx.recv().await {
         upsert_waypoints_of_system(pool, entries, now).await?;
+    }
+    Ok(())
+}
+
+pub async fn upsert_systems_from_receiver(
+    pool: &Pool<Postgres>,
+    mut rx: tokio::sync::mpsc::Receiver<(Vec<SystemsPageData>, DateTime<Utc>)>,
+) -> Result<()> {
+    while let Some((entries, now)) = rx.recv().await {
+        upsert_systems_page(pool, entries, now).await?;
+    }
+    Ok(())
+}
+
+pub async fn upsert_systems_page(
+    pool: &Pool<Postgres>,
+    waypoints: Vec<SystemsPageData>,
+    now: DateTime<Utc>,
+) -> Result<()> {
+    let db_entries: Vec<DbSystemEntry> = waypoints
+        .iter()
+        .map(|wp| DbSystemEntry {
+            system_symbol: wp.symbol.0.clone(),
+            entry: Json(wp.clone()),
+            created_at: now,
+            updated_at: now,
+        })
+        .collect();
+
+    for entry in db_entries {
+        sqlx::query!(
+            r#"
+insert into systems (system_symbol, entry, created_at, updated_at)
+values ($1, $2, $3, $4)
+on conflict (system_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+        "#,
+            entry.system_symbol,
+            entry.entry as _,
+            now,
+            now,
+        )
+        .execute(pool)
+        .await?;
     }
     Ok(())
 }

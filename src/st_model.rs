@@ -173,6 +173,32 @@ pub struct WaypointInSystemResponseData {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct SystemPageWaypoint {
+    pub symbol: WaypointSymbol,
+    #[serde(rename = "type")]
+    pub r#type: String,
+    pub x: i64,
+    pub y: i64,
+    pub orbitals: Vec<Orbital>,
+    pub orbits: Option<WaypointSymbol>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemsPageData {
+    pub symbol: SystemSymbol,
+    pub sector_symbol: String,
+    #[serde(rename = "type")]
+    pub r#type: String,
+    pub x: i64,
+    pub y: i64,
+    pub waypoints: Vec<SystemPageWaypoint>,
+    pub orbits: Option<WaypointSymbol>,
+    pub factions: Vec<Faction>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ListAgentsResponse {
     pub data: Vec<AgentInfoResponseData>,
     pub meta: Meta,
