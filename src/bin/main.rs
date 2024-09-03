@@ -142,9 +142,9 @@ async fn main() -> Result<()> {
                 let current_location = command_ship.nav.waypoint_symbol.clone();
 
                 let exploration_route = generate_exploration_route(
-                    marketplaces_to_explore,
-                    waypoints_of_home_system.clone(),
-                    current_location,
+                    &marketplaces_to_explore,
+                    &waypoints_of_home_system,
+                    &current_location,
                 )
                 .unwrap();
 

@@ -1,62 +1,57 @@
 use crate::st_model::LabelledCoordinate;
 use petgraph::prelude::{NodeIndex, UnGraph};
 
-pub fn rotate_to_entry_point<T>(vec: &Vec<T>, start: T) -> Option<Vec<T>>
+pub fn rotate_to_entry_point<T>(slice: &[T], start: &T) -> Option<Vec<T>>
 where
     T: Clone + Eq,
 {
-    if let Some(index) = vec.iter().position(|x| x == &start) {
-        let (left, right) = vec.split_at(index);
-        Some(right.iter().chain(left.iter()).cloned().collect())
-    } else {
-        None
-    }
+    slice.iter().position(|x| x == start).map(|index| {
+        let (left, right) = slice.split_at(index);
+        right.iter().chain(left.iter()).cloned().collect()
+    })
 }
 
-pub fn generate_exploration_route<T, U>(
-    waypoint_symbols: Vec<U>,
-    all_waypoints_system: Vec<T>,
-    current_location: U,
+pub fn generate_exploration_route<'a, T, U>(
+    waypoint_symbols: &[U],
+    all_waypoints_system: &'a [T],
+    current_location: &U,
 ) -> Option<Vec<T>>
 where
     T: LabelledCoordinate<U> + Clone + Eq,
-    U: PartialEq + Clone + Eq + std::hash::Hash,
+    U: PartialEq + Eq + std::hash::Hash + std::clone::Clone,
 {
     let relevant_waypoints: Vec<T> = waypoint_symbols
         .into_iter()
         .filter_map(|wps| {
             all_waypoints_system
                 .iter()
-                .find(|wp| wp.label() == &wps)
+                .find(|wp| wp.label() == wps)
                 .map(|wp| wp.clone())
         })
         .collect();
 
     let current_waypoint = all_waypoints_system
         .iter()
-        .find(|wp| wp.label() == &current_location)?;
+        .find(|wp| wp.label() == current_location)?;
 
-    let maybe_match = relevant_waypoints
-        .clone()
-        .into_iter()
-        .find(|wp| wp.label() == current_waypoint.label());
-
-    let nearest = relevant_waypoints
+    let starting_location = relevant_waypoints
         .iter()
-        .min_by_key(|wp| wp.distance_to(current_waypoint));
-
-    let starting_location = maybe_match
-        .or(nearest.cloned())
-        .or(relevant_waypoints.get(0).cloned())?;
+        .find(|&wp| wp.label() == current_waypoint.label())
+        .or_else(|| {
+            relevant_waypoints
+                .iter()
+                .min_by_key(|&wp| wp.distance_to(current_waypoint))
+        })
+        .or_else(|| relevant_waypoints.first())?;
 
     let starting_node_first = rotate_to_entry_point(&relevant_waypoints, starting_location)
-        .unwrap_or(all_waypoints_system);
+        .unwrap_or_else(|| all_waypoints_system.to_vec());
 
-    let result = two_opt_tsp(starting_node_first);
+    let result = two_opt_tsp(&starting_node_first);
     Some(result)
 }
 
-fn two_opt_tsp<T, U>(waypoints: Vec<T>) -> Vec<T>
+fn two_opt_tsp<T, U>(waypoints: &[T]) -> Vec<T>
 where
     T: LabelledCoordinate<U>,
     U: Clone + Eq + std::hash::Hash,
@@ -69,8 +64,8 @@ where
     // Add edges with costs
     for i in 0..n {
         for j in i + 1..n {
-            let cost = &waypoints[i].distance_to(&waypoints[j]);
-            graph.add_edge(node_indices[i], node_indices[j], *cost as f64);
+            let cost = waypoints[i].distance_to(&waypoints[j]);
+            graph.add_edge(node_indices[i], node_indices[j], cost as f64);
         }
     }
 
@@ -138,7 +133,5 @@ where
         }
     }
 
-    tour.iter()
-        .map(|idx| waypoints.get(*idx).unwrap().clone())
-        .collect()
+    tour.iter().map(|&idx| waypoints[idx].clone()).collect()
 }
