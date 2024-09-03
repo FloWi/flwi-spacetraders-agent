@@ -29,6 +29,9 @@ pub struct WaypointTrait {
 pub struct WaypointModifierSymbol(pub String);
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TradeGoodSymbol(pub String);
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WaypointModifier {
     pub symbol: WaypointModifierSymbol,
     pub name: String,
@@ -44,13 +47,13 @@ impl WaypointSymbol {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FactionSymbol(pub String);
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInfoResponse {
     pub data: AgentInfoResponseData,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ConstructionMaterial {
     pub trade_symbol: String,
@@ -58,7 +61,7 @@ pub struct ConstructionMaterial {
     pub fulfilled: u32,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GetConstructionResponseData {
     pub symbol: String,
@@ -66,13 +69,13 @@ pub struct GetConstructionResponseData {
     pub is_complete: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GetConstructionResponse {
     pub data: GetConstructionResponseData,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInfoResponseData {
     pub account_id: Option<String>,
@@ -83,7 +86,7 @@ pub struct AgentInfoResponseData {
     pub ship_count: u32,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct StStatusResponse {
     pub status: String,
@@ -94,7 +97,7 @@ pub struct StStatusResponse {
     pub leaderboards: Leaderboards,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Stats {
     pub agents: i32,
@@ -103,28 +106,28 @@ pub struct Stats {
     pub waypoints: i32,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Leaderboards {
     pub most_credits: Vec<AgentCredits>,
     pub most_submitted_charts: Vec<AgentCharts>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentCredits {
     pub agent_symbol: String,
     pub credits: i64,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentCharts {
     pub agent_symbol: String,
     pub chart_count: i32,
 }
 
-#[derive(Deserialize, Serialize, Debug, Copy, Clone)]
+#[derive(Deserialize, Serialize, Debug, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Meta {
     pub total: u32,
@@ -132,7 +135,7 @@ pub struct Meta {
     pub limit: u32,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Chart {
     pub waypoint_symbol: Option<String>,
@@ -140,17 +143,17 @@ pub struct Chart {
     pub submitted_on: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct Faction {
     pub symbol: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct Orbital {
     pub symbol: WaypointSymbol,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WaypointInSystemResponseData {
     pub symbol: WaypointSymbol,
@@ -168,7 +171,7 @@ pub struct WaypointInSystemResponseData {
     pub is_under_construction: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ListAgentsResponse {
     pub data: Vec<AgentInfoResponseData>,
@@ -192,13 +195,13 @@ pub(crate) fn extract_system_symbol(waypoint_symbol: &WaypointSymbol) -> SystemS
     SystemSymbol(first_two_parts)
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMarketResponse {
     pub data: MarketData,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketData {
     pub symbol: String,
@@ -211,15 +214,21 @@ pub struct MarketData {
     pub trade_goods: Option<Vec<MarketTradeGood>>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+impl MarketData {
+    pub fn has_detailed_price_information(&self) -> bool {
+        self.trade_goods.is_some()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeGood {
-    pub symbol: String,
+    pub symbol: TradeGoodSymbol,
     pub name: String,
     pub description: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub waypoint_symbol: String,
@@ -233,14 +242,14 @@ pub struct Transaction {
     pub timestamp: DateTime<Utc>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TransactionType {
     Purchase,
     Sell,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketTradeGood {
     pub symbol: String,
@@ -253,7 +262,7 @@ pub struct MarketTradeGood {
     pub sell_price: i32,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TradeGoodType {
     Export,
@@ -261,7 +270,7 @@ pub enum TradeGoodType {
     Exchange,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SupplyLevel {
     Scarce,
@@ -271,7 +280,7 @@ pub enum SupplyLevel {
     Abundant,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ActivityLevel {
     Weak,

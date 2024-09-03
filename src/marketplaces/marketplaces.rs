@@ -6,7 +6,7 @@ pub fn find_marketplaces_for_exploration(
 ) -> Vec<WaypointSymbol> {
     let waypoint_symbols: Vec<_> = all_marketplaces
         .into_iter()
-        .filter(|mp| mp.entry.0.trade_goods.is_none())
+        .filter(|mp| mp.entry.has_detailed_price_information())
         .map(|mp| WaypointSymbol(mp.waypoint_symbol.clone()))
         .collect();
     waypoint_symbols

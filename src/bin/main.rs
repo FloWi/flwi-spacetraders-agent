@@ -26,6 +26,7 @@ use flwi_spacetraders_agent::pagination::{
     collect_results, fetch_all_pages, fetch_all_pages_into_queue, PaginatedResponse,
     PaginationInput,
 };
+use flwi_spacetraders_agent::pathfinder::pathfinder;
 use flwi_spacetraders_agent::reqwest_helpers::create_client;
 use flwi_spacetraders_agent::ship::{MyShip, ShipOperations};
 use flwi_spacetraders_agent::st_client::StClient;
@@ -157,6 +158,25 @@ async fn main() -> Result<()> {
                 let json_route = serde_json::to_string(&stripped_down_route)?;
                 println!("Explorer Route: \n{}", json_route);
 
+                // compute first hop
+                let start = exploration_route.get(0).unwrap();
+                let first_stop = &exploration_route.get(1).unwrap();
+
+                if let Some(travel_instructions) = pathfinder::compute_path(
+                    start.symbol.clone(),
+                    first_stop.symbol.clone(),
+                    waypoints_of_home_system.clone(),
+                    marketplace_entries
+                        .iter()
+                        .map(|db| db.entry.0.clone())
+                        .collect(),
+                    command_ship.ship.clone(),
+                ) {
+                    println!("Path found");
+                    dbg!(travel_instructions);
+                } else {
+                    println!("No path found");
+                };
 
                 match command_ship.nav.status {
                     NavStatus::InTransit => {
