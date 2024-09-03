@@ -286,9 +286,7 @@ pub trait LabelledCoordinate<T: Clone + PartialEq + Eq + Hash> {
     fn label(&self) -> &T;
 
     fn distance_to(&self, b: &Self) -> u32 {
-        let dx = (b.x() - self.x()) as f64;
-        let dy = (b.y() - self.y()) as f64;
-        (dx * dx + dy * dy).sqrt().round() as u32
+        distance_to(self.x(), self.y(), b.x(), b.y())
     }
 
     // New method to create a serializable representation
@@ -299,6 +297,12 @@ pub trait LabelledCoordinate<T: Clone + PartialEq + Eq + Hash> {
             label: self.label().clone(),
         }
     }
+}
+
+pub fn distance_to(from_x: i64, from_y: i64, to_x: i64, to_y: i64) -> u32 {
+    let dx = (to_x - from_x) as f64;
+    let dy = (to_y - from_y) as f64;
+    (dx * dx + dy * dy).sqrt().round() as u32
 }
 
 impl LabelledCoordinate<WaypointSymbol> for WaypointInSystemResponseData {

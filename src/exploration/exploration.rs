@@ -1,15 +1,28 @@
 use crate::st_model::LabelledCoordinate;
 use petgraph::prelude::{NodeIndex, UnGraph};
 
+pub fn rotate_to_entry_point<T>(vec: &Vec<T>, start: T) -> Option<Vec<T>>
+where
+    T: Clone + Eq,
+{
+    if let Some(index) = vec.iter().position(|x| x == &start) {
+        let (left, right) = vec.split_at(index);
+        Some(right.iter().chain(left.iter()).cloned().collect())
+    } else {
+        None
+    }
+}
+
 pub fn generate_exploration_route<T, U>(
     waypoint_symbols: Vec<U>,
     all_waypoints_system: Vec<T>,
-) -> Vec<T>
+    current_location: U,
+) -> Option<Vec<T>>
 where
-    T: LabelledCoordinate<U> + Clone,
+    T: LabelledCoordinate<U> + Clone + Eq,
     U: PartialEq + Clone + Eq + std::hash::Hash,
 {
-    let waypoints_unordered: Vec<T> = waypoint_symbols
+    let relevant_waypoints: Vec<T> = waypoint_symbols
         .into_iter()
         .filter_map(|wps| {
             all_waypoints_system
@@ -19,7 +32,28 @@ where
         })
         .collect();
 
-    two_opt_tsp(waypoints_unordered)
+    let current_waypoint = all_waypoints_system
+        .iter()
+        .find(|wp| wp.label() == &current_location)?;
+
+    let maybe_match = relevant_waypoints
+        .clone()
+        .into_iter()
+        .find(|wp| wp.label() == current_waypoint.label());
+
+    let nearest = relevant_waypoints
+        .iter()
+        .min_by_key(|wp| wp.distance_to(current_waypoint));
+
+    let starting_location = maybe_match
+        .or(nearest.cloned())
+        .or(relevant_waypoints.get(0).cloned())?;
+
+    let starting_node_first = rotate_to_entry_point(&relevant_waypoints, starting_location)
+        .unwrap_or(all_waypoints_system);
+
+    let result = two_opt_tsp(starting_node_first);
+    Some(result)
 }
 
 fn two_opt_tsp<T, U>(waypoints: Vec<T>) -> Vec<T>

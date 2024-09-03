@@ -86,12 +86,12 @@ async fn main() -> Result<()> {
                 )
                 .await?;
 
-                let marketplaces_of_system = db::select_waypoints_of_system_with_trait(
-                    &pool,
-                    headquarters_system_symbol.clone(),
-                    WaypointTraitSymbol("MARKETPLACE".to_string()),
-                )
-                .await?;
+                // let marketplaces_of_system = db::select_waypoints_of_system_with_trait(
+                //     &pool,
+                //     headquarters_system_symbol.clone(),
+                //     WaypointTraitSymbol("MARKETPLACE".to_string()),
+                // )
+                // .await?;
 
                 //TODO: only check far-away marketplaces once
 
@@ -123,21 +123,33 @@ async fn main() -> Result<()> {
                 .await?;
 
                 let marketplaces_to_explore =
-                    find_marketplaces_for_exploration(marketplace_entries);
+                    find_marketplaces_for_exploration(marketplace_entries.clone());
 
                 let waypoint_entries_of_home_system =
                     select_waypoints_of_system(&pool, headquarters_system_symbol).await?;
 
+                let waypoints_of_home_system: Vec<_> = waypoint_entries_of_home_system
+                    .into_iter()
+                    .map(|db| db.entry.0.clone())
+                    .collect();
+
+                let command_ship: &mut ShipOperations = my_ships
+                    .iter_mut()
+                    .find(|s| s.symbol == command_ship_name)
+                    .unwrap();
+
+                let current_location = command_ship.nav.waypoint_symbol.clone();
+
                 let exploration_route = generate_exploration_route(
                     marketplaces_to_explore,
-                    waypoint_entries_of_home_system
-                        .iter()
-                        .map(|db| db.entry.0.clone())
-                        .collect(),
-                );
+                    waypoints_of_home_system.clone(),
+                    current_location,
+                )
+                .unwrap();
 
                 let stripped_down_route: Vec<SerializableCoordinate<WaypointSymbol>> =
                     exploration_route
+                        .clone()
                         .into_iter()
                         .map(|wp| wp.to_serializable())
                         .collect();
@@ -145,10 +157,6 @@ async fn main() -> Result<()> {
                 let json_route = serde_json::to_string(&stripped_down_route)?;
                 println!("Explorer Route: \n{}", json_route);
 
-                let command_ship: &mut ShipOperations = my_ships
-                    .iter_mut()
-                    .find(|s| s.symbol == command_ship_name)
-                    .unwrap();
 
                 match command_ship.nav.status {
                     NavStatus::InTransit => {
