@@ -1,6 +1,8 @@
 use crate::api_client::api_model::{FlightMode, Ship};
 use crate::st_model::{distance_to, LabelledCoordinate, TradeGoodSymbol};
 use crate::st_model::{MarketData, WaypointInSystemResponseData, WaypointSymbol};
+use futures::StreamExt;
+use itertools::Itertools;
 use pathfinding::prelude::astar;
 use serde::{Deserialize, Serialize};
 
@@ -225,41 +227,49 @@ fn compute_travel_actions(problem: &Problem, path: &Vec<State>) -> Vec<TravelAct
     let mut travel_actions = Vec::new();
     let mut total_time = 0;
 
-    for (i, state) in path.iter().enumerate() {
-        if i > 0 {
-            let prev_state = &path[i - 1];
-            let prev_waypoint = prev_state.waypoint(&problem.waypoints);
-            let current_waypoint = state.waypoint(&problem.waypoints);
+    path.iter()
+        .tuple_windows()
+        .enumerate()
+        .for_each(|(idx, (from, to))| {
+            let from_waypoint = from.waypoint(&problem.waypoints);
+            let to_waypoint = to.waypoint(&problem.waypoints);
 
-            if state.fuel > prev_state.fuel {
+            if idx == 0 && from_waypoint.is_refueling_station {
                 total_time += problem.refuel_time;
                 travel_actions.push(TravelAction::Refuel {
-                    at: current_waypoint.label.clone(),
-                    total_time,
-                });
-            } else {
-                let distance = prev_waypoint.distance_to(&current_waypoint);
-                let fuel_consumed = if prev_waypoint.is_refueling_station {
-                    problem.fuel_capacity - state.fuel
-                } else {
-                    prev_state.fuel - state.fuel
-                };
-                let mode = determine_travel_mode(&problem, fuel_consumed, distance);
-                let travel_time = mode.calculate_time(distance, problem.engine_speed);
-                total_time += travel_time;
-
-                travel_actions.push(TravelAction::Navigate {
-                    from: prev_waypoint.label.clone(),
-                    to: current_waypoint.label.clone(),
-                    distance,
-                    travel_time,
-                    fuel_consumption: fuel_consumed,
-                    mode,
+                    at: from_waypoint.label.clone(),
                     total_time,
                 });
             }
-        }
-    }
+
+            let distance = from_waypoint.distance_to(&to_waypoint);
+            let fuel_consumed = if from_waypoint.is_refueling_station {
+                problem.fuel_capacity - to.fuel
+            } else {
+                from.fuel - to.fuel
+            };
+            let mode = determine_travel_mode(&problem, fuel_consumed, distance);
+            let travel_time = mode.calculate_time(distance, problem.engine_speed);
+            total_time += travel_time;
+
+            travel_actions.push(TravelAction::Navigate {
+                from: from_waypoint.label.clone(),
+                to: to_waypoint.label.clone(),
+                distance,
+                travel_time,
+                fuel_consumption: fuel_consumed,
+                mode,
+                total_time,
+            });
+
+            if to_waypoint.is_refueling_station {
+                total_time += problem.refuel_time;
+                travel_actions.push(TravelAction::Refuel {
+                    at: to_waypoint.label.clone(),
+                    total_time,
+                });
+            }
+        });
 
     travel_actions
 }

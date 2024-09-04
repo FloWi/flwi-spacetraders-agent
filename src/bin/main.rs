@@ -196,10 +196,10 @@ async fn main() -> Result<()> {
                                 .collect(),
                             command_ship.ship.clone(),
                         ) {
-                            println!("Path found");
+                            println!("Path found from {} to {}", from.symbol.0, to.symbol.0);
                             dbg!(travel_instructions);
                         } else {
-                            println!("No path found");
+                            println!("No path found from {} to {}", from.symbol.0, to.symbol.0);
                         };
                     });
 
