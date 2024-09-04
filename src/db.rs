@@ -12,12 +12,11 @@ use sqlx::{ConnectOptions, Pool, Postgres};
 use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
-use crate::api_client::api_model::{RegistrationResponse, Waypoint};
 use crate::configuration::AgentConfiguration;
 use crate::st_client::Data;
 use crate::st_model::{
-    distance_to, MarketData, StStatusResponse, SystemSymbol, SystemsPageData,
-    WaypointInSystemResponseData, WaypointSymbol, WaypointTraitSymbol,
+    distance_to, MarketData, RegistrationResponse, StStatusResponse, SystemSymbol, SystemsPageData,
+    Waypoint, WaypointInSystemResponseData, WaypointSymbol, WaypointTraitSymbol,
 };
 
 pub async fn prepare_database_schema(

@@ -1,5 +1,5 @@
-use crate::api_client::api_model::Ship;
 use crate::st_client::StClient;
+use crate::st_model::Ship;
 use anyhow::*;
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};

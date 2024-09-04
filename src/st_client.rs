@@ -1,10 +1,8 @@
-use crate::api_client::api_model::{
-    DockShipResponse, OrbitShipResponse, RegistrationRequest, RegistrationResponse, Ship,
-};
 use crate::pagination::{PaginatedResponse, PaginationInput};
 use crate::st_model::{
-    extract_system_symbol, AgentInfoResponse, AgentSymbol, GetConstructionResponse,
-    GetMarketResponse, ListAgentsResponse, MarketData, StStatusResponse, SystemSymbol,
+    extract_system_symbol, AgentInfoResponse, AgentSymbol, DockShipResponse,
+    GetConstructionResponse, GetMarketResponse, ListAgentsResponse, MarketData, OrbitShipResponse,
+    RegistrationRequest, RegistrationResponse, Ship, StStatusResponse, SystemSymbol,
     SystemsPageData, WaypointInSystemResponseData, WaypointSymbol,
 };
 use anyhow::{bail, Context, Result};
@@ -249,8 +247,8 @@ impl StClient {
 mod test {
     use itertools::Itertools;
 
-    use crate::api_client::api_model::RegistrationResponse;
     use crate::st_model::MarketData;
+    use crate::st_model::RegistrationResponse;
 
     use super::*;
 

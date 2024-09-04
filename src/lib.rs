@@ -10,9 +10,10 @@ pub mod st_model;
 pub mod supply_chain;
 extern crate serde;
 
-use crate::api_client::api_model::FlightMode;
 use chrono::TimeDelta;
+use st_model::FlightMode;
 
+mod behavior_tree;
 pub mod exploration;
 pub mod marketplaces;
 pub mod pathfinder;

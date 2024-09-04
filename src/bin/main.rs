@@ -20,9 +20,6 @@ use tracing::{event, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use utoipa::OpenApi;
 
-use flwi_spacetraders_agent::api_client::api_model::{
-    NavStatus, RegistrationRequest, Ship, Waypoint,
-};
 use flwi_spacetraders_agent::cli_args::{Cli, Commands};
 use flwi_spacetraders_agent::configuration::AgentConfiguration;
 use flwi_spacetraders_agent::db;
@@ -37,8 +34,9 @@ use flwi_spacetraders_agent::reqwest_helpers::create_client;
 use flwi_spacetraders_agent::ship::{MyShip, ShipOperations};
 use flwi_spacetraders_agent::st_client::StClient;
 use flwi_spacetraders_agent::st_model::{
-    AgentSymbol, FactionSymbol, LabelledCoordinate, MarketData, SerializableCoordinate,
-    SystemSymbol, WaypointInSystemResponseData, WaypointSymbol, WaypointTrait, WaypointTraitSymbol,
+    AgentSymbol, FactionSymbol, LabelledCoordinate, MarketData, NavStatus, RegistrationRequest,
+    SerializableCoordinate, Ship, SystemSymbol, Waypoint, WaypointInSystemResponseData,
+    WaypointSymbol, WaypointTrait, WaypointTraitSymbol,
 };
 use flwi_spacetraders_agent::{cli_args, format_time_delta_hh_mm_ss};
 

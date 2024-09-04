@@ -1,5 +1,4 @@
-use crate::api_client::api_model::{FlightMode, Ship};
-use crate::st_model::{distance_to, LabelledCoordinate, TradeGoodSymbol};
+use crate::st_model::{distance_to, FlightMode, LabelledCoordinate, Ship, TradeGoodSymbol};
 use crate::st_model::{MarketData, WaypointInSystemResponseData, WaypointSymbol};
 use futures::StreamExt;
 use itertools::Itertools;
