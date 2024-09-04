@@ -232,7 +232,8 @@ async fn collect_all_systems(client: &StClient, pool: &Pool<Postgres>) -> Result
         tx,
     );
 
-    tokio::join!(producer, upsert_systems_from_receiver(pool, rx));
+    tokio::try_join!(producer, upsert_systems_from_receiver(pool, rx))?;
+    Ok(())
     Ok(())
 }
 
@@ -249,7 +250,7 @@ async fn collect_all_waypoints_of_home_system(
         tx,
     );
 
-    tokio::join!(producer, upsert_waypoints_from_receiver(pool, rx));
+    tokio::try_join!(producer, upsert_waypoints_from_receiver(pool, rx))?;
     Ok(())
 }
 
