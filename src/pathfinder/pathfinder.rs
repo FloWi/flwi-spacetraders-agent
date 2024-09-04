@@ -128,6 +128,22 @@ pub enum TravelAction {
     },
 }
 
+impl TravelAction {
+    fn total_time(&self) -> u32 {
+        match self {
+            TravelAction::Navigate { total_time, .. } => *total_time,
+            TravelAction::Refuel { total_time, .. } => *total_time,
+        }
+    }
+
+    pub fn waypoint_and_time(&self) -> (&WaypointSymbol, &u32) {
+        match self {
+            TravelAction::Navigate { to, total_time, .. } => (to, total_time),
+            TravelAction::Refuel { at, total_time } => (at, total_time),
+        }
+    }
+}
+
 fn determine_travel_mode(problem: &Problem, fuel_consumed: u32, distance: u32) -> FlightMode {
     problem
         .allowed_flight_modes
@@ -224,24 +240,27 @@ impl Problem {
 }
 
 fn compute_travel_actions(problem: &Problem, path: &Vec<State>) -> Vec<TravelAction> {
-    let mut travel_actions = Vec::new();
-    let mut total_time = 0;
-
     path.iter()
         .tuple_windows()
         .enumerate()
-        .for_each(|(idx, (from, to))| {
+        .fold(Vec::new(), |acc, (idx, (from, to))| {
             let from_waypoint = from.waypoint(&problem.waypoints);
             let to_waypoint = to.waypoint(&problem.waypoints);
+            let current_time = acc
+                .last()
+                .map_or(0, |action: &TravelAction| action.total_time());
 
+            let mut new_actions = Vec::new();
+
+            // Initial refuel action if starting at a refueling station
             if idx == 0 && from_waypoint.is_refueling_station {
-                total_time += problem.refuel_time;
-                travel_actions.push(TravelAction::Refuel {
+                new_actions.push(TravelAction::Refuel {
                     at: from_waypoint.label.clone(),
-                    total_time,
+                    total_time: current_time + problem.refuel_time,
                 });
             }
 
+            // Navigation action
             let distance = from_waypoint.distance_to(&to_waypoint);
             let fuel_consumed = if from_waypoint.is_refueling_station {
                 problem.fuel_capacity - to.fuel
@@ -250,26 +269,33 @@ fn compute_travel_actions(problem: &Problem, path: &Vec<State>) -> Vec<TravelAct
             };
             let mode = determine_travel_mode(&problem, fuel_consumed, distance);
             let travel_time = mode.calculate_time(distance, problem.engine_speed);
-            total_time += travel_time;
 
-            travel_actions.push(TravelAction::Navigate {
+            new_actions.push(TravelAction::Navigate {
                 from: from_waypoint.label.clone(),
                 to: to_waypoint.label.clone(),
                 distance,
                 travel_time,
                 fuel_consumption: fuel_consumed,
                 mode,
-                total_time,
+                total_time: new_actions
+                    .last()
+                    .map_or(current_time + travel_time, |action: &TravelAction| {
+                        action.total_time() + travel_time
+                    }),
             });
 
+            // Refuel action if ending at a refueling station
             if to_waypoint.is_refueling_station {
-                total_time += problem.refuel_time;
-                travel_actions.push(TravelAction::Refuel {
+                new_actions.push(TravelAction::Refuel {
                     at: to_waypoint.label.clone(),
-                    total_time,
+                    total_time: new_actions.last().map_or(
+                        current_time + problem.refuel_time,
+                        |action: &TravelAction| action.total_time() + problem.refuel_time,
+                    ),
                 });
             }
-        });
 
-    travel_actions
+            // Combine the accumulated actions with the new actions
+            acc.into_iter().chain(new_actions).collect()
+        })
 }

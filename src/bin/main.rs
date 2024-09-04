@@ -9,7 +9,10 @@ use flwi_spacetraders_agent::db::{
 };
 use futures::StreamExt;
 use itertools::Itertools;
+use serde_json::json;
+use sqlx::types::JsonValue;
 use sqlx::{ConnectOptions, Executor, Pool, Postgres};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -182,10 +185,16 @@ async fn main() -> Result<()> {
                 )
                 .unwrap();
 
+                let mut route_debugging_list: Vec<JsonValue> = Vec::new();
+
                 exploration_route
                     .iter()
                     .tuple_windows()
                     .for_each(|(from, to)| {
+                        let mut debug_info: HashMap<&str, JsonValue> = HashMap::new();
+                        debug_info.insert("from", json!(from.symbol));
+                        debug_info.insert("to", json!(to.symbol));
+
                         if let Some(travel_instructions) = pathfinder::compute_path(
                             from.symbol.clone(),
                             to.symbol.clone(),
@@ -196,11 +205,17 @@ async fn main() -> Result<()> {
                                 .collect(),
                             command_ship.ship.clone(),
                         ) {
+                            debug_info.insert("actions", json!(&travel_instructions));
+
                             println!("Path found from {} to {}", from.symbol.0, to.symbol.0);
-                            dbg!(travel_instructions);
+
+                            let (final_location, total_time) =
+                                travel_instructions.last().unwrap().waypoint_and_time();
+                            assert_eq!(final_location, &to.symbol);
                         } else {
                             println!("No path found from {} to {}", from.symbol.0, to.symbol.0);
                         };
+                        route_debugging_list.push(json!(debug_info));
                     });
 
                 let stripped_down_route: Vec<SerializableCoordinate<WaypointSymbol>> =
@@ -212,6 +227,10 @@ async fn main() -> Result<()> {
 
                 let json_route = serde_json::to_string(&stripped_down_route)?;
                 println!("Explorer Route: \n{}", json_route);
+                println!(
+                    "Detailed Routes with actions: \n{}",
+                    serde_json::to_string(&route_debugging_list)?
+                );
 
                 // compute first hop
 
