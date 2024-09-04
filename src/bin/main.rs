@@ -182,6 +182,27 @@ async fn main() -> Result<()> {
                 )
                 .unwrap();
 
+                exploration_route
+                    .iter()
+                    .tuple_windows()
+                    .for_each(|(from, to)| {
+                        if let Some(travel_instructions) = pathfinder::compute_path(
+                            from.symbol.clone(),
+                            to.symbol.clone(),
+                            waypoints_of_home_system.clone(),
+                            marketplace_entries
+                                .iter()
+                                .map(|db| db.entry.0.clone())
+                                .collect(),
+                            command_ship.ship.clone(),
+                        ) {
+                            println!("Path found");
+                            dbg!(travel_instructions);
+                        } else {
+                            println!("No path found");
+                        };
+                    });
+
                 let stripped_down_route: Vec<SerializableCoordinate<WaypointSymbol>> =
                     exploration_route
                         .clone()
@@ -193,24 +214,6 @@ async fn main() -> Result<()> {
                 println!("Explorer Route: \n{}", json_route);
 
                 // compute first hop
-                let start = exploration_route.get(0).unwrap();
-                let first_stop = &exploration_route.get(1).unwrap();
-
-                if let Some(travel_instructions) = pathfinder::compute_path(
-                    start.symbol.clone(),
-                    first_stop.symbol.clone(),
-                    waypoints_of_home_system.clone(),
-                    marketplace_entries
-                        .iter()
-                        .map(|db| db.entry.0.clone())
-                        .collect(),
-                    command_ship.ship.clone(),
-                ) {
-                    println!("Path found");
-                    dbg!(travel_instructions);
-                } else {
-                    println!("No path found");
-                };
 
                 match command_ship.nav.status {
                     NavStatus::InTransit => {
