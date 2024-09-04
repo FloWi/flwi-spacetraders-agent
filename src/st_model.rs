@@ -139,8 +139,8 @@ pub struct Meta {
 #[serde(rename_all = "camelCase")]
 pub struct Chart {
     pub waypoint_symbol: Option<String>,
-    pub submitted_by: String,
-    pub submitted_on: String,
+    pub submitted_by: Option<String>,
+    pub submitted_on: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -164,10 +164,10 @@ pub struct WaypointInSystemResponseData {
     pub y: i64,
     pub orbitals: Vec<Orbital>,
     pub orbits: Option<WaypointSymbol>,
-    pub faction: Faction,
+    pub faction: Option<Faction>,
     pub traits: Vec<WaypointTrait>,
     pub modifiers: Vec<WaypointModifier>,
-    pub chart: Chart,
+    pub chart: Option<Chart>,
     pub is_under_construction: bool,
 }
 
