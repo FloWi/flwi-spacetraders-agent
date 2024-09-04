@@ -11,6 +11,7 @@ pub mod supply_chain;
 extern crate serde;
 
 use crate::api_client::api_model::FlightMode;
+use chrono::TimeDelta;
 
 pub mod exploration;
 pub mod marketplaces;
@@ -37,4 +38,13 @@ impl FlightMode {
         (f32::max(distance as f32, 1.0) * navigation_multiplier / engine_speed as f32 + 15.0)
             .round() as u32
     }
+}
+
+pub fn format_time_delta_hh_mm_ss(delta: TimeDelta) -> String {
+    let total_seconds = delta.num_seconds();
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+
+    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
 }

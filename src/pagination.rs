@@ -93,14 +93,12 @@ where
     Fut: Future<Output = Result<PaginatedResponse<T>>>,
 {
     let mut current_input = initial_input;
-
     let output_parameter_type_name = type_name::<T>();
-
-    let span = trace_span!("pagination");
+    let span = tracing::span!(Level::TRACE, "pagination");
 
     let mut total_number_of_pages = 1;
 
-    async move {
+    async {
         event!(
             Level::TRACE,
             "Start downloading all pages of type {}",
@@ -120,7 +118,9 @@ where
                 total_number_of_pages
             );
 
-            tx.send((response.data, now)).await?;
+            tx.send((response.data, now))
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to send data: {}", e))?;
             current_input.page += 1;
         }
 

@@ -1,4 +1,5 @@
 use crate::db::upsert_waypoints_of_system;
+use crate::db::DbSystemCoordinateData;
 use anyhow::{Context, Result};
 use chrono::Local;
 use clap::Parser;
@@ -6,8 +7,11 @@ use flwi_spacetraders_agent::db::{
     insert_market_data, select_latest_marketplace_entry_of_system, select_waypoints_of_system,
     upsert_systems_from_receiver, upsert_waypoints_from_receiver, DbWaypointEntry,
 };
+use futures::StreamExt;
+use itertools::Itertools;
 use sqlx::{ConnectOptions, Executor, Pool, Postgres};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -16,7 +20,6 @@ use utoipa::OpenApi;
 use flwi_spacetraders_agent::api_client::api_model::{
     NavStatus, RegistrationRequest, Ship, Waypoint,
 };
-use flwi_spacetraders_agent::cli_args;
 use flwi_spacetraders_agent::cli_args::{Cli, Commands};
 use flwi_spacetraders_agent::configuration::AgentConfiguration;
 use flwi_spacetraders_agent::db;
@@ -34,6 +37,7 @@ use flwi_spacetraders_agent::st_model::{
     AgentSymbol, FactionSymbol, LabelledCoordinate, MarketData, SerializableCoordinate,
     SystemSymbol, WaypointInSystemResponseData, WaypointSymbol, WaypointTrait, WaypointTraitSymbol,
 };
+use flwi_spacetraders_agent::{cli_args, format_time_delta_hh_mm_ss};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -80,7 +84,7 @@ async fn main() -> Result<()> {
 
                 let now = Local::now().to_utc();
 
-                let _ = collect_all_waypoints_of_home_system(
+                let _ = collect_waypoints_of_system(
                     &authenticated_client,
                     &pool,
                     headquarters_system_symbol.clone(),
@@ -107,6 +111,17 @@ async fn main() -> Result<()> {
                         number_systems_in_db
                     );
                 }
+
+                let systems_with_waypoint_details_to_be_loaded: Vec<DbSystemCoordinateData> =
+                    db::select_systems_with_waypoint_details_to_be_loaded(&pool).await?;
+
+                let _ = collect_waypoints_for_systems(
+                    &authenticated_client,
+                    &systems_with_waypoint_details_to_be_loaded,
+                    &headquarters_system_symbol,
+                    &pool,
+                )
+                .await?;
 
                 // let marketplaces_of_system = db::select_waypoints_of_system_with_trait(
                 //     &pool,
@@ -138,17 +153,15 @@ async fn main() -> Result<()> {
 
                 let command_ship_name = spacetraders_agent_symbol + "-1";
 
-                let marketplace_entries = select_latest_marketplace_entry_of_system(
-                    &pool,
-                    headquarters_system_symbol.clone(),
-                )
-                .await?;
+                let marketplace_entries =
+                    select_latest_marketplace_entry_of_system(&pool, &headquarters_system_symbol)
+                        .await?;
 
                 let marketplaces_to_explore =
                     find_marketplaces_for_exploration(marketplace_entries.clone());
 
                 let waypoint_entries_of_home_system =
-                    select_waypoints_of_system(&pool, headquarters_system_symbol).await?;
+                    select_waypoints_of_system(&pool, &headquarters_system_symbol).await?;
 
                 let waypoints_of_home_system: Vec<_> = waypoint_entries_of_home_system
                     .into_iter()
@@ -234,18 +247,73 @@ async fn collect_all_systems(client: &StClient, pool: &Pool<Postgres>) -> Result
 
     tokio::try_join!(producer, upsert_systems_from_receiver(pool, rx))?;
     Ok(())
+}
+
+async fn collect_waypoints_for_systems(
+    client: &StClient,
+    systems: &[DbSystemCoordinateData],
+    home_system: &SystemSymbol,
+    pool: &Pool<Postgres>,
+) -> Result<()> {
+    let home_system = db::select_system_with_coordinate(pool, home_system)
+        .await?
+        .unwrap();
+
+    // sort systems by the distance from our system
+    event!(
+        Level::INFO,
+        "Collecting missing waypoints for {} systems in order of distance from home-system {}",
+        systems.len(),
+        home_system.system_symbol
+    );
+
+    let start_timestamp = Local::now();
+
+    let sorted = systems.iter().sorted_by_key(|s| home_system.distance_to(s));
+
+    for (idx, system) in sorted.enumerate() {
+        let now = Local::now();
+
+        let duration = now - start_timestamp;
+        let download_speed = idx as f32 / duration.num_seconds() as f32; // systems per second
+        let number_elements_left = systems.len() - idx;
+        let estimated_rest_duration =
+            chrono::Duration::seconds((number_elements_left as f32 / download_speed) as i64);
+
+        let estimated_finish_ts = now + estimated_rest_duration;
+
+        let download_speed_info = format!(
+            "avg {:.1} systems/s; estimated duration: {}; estimated completion: {}",
+            download_speed,
+            format_time_delta_hh_mm_ss(estimated_rest_duration),
+            estimated_finish_ts
+        );
+
+        event!(
+            Level::INFO,
+            "Downloading waypoints for system {} ({} of {} systems) {}",
+            system.system_symbol,
+            idx + 1,
+            systems.len(),
+            download_speed_info
+        );
+
+        collect_waypoints_of_system(client, pool, SystemSymbol(system.system_symbol.clone()))
+            .await?
+    }
+
     Ok(())
 }
 
-async fn collect_all_waypoints_of_home_system(
+async fn collect_waypoints_of_system(
     client: &StClient,
     pool: &Pool<Postgres>,
-    headquarters_system_symbol: SystemSymbol,
+    system_symbol: SystemSymbol,
 ) -> Result<()> {
     let (tx, rx) = mpsc::channel(100); // Buffer up to 100 pages
 
     let producer = fetch_all_pages_into_queue(
-        |page| client.list_waypoints_of_system_page(&headquarters_system_symbol, page),
+        |page| client.list_waypoints_of_system_page(&system_symbol, page),
         PaginationInput { page: 1, limit: 20 },
         tx,
     );

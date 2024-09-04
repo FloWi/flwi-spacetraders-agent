@@ -16,8 +16,8 @@ use crate::api_client::api_model::{RegistrationResponse, Waypoint};
 use crate::configuration::AgentConfiguration;
 use crate::st_client::Data;
 use crate::st_model::{
-    MarketData, StStatusResponse, SystemSymbol, SystemsPageData, WaypointInSystemResponseData,
-    WaypointSymbol, WaypointTraitSymbol,
+    distance_to, MarketData, StStatusResponse, SystemSymbol, SystemsPageData,
+    WaypointInSystemResponseData, WaypointSymbol, WaypointTraitSymbol,
 };
 
 pub async fn prepare_database_schema(
@@ -240,6 +240,19 @@ pub struct DbMarketEntry {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbSystemCoordinateData {
+    pub system_symbol: String,
+    pub x: i64,
+    pub y: i64,
+}
+
+impl DbSystemCoordinateData {
+    pub fn distance_to(&self, to: &&DbSystemCoordinateData) -> u32 {
+        distance_to(self.x, self.y, to.x, to.y)
+    }
+}
+
 pub async fn upsert_waypoints_from_receiver(
     pool: &Pool<Postgres>,
     mut rx: tokio::sync::mpsc::Receiver<(Vec<WaypointInSystemResponseData>, DateTime<Utc>)>,
@@ -403,7 +416,7 @@ from jsonb_populate_recordset(NULL::markets, $1)
 
 pub async fn select_waypoints_of_system(
     pool: &Pool<Postgres>,
-    system_symbol: SystemSymbol,
+    system_symbol: &SystemSymbol,
 ) -> Result<Vec<DbWaypointEntry>> {
     let waypoint_entries: Vec<DbWaypointEntry> = sqlx::query_as!(
         DbWaypointEntry,
@@ -448,7 +461,7 @@ pub async fn select_waypoints_of_system_with_trait(
 
 pub async fn select_latest_marketplace_entry_of_system(
     pool: &Pool<Postgres>,
-    system_symbol: SystemSymbol,
+    system_symbol: &SystemSymbol,
 ) -> Result<Vec<DbMarketEntry>> {
     let market_data_entries: Vec<DbMarketEntry> = sqlx::query_as!(
         DbMarketEntry,
@@ -474,4 +487,53 @@ where system_symbol = $1
     .await?;
 
     Ok(market_data_entries)
+}
+
+pub async fn select_systems_with_waypoint_details_to_be_loaded(
+    pool: &Pool<Postgres>,
+) -> Result<Vec<DbSystemCoordinateData>> {
+    let entries: Vec<DbSystemCoordinateData> = sqlx::query_as!(
+        DbSystemCoordinateData,
+        r#"
+with details as (select s.system_symbol
+                  , (s.entry ->> 'x') :: int                   as x
+                  , (s.entry ->> 'y') :: int                   as y
+                  , count(w.*)                                 as num_entries_in_waypoint_table
+                  , jsonb_array_length(s.entry -> 'waypoints') as num_waypoints_in_system_json
+             from systems s
+                      left join waypoints w using (system_symbol)
+             group by s.system_symbol, s.entry)
+select system_symbol
+     , x as "x!: i64"
+     , y as "y!: i64"
+from details
+where num_waypoints_in_system_json > 0
+  and num_waypoints_in_system_json != num_entries_in_waypoint_table
+"#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(entries)
+}
+
+pub async fn select_system_with_coordinate(
+    pool: &Pool<Postgres>,
+    system_symbol: &SystemSymbol,
+) -> Result<Option<DbSystemCoordinateData>> {
+    let maybe_system: Option<DbSystemCoordinateData> = sqlx::query_as!(
+        DbSystemCoordinateData,
+        r#"
+select system_symbol
+     , (s.entry ->> 'x') :: int as "x!: i64"
+     , (s.entry ->> 'y') :: int as "y!: i64"
+from systems s
+where system_symbol = $1
+"#,
+        system_symbol.0
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(maybe_system)
 }
