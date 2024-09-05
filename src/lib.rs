@@ -13,7 +13,7 @@ extern crate serde;
 use chrono::TimeDelta;
 use st_model::FlightMode;
 
-mod behavior_tree;
+pub mod behavior_tree;
 pub mod exploration;
 pub mod marketplaces;
 pub mod pathfinder;

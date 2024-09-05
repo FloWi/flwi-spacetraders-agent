@@ -1,7 +1,9 @@
+use crate::pathfinder::pathfinder::TravelAction;
 use crate::st_client::StClient;
-use crate::st_model::Ship;
+use crate::st_model::{Nav, Ship};
 use anyhow::*;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
@@ -17,15 +19,38 @@ impl MyShip {
         MyShip { ship: api_ship }
     }
 }
-
+#[derive(Clone, Debug)]
 pub struct ShipOperations {
-    ship: MyShip,
+    pub ship: MyShip,
     client: Arc<StClient>,
+    pub route: VecDeque<TravelAction>,
+    pub current_action: Option<TravelAction>,
+}
+
+impl ShipOperations {
+    pub(crate) fn set_nav(&mut self, new_nav: Nav) {
+        self.nav = new_nav;
+    }
+}
+
+impl ShipOperations {
+    pub fn set_route(&mut self, new_route: Vec<TravelAction>) {
+        self.route = VecDeque::from(new_route);
+    }
 }
 
 impl ShipOperations {
     pub fn new(ship: MyShip, client: Arc<StClient>) -> Self {
-        ShipOperations { ship, client }
+        ShipOperations {
+            ship,
+            client,
+            route: VecDeque::new(),
+            current_action: None,
+        }
+    }
+
+    pub fn pop_travel_action(&mut self) {
+        self.current_action = self.route.pop_front();
     }
 
     pub async fn dock(&mut self) -> Result<()> {
@@ -35,11 +60,10 @@ impl ShipOperations {
         Ok(())
     }
 
-    pub async fn orbit(&mut self) -> Result<()> {
+    pub async fn orbit(&mut self) -> Result<Nav> {
         let response = self.client.orbit_ship(self.ship.symbol.clone()).await?;
-        self.nav = response.data.nav.clone();
         println!("{:?}", response);
-        Ok(())
+        Ok(response.data.nav)
     }
 
     pub fn navigate(&mut self, destination: &str) -> Result<()> {

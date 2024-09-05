@@ -152,6 +152,12 @@ pub struct Faction {
     pub is_recruiting: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaypointFaction {
+    pub symbol: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct Orbital {
     pub symbol: WaypointSymbol,
@@ -168,7 +174,7 @@ pub struct WaypointInSystemResponseData {
     pub y: i64,
     pub orbitals: Vec<Orbital>,
     pub orbits: Option<WaypointSymbol>,
-    pub faction: Option<Faction>,
+    pub faction: Option<WaypointFaction>,
     pub traits: Vec<WaypointTrait>,
     pub modifiers: Vec<WaypointModifier>,
     pub chart: Option<Chart>,

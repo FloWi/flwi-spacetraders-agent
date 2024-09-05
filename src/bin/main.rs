@@ -1,6 +1,7 @@
 use crate::db::upsert_waypoints_of_system;
 use crate::db::DbSystemCoordinateData;
 use anyhow::{Context, Result};
+use bonsai_bt::{Event, Status, Timer, UpdateArgs, BT};
 use chrono::Local;
 use clap::Parser;
 use flwi_spacetraders_agent::db::{
@@ -16,10 +17,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
+use tokio::time::sleep;
 use tracing::{event, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use utoipa::OpenApi;
 
+use flwi_spacetraders_agent::behavior_tree::actions::ship_tick;
+use flwi_spacetraders_agent::behavior_tree::behavior_tree::{
+    ship_navigation_behaviors, ShipAction,
+};
 use flwi_spacetraders_agent::cli_args::{Cli, Commands};
 use flwi_spacetraders_agent::configuration::AgentConfiguration;
 use flwi_spacetraders_agent::db;
@@ -85,13 +91,6 @@ async fn main() -> Result<()> {
 
                 let now = Local::now().to_utc();
 
-                let _ = collect_waypoints_of_system(
-                    &authenticated_client,
-                    &pool,
-                    headquarters_system_symbol.clone(),
-                )
-                .await?;
-
                 let number_systems_in_db = db::select_count_of_systems(&pool).await?;
 
                 let need_collect_systems = status.stats.systems as i64 != number_systems_in_db;
@@ -115,14 +114,6 @@ async fn main() -> Result<()> {
 
                 let systems_with_waypoint_details_to_be_loaded: Vec<DbSystemCoordinateData> =
                     db::select_systems_with_waypoint_details_to_be_loaded(&pool).await?;
-
-                let _ = collect_waypoints_for_systems(
-                    &authenticated_client,
-                    &systems_with_waypoint_details_to_be_loaded,
-                    &headquarters_system_symbol,
-                    &pool,
-                )
-                .await?;
 
                 // let marketplaces_of_system = db::select_waypoints_of_system_with_trait(
                 //     &pool,
@@ -169,11 +160,12 @@ async fn main() -> Result<()> {
                     .map(|db| db.entry.0.clone())
                     .collect();
 
-                let command_ship: &mut ShipOperations = my_ships
-                    .iter_mut()
-                    .find(|s| s.symbol == command_ship_name)
+                let command_ship_index = my_ships
+                    .iter()
+                    .position(|s| s.symbol == command_ship_name)
                     .unwrap();
 
+                let mut command_ship = my_ships.remove(command_ship_index);
                 let current_location = command_ship.nav.waypoint_symbol.clone();
 
                 let exploration_route = generate_exploration_route(
@@ -201,7 +193,7 @@ async fn main() -> Result<()> {
                                 .iter()
                                 .map(|db| db.entry.0.clone())
                                 .collect(),
-                            command_ship.ship.clone(),
+                            command_ship.ship.ship.clone(),
                         ) {
                             debug_info.insert("actions", json!(&travel_instructions));
 
@@ -229,30 +221,44 @@ async fn main() -> Result<()> {
                     "Detailed Routes with actions: \n{}",
                     serde_json::to_string(&route_debugging_list)?
                 );
+                let from = exploration_route.get(0).unwrap();
+                let to = exploration_route.get(1).unwrap();
+                let path = pathfinder::compute_path(
+                    from.symbol.clone(),
+                    to.symbol.clone(),
+                    waypoints_of_home_system.clone(),
+                    marketplace_entries
+                        .iter()
+                        .map(|db| db.entry.0.clone())
+                        .collect(),
+                    command_ship.ship.ship.clone(),
+                )
+                .unwrap();
+                command_ship.set_route(path);
 
-                // compute first hop
-
-                match command_ship.nav.status {
-                    NavStatus::InTransit => {
-                        println!("Ship is in transit")
-                    }
-                    NavStatus::InOrbit => {
-                        println!("Ship is in orbit - docking");
-                        command_ship.dock().await?;
-                        assert_eq!(command_ship.nav.status, NavStatus::Docked);
-                    }
-                    NavStatus::Docked => {
-                        println!("Ship is docket - orbiting");
-                        command_ship.orbit().await?;
-                        assert_eq!(command_ship.nav.status, NavStatus::InOrbit);
-                    }
-                }
+                let blackboard: HashMap<String, String> = HashMap::new();
+                let _ = tokio::spawn(ship_loop(command_ship, blackboard)).await?;
 
                 //let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
                 //dbg!(my_ships);
                 Ok(())
             }
         },
+    }
+}
+
+pub async fn ship_loop(
+    mut ship: ShipOperations,
+    mut blackboard: HashMap<String, String>,
+) -> Result<()> {
+    let behaviors = ship_navigation_behaviors();
+    let mut ship_behavior_tree = BT::new(behaviors.travel_behavior, blackboard);
+
+    let mut timer = Timer::init_time();
+
+    loop {
+        let _ = ship_tick(&mut timer, &mut ship_behavior_tree, &mut ship).await;
+        sleep(Duration::from_secs(1)).await;
     }
 }
 
