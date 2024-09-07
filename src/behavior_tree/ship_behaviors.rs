@@ -1,6 +1,7 @@
 use crate::behavior_tree::behavior_tree::Behavior::*;
 use crate::behavior_tree::behavior_tree::*;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fmt::Display;
 use strum_macros::Display;
 
@@ -37,6 +38,41 @@ pub struct Behaviors {
     pub travel_action_behavior: Behavior<ShipAction>,
 }
 
+impl Behaviors {
+    pub fn to_labelled_sub_behaviors(&self) -> HashMap<String, Behavior<ShipAction>> {
+        let mut all: [(String, Behavior<ShipAction>); 7] = [
+            ("travel_behavior".to_string(), self.travel_behavior.clone()),
+            (
+                "adjust_flight_mode_if_necessary".to_string(),
+                self.adjust_flight_mode_if_necessary.clone(),
+            ),
+            (
+                "orbit_if_necessary".to_string(),
+                self.orbit_if_necessary.clone(),
+            ),
+            (
+                "wait_for_arrival_bt".to_string(),
+                self.wait_for_arrival_bt.clone(),
+            ),
+            (
+                "dock_if_necessary".to_string(),
+                self.dock_if_necessary.clone(),
+            ),
+            ("refuel_behavior".to_string(), self.refuel_behavior.clone()),
+            (
+                "travel_action_behavior".to_string(),
+                self.travel_action_behavior.clone(),
+            ),
+        ];
+
+        for (_, b) in all.iter_mut() {
+            b.update_indices();
+        }
+
+        HashMap::from(all)
+    }
+}
+
 pub fn ship_navigation_behaviors() -> Behaviors {
     /*
     /// Runs behaviors one by one until all succeeded.
@@ -55,23 +91,23 @@ pub fn ship_navigation_behaviors() -> Behaviors {
     Select(Vec<Behavior<A>>),
      */
 
-    let wait_for_arrival_bt = Behavior::new_select(vec![
+    let mut wait_for_arrival_bt = Behavior::new_select(vec![
         Behavior::new_action(ShipAction::WaitForArrival),
         Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
         Behavior::new_action(ShipAction::MarkTravelActionAsCompleteIfPossible),
     ]);
 
-    let orbit_if_necessary = Behavior::new_select(vec![
+    let mut orbit_if_necessary = Behavior::new_select(vec![
         Behavior::new_action(ShipAction::IsInOrbit),
         Behavior::new_action(ShipAction::Orbit),
     ]);
 
-    let dock_if_necessary = Behavior::new_select(vec![
+    let mut dock_if_necessary = Behavior::new_select(vec![
         Behavior::new_action(ShipAction::IsDocked),
         Behavior::new_action(ShipAction::Dock),
     ]);
 
-    let adjust_flight_mode_if_necessary = Behavior::new_select(vec![
+    let mut adjust_flight_mode_if_necessary = Behavior::new_select(vec![
         Behavior::new_action(ShipAction::IsCorrectFlightMode),
         Behavior::new_action(ShipAction::SetFlightMode),
     ]);
@@ -84,7 +120,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         Behavior::new_action(ShipAction::NavigateToWaypoint),
     ]);
 
-    let refuel_behavior = Behavior::new_sequence(vec![
+    let mut refuel_behavior = Behavior::new_sequence(vec![
         Behavior::new_action(ShipAction::IsRefuelAction),
         wait_for_arrival_bt.clone(),
         Behavior::new_select(vec![
@@ -98,10 +134,10 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         Behavior::new_action(ShipAction::MarkTravelActionAsCompleteIfPossible),
     ]);
 
-    let travel_action_behavior =
+    let mut travel_action_behavior =
         Behavior::new_select(vec![navigate_behavior, refuel_behavior.clone()]);
 
-    let travel_behavior = Behavior::new_while(
+    let mut travel_behavior = Behavior::new_while(
         Behavior::new_action(ShipAction::HasTravelActionEntry),
         Behavior::new_sequence(vec![
             Behavior::new_select(vec![
@@ -114,13 +150,13 @@ pub fn ship_navigation_behaviors() -> Behaviors {
     );
 
     Behaviors {
-        wait_for_arrival_bt,
-        orbit_if_necessary,
-        dock_if_necessary,
-        adjust_flight_mode_if_necessary,
-        refuel_behavior,
-        travel_behavior,
-        travel_action_behavior,
+        wait_for_arrival_bt: wait_for_arrival_bt.update_indices().clone(),
+        orbit_if_necessary: orbit_if_necessary.update_indices().clone(),
+        dock_if_necessary: dock_if_necessary.update_indices().clone(),
+        adjust_flight_mode_if_necessary: adjust_flight_mode_if_necessary.update_indices().clone(),
+        refuel_behavior: refuel_behavior.update_indices().clone(),
+        travel_behavior: travel_behavior.update_indices().clone(),
+        travel_action_behavior: travel_action_behavior.update_indices().clone(),
     }
 }
 
@@ -163,6 +199,20 @@ mod tests {
 
         // Access the index of the root node
         println!("Root node index: {:?}", tree.index());
+    }
+
+    #[test]
+    fn generate_markdown() {
+        let behaviors = &ship_navigation_behaviors();
+        let mut ship_behavior = behaviors.travel_behavior.clone();
+
+        ship_behavior.update_indices();
+
+        let markdown_document = Behavior::generate_markdown_with_details_without_repeat(
+            ship_behavior,
+            behaviors.to_labelled_sub_behaviors(),
+        );
+        println!("{}", markdown_document);
     }
 }
 

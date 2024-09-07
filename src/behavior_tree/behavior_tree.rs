@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -96,9 +97,10 @@ impl<A: Display + Hash> Behavior<A> {
         }
     }
 
-    pub fn update_indices(&mut self) {
+    pub fn update_indices(&mut self) -> &Self {
         let mut next_index = 0;
         self.update_indices_recursive(&mut next_index);
+        self
     }
 
     fn update_indices_recursive(&mut self, next_index: &mut usize) {
@@ -129,14 +131,66 @@ impl<A: Display + Hash> Behavior<A> {
         }
     }
 
+    pub fn generate_markdown_with_details_without_repeat(
+        behavior: Behavior<A>,
+        labelled_sub_behaviors: HashMap<String, Behavior<A>>,
+    ) -> String {
+        let hash_to_label_map: HashMap<u64, String> = labelled_sub_behaviors
+            .iter()
+            .map(|(label, behavior)| {
+                let mut hasher = DefaultHasher::new();
+                behavior.hash(&mut hasher);
+                let hash = hasher.finish();
+
+                (hash, label.to_string())
+            })
+            .collect();
+
+        let mut markdown = "".to_string();
+
+        for (label, sub_behavior) in labelled_sub_behaviors {
+            let sub_mermaid_string = sub_behavior.to_mermaid_without_repeats(&hash_to_label_map);
+
+            writeln!(markdown, "## {}", label).unwrap();
+            writeln!(markdown, "```mermaid\n").unwrap();
+            writeln!(markdown, "{}", sub_mermaid_string).unwrap();
+            writeln!(markdown, "```\n\n").unwrap();
+        }
+
+        let mermaid_string = behavior.to_mermaid_without_repeats(&hash_to_label_map);
+        writeln!(markdown, "## Behavior\n").unwrap();
+        writeln!(markdown, "```mermaid\n").unwrap();
+        writeln!(markdown, "{}", mermaid_string).unwrap();
+        writeln!(markdown, "```\n\n").unwrap();
+
+        markdown
+    }
+
     pub fn to_mermaid(&self) -> String {
+        self.to_mermaid_without_repeats(&HashMap::new())
+    }
+
+    fn to_mermaid_without_repeats(&self, labelled_sub_graphs: &HashMap<u64, String>) -> String {
+        // labelled sub-graphs don't really work. Need to think about it a bit more. Leaving this in for now.
+
         let mut output = String::new();
-        writeln!(output, "graph TD").unwrap();
-        self.build_mermaid(&mut output, None);
+        // quite ugly, but couldn't find proper workaround to print this string `%%{init: {"flowchart": {"htmlLabels": false}} }%%`
+        writeln!(
+            output,
+            r##"%%{{init: {{"#flowchart": {{"htmlLabels": false}}}} }}%%"##
+        )
+        .unwrap();
+        writeln!(output, "\ngraph TD").unwrap();
+        self.build_mermaid(&mut output, None, labelled_sub_graphs);
         output
     }
 
-    fn build_mermaid(&self, output: &mut String, parent: Option<usize>) {
+    fn build_mermaid(
+        &self,
+        output: &mut String,
+        parent: Option<usize>,
+        labelled_sub_graphs: &HashMap<u64, String>,
+    ) {
         let current_index = self
             .index()
             .expect("Index should be set before generating Mermaid diagram");
@@ -145,8 +199,13 @@ impl<A: Display + Hash> Behavior<A> {
         self.hash(&mut hasher);
         let hash = hasher.finish();
 
+        // let node_label = labelled_sub_graphs
+        //     .get(&hash)
+        //     .map(|str| str.to_string())
+        //     .unwrap_or(format!("{}", self));
+
         let node_content = format!(
-            "{}\nIndex: {}\nHash: {:016x}",
+            "`{}\nIndex: {}\nHash: {:016x}`",
             self,
             self.index().unwrap(),
             hash
@@ -172,17 +231,19 @@ impl<A: Display + Hash> Behavior<A> {
 
         match self {
             Behavior::Action(_, _) => {}
-            Behavior::Invert(child, _) => child.build_mermaid(output, Some(current_index)),
+            Behavior::Invert(child, _) => {
+                child.build_mermaid(output, Some(current_index), labelled_sub_graphs)
+            }
             Behavior::Select(children, _) | Behavior::Sequence(children, _) => {
                 for child in children {
-                    child.build_mermaid(output, Some(current_index));
+                    child.build_mermaid(output, Some(current_index), labelled_sub_graphs);
                 }
             }
             Behavior::While {
                 condition, action, ..
             } => {
-                condition.build_mermaid(output, Some(current_index));
-                action.build_mermaid(output, Some(current_index));
+                condition.build_mermaid(output, Some(current_index), labelled_sub_graphs);
+                action.build_mermaid(output, Some(current_index), labelled_sub_graphs);
             }
         }
     }
