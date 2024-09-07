@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::fmt::Display;
 use strum_macros::Display;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Display)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Display, Hash)]
 pub enum ShipAction {
     HasTravelActionEntry,
     WaitForArrival,
@@ -86,7 +86,11 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         wait_for_arrival_bt.clone(),
         Select(vec![
             Action(ShipAction::CanSkipRefueling),
-            Sequence(vec![dock_if_necessary.clone(), Action(ShipAction::Refuel)]),
+            Sequence(vec![
+                dock_if_necessary.clone(),
+                Action(ShipAction::Refuel),
+                orbit_if_necessary.clone(),
+            ]),
         ]),
         Action(ShipAction::MarkTravelActionAsCompleteIfPossible),
     ]);
@@ -113,6 +117,18 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         refuel_behavior,
         travel_behavior,
         travel_action_behavior,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
+
+    #[tokio::test]
+    async fn generate_mermaid_chart() {
+        let behaviors = ship_navigation_behaviors();
+
+        println!("{}", behaviors.travel_behavior.to_mermaid())
     }
 }
 

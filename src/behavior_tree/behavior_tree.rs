@@ -1,13 +1,16 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::fmt::Write;
 use std::fmt::{Display, Formatter};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use strum_macros::Display;
 use tracing::{span, Level, Span};
 use tracing_core::field::{Field, Visit};
+use tracing_subscriber::fmt::format;
 // inspired by @chamlis design from spacetraders discord
 
-#[derive(Debug, Clone, Serialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Eq, PartialEq, Hash)]
 pub enum Behavior<A: Display> {
     Action(A),
     Invert(Box<Behavior<A>>),
@@ -19,6 +22,75 @@ pub enum Behavior<A: Display> {
         condition: Box<Behavior<A>>,
         action: Box<Behavior<A>>,
     },
+}
+
+impl<A: Display + Hash> Behavior<A> {
+    fn calculate_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    pub fn to_mermaid(&self) -> String {
+        let mut output = String::new();
+        writeln!(output, "graph TD").unwrap();
+        self.build_mermaid(&mut output, None, &mut 0);
+        output
+    }
+
+    pub fn build_mermaid(
+        &self,
+        output: &mut String,
+        parent: Option<usize>,
+        index: &mut usize,
+    ) -> usize {
+        let current_index = *index;
+        *index += 1;
+
+        let node_content = match self {
+            Behavior::Action(action) => format!("{}", action),
+            Behavior::Invert(_) => "Invert".to_string(),
+            Behavior::Select(_) => "Select".to_string(),
+            Behavior::Sequence(_) => "Sequence".to_string(),
+            Behavior::While { .. } => "While".to_string(),
+        };
+
+        writeln!(
+            output,
+            "    node{index}[\"{content}\"]",
+            index = current_index,
+            content = node_content
+        )
+        .unwrap();
+
+        if let Some(parent_index) = parent {
+            writeln!(
+                output,
+                "    node{parent} --> node{child}",
+                parent = parent_index,
+                child = current_index
+            )
+            .unwrap();
+        }
+
+        match self {
+            Behavior::Action(_) => {}
+            Behavior::Invert(child) => {
+                child.build_mermaid(output, Some(current_index), index);
+            }
+            Behavior::Select(children) | Behavior::Sequence(children) => {
+                for child in children {
+                    child.build_mermaid(output, Some(current_index), index);
+                }
+            }
+            Behavior::While { condition, action } => {
+                condition.build_mermaid(output, Some(current_index), index);
+                action.build_mermaid(output, Some(current_index), index);
+            }
+        }
+
+        current_index
+    }
 }
 
 // Detailed display with nesting
@@ -94,7 +166,7 @@ pub trait Actionable: Serialize + Clone + Send + Sync {
 #[async_trait]
 impl<A> Actionable for Behavior<A>
 where
-    A: Actionable + Serialize + Display,
+    A: Actionable + Serialize + Display + Hash,
 {
     type ActionError = <A as Actionable>::ActionError;
     type ActionArgs = <A as Actionable>::ActionArgs;
@@ -105,14 +177,12 @@ where
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
     ) -> Result<Response, Self::ActionError> {
-        let current_span = Span::current();
-
-        //current_span.record(&mut visitor);
+        let hash = self.calculate_hash();
 
         let span = span!(
             Level::INFO,
             "actionable_run",
-            actionable = format!("{}", &self)
+            actionable = format!("{} ({:x})", &self, hash)
         );
 
         let _enter = span.enter();
@@ -201,8 +271,9 @@ mod tests {
     use anyhow::anyhow;
     use async_trait::async_trait;
     use serde::Serialize;
+    use strum_macros::Display;
 
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Display, Hash)]
     enum MyAction {
         Increase,
         Decrease,
@@ -305,5 +376,18 @@ mod tests {
         };
 
         assert_eq!(bt, bt.clone());
+    }
+
+    #[tokio::test]
+    async fn test_hashing() {
+        // can use this test later for finding reused blocks that I want to not expand in my renders of the whole tree.
+        let reusing_node = While {
+            condition: Box::new(Action(MyAction::IsLowerThan5)),
+            action: Box::new(Action(MyAction::Increase)),
+        };
+        let bt: Behavior<MyAction> = Sequence(vec![reusing_node.clone(), reusing_node.clone()]);
+
+        let mermaid_string = bt.to_mermaid();
+        println!("mermaid graph\n{}", mermaid_string)
     }
 }

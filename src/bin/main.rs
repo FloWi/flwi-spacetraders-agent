@@ -250,6 +250,11 @@ pub async fn ship_loop(mut ship: ShipOperations) -> Result<()> {
     let behaviors = ship_navigation_behaviors();
     let ship_behavior = behaviors.travel_behavior;
 
+    println!(
+        "Running behavior tree. \n<mermaid>\n{}\n</mermaid>",
+        ship_behavior.to_mermaid()
+    );
+
     // let mut ship_behavior_tree = BT::new(behaviors.travel_behavior, blackboard);
     //
     // let mut timer = Timer::init_time();
