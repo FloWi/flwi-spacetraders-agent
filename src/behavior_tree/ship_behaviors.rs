@@ -55,59 +55,63 @@ pub fn ship_navigation_behaviors() -> Behaviors {
     Select(Vec<Behavior<A>>),
      */
 
-    let wait_for_arrival_bt = Select(vec![
-        Action(ShipAction::WaitForArrival),
-        Action(ShipAction::FixNavStatusIfNecessary),
-        Action(ShipAction::MarkTravelActionAsCompleteIfPossible),
+    let wait_for_arrival_bt = Behavior::new_select(vec![
+        Behavior::new_action(ShipAction::WaitForArrival),
+        Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
+        Behavior::new_action(ShipAction::MarkTravelActionAsCompleteIfPossible),
     ]);
 
-    let orbit_if_necessary = Select(vec![
-        Action(ShipAction::IsInOrbit),
-        Action(ShipAction::Orbit),
+    let orbit_if_necessary = Behavior::new_select(vec![
+        Behavior::new_action(ShipAction::IsInOrbit),
+        Behavior::new_action(ShipAction::Orbit),
     ]);
 
-    let dock_if_necessary = Select(vec![Action(ShipAction::IsDocked), Action(ShipAction::Dock)]);
-
-    let adjust_flight_mode_if_necessary = Select(vec![
-        Action(ShipAction::IsCorrectFlightMode),
-        Action(ShipAction::SetFlightMode),
+    let dock_if_necessary = Behavior::new_select(vec![
+        Behavior::new_action(ShipAction::IsDocked),
+        Behavior::new_action(ShipAction::Dock),
     ]);
 
-    let navigate_behavior = Sequence(vec![
-        Action(ShipAction::IsNavigationAction),
+    let adjust_flight_mode_if_necessary = Behavior::new_select(vec![
+        Behavior::new_action(ShipAction::IsCorrectFlightMode),
+        Behavior::new_action(ShipAction::SetFlightMode),
+    ]);
+
+    let navigate_behavior = Behavior::new_sequence(vec![
+        Behavior::new_action(ShipAction::IsNavigationAction),
         wait_for_arrival_bt.clone(),
         orbit_if_necessary.clone(),
         adjust_flight_mode_if_necessary.clone(),
-        Action(ShipAction::NavigateToWaypoint),
+        Behavior::new_action(ShipAction::NavigateToWaypoint),
     ]);
 
-    let refuel_behavior = Sequence(vec![
-        Action(ShipAction::IsRefuelAction),
+    let refuel_behavior = Behavior::new_sequence(vec![
+        Behavior::new_action(ShipAction::IsRefuelAction),
         wait_for_arrival_bt.clone(),
-        Select(vec![
-            Action(ShipAction::CanSkipRefueling),
-            Sequence(vec![
+        Behavior::new_select(vec![
+            Behavior::new_action(ShipAction::CanSkipRefueling),
+            Behavior::new_sequence(vec![
                 dock_if_necessary.clone(),
-                Action(ShipAction::Refuel),
+                Behavior::new_action(ShipAction::Refuel),
                 orbit_if_necessary.clone(),
             ]),
         ]),
-        Action(ShipAction::MarkTravelActionAsCompleteIfPossible),
+        Behavior::new_action(ShipAction::MarkTravelActionAsCompleteIfPossible),
     ]);
 
-    let travel_action_behavior = Select(vec![navigate_behavior, refuel_behavior.clone()]);
+    let travel_action_behavior =
+        Behavior::new_select(vec![navigate_behavior, refuel_behavior.clone()]);
 
-    let travel_behavior = While {
-        condition: Box::new(Action(ShipAction::HasTravelActionEntry)),
-        action: Box::new(Sequence(vec![
-            Select(vec![
-                Invert(Box::new(Action(ShipAction::PrintTravelActions))),
-                Action(ShipAction::HasActiveNavigationNode),
-                Action(ShipAction::PopTravelAction),
+    let travel_behavior = Behavior::new_while(
+        Behavior::new_action(ShipAction::HasTravelActionEntry),
+        Behavior::new_sequence(vec![
+            Behavior::new_select(vec![
+                Behavior::new_invert(Behavior::new_action(ShipAction::PrintTravelActions)),
+                Behavior::new_action(ShipAction::HasActiveNavigationNode),
+                Behavior::new_action(ShipAction::PopTravelAction),
             ]),
             travel_action_behavior.clone(),
-        ])),
-    };
+        ]),
+    );
 
     Behaviors {
         wait_for_arrival_bt,
@@ -122,13 +126,43 @@ pub fn ship_navigation_behaviors() -> Behaviors {
 
 #[cfg(test)]
 mod tests {
+    use crate::behavior_tree::behavior_tree::Behavior;
     use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
 
     #[tokio::test]
     async fn generate_mermaid_chart() {
         let behaviors = ship_navigation_behaviors();
 
-        println!("{}", behaviors.travel_behavior.to_mermaid())
+        let mut behavior = behaviors.travel_behavior;
+        behavior.update_indices();
+
+        println!("{}", behavior.to_mermaid())
+    }
+
+    #[tokio::test]
+    async fn generate_mermaid_chart_2() {
+        let repeated_action = Behavior::new_action("Repeated Action".to_string());
+        let mut tree = Behavior::new_select(vec![
+            repeated_action.clone(),
+            Behavior::new_sequence(vec![
+                repeated_action.clone(),
+                Behavior::new_action("Unique Action".to_string()),
+            ]),
+            Behavior::new_while(
+                repeated_action,
+                Behavior::new_action("While Action".to_string()),
+            ),
+        ]);
+
+        // Update indices
+        tree.update_indices();
+        dbg!(&tree);
+
+        // Generate Mermaid diagram
+        println!("{}", tree.to_mermaid());
+
+        // Access the index of the root node
+        println!("Root node index: {:?}", tree.index());
     }
 }
 

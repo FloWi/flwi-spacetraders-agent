@@ -10,50 +10,147 @@ use tracing_core::field::{Field, Visit};
 use tracing_subscriber::fmt::format;
 // inspired by @chamlis design from spacetraders discord
 
-#[derive(Debug, Clone, Serialize, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Serialize, Eq, PartialEq)]
 pub enum Behavior<A: Display> {
-    Action(A),
-    Invert(Box<Behavior<A>>),
-    Select(Vec<Behavior<A>>),
-    Sequence(Vec<Behavior<A>>),
+    Action(A, Option<usize>),
+    Invert(Box<Behavior<A>>, Option<usize>),
+    Select(Vec<Behavior<A>>, Option<usize>),
+    Sequence(Vec<Behavior<A>>, Option<usize>),
+
     // Success,
     // Run the action while the condition is successful or until the action returns a failure.
     While {
         condition: Box<Behavior<A>>,
         action: Box<Behavior<A>>,
+        index: Option<usize>,
     },
 }
 
+impl<A: Display + Hash> Hash for Behavior<A> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Behavior::Action(action, _) => {
+                action.hash(state);
+            }
+            Behavior::Invert(child, _) => {
+                child.hash(state);
+            }
+            Behavior::Select(children, _) => {
+                for child in children {
+                    child.hash(state);
+                }
+            }
+            Behavior::Sequence(children, _) => {
+                for child in children {
+                    child.hash(state);
+                }
+            }
+            Behavior::While {
+                condition, action, ..
+            } => {
+                condition.hash(state);
+                action.hash(state);
+            }
+        }
+    }
+}
+
 impl<A: Display + Hash> Behavior<A> {
+    pub fn new_action(action: A) -> Self {
+        Behavior::Action(action, None)
+    }
+
+    pub fn new_invert(child: Behavior<A>) -> Self {
+        Behavior::Invert(Box::new(child), None)
+    }
+
+    pub fn new_select(children: Vec<Behavior<A>>) -> Self {
+        Behavior::Select(children, None)
+    }
+
+    pub fn new_sequence(children: Vec<Behavior<A>>) -> Self {
+        Behavior::Sequence(children, None)
+    }
+
+    pub fn new_while(condition: Behavior<A>, action: Behavior<A>) -> Self {
+        Behavior::While {
+            condition: Box::new(condition),
+            action: Box::new(action),
+            index: None,
+        }
+    }
+
     fn calculate_hash(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
         hasher.finish()
     }
 
+    pub fn index(&self) -> Option<usize> {
+        match self {
+            Behavior::Action(_, index) => *index,
+            Behavior::Invert(_, index) => *index,
+            Behavior::Select(_, index) => *index,
+            Behavior::Sequence(_, index) => *index,
+            Behavior::While { index, .. } => *index,
+        }
+    }
+
+    pub fn update_indices(&mut self) {
+        let mut next_index = 0;
+        self.update_indices_recursive(&mut next_index);
+    }
+
+    fn update_indices_recursive(&mut self, next_index: &mut usize) {
+        let current_index = *next_index;
+        *next_index += 1;
+
+        match self {
+            Behavior::Action(_, index) => *index = Some(current_index),
+            Behavior::Invert(child, index) => {
+                *index = Some(current_index);
+                child.update_indices_recursive(next_index);
+            }
+            Behavior::Select(children, index) | Behavior::Sequence(children, index) => {
+                *index = Some(current_index);
+                for child in children {
+                    child.update_indices_recursive(next_index);
+                }
+            }
+            Behavior::While {
+                condition,
+                action,
+                index,
+            } => {
+                *index = Some(current_index);
+                condition.update_indices_recursive(next_index);
+                action.update_indices_recursive(next_index);
+            }
+        }
+    }
+
     pub fn to_mermaid(&self) -> String {
         let mut output = String::new();
         writeln!(output, "graph TD").unwrap();
-        self.build_mermaid(&mut output, None, &mut 0);
+        self.build_mermaid(&mut output, None);
         output
     }
 
-    pub fn build_mermaid(
-        &self,
-        output: &mut String,
-        parent: Option<usize>,
-        index: &mut usize,
-    ) -> usize {
-        let current_index = *index;
-        *index += 1;
+    fn build_mermaid(&self, output: &mut String, parent: Option<usize>) {
+        let current_index = self
+            .index()
+            .expect("Index should be set before generating Mermaid diagram");
 
-        let node_content = match self {
-            Behavior::Action(action) => format!("{}", action),
-            Behavior::Invert(_) => "Invert".to_string(),
-            Behavior::Select(_) => "Select".to_string(),
-            Behavior::Sequence(_) => "Sequence".to_string(),
-            Behavior::While { .. } => "While".to_string(),
-        };
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        let node_content = format!(
+            "{}\nIndex: {}\nHash: {:016x}",
+            self,
+            self.index().unwrap(),
+            hash
+        );
 
         writeln!(
             output,
@@ -74,22 +171,20 @@ impl<A: Display + Hash> Behavior<A> {
         }
 
         match self {
-            Behavior::Action(_) => {}
-            Behavior::Invert(child) => {
-                child.build_mermaid(output, Some(current_index), index);
-            }
-            Behavior::Select(children) | Behavior::Sequence(children) => {
+            Behavior::Action(_, _) => {}
+            Behavior::Invert(child, _) => child.build_mermaid(output, Some(current_index)),
+            Behavior::Select(children, _) | Behavior::Sequence(children, _) => {
                 for child in children {
-                    child.build_mermaid(output, Some(current_index), index);
+                    child.build_mermaid(output, Some(current_index));
                 }
             }
-            Behavior::While { condition, action } => {
-                condition.build_mermaid(output, Some(current_index), index);
-                action.build_mermaid(output, Some(current_index), index);
+            Behavior::While {
+                condition, action, ..
+            } => {
+                condition.build_mermaid(output, Some(current_index));
+                action.build_mermaid(output, Some(current_index));
             }
         }
-
-        current_index
     }
 }
 
@@ -97,7 +192,7 @@ impl<A: Display + Hash> Behavior<A> {
 // impl<A: Display> Display for Behavior<A> {
 //     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 //         match self {
-//             Behavior::Action(a) => write!(f, "Action({})", a),
+//             Behavior::Action(a) => write!(f, "Behaviornew_action({})", a),
 //             Behavior::Invert(b) => write!(f, "Invert({})", b),
 //             Behavior::Select(behaviors) => {
 //                 write!(f, "Select(")?;
@@ -133,10 +228,10 @@ impl<A: Display + Hash> Behavior<A> {
 impl<A: Display> Display for Behavior<A> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Behavior::Action(a) => write!(f, "Action({})", a),
-            Behavior::Invert(_) => write!(f, "Invert"),
-            Behavior::Select(_) => write!(f, "Select"),
-            Behavior::Sequence(_) => write!(f, "Sequence"),
+            Behavior::Action(a, _) => write!(f, "Action({})", a),
+            Behavior::Invert(..) => write!(f, "Invert"),
+            Behavior::Select(..) => write!(f, "Select"),
+            Behavior::Sequence(..) => write!(f, "Sequence"),
             Behavior::While { .. } => write!(f, "While"),
         }
     }
@@ -182,7 +277,8 @@ where
         let span = span!(
             Level::INFO,
             "actionable_run",
-            actionable = format!("{} ({:x})", &self, hash)
+            actionable = format!("{} ({:x})", &self, hash),
+            index = self.index()
         );
 
         let _enter = span.enter();
@@ -190,11 +286,11 @@ where
         tracing::info!("Starting action");
 
         let result = match self {
-            Behavior::Action(a) => {
+            Behavior::Action(a, _) => {
                 let result = a.run(args, state).await;
                 result
             }
-            Behavior::Invert(b) => {
+            Behavior::Invert(b, _) => {
                 let result = b.run(args, state).await;
                 match result {
                     Ok(r) => {
@@ -209,7 +305,7 @@ where
                     Err(_) => Ok(Response::Success),
                 }
             }
-            Behavior::Select(behaviors) => {
+            Behavior::Select(behaviors, _) => {
                 for b in behaviors {
                     let result = b.run(args, state).await;
                     match result {
@@ -221,7 +317,7 @@ where
             } // Behavior::Sequence(_) => {}
             // Behavior::Success => {}
             // Behavior::While { .. } => {}
-            Behavior::Sequence(behaviors) => {
+            Behavior::Sequence(behaviors, _) => {
                 for b in behaviors {
                     let result = b.run(args, state).await;
                     match result {
@@ -233,7 +329,9 @@ where
                 }
                 Ok(Response::Success)
             }
-            Behavior::While { condition, action } => loop {
+            Behavior::While {
+                condition, action, ..
+            } => loop {
                 let condition_result = condition.run(args, state).await;
 
                 match condition_result {
@@ -267,7 +365,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::{Actionable, Behavior, Response};
-    use crate::behavior_tree::behavior_tree::Behavior::{Action, Select, Sequence, While};
     use anyhow::anyhow;
     use async_trait::async_trait;
     use serde::Serialize;
@@ -316,8 +413,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_select() {
-        let bt: Behavior<MyAction> =
-            Select(vec![Action(MyAction::Increase), Action(MyAction::Decrease)]).into();
+        let bt: Behavior<MyAction> = Behavior::new_select(vec![
+            Behavior::new_action(MyAction::Increase),
+            Behavior::new_action(MyAction::Decrease),
+        ])
+        .into();
 
         let mut my_state = MyState(0);
 
@@ -328,8 +428,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_sequence() {
-        let bt: Behavior<MyAction> =
-            Sequence(vec![Action(MyAction::Increase), Action(MyAction::Decrease)]).into();
+        let bt: Behavior<MyAction> = Behavior::new_sequence(vec![
+            Behavior::new_action(MyAction::Increase),
+            Behavior::new_action(MyAction::Decrease),
+        ])
+        .into();
 
         let mut my_state = MyState(0);
 
@@ -340,10 +443,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_while() {
-        let bt: Behavior<MyAction> = While {
-            condition: Box::new(Action(MyAction::IsLowerThan5)),
-            action: Box::new(Action(MyAction::Increase)),
-        };
+        let bt: Behavior<MyAction> = Behavior::new_while(
+            Behavior::new_action(MyAction::IsLowerThan5),
+            Behavior::new_action(MyAction::Increase),
+        );
 
         let mut my_state = MyState(0);
 
@@ -354,10 +457,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_while_terminating_immediately() {
-        let bt: Behavior<MyAction> = While {
-            condition: Box::new(Action(MyAction::IsLowerThan5)),
-            action: Box::new(Action(MyAction::Increase)),
-        };
+        let bt: Behavior<MyAction> = Behavior::new_while(
+            Behavior::new_action(MyAction::IsLowerThan5),
+            Behavior::new_action(MyAction::Increase),
+        );
 
         let mut my_state = MyState(42);
 
@@ -370,10 +473,10 @@ mod tests {
     #[tokio::test]
     async fn test_equality() {
         // can use this test later for finding reused blocks that I want to not expand in my renders of the whole tree.
-        let bt: Behavior<MyAction> = While {
-            condition: Box::new(Action(MyAction::IsLowerThan5)),
-            action: Box::new(Action(MyAction::Increase)),
-        };
+        let bt: Behavior<MyAction> = Behavior::new_while(
+            Behavior::new_action(MyAction::IsLowerThan5),
+            Behavior::new_action(MyAction::Increase),
+        );
 
         assert_eq!(bt, bt.clone());
     }
@@ -381,11 +484,12 @@ mod tests {
     #[tokio::test]
     async fn test_hashing() {
         // can use this test later for finding reused blocks that I want to not expand in my renders of the whole tree.
-        let reusing_node = While {
-            condition: Box::new(Action(MyAction::IsLowerThan5)),
-            action: Box::new(Action(MyAction::Increase)),
-        };
-        let bt: Behavior<MyAction> = Sequence(vec![reusing_node.clone(), reusing_node.clone()]);
+        let reusing_node = Behavior::new_while(
+            Behavior::new_action(MyAction::IsLowerThan5),
+            Behavior::new_action(MyAction::Increase),
+        );
+        let bt: Behavior<MyAction> =
+            Behavior::new_sequence(vec![reusing_node.clone(), reusing_node.clone()]);
 
         let mermaid_string = bt.to_mermaid();
         println!("mermaid graph\n{}", mermaid_string)
