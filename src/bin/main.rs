@@ -1,9 +1,9 @@
 use crate::db::upsert_waypoints_of_system;
 use crate::db::DbSystemCoordinateData;
 use anyhow::{Context, Result};
-use bonsai_bt::{Event, Status, Timer, UpdateArgs, BT};
 use chrono::Local;
 use clap::Parser;
+use flwi_spacetraders_agent::behavior_tree::behavior_tree::Actionable;
 use flwi_spacetraders_agent::db::{
     insert_market_data, select_latest_marketplace_entry_of_system, select_waypoints_of_system,
     upsert_systems_from_receiver, upsert_waypoints_from_receiver, DbWaypointEntry,
@@ -18,12 +18,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::{event, Level};
+use tracing::{event, span, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use utoipa::OpenApi;
 
-use flwi_spacetraders_agent::behavior_tree::actions::ship_tick;
-use flwi_spacetraders_agent::behavior_tree::behavior_tree::{
+use flwi_spacetraders_agent::behavior_tree::behavior_tree::Behavior;
+use flwi_spacetraders_agent::behavior_tree::ship_behaviors::{
     ship_navigation_behaviors, ShipAction,
 };
 use flwi_spacetraders_agent::cli_args::{Cli, Commands};
@@ -221,10 +221,9 @@ async fn main() -> Result<()> {
                     "Detailed Routes with actions: \n{}",
                     serde_json::to_string(&route_debugging_list)?
                 );
-                let from = exploration_route.get(0).unwrap();
                 let to = exploration_route.get(1).unwrap();
                 let path = pathfinder::compute_path(
-                    from.symbol.clone(),
+                    command_ship.nav.waypoint_symbol.clone(),
                     to.symbol.clone(),
                     waypoints_of_home_system.clone(),
                     marketplace_entries
@@ -237,7 +236,7 @@ async fn main() -> Result<()> {
                 command_ship.set_route(path);
 
                 let blackboard: HashMap<String, String> = HashMap::new();
-                let _ = tokio::spawn(ship_loop(command_ship, blackboard)).await?;
+                let _ = tokio::spawn(ship_loop(command_ship)).await?;
 
                 //let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
                 //dbg!(my_ships);
@@ -247,19 +246,26 @@ async fn main() -> Result<()> {
     }
 }
 
-pub async fn ship_loop(
-    mut ship: ShipOperations,
-    mut blackboard: HashMap<String, String>,
-) -> Result<()> {
+pub async fn ship_loop(mut ship: ShipOperations) -> Result<()> {
     let behaviors = ship_navigation_behaviors();
-    let mut ship_behavior_tree = BT::new(behaviors.travel_behavior, blackboard);
+    let ship_behavior = behaviors.travel_behavior;
 
-    let mut timer = Timer::init_time();
-
+    // let mut ship_behavior_tree = BT::new(behaviors.travel_behavior, blackboard);
+    //
+    // let mut timer = Timer::init_time();
+    //
     loop {
-        let _ = ship_tick(&mut timer, &mut ship_behavior_tree, &mut ship).await;
+        let span = span!(Level::INFO, "ship_loop", ship = format!("{}", ship.symbol),);
+
+        let _enter = span.enter();
+
+        let result = ship_behavior.run(&(), &mut ship).await;
+
+        event!(Level::INFO, "Ship tick done - result: {:?}", result);
+
         sleep(Duration::from_secs(1)).await;
     }
+    Ok(())
 }
 
 async fn collect_all_systems(client: &StClient, pool: &Pool<Postgres>) -> Result<()> {

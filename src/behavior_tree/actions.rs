@@ -1,70 +1,73 @@
-use crate::behavior_tree::behavior_tree::ShipAction;
+use crate::behavior_tree::behavior_tree::{Actionable, Response};
+use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
 use crate::st_model::NavStatus;
-use bonsai_bt::{Event, Status, Timer, UpdateArgs, BT, RUNNING};
+use anyhow::anyhow;
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
-use std::sync::mpsc::channel;
-use tracing::{event, Level};
+use tracing::Span;
 
-pub async fn ship_tick(
-    timer: &mut Timer,
-    bt: &mut BT<ShipAction, HashMap<String, String>>,
-    state: &mut ShipOperations,
-) -> (Status, f64) {
-    // timer since bt was first invoked
-    let _t = timer.duration_since_start();
+#[async_trait]
+impl Actionable for ShipAction {
+    type ActionError = anyhow::Error;
+    type ActionArgs = ();
+    type ActionState = ShipOperations;
 
-    // have bt advance dt seconds into the future
-    let dt = timer.get_dt();
+    async fn run(
+        &self,
+        args: &Self::ActionArgs,
+        state: &mut Self::ActionState,
+    ) -> Result<Response, Self::ActionError> {
+        match self {
+            ShipAction::HasActiveNavigationNode => {
+                if state.current_action.is_some() {
+                    Ok(Response::Success)
+                } else {
+                    Err(anyhow!("No active node"))
+                }
+            }
 
-    // proceed to next iteration in event loop
-    let e: Event = UpdateArgs { dt }.into();
-
-    bt.tick(&e, &mut |args: bonsai_bt::ActionArgs<Event, ShipAction>,
-                      blackboard| {
-        let result = match *args.action {
             ShipAction::HasTravelActionEntry => {
                 let no_action_left = state.route.is_empty() && state.current_action.is_none();
                 if no_action_left {
-                    (Status::Success, args.dt)
+                    Ok(Response::Success)
                 } else {
-                    RUNNING
+                    Ok(Response::Running)
                 }
             }
             ShipAction::PopTravelAction => {
                 state.pop_travel_action();
-                (Status::Success, args.dt)
+                Ok(Response::Success)
             }
 
             ShipAction::IsNavigationAction => match state.current_action {
-                Some(TravelAction::Navigate { .. }) => (Status::Success, args.dt),
-                _ => (Status::Failure, args.dt),
+                Some(TravelAction::Navigate { .. }) => Ok(Response::Success),
+                _ => Err(anyhow!("Failed")),
             },
 
             ShipAction::IsRefuelAction => match state.current_action {
-                Some(TravelAction::Refuel { .. }) => (Status::Success, args.dt),
-                _ => (Status::Failure, args.dt),
+                Some(TravelAction::Refuel { .. }) => Ok(Response::Success),
+                _ => Err(anyhow!("Failed")),
             },
 
             ShipAction::WaitForArrival => match state.nav.status {
-                NavStatus::InTransit | NavStatus::Docked => (Status::Success, args.dt),
+                NavStatus::InTransit | NavStatus::Docked => Ok(Response::Success),
                 NavStatus::InOrbit => {
                     let now: DateTime<Utc> = Utc::now();
                     let arrival_time: DateTime<Utc> = state.nav.route.arrival;
                     let is_still_travelling: bool = now < arrival_time;
 
                     if is_still_travelling {
-                        RUNNING
+                        Ok(Response::Running)
                     } else {
-                        (Status::Success, args.dt)
+                        Ok(Response::Success)
                     }
                 }
             },
 
             ShipAction::FixNavStatusIfNecessary => match state.nav.status {
-                NavStatus::InTransit | NavStatus::Docked => (Status::Success, args.dt),
+                NavStatus::InTransit | NavStatus::Docked => Ok(Response::Success),
                 NavStatus::InOrbit => {
                     let now: DateTime<Utc> = Utc::now();
                     let arrival_time: DateTime<Utc> = state.nav.route.arrival;
@@ -73,24 +76,23 @@ pub async fn ship_tick(
                     if !is_still_travelling {
                         state.nav.status = NavStatus::InOrbit;
                     }
-                    (Status::Success, args.dt)
+                    Ok(Response::Success)
                 }
             },
 
             ShipAction::IsDocked => match state.nav.status {
-                NavStatus::Docked => (Status::Success, args.dt),
-                NavStatus::InOrbit | NavStatus::InTransit => (Status::Failure, args.dt),
+                NavStatus::Docked => Ok(Response::Success),
+                NavStatus::InOrbit | NavStatus::InTransit => Err(anyhow!("Failed")),
             },
 
             ShipAction::IsInOrbit => match state.nav.status {
-                NavStatus::InOrbit => (Status::Success, args.dt),
-                NavStatus::InTransit | NavStatus::Docked => (Status::Failure, args.dt),
+                NavStatus::InOrbit => Ok(Response::Success),
+                NavStatus::InTransit | NavStatus::Docked => Err(anyhow!("Failed")),
             },
 
-            ShipAction::IsCorrectFlightMode => (Status::Failure, args.dt),
+            ShipAction::IsCorrectFlightMode => Err(anyhow!("Failed")),
             ShipAction::MarkTravelActionAsCompleteIfPossible => match &state.current_action {
-                None => (Status::Success, args.dt),
-
+                None => Ok(Response::Success),
                 Some(action) => {
                     let is_done = match action {
                         TravelAction::Navigate { to, .. } => {
@@ -107,47 +109,35 @@ pub async fn ship_tick(
                     if is_done {
                         state.current_action = None;
                     }
-                    (Status::Success, args.dt)
+                    Ok(Response::Success)
                 }
             },
             ShipAction::CanSkipRefueling => {
                 println!("TODO - calculate CanSkipRefueling");
-                (Status::Success, args.dt)
+                Ok(Response::Success)
             }
 
-            ShipAction::Refuel => (Status::Failure, args.dt),
-            ShipAction::Dock => (Status::Failure, args.dt),
-            ShipAction::Orbit => {
-                // wild hack talking to a sync::mpsc channel from an async action
-                let (tx, rx) = channel();
-                let mut state_clone = state.clone();
-                let action = async move {
-                    println!("Calling orbit endpoint");
-                    let new_nav = state_clone.orbit().await;
-                    println!("Called orbit endpoint successfully");
-                    tx.send(new_nav).unwrap();
-                };
-
-                println!("spawning orbit task");
-                tokio::spawn(action);
-                println!("done spawning orbit task. Waiting for callback");
-                let new_nav = rx.recv().unwrap().unwrap();
-                println!("Got callback");
+            ShipAction::Refuel => Err(anyhow!("Failed")),
+            ShipAction::Dock => {
+                let new_nav = state.dock().await?;
                 state.set_nav(new_nav);
-
-                (Status::Failure, args.dt)
+                Ok(Response::Success)
             }
-            ShipAction::Navigate => (Status::Failure, args.dt),
-            ShipAction::SetFlightMode => (Status::Failure, args.dt),
-            ShipAction::NavigateToWaypoint => (Status::Failure, args.dt),
-        };
-
-        event!(
-            Level::INFO,
-            "Executed {:?} - result {:?}",
-            args.action,
-            result
-        );
-        result
-    })
+            ShipAction::Orbit => {
+                let new_nav = state.orbit().await?;
+                state.set_nav(new_nav);
+                Ok(Response::Success)
+            }
+            ShipAction::Navigate => Err(anyhow!("Failed")),
+            ShipAction::SetFlightMode => Err(anyhow!("Failed")),
+            ShipAction::NavigateToWaypoint => Err(anyhow!("Failed")),
+            ShipAction::PrintTravelActions => {
+                println!(
+                    "current action: {:?}\nqueue: {:?}",
+                    state.current_action, state.route
+                );
+                Ok(Response::Success)
+            }
+        }
+    }
 }

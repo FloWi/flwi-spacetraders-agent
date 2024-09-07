@@ -312,17 +312,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bonsai-bt"
-version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63e21b398f6e47f95df92b1eadcc1d164ce2725b211a7f338fceac4b1a0306ed"
-dependencies = [
- "petgraph",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -742,7 +731,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
- "bonsai-bt",
  "chrono",
  "clap",
  "envy",
@@ -762,11 +750,13 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "sqlx",
+ "strum_macros",
  "task-local-extensions",
  "tokio",
  "tokio-cron-scheduler",
  "tower-http",
  "tracing",
+ "tracing-core",
  "tracing-subscriber",
  "utoipa",
  "utoipa-rapidoc",
@@ -2821,6 +2811,19 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "strum_macros"
+version = "0.26.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn 2.0.74",
+]
 
 [[package]]
 name = "subtle"

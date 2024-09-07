@@ -53,11 +53,10 @@ impl ShipOperations {
         self.current_action = self.route.pop_front();
     }
 
-    pub async fn dock(&mut self) -> Result<()> {
+    pub async fn dock(&mut self) -> Result<Nav> {
         let response = self.client.dock_ship(self.ship.symbol.clone()).await?;
-        self.nav = response.data.nav.clone();
         println!("{:?}", response);
-        Ok(())
+        Ok(response.data.nav)
     }
 
     pub async fn orbit(&mut self) -> Result<Nav> {

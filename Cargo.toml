@@ -30,7 +30,6 @@ tower-http = { version = "0.5.2", features = ["cors", "trace", "fs"] }
 serde_json = { version = "1.0.116", features = ["raw_value"] }
 clap = { version = "4.5.4", features = ["derive", "env"] }
 reqwest-retry = "0.6.1"
-bonsai-bt = "0.6.3"
 serde_path_to_error = "0.1.16"
 metrics = "0.23.0"
 metrics-exporter-prometheus = "0.15.3"
@@ -38,3 +37,5 @@ log = "0.4.22"
 petgraph = "0.6.5"
 rand = "0.8.5"
 pathfinding = "4.11.0"
+strum_macros = "0.26.4"
+tracing-core = "0.1.32"
