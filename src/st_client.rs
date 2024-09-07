@@ -245,10 +245,10 @@ impl StClient {
 
 #[cfg(test)]
 mod test {
-    use itertools::Itertools;
+    use std::collections::HashSet;
 
-    use crate::st_model::MarketData;
     use crate::st_model::RegistrationResponse;
+    use crate::st_model::{MarketData, TradeGoodSymbol};
 
     use super::*;
 
@@ -297,8 +297,8 @@ mod test {
                 .clone()
                 .iter()
                 .map(|tg| tg.symbol.clone())
-                .collect::<Vec<String>>(),
-            vec!["FUEL"]
+                .collect::<Vec<TradeGoodSymbol>>(),
+            vec![TradeGoodSymbol::FUEL]
         );
 
         assert_eq!(
@@ -307,8 +307,8 @@ mod test {
                 .clone()
                 .iter()
                 .map(|tg| tg.symbol.clone())
-                .collect::<Vec<String>>(),
-            Vec::<String>::new()
+                .collect::<Vec<TradeGoodSymbol>>(),
+            Vec::<TradeGoodSymbol>::new()
         );
 
         assert_eq!(
@@ -317,9 +317,8 @@ mod test {
                 .clone()
                 .iter()
                 .map(|tg| tg.symbol.clone())
-                .sorted()
-                .collect::<Vec<String>>(),
-            vec!["SHIP_PARTS", "SHIP_PLATING"]
+                .collect::<HashSet<TradeGoodSymbol>>(),
+            HashSet::from([TradeGoodSymbol::SHIP_PARTS, TradeGoodSymbol::SHIP_PLATING])
         );
     }
 }

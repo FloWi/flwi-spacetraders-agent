@@ -27,10 +27,7 @@ pub fn compute_path(
         .iter()
         .map(|wps| {
             let is_refueling_station = market_entries_of_system.iter().any(|me| {
-                me.symbol == wps.symbol.0
-                    && me
-                        .all_trade_goods()
-                        .contains(&TradeGoodSymbol("FUEL".to_string()))
+                me.symbol == wps.symbol.0 && me.all_trade_goods().contains(&TradeGoodSymbol::FUEL)
             });
 
             PathfindingWaypoint {
