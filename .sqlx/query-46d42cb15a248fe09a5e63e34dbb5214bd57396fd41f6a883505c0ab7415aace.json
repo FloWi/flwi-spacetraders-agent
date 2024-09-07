@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nselect system_symbol\n     , (s.entry ->> 'x') :: int as \"x!: i64\"\n     , (s.entry ->> 'y') :: int as \"y!: i64\"\nfrom systems s\nwhere system_symbol = $1\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "system_symbol",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "x!: i64",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "y!: i64",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "46d42cb15a248fe09a5e63e34dbb5214bd57396fd41f6a883505c0ab7415aace"
+}

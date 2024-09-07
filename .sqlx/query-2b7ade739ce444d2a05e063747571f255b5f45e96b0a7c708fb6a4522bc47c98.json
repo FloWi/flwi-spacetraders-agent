@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nwith details as (select s.system_symbol\n                  , (s.entry ->> 'x') :: int                   as x\n                  , (s.entry ->> 'y') :: int                   as y\n                  , count(w.*)                                 as num_entries_in_waypoint_table\n                  , jsonb_array_length(s.entry -> 'waypoints') as num_waypoints_in_system_json\n             from systems s\n                      left join waypoints w using (system_symbol)\n             group by s.system_symbol, s.entry)\nselect system_symbol\n     , x as \"x!: i64\"\n     , y as \"y!: i64\"\nfrom details\nwhere num_waypoints_in_system_json > 0\n  and num_waypoints_in_system_json != num_entries_in_waypoint_table\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "system_symbol",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "x!: i64",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "y!: i64",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "2b7ade739ce444d2a05e063747571f255b5f45e96b0a7c708fb6a4522bc47c98"
+}

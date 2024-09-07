@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nselect system_symbol\n     , waypoint_symbol\n     , entry as \"entry: Json<WaypointInSystemResponseData>\"\n     , created_at\n     , updated_at\nfrom waypoints\nwhere system_symbol = $1\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "system_symbol",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "waypoint_symbol",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "entry: Json<WaypointInSystemResponseData>",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "adbd7ca29cc8b1dd83fe0b707825e13eeb967070e2927233d8d9bca3cbc45fa4"
+}

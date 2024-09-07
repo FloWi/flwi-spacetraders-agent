@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT waypoint_symbol\n        FROM waypoints\n        WHERE jsonb_path_exists(entry, ('$.traits[*] ? (@.symbol == \"' || $1::text || '\")')::jsonpath)\n        AND system_symbol = $2\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "waypoint_symbol",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "179cd95ab3532d5d96e00b8642e45b715cae7e062ea6ce2b6512dd4d9d52c752"
+}

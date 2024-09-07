@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nwith latest_markets as (select DISTINCT ON (waypoint_symbol) waypoint_symbol, entry, created_at\n                        from markets m\n                        order by waypoint_symbol, entry, created_at desc)\n   , market_entries as (select w.system_symbol\n                             , m.waypoint_symbol\n                             , m.entry\n                             , m.created_at\n                        from latest_markets m\n                                 join waypoints w on m.waypoint_symbol = w.waypoint_symbol)\nselect waypoint_symbol\n     , entry as \"entry: Json<MarketData>\"\n     , created_at\nfrom market_entries\nwhere system_symbol = $1\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "waypoint_symbol",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "entry: Json<MarketData>",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 2,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f298a82d94eed64d988e381cdbc880529ecc1a0cb20eee7a8067a938415f807f"
+}

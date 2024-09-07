@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into markets\nselect *\nfrom jsonb_populate_recordset(NULL::markets, $1)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "522befdd240f0501831d55615709a7bf242d445a64a41eee335bd16323fcaec9"
+}
