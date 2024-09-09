@@ -312,8 +312,7 @@ mod tests {
         mock_client
             .expect_dock_ship()
             .with(eq("FLWI-1".to_string()))
-            .times(1)
-            .returning(move |_| {
+            .return_once(move |_| {
                 Ok(DockShipResponse {
                     data: NavResponse { nav: create_nav() },
                 })
@@ -400,7 +399,6 @@ mod tests {
         };
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
-        let result = ship_ops.dock().await;
         let result = ship_ops.dock().await;
         assert!(result.is_ok());
     }
