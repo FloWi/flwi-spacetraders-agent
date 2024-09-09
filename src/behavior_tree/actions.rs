@@ -51,7 +51,8 @@ impl Actionable for ShipAction {
             },
 
             ShipAction::WaitForArrival => match state.nav.status {
-                NavStatus::InTransit | NavStatus::Docked => Ok(Response::Success),
+                NavStatus::Docked => Ok(Response::Success),
+                NavStatus::InTransit => Ok(Response::Running),
                 NavStatus::InOrbit => {
                     let now: DateTime<Utc> = Utc::now();
                     let arrival_time: DateTime<Utc> = state.nav.route.arrival;
@@ -81,12 +82,14 @@ impl Actionable for ShipAction {
 
             ShipAction::IsDocked => match state.nav.status {
                 NavStatus::Docked => Ok(Response::Success),
-                NavStatus::InOrbit | NavStatus::InTransit => Err(anyhow!("Failed")),
+                NavStatus::InTransit => Ok(Response::Running),
+                NavStatus::InOrbit => Err(anyhow!("Failed")),
             },
 
             ShipAction::IsInOrbit => match state.nav.status {
                 NavStatus::InOrbit => Ok(Response::Success),
-                NavStatus::InTransit | NavStatus::Docked => Err(anyhow!("Failed")),
+                NavStatus::InTransit => Ok(Response::Running),
+                NavStatus::Docked => Err(anyhow!("Failed")),
             },
 
             ShipAction::IsCorrectFlightMode => {
@@ -230,7 +233,6 @@ impl Actionable for ShipAction {
 
 #[cfg(test)]
 mod tests {
-    use crate::behavior_tree;
     use crate::behavior_tree::actions::TestObjects;
     use crate::behavior_tree::behavior_tree::Actionable;
     use crate::behavior_tree::behavior_tree::Response;

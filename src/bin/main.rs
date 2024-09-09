@@ -136,7 +136,7 @@ async fn main() -> Result<()> {
                 // let _ = insert_market_data(&pool, market_data.clone(), now).await;
 
                 let ships = collect_all_ships(&authenticated_client).await?;
-                let client = Arc::new(authenticated_client);
+                let client: Arc<dyn StClientTrait> = Arc::new(authenticated_client);
 
                 let mut my_ships: Vec<_> = ships
                     .iter()

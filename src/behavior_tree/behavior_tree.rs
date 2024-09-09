@@ -372,6 +372,7 @@ where
                 for b in behaviors {
                     let result = b.run(args, state).await;
                     match result {
+                        Ok(Response::Running) => return Ok(Response::Running),
                         Ok(r) => return Ok(r),
                         Err(_) => continue,
                     }
@@ -384,6 +385,7 @@ where
                 for b in behaviors {
                     let result = b.run(args, state).await;
                     match result {
+                        Ok(Response::Running) => return Ok(Response::Running),
                         Ok(_) => continue,
                         Err(_) => {
                             return Err(Self::ActionError::from(anyhow!("one behavior failed")))
@@ -435,6 +437,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{Actionable, Behavior, Response};
+    use crate::behavior_tree::behavior_tree::Response::Running;
     use anyhow::anyhow;
     use async_trait::async_trait;
     use serde::Serialize;
@@ -444,7 +447,8 @@ mod tests {
     enum MyAction {
         Increase,
         Decrease,
-        IsLowerThan5,
+        IsLowerThan2,
+        ReturnRunning,
     }
 
     #[async_trait]
@@ -467,13 +471,14 @@ mod tests {
                     state.0 -= 1;
                     Ok(Response::Success)
                 }
-                MyAction::IsLowerThan5 => {
-                    if state.0 < 5 {
+                MyAction::IsLowerThan2 => {
+                    if state.0 < 2 {
                         Ok(Response::Success)
                     } else {
-                        Err(anyhow!(">= 5"))
+                        Err(anyhow!(">= 2"))
                     }
                 }
+                MyAction::ReturnRunning => Ok(Response::Running),
             }
         }
     }
@@ -512,9 +517,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_sequence_with_running_node() {
+        let bt: Behavior<MyAction> = Behavior::new_sequence(vec![
+            Behavior::new_action(MyAction::Increase),
+            Behavior::new_action(MyAction::ReturnRunning),
+            Behavior::new_action(MyAction::Decrease),
+        ])
+        .into();
+
+        let mut my_state = MyState(0);
+
+        let result = bt.run(&(), &mut my_state).await.unwrap();
+        println!("{:?}", my_state);
+        assert_eq!(my_state, MyState(1));
+        assert_eq!(result, Running)
+    }
+
+    #[tokio::test]
     async fn test_while() {
         let bt: Behavior<MyAction> = Behavior::new_while(
-            Behavior::new_action(MyAction::IsLowerThan5),
+            Behavior::new_action(MyAction::IsLowerThan2),
             Behavior::new_action(MyAction::Increase),
         );
 
@@ -522,13 +544,13 @@ mod tests {
 
         bt.run(&(), &mut my_state).await.unwrap();
         println!("{:?}", my_state);
-        assert_eq!(my_state, MyState(5));
+        assert_eq!(my_state, MyState(2));
     }
 
     #[tokio::test]
     async fn test_while_terminating_immediately() {
         let bt: Behavior<MyAction> = Behavior::new_while(
-            Behavior::new_action(MyAction::IsLowerThan5),
+            Behavior::new_action(MyAction::IsLowerThan2),
             Behavior::new_action(MyAction::Increase),
         );
 
@@ -543,10 +565,12 @@ mod tests {
     #[tokio::test]
     async fn test_equality() {
         // can use this test later for finding reused blocks that I want to not expand in my renders of the whole tree.
-        let bt: Behavior<MyAction> = Behavior::new_while(
-            Behavior::new_action(MyAction::IsLowerThan5),
+        let mut bt: Behavior<MyAction> = Behavior::new_while(
+            Behavior::new_action(MyAction::IsLowerThan2),
             Behavior::new_action(MyAction::Increase),
         );
+
+        bt.update_indices();
 
         assert_eq!(bt, bt.clone());
     }
@@ -555,11 +579,13 @@ mod tests {
     async fn test_hashing() {
         // can use this test later for finding reused blocks that I want to not expand in my renders of the whole tree.
         let reusing_node = Behavior::new_while(
-            Behavior::new_action(MyAction::IsLowerThan5),
+            Behavior::new_action(MyAction::IsLowerThan2),
             Behavior::new_action(MyAction::Increase),
         );
-        let bt: Behavior<MyAction> =
+        let mut bt: Behavior<MyAction> =
             Behavior::new_sequence(vec![reusing_node.clone(), reusing_node.clone()]);
+
+        bt.update_indices();
 
         let mermaid_string = bt.to_mermaid();
         println!("mermaid graph\n{}", mermaid_string)

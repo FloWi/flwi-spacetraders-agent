@@ -117,6 +117,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         orbit_if_necessary.clone(),
         adjust_flight_mode_if_necessary.clone(),
         Behavior::new_action(ShipAction::NavigateToWaypoint),
+        Behavior::new_action(ShipAction::WaitForArrival),
     ]);
 
     let mut refuel_behavior = Behavior::new_sequence(vec![
