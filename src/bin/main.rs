@@ -37,7 +37,7 @@ use flwi_spacetraders_agent::pagination::{
 };
 use flwi_spacetraders_agent::pathfinder::pathfinder;
 use flwi_spacetraders_agent::reqwest_helpers::create_client;
-use flwi_spacetraders_agent::ship::{MyShip, ShipOperations};
+use flwi_spacetraders_agent::ship::ShipOperations;
 use flwi_spacetraders_agent::st_client::StClient;
 use flwi_spacetraders_agent::st_model::{
     AgentSymbol, FactionSymbol, LabelledCoordinate, MarketData, NavStatus, RegistrationRequest,
@@ -140,7 +140,7 @@ async fn main() -> Result<()> {
 
                 let mut my_ships: Vec<_> = ships
                     .iter()
-                    .map(|s| ShipOperations::new(MyShip::new(s.clone()), Arc::clone(&client)))
+                    .map(|s| ShipOperations::new(s.clone(), Arc::clone(&client)))
                     .collect();
 
                 let command_ship_name = spacetraders_agent_symbol + "-1";
@@ -193,7 +193,7 @@ async fn main() -> Result<()> {
                                 .iter()
                                 .map(|db| db.entry.0.clone())
                                 .collect(),
-                            command_ship.ship.ship.clone(),
+                            command_ship.ship.clone(),
                         ) {
                             debug_info.insert("actions", json!(&travel_instructions));
 
@@ -230,7 +230,7 @@ async fn main() -> Result<()> {
                         .iter()
                         .map(|db| db.entry.0.clone())
                         .collect(),
-                    command_ship.ship.ship.clone(),
+                    command_ship.ship.clone(),
                 )
                 .unwrap();
                 command_ship.set_route(path);

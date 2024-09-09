@@ -2,26 +2,13 @@ use crate::pathfinder::pathfinder::TravelAction;
 use crate::st_client::StClient;
 use crate::st_model::{FlightMode, Nav, Ship, WaypointSymbol};
 use anyhow::*;
-use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct MyShip {
-    #[serde(flatten)]
-    pub ship: Ship,
-}
-
-impl MyShip {
-    pub fn new(api_ship: Ship) -> Self {
-        MyShip { ship: api_ship }
-    }
-}
 #[derive(Clone, Debug)]
 pub struct ShipOperations {
-    pub ship: MyShip,
+    pub ship: Ship,
     client: Arc<StClient>,
     pub route: VecDeque<TravelAction>,
     pub current_action: Option<TravelAction>,
@@ -36,7 +23,7 @@ impl ShipOperations {
         self.route = VecDeque::from(new_route);
     }
 
-    pub fn new(ship: MyShip, client: Arc<StClient>) -> Self {
+    pub fn new(ship: Ship, client: Arc<StClient>) -> Self {
         ShipOperations {
             ship,
             client,
@@ -77,31 +64,16 @@ impl ShipOperations {
 
     // Other methods that require API access...
 
-    pub fn get_ship(&self) -> &MyShip {
+    pub fn get_ship(&self) -> &Ship {
         &self.ship
     }
 
-    pub fn get_ship_mut(&mut self) -> &mut MyShip {
+    pub fn get_ship_mut(&mut self) -> &mut Ship {
         &mut self.ship
     }
 }
 
 impl Deref for ShipOperations {
-    type Target = MyShip;
-
-    fn deref(&self) -> &Self::Target {
-        &self.ship
-    }
-}
-
-// If you need mutable access, you can also implement DerefMut
-impl DerefMut for ShipOperations {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.ship
-    }
-}
-
-impl Deref for MyShip {
     type Target = Ship;
 
     fn deref(&self) -> &Self::Target {
@@ -110,7 +82,7 @@ impl Deref for MyShip {
 }
 
 // If you need mutable access, you can also implement DerefMut
-impl DerefMut for MyShip {
+impl DerefMut for ShipOperations {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.ship
     }
