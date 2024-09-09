@@ -230,16 +230,20 @@ impl Actionable for ShipAction {
 
 #[cfg(test)]
 mod tests {
+    use crate::behavior_tree;
+    use crate::behavior_tree::actions::TestObjects;
+    use crate::behavior_tree::behavior_tree::Actionable;
+    use crate::behavior_tree::behavior_tree::Response;
+    use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
     use crate::pagination::{PaginatedResponse, PaginationInput};
     use crate::ship::ShipOperations;
     use crate::st_client::{Data, StClientTrait};
     use crate::st_model::{
-        AgentInfoResponse, AgentSymbol, Cargo, Cooldown, Crew, DockShipResponse, Engine,
-        FlightMode, Frame, Fuel, FuelConsumed, GetConstructionResponse, GetMarketResponse,
-        ListAgentsResponse, Nav, NavResponse, NavStatus, NavigateShipResponse, OrbitShipResponse,
-        PatchShipNavResponse, Reactor, Registration, RegistrationRequest, RegistrationResponse,
-        Requirements, Route, Ship, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint,
-        WaypointInSystemResponseData, WaypointSymbol,
+        AgentInfoResponse, AgentSymbol, DockShipResponse, FlightMode, GetConstructionResponse,
+        GetMarketResponse, ListAgentsResponse, NavResponse, NavStatus, NavigateShipResponse,
+        OrbitShipResponse, PatchShipNavResponse, RegistrationRequest, RegistrationResponse, Ship,
+        StStatusResponse, SystemSymbol, SystemsPageData, WaypointInSystemResponseData,
+        WaypointSymbol,
     };
     use async_trait::async_trait;
     use mockall::mock;
@@ -284,7 +288,95 @@ mod tests {
     #[tokio::test]
     async fn test_experiment_with_mockall() {
         let mut mock_client = MockStClient::new();
-        let create_nav = || Nav {
+
+        mock_client
+            .expect_dock_ship()
+            .with(eq("FLWI-1".to_string()))
+            .return_once(move |_| {
+                Ok(DockShipResponse {
+                    data: NavResponse {
+                        nav: TestObjects::create_nav(),
+                    },
+                })
+            });
+
+        let ship = TestObjects::test_ship();
+
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let result = ship_ops.dock().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_dock_if_necessary_behavior_on_docked_ship() {
+        let mut mock_client = MockStClient::new();
+
+        let mocked_client = mock_client
+            .expect_dock_ship()
+            .with(eq("FLWI-1".to_string()))
+            .returning(move |_| {
+                Ok(DockShipResponse {
+                    data: NavResponse {
+                        nav: TestObjects::create_nav(),
+                    },
+                })
+            });
+
+        // if ship is docked
+
+        let mut ship = TestObjects::test_ship();
+        ship.nav.status = NavStatus::Docked;
+
+        let behaviors = ship_navigation_behaviors();
+        let ship_behavior = behaviors.dock_if_necessary;
+
+        mocked_client.never();
+
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let result = ship_behavior.run(&(), &mut ship_ops).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_dock_if_necessary_behavior_on_orbiting_ship() {
+        let mut mock_client = MockStClient::new();
+
+        let mocked_client = mock_client
+            .expect_dock_ship()
+            .with(eq("FLWI-1".to_string()))
+            .returning(move |_| {
+                Ok(DockShipResponse {
+                    data: NavResponse {
+                        nav: TestObjects::create_nav(),
+                    },
+                })
+            });
+
+        // if ship is docked
+
+        let mut ship = TestObjects::test_ship();
+        ship.nav.status = NavStatus::InOrbit;
+
+        let behaviors = ship_navigation_behaviors();
+        let ship_behavior = behaviors.dock_if_necessary;
+
+        mocked_client.times(1);
+
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let result = ship_behavior.run(&(), &mut ship_ops).await.unwrap();
+        assert_eq!(result, Response::Success);
+    }
+}
+
+struct TestObjects;
+use crate::st_model::{
+    Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, Nav, Reactor,
+    Registration, Requirements, Route, Ship, SystemSymbol, Waypoint, WaypointSymbol,
+};
+
+impl TestObjects {
+    pub fn create_nav() -> Nav {
+        Nav {
             system_symbol: SystemSymbol("X1-FOO".to_string()),
             waypoint_symbol: WaypointSymbol("X1-FOO-BAR".to_string()),
             route: Route {
@@ -307,25 +399,18 @@ mod tests {
             },
             status: NavStatus::InTransit,
             flight_mode: FlightMode::Drift,
-        };
+        }
+    }
 
-        mock_client
-            .expect_dock_ship()
-            .with(eq("FLWI-1".to_string()))
-            .return_once(move |_| {
-                Ok(DockShipResponse {
-                    data: NavResponse { nav: create_nav() },
-                })
-            });
-
-        let ship = Ship {
+    pub fn test_ship() -> Ship {
+        Ship {
             symbol: "FLWI-1".to_string(),
             registration: Registration {
                 name: "FLWI".to_string(),
                 faction_symbol: "GALACTIC".to_string(),
                 role: "".to_string(),
             },
-            nav: create_nav(),
+            nav: Self::create_nav(),
             crew: Crew {
                 current: 0,
                 required: 0,
@@ -396,10 +481,6 @@ mod tests {
                     timestamp: Default::default(),
                 },
             },
-        };
-
-        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
-        let result = ship_ops.dock().await;
-        assert!(result.is_ok());
+        }
     }
 }
