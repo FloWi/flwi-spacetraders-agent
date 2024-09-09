@@ -176,7 +176,7 @@ impl Actionable for ShipAction {
                 }
             },
 
-            ShipAction::Refuel => Err(anyhow!("Failed")),
+            ShipAction::Refuel => Err(anyhow!("TODO")),
             ShipAction::Dock => {
                 let new_nav = state.dock().await?;
                 state.set_nav(new_nav);

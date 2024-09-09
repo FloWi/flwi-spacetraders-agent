@@ -8,7 +8,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
 use strum_macros::Display;
 use tokio::time::sleep;
-use tracing::{span, Level, Span};
+use tracing::{event, span, Level, Span};
 use tracing_core::field::{Field, Visit};
 use tracing_subscriber::fmt::format;
 // inspired by @chamlis design from spacetraders discord
@@ -337,16 +337,13 @@ where
     ) -> Result<Response, Self::ActionError> {
         let hash = self.calculate_hash();
 
-        let span = span!(
+        let actionable_label = format!("{} ({:x})", &self, hash);
+        event!(
             Level::INFO,
-            "actionable_run",
-            actionable = format!("{} ({:x})", &self, hash),
-            index = self.index()
+            message = "Starting run",
+            index = self.index(),
+            actionable = actionable_label,
         );
-
-        let _enter = span.enter();
-
-        tracing::info!("Starting action");
 
         let result = match self {
             Behavior::Action(a, _) => {
@@ -420,15 +417,26 @@ where
                 }
             },
         };
-        let result_text = match &result {
+        match &result {
             Ok(o) => {
-                format!("Ok({})", o)
+                event!(
+                    Level::INFO,
+                    message = "Finished action",
+                    index = self.index(),
+                    actionable = actionable_label,
+                    result = %o,
+                );
             }
-            Err(err) => {
-                format!("Err({})", err)
+            Err(e) => {
+                event!(
+                    Level::INFO,
+                    message = "Finished action with Error",
+                    index = self.index(),
+                    actionable = actionable_label,
+                    result = %e,
+                );
             }
         };
-        tracing::info!("Finished action. Result: {}", result_text);
 
         result
     }

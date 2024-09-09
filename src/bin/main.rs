@@ -1,9 +1,9 @@
 use crate::db::upsert_waypoints_of_system;
 use crate::db::DbSystemCoordinateData;
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Result};
 use chrono::Local;
 use clap::Parser;
-use flwi_spacetraders_agent::behavior_tree::behavior_tree::Actionable;
+use flwi_spacetraders_agent::behavior_tree::behavior_tree::{Actionable, Response};
 use flwi_spacetraders_agent::db::{
     insert_market_data, select_latest_marketplace_entry_of_system, select_waypoints_of_system,
     upsert_systems_from_receiver, upsert_waypoints_from_receiver, DbWaypointEntry,
@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::{event, span, Level};
+use tracing::{event, span, Instrument, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use utoipa::OpenApi;
 
@@ -259,6 +259,7 @@ pub async fn ship_loop(mut ship: ShipOperations) -> Result<()> {
     //
     // let mut timer = Timer::init_time();
     //
+
     loop {
         let span = span!(Level::INFO, "ship_loop", ship = format!("{}", ship.symbol),);
 
@@ -266,7 +267,22 @@ pub async fn ship_loop(mut ship: ShipOperations) -> Result<()> {
 
         let result = ship_behavior.run(&(), &mut ship).await;
 
-        event!(Level::INFO, "Ship tick done - result: {:?}", result);
+        match &result {
+            Ok(o) => {
+                event!(
+                    name: "Ship Tick done ",
+                    Level::INFO,
+                    result = %o,
+                );
+            }
+            Err(e) => {
+                event!(
+                    name: "Ship Tick done with Error",
+                    Level::INFO,
+                    result = %e,
+                );
+            }
+        }
 
         sleep(Duration::from_secs(1)).await;
     }
