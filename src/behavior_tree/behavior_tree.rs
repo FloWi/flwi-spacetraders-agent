@@ -182,7 +182,7 @@ impl<A: Display + Hash> Behavior<A> {
             r##"%%{{init: {{"#flowchart": {{"htmlLabels": false}}}} }}%%"##
         )
         .unwrap();
-        writeln!(output, "\ngraph TD").unwrap();
+        writeln!(output, "\ngraph LR").unwrap();
         self.build_mermaid(&mut output, None, labelled_sub_graphs);
         output
     }

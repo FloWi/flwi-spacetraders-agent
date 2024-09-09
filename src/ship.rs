@@ -10,11 +10,20 @@ use std::sync::Arc;
 pub struct ShipOperations {
     pub ship: Ship,
     client: Arc<dyn StClientTrait>,
-    pub route: VecDeque<TravelAction>,
-    pub current_action: Option<TravelAction>,
+    pub travel_action_queue: VecDeque<TravelAction>,
+    pub current_travel_action: Option<TravelAction>,
+    pub current_navigation_destination: Option<WaypointSymbol>,
+    pub explore_location_queue: VecDeque<WaypointSymbol>,
+    pub current_explore_location: Option<WaypointSymbol>,
 }
 
 impl ShipOperations {
+    pub fn last_travel_action(&self) -> Option<&TravelAction> {
+        self.current_travel_action
+            .as_ref()
+            .or_else(|| self.travel_action_queue.back())
+    }
+
     pub(crate) fn set_nav(&mut self, new_nav: Nav) {
         self.nav = new_nav;
     }
@@ -24,20 +33,27 @@ impl ShipOperations {
     }
 
     pub fn set_route(&mut self, new_route: Vec<TravelAction>) {
-        self.route = VecDeque::from(new_route);
+        self.travel_action_queue = VecDeque::from(new_route);
     }
 
     pub fn new(ship: Ship, client: Arc<dyn StClientTrait>) -> Self {
         ShipOperations {
             ship,
             client,
-            route: VecDeque::new(),
-            current_action: None,
+            travel_action_queue: VecDeque::new(),
+            current_travel_action: None,
+            current_navigation_destination: None,
+            explore_location_queue: VecDeque::new(),
+            current_explore_location: None,
         }
     }
 
     pub fn pop_travel_action(&mut self) {
-        self.current_action = self.route.pop_front();
+        self.current_travel_action = self.travel_action_queue.pop_front();
+    }
+
+    pub fn pop_explore_location(&mut self) {
+        self.current_explore_location = self.explore_location_queue.pop_front();
     }
 
     pub async fn dock(&mut self) -> Result<Nav> {

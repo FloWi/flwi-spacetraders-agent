@@ -1,3 +1,4 @@
+use crate::behavior_tree::behavior_tree::Response::Success;
 use crate::behavior_tree::behavior_tree::{Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::pathfinder::pathfinder::TravelAction;
@@ -19,39 +20,40 @@ impl Actionable for ShipAction {
         state: &mut Self::ActionState,
     ) -> Result<Response, Self::ActionError> {
         match self {
-            ShipAction::HasActiveNavigationNode => {
-                if state.current_action.is_some() {
-                    Ok(Response::Success)
+            ShipAction::HasActiveTravelAction => {
+                if state.current_travel_action.is_some() {
+                    Ok(Success)
                 } else {
-                    Err(anyhow!("No active node"))
+                    Err(anyhow!("No active travel_action"))
                 }
             }
 
             ShipAction::HasTravelActionEntry => {
-                let no_action_left = state.route.is_empty() && state.current_action.is_none();
+                let no_action_left =
+                    state.travel_action_queue.is_empty() && state.current_travel_action.is_none();
                 if no_action_left {
-                    Ok(Response::Success)
+                    Ok(Success)
                 } else {
                     Ok(Response::Running)
                 }
             }
             ShipAction::PopTravelAction => {
                 state.pop_travel_action();
-                Ok(Response::Success)
+                Ok(Success)
             }
 
-            ShipAction::IsNavigationAction => match state.current_action {
-                Some(TravelAction::Navigate { .. }) => Ok(Response::Success),
+            ShipAction::IsNavigationAction => match state.current_travel_action {
+                Some(TravelAction::Navigate { .. }) => Ok(Success),
                 _ => Err(anyhow!("Failed")),
             },
 
-            ShipAction::IsRefuelAction => match state.current_action {
-                Some(TravelAction::Refuel { .. }) => Ok(Response::Success),
+            ShipAction::IsRefuelAction => match state.current_travel_action {
+                Some(TravelAction::Refuel { .. }) => Ok(Success),
                 _ => Err(anyhow!("Failed")),
             },
 
             ShipAction::WaitForArrival => match state.nav.status {
-                NavStatus::Docked => Ok(Response::Success),
+                NavStatus::Docked => Ok(Success),
                 NavStatus::InTransit => Ok(Response::Running),
                 NavStatus::InOrbit => {
                     let now: DateTime<Utc> = Utc::now();
@@ -61,13 +63,13 @@ impl Actionable for ShipAction {
                     if is_still_travelling {
                         Ok(Response::Running)
                     } else {
-                        Ok(Response::Success)
+                        Ok(Success)
                     }
                 }
             },
 
             ShipAction::FixNavStatusIfNecessary => match state.nav.status {
-                NavStatus::InTransit | NavStatus::Docked => Ok(Response::Success),
+                NavStatus::InTransit | NavStatus::Docked => Ok(Success),
                 NavStatus::InOrbit => {
                     let now: DateTime<Utc> = Utc::now();
                     let arrival_time: DateTime<Utc> = state.nav.route.arrival;
@@ -76,29 +78,29 @@ impl Actionable for ShipAction {
                     if !is_still_travelling {
                         state.nav.status = NavStatus::InOrbit;
                     }
-                    Ok(Response::Success)
+                    Ok(Success)
                 }
             },
 
             ShipAction::IsDocked => match state.nav.status {
-                NavStatus::Docked => Ok(Response::Success),
+                NavStatus::Docked => Ok(Success),
                 NavStatus::InTransit => Ok(Response::Running),
                 NavStatus::InOrbit => Err(anyhow!("Failed")),
             },
 
             ShipAction::IsInOrbit => match state.nav.status {
-                NavStatus::InOrbit => Ok(Response::Success),
+                NavStatus::InOrbit => Ok(Success),
                 NavStatus::InTransit => Ok(Response::Running),
                 NavStatus::Docked => Err(anyhow!("Failed")),
             },
 
             ShipAction::IsCorrectFlightMode => {
-                if let Some(action) = &state.current_action {
+                if let Some(action) = &state.current_travel_action {
                     match action {
                         TravelAction::Navigate { mode, .. } => {
                             let current_mode = &state.get_ship().nav.flight_mode;
                             if current_mode == mode {
-                                Ok(Response::Success)
+                                Ok(Success)
                             } else {
                                 Err(anyhow!(
                                     "Failed - current mode {} != wanted mode {}",
@@ -115,28 +117,30 @@ impl Actionable for ShipAction {
                     Err(anyhow!("Failed - no current action"))
                 }
             }
-            ShipAction::MarkTravelActionAsCompleteIfPossible => match &state.current_action {
-                None => Ok(Response::Success),
-                Some(action) => {
-                    let is_done = match action {
-                        TravelAction::Navigate { to, .. } => {
-                            state.nav.waypoint_symbol == *to
-                                && state.nav.status != NavStatus::InTransit
-                        }
-                        TravelAction::Refuel { at, .. } => {
-                            state.nav.waypoint_symbol == *at
-                                && state.nav.status != NavStatus::InTransit
-                                && state.fuel.current == state.fuel.capacity
-                        }
-                    };
+            ShipAction::MarkTravelActionAsCompleteIfPossible => {
+                match &state.current_travel_action {
+                    None => Ok(Success),
+                    Some(action) => {
+                        let is_done = match action {
+                            TravelAction::Navigate { to, .. } => {
+                                state.nav.waypoint_symbol == *to
+                                    && state.nav.status != NavStatus::InTransit
+                            }
+                            TravelAction::Refuel { at, .. } => {
+                                state.nav.waypoint_symbol == *at
+                                    && state.nav.status != NavStatus::InTransit
+                                    && state.fuel.current == state.fuel.capacity
+                            }
+                        };
 
-                    if is_done {
-                        state.current_action = None;
+                        if is_done {
+                            state.current_travel_action = None;
+                        }
+                        Ok(Success)
                     }
-                    Ok(Response::Success)
                 }
-            },
-            ShipAction::CanSkipRefueling => match &state.current_action {
+            }
+            ShipAction::CanSkipRefueling => match &state.current_travel_action {
                 None => Err(anyhow!(
                     "Called CanSkipRefueling, but current action is None",
                 )),
@@ -148,8 +152,10 @@ impl Actionable for ShipAction {
                     // - queued_action #1 is: go_to_waypoint X
                     // - queued_action #2 is: refuel_at_waypoint X
                     // - we have enough fuel to reach X in desired flight mode without refueling
-                    let maybe_navigate_action: Option<&TravelAction> = state.route.get(0);
-                    let maybe_refuel_action: Option<&TravelAction> = state.route.get(1);
+                    let maybe_navigate_action: Option<&TravelAction> =
+                        state.travel_action_queue.get(0);
+                    let maybe_refuel_action: Option<&TravelAction> =
+                        state.travel_action_queue.get(1);
 
                     if let Some((
                         TravelAction::Navigate {
@@ -160,7 +166,7 @@ impl Actionable for ShipAction {
                     {
                         let has_enough_fuel = state.fuel.current >= (*fuel_consumption as i32);
                         if has_enough_fuel {
-                            Ok(Response::Success)
+                            Ok(Success)
                         } else {
                             Err(anyhow!(
                                 "Called CanSkipRefueling, but not enough fuel to reach destination",
@@ -181,28 +187,28 @@ impl Actionable for ShipAction {
                     data: RefuelShipResponseBody { fuel: new_fuel, .. },
                 } = state.refuel(false).await?;
                 state.set_fuel(new_fuel);
-                Ok(Response::Success)
+                Ok(Success)
             }
 
             ShipAction::Dock => {
                 let new_nav = state.dock().await?;
                 state.set_nav(new_nav);
-                Ok(Response::Success)
+                Ok(Success)
             }
 
             ShipAction::Orbit => {
                 let new_nav = state.orbit().await?;
                 state.set_nav(new_nav);
-                Ok(Response::Success)
+                Ok(Success)
             }
 
             ShipAction::SetFlightMode => {
-                if let Some(action) = &state.current_action {
+                if let Some(action) = &state.current_travel_action {
                     match action {
                         TravelAction::Navigate { mode, .. } => {
                             let new_nav = state.set_flight_mode(mode).await?;
                             state.set_nav(new_nav);
-                            Ok(Response::Success)
+                            Ok(Success)
                         }
                         TravelAction::Refuel { .. } => {
                             Err(anyhow!("Failed - no travel mode on refuel action"))
@@ -213,12 +219,12 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::NavigateToWaypoint => {
-                if let Some(action) = &state.current_action {
+                if let Some(action) = &state.current_travel_action {
                     match action {
                         TravelAction::Navigate { to, .. } => {
                             let new_nav = state.navigate(to).await?;
                             state.set_nav(new_nav.clone());
-                            Ok(Response::Success)
+                            Ok(Success)
                         }
                         TravelAction::Refuel { .. } => Err(anyhow!(
                             "Failed - can't navigate - current action is refuel action"
@@ -231,9 +237,77 @@ impl Actionable for ShipAction {
             ShipAction::PrintTravelActions => {
                 println!(
                     "current action: {:?}\nqueue: {:?}",
-                    state.current_action, state.route
+                    state.current_travel_action, state.travel_action_queue
                 );
-                Ok(Response::Success)
+                Ok(Success)
+            }
+            ShipAction::HasExploreLocationEntry => {
+                let no_explore_location_left = state.explore_location_queue.is_empty()
+                    && state.current_explore_location.is_none();
+                if no_explore_location_left {
+                    Ok(Success)
+                } else {
+                    Ok(Response::Running)
+                }
+            }
+            ShipAction::PopExploreLocationAsDestination => {
+                state.pop_explore_location();
+                Ok(Success)
+            }
+            ShipAction::HasActiveExploreLocationEntry => {
+                if state.current_explore_location.is_some() {
+                    Ok(Success)
+                } else {
+                    Err(anyhow!("No active explore_destination"))
+                }
+            }
+            ShipAction::PrintExploreLocations => {
+                println!(
+                    "current action: {:?}\nqueue: {:?}",
+                    state.current_explore_location, state.explore_location_queue
+                );
+                Ok(Success)
+            }
+            ShipAction::HasDestination => {
+                if state.current_navigation_destination.is_some() {
+                    Ok(Success)
+                } else {
+                    Err(anyhow!("No active navigation_destination"))
+                }
+            }
+            ShipAction::IsAtDestination => {
+                if let Some(current) = &state.current_navigation_destination {
+                    if &state.nav.waypoint_symbol == current {
+                        Ok(Success)
+                    } else {
+                        Err(anyhow!("Not at destination"))
+                    }
+                } else {
+                    Err(anyhow!("No active navigation_destination"))
+                }
+            }
+            ShipAction::HasRouteToDestination => {
+                if let Some((current_destination, last_travel_action)) = state
+                    .current_navigation_destination
+                    .clone()
+                    .zip(state.last_travel_action())
+                {
+                    if current_destination == *last_travel_action.waypoint_and_time().0 {
+                        Ok(Success)
+                    } else {
+                        Err(anyhow!("Last entry of travel_actions {:?} doesn't match the current destination {:?}", last_travel_action, current_destination))
+                    }
+                } else {
+                    Err(anyhow!(
+                        "No active navigation_destination or no last_travel_action"
+                    ))
+                }
+            }
+            ShipAction::ComputePathToDestination => {
+                todo!()
+            }
+            ShipAction::CollectWaypointInfos => {
+                todo!()
             }
         }
     }

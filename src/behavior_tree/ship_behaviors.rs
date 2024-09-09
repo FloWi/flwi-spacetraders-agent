@@ -23,24 +23,37 @@ pub enum ShipAction {
     IsRefuelAction,
     MarkTravelActionAsCompleteIfPossible,
     CanSkipRefueling,
-    HasActiveNavigationNode,
+    HasActiveTravelAction,
     PrintTravelActions,
+    HasExploreLocationEntry,
+    PopExploreLocationAsDestination,
+    HasActiveExploreLocationEntry,
+    PrintExploreLocations,
+    HasDestination,
+    IsAtDestination,
+    HasRouteToDestination,
+    ComputePathToDestination,
+    CollectWaypointInfos,
 }
 
 pub struct Behaviors {
-    pub ship_behavior: Behavior<ShipAction>,
+    pub navigate_to_destination: Behavior<ShipAction>,
     pub adjust_flight_mode_if_necessary: Behavior<ShipAction>,
     pub orbit_if_necessary: Behavior<ShipAction>,
     pub wait_for_arrival_bt: Behavior<ShipAction>,
     pub dock_if_necessary: Behavior<ShipAction>,
     pub refuel_behavior: Behavior<ShipAction>,
     pub travel_action_behavior: Behavior<ShipAction>,
+    pub explorer_behavior: Behavior<ShipAction>,
 }
 
 impl Behaviors {
     pub fn to_labelled_sub_behaviors(&self) -> HashMap<String, Behavior<ShipAction>> {
         let mut all: [(String, Behavior<ShipAction>); 7] = [
-            ("travel_behavior".to_string(), self.ship_behavior.clone()),
+            (
+                "travel_behavior".to_string(),
+                self.navigate_to_destination.clone(),
+            ),
             (
                 "adjust_flight_mode_if_necessary".to_string(),
                 self.adjust_flight_mode_if_necessary.clone(),
@@ -111,7 +124,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         Behavior::new_action(ShipAction::SetFlightMode),
     ]);
 
-    let navigate_behavior = Behavior::new_sequence(vec![
+    let execute_navigate_travel_action = Behavior::new_sequence(vec![
         Behavior::new_action(ShipAction::IsNavigationAction),
         wait_for_arrival_bt.clone(),
         orbit_if_necessary.clone(),
@@ -120,7 +133,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         Behavior::new_action(ShipAction::WaitForArrival),
     ]);
 
-    let mut refuel_behavior = Behavior::new_sequence(vec![
+    let mut execute_refuel_travel_action = Behavior::new_sequence(vec![
         Behavior::new_action(ShipAction::IsRefuelAction),
         wait_for_arrival_bt.clone(),
         Behavior::new_select(vec![
@@ -134,19 +147,46 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         Behavior::new_action(ShipAction::PopTravelAction),
     ]);
 
-    let mut travel_action_behavior =
-        Behavior::new_select(vec![navigate_behavior, refuel_behavior.clone()]);
+    let mut travel_action_behavior = Behavior::new_select(vec![
+        execute_navigate_travel_action,
+        execute_refuel_travel_action.clone(),
+    ]);
 
-    let mut ship_behavior = Behavior::new_while(
+    let mut follow_travel_actions = Behavior::new_while(
         Behavior::new_action(ShipAction::HasTravelActionEntry),
         Behavior::new_sequence(vec![
             wait_for_arrival_bt.clone(),
             Behavior::new_select(vec![
                 Behavior::new_invert(Behavior::new_action(ShipAction::PrintTravelActions)),
-                Behavior::new_action(ShipAction::HasActiveNavigationNode),
+                Behavior::new_action(ShipAction::HasActiveTravelAction),
                 Behavior::new_action(ShipAction::PopTravelAction),
             ]),
             travel_action_behavior.clone(),
+        ]),
+    );
+
+    let mut navigate_to_destination = Behavior::new_select(vec![
+        Behavior::new_invert(Behavior::new_action(ShipAction::HasDestination)),
+        wait_for_arrival_bt.clone(),
+        Behavior::new_action(ShipAction::IsAtDestination),
+        Behavior::new_select(vec![
+            Behavior::new_action(ShipAction::HasRouteToDestination),
+            Behavior::new_action(ShipAction::ComputePathToDestination),
+        ]),
+        follow_travel_actions.clone(),
+    ]);
+
+    let mut explorer_behavior = Behavior::new_while(
+        Behavior::new_action(ShipAction::HasExploreLocationEntry),
+        Behavior::new_sequence(vec![
+            wait_for_arrival_bt.clone(),
+            Behavior::new_select(vec![
+                Behavior::new_invert(Behavior::new_action(ShipAction::PrintExploreLocations)),
+                Behavior::new_action(ShipAction::HasActiveExploreLocationEntry),
+                Behavior::new_action(ShipAction::PopExploreLocationAsDestination),
+            ]),
+            navigate_to_destination.clone(),
+            Behavior::new_action(ShipAction::CollectWaypointInfos),
         ]),
     );
 
@@ -155,9 +195,10 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         orbit_if_necessary: orbit_if_necessary.update_indices().clone(),
         dock_if_necessary: dock_if_necessary.update_indices().clone(),
         adjust_flight_mode_if_necessary: adjust_flight_mode_if_necessary.update_indices().clone(),
-        refuel_behavior: refuel_behavior.update_indices().clone(),
-        ship_behavior: ship_behavior.update_indices().clone(),
+        refuel_behavior: execute_refuel_travel_action.update_indices().clone(),
+        navigate_to_destination: navigate_to_destination.update_indices().clone(),
         travel_action_behavior: travel_action_behavior.update_indices().clone(),
+        explorer_behavior: explorer_behavior.update_indices().clone(),
     }
 }
 
@@ -170,7 +211,7 @@ mod tests {
     async fn generate_mermaid_chart() {
         let behaviors = ship_navigation_behaviors();
 
-        let mut behavior = behaviors.ship_behavior;
+        let mut behavior = behaviors.explorer_behavior;
         behavior.update_indices();
 
         println!("{}", behavior.to_mermaid())
@@ -205,7 +246,7 @@ mod tests {
     #[test]
     fn generate_markdown() {
         let behaviors = &ship_navigation_behaviors();
-        let mut ship_behavior = behaviors.ship_behavior.clone();
+        let mut ship_behavior = behaviors.navigate_to_destination.clone();
 
         ship_behavior.update_indices();
 
@@ -216,19 +257,3 @@ mod tests {
         println!("{}", markdown_document);
     }
 }
-
-/*
-
-Experimented with d2lang for creating a chart
-
-https://play.d2lang.com/?script=fJHBavMwEITveoqB_54H0C38tDSXtJBAjkaR19YWR5uuNoYQ_O7FjZumxPSg23z6htkcem6DUbWnFHoW9djQx4lyJFwc0LAW81iV9RRcRmPJDigUJdceu8D2LLpU5T50DrDEWnu86p5t1awpUilBz-NnclJLHsv6_VSsajpuk1UHqanipsr3SW7G4Ld0K7twPgpnc4NzKmIeu8TdtWNJ4UgeStFCbjtyDhi78djU4yWUrYaeumv1p2x6_uJmSGAY6RCv6K8p5kW3id7keK-ZkFnHZPnZcEMdRfsbuYkeTgb8w_8Ucks1GpUDLovF4iE1wOSRndqMb3CfAQAA__8%3D&
-
-nice graphics
-https://www.behaviortree.dev/
-
-https://lucide.dev/icons
-
-Sequence: arrow-right-to-line
-Select:  circle-help
-While: repeat
- */
