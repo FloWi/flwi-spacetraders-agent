@@ -7,7 +7,7 @@ use futures::future::join_all;
 use futures::future::{self, TryFutureExt};
 use serde::Deserialize;
 use tracing::log::trace;
-use tracing::{event, span, trace_span, Instrument, Level};
+use tracing::{event, trace_span, Instrument, Level};
 
 use crate::st_model::GetMeta;
 

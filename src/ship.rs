@@ -1,6 +1,6 @@
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::st_client::{StClient, StClientTrait};
-use crate::st_model::{FlightMode, Nav, Ship, WaypointSymbol};
+use crate::st_model::{FlightMode, Fuel, Nav, RefuelShipResponse, Ship, WaypointSymbol};
 use anyhow::*;
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
@@ -17,6 +17,10 @@ pub struct ShipOperations {
 impl ShipOperations {
     pub(crate) fn set_nav(&mut self, new_nav: Nav) {
         self.nav = new_nav;
+    }
+
+    pub(crate) fn set_fuel(&mut self, new_fuel: Fuel) {
+        self.fuel = new_fuel;
     }
 
     pub fn set_route(&mut self, new_route: Vec<TravelAction>) {
@@ -60,6 +64,17 @@ impl ShipOperations {
         let response = self.client.navigate(self.ship.symbol.clone(), to).await?;
         println!("{:?}", response);
         Ok(response.data.nav)
+    }
+
+    pub(crate) async fn refuel(&self, from_cargo: bool) -> Result<RefuelShipResponse> {
+        let amount = self.fuel.capacity - self.fuel.current;
+
+        let response = self
+            .client
+            .refuel(self.ship.symbol.clone(), amount as u32, from_cargo)
+            .await?;
+        println!("{:?}", response);
+        Ok(response)
     }
 
     // Other methods that require API access...

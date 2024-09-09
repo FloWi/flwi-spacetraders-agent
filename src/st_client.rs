@@ -3,8 +3,9 @@ use crate::st_model::{
     extract_system_symbol, AgentInfoResponse, AgentSymbol, DockShipResponse, FlightMode,
     GetConstructionResponse, GetMarketResponse, ListAgentsResponse, MarketData,
     NavigateShipRequest, NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest,
-    PatchShipNavResponse, RegistrationRequest, RegistrationResponse, Ship, StStatusResponse,
-    SystemSymbol, SystemsPageData, WaypointInSystemResponseData, WaypointSymbol,
+    PatchShipNavResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest,
+    RegistrationResponse, Ship, StStatusResponse, SystemSymbol, SystemsPageData,
+    WaypointInSystemResponseData, WaypointSymbol,
 };
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
@@ -39,8 +40,7 @@ impl StClient {
             anyhow::bail!("API request failed. Status: {}, Body: {}", status, body);
         }
 
-        serde_json::from_str(&body)
-            .with_context(|| format!("Failed to deserialize response: {}", body))
+        serde_json::from_str(&body).map_err(|e| anyhow::anyhow!(e))
     }
 }
 
@@ -140,6 +140,7 @@ impl StClientTrait for StClient {
         )
         .await
     }
+
     async fn navigate(
         &self,
         ship_symbol: String,
@@ -163,6 +164,30 @@ impl StClientTrait for StClient {
         )
         .await
     }
+
+    async fn refuel(
+        &self,
+        ship_symbol: String,
+        amount: u32,
+        from_cargo: bool,
+    ) -> Result<RefuelShipResponse> {
+        Self::make_api_call(
+            /*
+            https://api.spacetraders.io/v2/my/ships/{shipSymbol}/nav
+             */
+            self.client
+                .post(
+                    format!(
+                        "https://api.spacetraders.io/v2/my/ships/{}/refuel",
+                        ship_symbol
+                    )
+                    .to_string(),
+                )
+                .json(&RefuelShipRequest { amount, from_cargo }),
+        )
+        .await
+    }
+
     async fn orbit_ship(&self, ship_symbol: String) -> Result<OrbitShipResponse> {
         Self::make_api_call(
             self.client.post(
@@ -286,6 +311,12 @@ pub trait StClientTrait: Send + Sync + Debug {
         ship_symbol: String,
         to: &WaypointSymbol,
     ) -> Result<NavigateShipResponse>;
+    async fn refuel(
+        &self,
+        ship_symbol: String,
+        amount: u32,
+        from_cargo: bool,
+    ) -> Result<RefuelShipResponse>;
     async fn orbit_ship(&self, ship_symbol: String) -> Result<OrbitShipResponse>;
     async fn list_ships(
         &self,

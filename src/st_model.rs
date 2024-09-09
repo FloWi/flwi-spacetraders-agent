@@ -1,3 +1,4 @@
+use crate::st_client::Data;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize, Serializer};
@@ -524,6 +525,23 @@ pub struct PatchShipNavResponse {
 #[serde(rename_all = "camelCase")]
 pub struct NavigateShipRequest {
     pub(crate) waypoint_symbol: WaypointSymbol,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefuelShipRequest {
+    pub(crate) from_cargo: bool,
+    pub(crate) amount: u32,
+}
+
+pub type RefuelShipResponse = Data<RefuelShipResponseBody>;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefuelShipResponseBody {
+    pub(crate) agent: Agent,
+    pub(crate) fuel: Fuel,
+    pub(crate) transaction: Transaction,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

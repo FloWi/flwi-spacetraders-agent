@@ -1,11 +1,10 @@
 use std::time::Duration;
 
-use anyhow::{Context, Error, Result};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use anyhow::{Error, Result};
+use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::types::Json;
 use sqlx::{ConnectOptions, Pool, Postgres};
@@ -16,7 +15,7 @@ use crate::configuration::AgentConfiguration;
 use crate::st_client::Data;
 use crate::st_model::{
     distance_to, MarketData, RegistrationResponse, StStatusResponse, SystemSymbol, SystemsPageData,
-    Waypoint, WaypointInSystemResponseData, WaypointSymbol, WaypointTraitSymbol,
+    WaypointInSystemResponseData, WaypointSymbol, WaypointTraitSymbol,
 };
 
 pub async fn prepare_database_schema(

@@ -1,4 +1,3 @@
-pub mod api_client;
 pub mod cli_args;
 pub mod configuration;
 pub mod db;
@@ -8,7 +7,6 @@ pub mod ship;
 pub mod st_client;
 pub mod st_model;
 pub mod supply_chain;
-extern crate serde;
 
 use chrono::TimeDelta;
 use st_model::FlightMode;

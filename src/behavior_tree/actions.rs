@@ -2,7 +2,7 @@ use crate::behavior_tree::behavior_tree::{Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
-use crate::st_model::NavStatus;
+use crate::st_model::{NavStatus, RefuelShipResponse, RefuelShipResponseBody};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -176,12 +176,20 @@ impl Actionable for ShipAction {
                 }
             },
 
-            ShipAction::Refuel => Err(anyhow!("TODO")),
+            ShipAction::Refuel => {
+                let RefuelShipResponse {
+                    data: RefuelShipResponseBody { fuel: new_fuel, .. },
+                } = state.refuel(false).await?;
+                state.set_fuel(new_fuel);
+                Ok(Response::Success)
+            }
+
             ShipAction::Dock => {
                 let new_nav = state.dock().await?;
                 state.set_nav(new_nav);
                 Ok(Response::Success)
             }
+
             ShipAction::Orbit => {
                 let new_nav = state.orbit().await?;
                 state.set_nav(new_nav);
@@ -243,9 +251,9 @@ mod tests {
     use crate::st_model::{
         AgentInfoResponse, AgentSymbol, DockShipResponse, FlightMode, GetConstructionResponse,
         GetMarketResponse, ListAgentsResponse, NavResponse, NavStatus, NavigateShipResponse,
-        OrbitShipResponse, PatchShipNavResponse, RegistrationRequest, RegistrationResponse, Ship,
-        StStatusResponse, SystemSymbol, SystemsPageData, WaypointInSystemResponseData,
-        WaypointSymbol,
+        OrbitShipResponse, PatchShipNavResponse, RefuelShipResponse, RegistrationRequest,
+        RegistrationResponse, Ship, StStatusResponse, SystemSymbol, SystemsPageData,
+        WaypointInSystemResponseData, WaypointSymbol,
     };
     use async_trait::async_trait;
     use mockall::mock;
@@ -253,39 +261,41 @@ mod tests {
     use std::sync::Arc;
 
     mock! {
-        #[derive(Debug)]
-        pub StClient {}
+            #[derive(Debug)]
+            pub StClient {}
 
-        #[async_trait]
-        impl StClientTrait for StClient { async fn register(&self, registration_request: RegistrationRequest) -> anyhow::Result<Data<RegistrationResponse>> {}
+            #[async_trait]
+            impl StClientTrait for StClient { async fn register(&self, registration_request: RegistrationRequest) -> anyhow::Result<Data<RegistrationResponse>> {}
 
-    async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> anyhow::Result<AgentInfoResponse> {}
+        async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> anyhow::Result<AgentInfoResponse> {}
 
-    async fn get_agent(&self) -> anyhow::Result<AgentInfoResponse> {}
+        async fn get_agent(&self) -> anyhow::Result<AgentInfoResponse> {}
 
-    async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<GetConstructionResponse> {}
+        async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<GetConstructionResponse> {}
 
-    async fn dock_ship(&self, ship_symbol: String) -> anyhow::Result<DockShipResponse> {}
+        async fn dock_ship(&self, ship_symbol: String) -> anyhow::Result<DockShipResponse> {}
 
-    async fn set_flight_mode(&self, ship_symbol: String, mode: &FlightMode) -> anyhow::Result<PatchShipNavResponse> {}
+        async fn set_flight_mode(&self, ship_symbol: String, mode: &FlightMode) -> anyhow::Result<PatchShipNavResponse> {}
 
-    async fn navigate(&self, ship_symbol: String, to: &WaypointSymbol) -> anyhow::Result<NavigateShipResponse> {}
+        async fn navigate(&self, ship_symbol: String, to: &WaypointSymbol) -> anyhow::Result<NavigateShipResponse> {}
 
-    async fn orbit_ship(&self, ship_symbol: String) -> anyhow::Result<OrbitShipResponse> {}
+    async fn refuel(&self, ship_symbol: String, amount: u32, from_cargo: bool) -> anyhow::Result<RefuelShipResponse> {}
 
-    async fn list_ships(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Ship>> {}
+        async fn orbit_ship(&self, ship_symbol: String) -> anyhow::Result<OrbitShipResponse> {}
 
-    async fn list_waypoints_of_system_page(&self, system_symbol: &SystemSymbol, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<WaypointInSystemResponseData>> {}
+        async fn list_ships(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Ship>> {}
 
-    async fn list_systems_page(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<SystemsPageData>> {}
+        async fn list_waypoints_of_system_page(&self, system_symbol: &SystemSymbol, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<WaypointInSystemResponseData>> {}
 
-    async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetMarketResponse> {}
+        async fn list_systems_page(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<SystemsPageData>> {}
 
-    async fn list_agents_page(&self, pagination_input: PaginationInput) -> anyhow::Result<ListAgentsResponse> {}
+        async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetMarketResponse> {}
 
-    async fn get_status(&self) -> anyhow::Result<StStatusResponse> {}
+        async fn list_agents_page(&self, pagination_input: PaginationInput) -> anyhow::Result<ListAgentsResponse> {}
+
+        async fn get_status(&self) -> anyhow::Result<StStatusResponse> {}
+            }
         }
-    }
 
     #[tokio::test]
     async fn test_experiment_with_mockall() {
