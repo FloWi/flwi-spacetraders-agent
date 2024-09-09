@@ -4,6 +4,7 @@ use futures::StreamExt;
 use itertools::Itertools;
 use pathfinding::prelude::astar;
 use serde::{Deserialize, Serialize};
+use strum_macros::Display;
 
 impl MarketData {
     fn all_trade_goods(&self) -> Vec<TradeGoodSymbol> {
@@ -107,7 +108,7 @@ impl State {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Display)]
 pub enum TravelAction {
     Navigate {
         from: WaypointSymbol,

@@ -1,9 +1,10 @@
 use crate::pagination::{PaginatedResponse, PaginationInput};
 use crate::st_model::{
-    extract_system_symbol, AgentInfoResponse, AgentSymbol, DockShipResponse,
-    GetConstructionResponse, GetMarketResponse, ListAgentsResponse, MarketData, OrbitShipResponse,
-    RegistrationRequest, RegistrationResponse, Ship, StStatusResponse, SystemSymbol,
-    SystemsPageData, WaypointInSystemResponseData, WaypointSymbol,
+    extract_system_symbol, AgentInfoResponse, AgentSymbol, DockShipResponse, FlightMode,
+    GetConstructionResponse, GetMarketResponse, ListAgentsResponse, MarketData,
+    NavigateShipRequest, NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest,
+    PatchShipNavResponse, RegistrationRequest, RegistrationResponse, Ship, StStatusResponse,
+    SystemSymbol, SystemsPageData, WaypointInSystemResponseData, WaypointSymbol,
 };
 use anyhow::{bail, Context, Result};
 use reqwest_middleware::ClientWithMiddleware;
@@ -130,6 +131,54 @@ impl StClient {
                 )
                 .to_string(),
             ),
+        )
+        .await
+    }
+
+    pub async fn set_flight_mode(
+        &self,
+        ship_symbol: String,
+        mode: &FlightMode,
+    ) -> Result<PatchShipNavResponse> {
+        Self::make_api_call(
+            /*
+            https://api.spacetraders.io/v2/my/ships/{shipSymbol}/nav
+             */
+            self.client
+                .patch(
+                    format!(
+                        "https://api.spacetraders.io/v2/my/ships/{}/nav",
+                        ship_symbol
+                    )
+                    .to_string(),
+                )
+                .json(&PatchShipNavRequest {
+                    flight_mode: mode.clone(),
+                }),
+        )
+        .await
+    }
+
+    pub async fn navigate(
+        &self,
+        ship_symbol: String,
+        to: &WaypointSymbol,
+    ) -> Result<NavigateShipResponse> {
+        Self::make_api_call(
+            /*
+            https://api.spacetraders.io/v2/my/ships/{shipSymbol}/nav
+             */
+            self.client
+                .post(
+                    format!(
+                        "https://api.spacetraders.io/v2/my/ships/{}/navigate",
+                        ship_symbol
+                    )
+                    .to_string(),
+                )
+                .json(&NavigateShipRequest {
+                    waypoint_symbol: to.clone(),
+                }),
         )
         .await
     }

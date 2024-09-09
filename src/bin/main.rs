@@ -248,7 +248,7 @@ async fn main() -> Result<()> {
 
 pub async fn ship_loop(mut ship: ShipOperations) -> Result<()> {
     let behaviors = ship_navigation_behaviors();
-    let ship_behavior = behaviors.travel_behavior;
+    let ship_behavior = behaviors.ship_behavior;
 
     println!(
         "Running behavior tree. \n<mermaid>\n{}\n</mermaid>",

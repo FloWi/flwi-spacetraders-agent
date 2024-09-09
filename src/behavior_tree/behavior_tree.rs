@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::time::Duration;
 use strum_macros::Display;
+use tokio::time::sleep;
 use tracing::{span, Level, Span};
 use tracing_core::field::{Field, Visit};
 use tracing_subscriber::fmt::format;
@@ -400,9 +402,16 @@ where
                     Ok(_) => {
                         let action_result = action.run(args, state).await;
                         match action_result {
-                            Ok(_) => continue,
-                            Err(_) => {
-                                return Err(Self::ActionError::from(anyhow!("action failed")))
+                            Err(err) => {
+                                return Err(Self::ActionError::from(anyhow!(
+                                    "action failed: {}",
+                                    err
+                                )))
+                            }
+                            Ok(Response::Running) => return Ok(Response::Running),
+                            Ok(Response::Success) => {
+                                sleep(Duration::from_secs(1)).await;
+                                continue;
                             }
                         }
                     }

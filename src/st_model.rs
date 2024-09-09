@@ -3,6 +3,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt::Display;
 use std::hash::Hash;
+use strum_macros::Display;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AgentSymbol(pub String);
@@ -486,7 +487,7 @@ pub enum NavStatus {
     Docked,
 }
 
-#[derive(Serialize, Deserialize, Eq, Hash, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Eq, Hash, Clone, Debug, PartialEq, Display)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum FlightMode {
     Drift,
@@ -504,6 +505,30 @@ pub struct NavResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DockShipResponse {
+    pub(crate) data: NavResponse,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchShipNavRequest {
+    pub(crate) flight_mode: FlightMode,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchShipNavResponse {
+    pub(crate) data: NavResponse,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavigateShipRequest {
+    pub(crate) waypoint_symbol: WaypointSymbol,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavigateShipResponse {
     pub(crate) data: NavResponse,
 }
 

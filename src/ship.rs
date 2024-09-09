@@ -1,6 +1,6 @@
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::st_client::StClient;
-use crate::st_model::{Nav, Ship};
+use crate::st_model::{FlightMode, Nav, Ship, WaypointSymbol};
 use anyhow::*;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -31,15 +31,11 @@ impl ShipOperations {
     pub(crate) fn set_nav(&mut self, new_nav: Nav) {
         self.nav = new_nav;
     }
-}
 
-impl ShipOperations {
     pub fn set_route(&mut self, new_route: Vec<TravelAction>) {
         self.route = VecDeque::from(new_route);
     }
-}
 
-impl ShipOperations {
     pub fn new(ship: MyShip, client: Arc<StClient>) -> Self {
         ShipOperations {
             ship,
@@ -58,6 +54,14 @@ impl ShipOperations {
         println!("{:?}", response);
         Ok(response.data.nav)
     }
+    pub(crate) async fn set_flight_mode(&self, mode: &FlightMode) -> Result<Nav> {
+        let response = self
+            .client
+            .set_flight_mode(self.ship.symbol.clone(), mode)
+            .await?;
+        println!("{:?}", response);
+        Ok(response.data.nav)
+    }
 
     pub async fn orbit(&mut self) -> Result<Nav> {
         let response = self.client.orbit_ship(self.ship.symbol.clone()).await?;
@@ -65,8 +69,10 @@ impl ShipOperations {
         Ok(response.data.nav)
     }
 
-    pub fn navigate(&mut self, destination: &str) -> Result<()> {
-        Ok(())
+    pub async fn navigate(&self, to: &WaypointSymbol) -> Result<Nav> {
+        let response = self.client.navigate(self.ship.symbol.clone(), to).await?;
+        println!("{:?}", response);
+        Ok(response.data.nav)
     }
 
     // Other methods that require API access...

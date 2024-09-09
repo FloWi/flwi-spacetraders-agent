@@ -6,7 +6,6 @@ use crate::st_model::NavStatus;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use tracing::Span;
 
 #[async_trait]
 impl Actionable for ShipAction {
@@ -90,7 +89,29 @@ impl Actionable for ShipAction {
                 NavStatus::InTransit | NavStatus::Docked => Err(anyhow!("Failed")),
             },
 
-            ShipAction::IsCorrectFlightMode => Err(anyhow!("Failed")),
+            ShipAction::IsCorrectFlightMode => {
+                if let Some(action) = &state.current_action {
+                    match action {
+                        TravelAction::Navigate { mode, .. } => {
+                            let current_mode = &state.get_ship().nav.flight_mode;
+                            if current_mode == mode {
+                                Ok(Response::Success)
+                            } else {
+                                Err(anyhow!(
+                                    "Failed - current mode {} != wanted mode {}",
+                                    current_mode,
+                                    mode
+                                ))
+                            }
+                        }
+                        TravelAction::Refuel { .. } => {
+                            Err(anyhow!("Failed - no travel mode on refuel action"))
+                        }
+                    }
+                } else {
+                    Err(anyhow!("Failed - no current action"))
+                }
+            }
             ShipAction::MarkTravelActionAsCompleteIfPossible => match &state.current_action {
                 None => Ok(Response::Success),
                 Some(action) => {
@@ -112,10 +133,45 @@ impl Actionable for ShipAction {
                     Ok(Response::Success)
                 }
             },
-            ShipAction::CanSkipRefueling => {
-                println!("TODO - calculate CanSkipRefueling");
-                Ok(Response::Success)
-            }
+            ShipAction::CanSkipRefueling => match &state.current_action {
+                None => Err(anyhow!(
+                    "Called CanSkipRefueling, but current action is None",
+                )),
+                Some(TravelAction::Navigate { .. }) => Err(anyhow!(
+                    "Called CanSkipRefueling, but current action is Navigate",
+                )),
+                Some(TravelAction::Refuel { at, .. }) => {
+                    // we can skip refueling, if
+                    // - queued_action #1 is: go_to_waypoint X
+                    // - queued_action #2 is: refuel_at_waypoint X
+                    // - we have enough fuel to reach X in desired flight mode without refueling
+                    let maybe_navigate_action: Option<&TravelAction> = state.route.get(0);
+                    let maybe_refuel_action: Option<&TravelAction> = state.route.get(1);
+
+                    if let Some((
+                        TravelAction::Navigate {
+                            fuel_consumption, ..
+                        },
+                        TravelAction::Refuel { .. },
+                    )) = maybe_navigate_action.zip(maybe_refuel_action)
+                    {
+                        let has_enough_fuel = state.fuel.current >= (*fuel_consumption as i32);
+                        if has_enough_fuel {
+                            Ok(Response::Success)
+                        } else {
+                            Err(anyhow!(
+                                "Called CanSkipRefueling, but not enough fuel to reach destination",
+                            ))
+                        }
+                    } else {
+                        Err(anyhow!(
+                            "Called CanSkipRefueling, but can't refuel at next station. maybe_navigate_action: {:?}; maybe_refuel_action: {:?}",
+                            maybe_navigate_action,
+                            maybe_refuel_action
+                        ))
+                    }
+                }
+            },
 
             ShipAction::Refuel => Err(anyhow!("Failed")),
             ShipAction::Dock => {
@@ -128,9 +184,39 @@ impl Actionable for ShipAction {
                 state.set_nav(new_nav);
                 Ok(Response::Success)
             }
-            ShipAction::Navigate => Err(anyhow!("Failed")),
-            ShipAction::SetFlightMode => Err(anyhow!("Failed")),
-            ShipAction::NavigateToWaypoint => Err(anyhow!("Failed")),
+
+            ShipAction::SetFlightMode => {
+                if let Some(action) = &state.current_action {
+                    match action {
+                        TravelAction::Navigate { mode, .. } => {
+                            let new_nav = state.set_flight_mode(mode).await?;
+                            state.set_nav(new_nav);
+                            Ok(Response::Success)
+                        }
+                        TravelAction::Refuel { .. } => {
+                            Err(anyhow!("Failed - no travel mode on refuel action"))
+                        }
+                    }
+                } else {
+                    Err(anyhow!("Failed - no current action"))
+                }
+            }
+            ShipAction::NavigateToWaypoint => {
+                if let Some(action) = &state.current_action {
+                    match action {
+                        TravelAction::Navigate { to, .. } => {
+                            let new_nav = state.navigate(to).await?;
+                            state.set_nav(new_nav.clone());
+                            Ok(Response::Success)
+                        }
+                        TravelAction::Refuel { .. } => Err(anyhow!(
+                            "Failed - can't navigate - current action is refuel action"
+                        )),
+                    }
+                } else {
+                    Err(anyhow!("Failed - no current action"))
+                }
+            }
             ShipAction::PrintTravelActions => {
                 println!(
                     "current action: {:?}\nqueue: {:?}",

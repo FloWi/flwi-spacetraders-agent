@@ -11,7 +11,6 @@ pub enum ShipAction {
     WaitForArrival,
     Dock,
     Orbit,
-    Navigate,
     Refuel,
     PopTravelAction,
     IsNavigationAction,
@@ -29,7 +28,7 @@ pub enum ShipAction {
 }
 
 pub struct Behaviors {
-    pub travel_behavior: Behavior<ShipAction>,
+    pub ship_behavior: Behavior<ShipAction>,
     pub adjust_flight_mode_if_necessary: Behavior<ShipAction>,
     pub orbit_if_necessary: Behavior<ShipAction>,
     pub wait_for_arrival_bt: Behavior<ShipAction>,
@@ -41,7 +40,7 @@ pub struct Behaviors {
 impl Behaviors {
     pub fn to_labelled_sub_behaviors(&self) -> HashMap<String, Behavior<ShipAction>> {
         let mut all: [(String, Behavior<ShipAction>); 7] = [
-            ("travel_behavior".to_string(), self.travel_behavior.clone()),
+            ("travel_behavior".to_string(), self.ship_behavior.clone()),
             (
                 "adjust_flight_mode_if_necessary".to_string(),
                 self.adjust_flight_mode_if_necessary.clone(),
@@ -91,7 +90,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
     Select(Vec<Behavior<A>>),
      */
 
-    let mut wait_for_arrival_bt = Behavior::new_select(vec![
+    let mut wait_for_arrival_bt = Behavior::new_sequence(vec![
         Behavior::new_action(ShipAction::WaitForArrival),
         Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
         Behavior::new_action(ShipAction::MarkTravelActionAsCompleteIfPossible),
@@ -131,15 +130,16 @@ pub fn ship_navigation_behaviors() -> Behaviors {
                 orbit_if_necessary.clone(),
             ]),
         ]),
-        Behavior::new_action(ShipAction::MarkTravelActionAsCompleteIfPossible),
+        Behavior::new_action(ShipAction::PopTravelAction),
     ]);
 
     let mut travel_action_behavior =
         Behavior::new_select(vec![navigate_behavior, refuel_behavior.clone()]);
 
-    let mut travel_behavior = Behavior::new_while(
+    let mut ship_behavior = Behavior::new_while(
         Behavior::new_action(ShipAction::HasTravelActionEntry),
         Behavior::new_sequence(vec![
+            wait_for_arrival_bt.clone(),
             Behavior::new_select(vec![
                 Behavior::new_invert(Behavior::new_action(ShipAction::PrintTravelActions)),
                 Behavior::new_action(ShipAction::HasActiveNavigationNode),
@@ -155,7 +155,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         dock_if_necessary: dock_if_necessary.update_indices().clone(),
         adjust_flight_mode_if_necessary: adjust_flight_mode_if_necessary.update_indices().clone(),
         refuel_behavior: refuel_behavior.update_indices().clone(),
-        travel_behavior: travel_behavior.update_indices().clone(),
+        ship_behavior: ship_behavior.update_indices().clone(),
         travel_action_behavior: travel_action_behavior.update_indices().clone(),
     }
 }
@@ -169,7 +169,7 @@ mod tests {
     async fn generate_mermaid_chart() {
         let behaviors = ship_navigation_behaviors();
 
-        let mut behavior = behaviors.travel_behavior;
+        let mut behavior = behaviors.ship_behavior;
         behavior.update_indices();
 
         println!("{}", behavior.to_mermaid())
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn generate_markdown() {
         let behaviors = &ship_navigation_behaviors();
-        let mut ship_behavior = behaviors.travel_behavior.clone();
+        let mut ship_behavior = behaviors.ship_behavior.clone();
 
         ship_behavior.update_indices();
 
