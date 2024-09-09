@@ -227,3 +227,181 @@ impl Actionable for ShipAction {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::pagination::{PaginatedResponse, PaginationInput};
+    use crate::ship::ShipOperations;
+    use crate::st_client::{Data, StClientTrait};
+    use crate::st_model::{
+        AgentInfoResponse, AgentSymbol, Cargo, Cooldown, Crew, DockShipResponse, Engine,
+        FlightMode, Frame, Fuel, FuelConsumed, GetConstructionResponse, GetMarketResponse,
+        ListAgentsResponse, Nav, NavResponse, NavStatus, NavigateShipResponse, OrbitShipResponse,
+        PatchShipNavResponse, Reactor, Registration, RegistrationRequest, RegistrationResponse,
+        Requirements, Route, Ship, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint,
+        WaypointInSystemResponseData, WaypointSymbol,
+    };
+    use async_trait::async_trait;
+    use mockall::mock;
+    use mockall::predicate::*;
+    use std::sync::Arc;
+
+    mock! {
+        #[derive(Debug)]
+        pub StClient {}
+
+        #[async_trait]
+        impl StClientTrait for StClient { async fn register(&self, registration_request: RegistrationRequest) -> anyhow::Result<Data<RegistrationResponse>> {}
+
+    async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> anyhow::Result<AgentInfoResponse> {}
+
+    async fn get_agent(&self) -> anyhow::Result<AgentInfoResponse> {}
+
+    async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<GetConstructionResponse> {}
+
+    async fn dock_ship(&self, ship_symbol: String) -> anyhow::Result<DockShipResponse> {}
+
+    async fn set_flight_mode(&self, ship_symbol: String, mode: &FlightMode) -> anyhow::Result<PatchShipNavResponse> {}
+
+    async fn navigate(&self, ship_symbol: String, to: &WaypointSymbol) -> anyhow::Result<NavigateShipResponse> {}
+
+    async fn orbit_ship(&self, ship_symbol: String) -> anyhow::Result<OrbitShipResponse> {}
+
+    async fn list_ships(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Ship>> {}
+
+    async fn list_waypoints_of_system_page(&self, system_symbol: &SystemSymbol, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<WaypointInSystemResponseData>> {}
+
+    async fn list_systems_page(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<SystemsPageData>> {}
+
+    async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetMarketResponse> {}
+
+    async fn list_agents_page(&self, pagination_input: PaginationInput) -> anyhow::Result<ListAgentsResponse> {}
+
+    async fn get_status(&self) -> anyhow::Result<StStatusResponse> {}
+        }
+    }
+
+    #[tokio::test]
+    async fn test_experiment_with_mockall() {
+        let mut mock_client = MockStClient::new();
+        let create_nav = || Nav {
+            system_symbol: SystemSymbol("X1-FOO".to_string()),
+            waypoint_symbol: WaypointSymbol("X1-FOO-BAR".to_string()),
+            route: Route {
+                destination: Waypoint {
+                    symbol: "X1-FOO-BAR".to_string(),
+                    waypoint_type: "".to_string(),
+                    system_symbol: SystemSymbol("X1-FOO".to_string()),
+                    x: 0,
+                    y: 0,
+                },
+                origin: Waypoint {
+                    symbol: "X1-FOO-BAR".to_string(),
+                    waypoint_type: "".to_string(),
+                    system_symbol: SystemSymbol("X1-FOO".to_string()),
+                    x: 0,
+                    y: 0,
+                },
+                departure_time: Default::default(),
+                arrival: Default::default(),
+            },
+            status: NavStatus::InTransit,
+            flight_mode: FlightMode::Drift,
+        };
+
+        mock_client
+            .expect_dock_ship()
+            .with(eq("FLWI-1".to_string()))
+            .times(1)
+            .returning(move |_| {
+                Ok(DockShipResponse {
+                    data: NavResponse { nav: create_nav() },
+                })
+            });
+
+        let ship = Ship {
+            symbol: "FLWI-1".to_string(),
+            registration: Registration {
+                name: "FLWI".to_string(),
+                faction_symbol: "GALACTIC".to_string(),
+                role: "".to_string(),
+            },
+            nav: create_nav(),
+            crew: Crew {
+                current: 0,
+                required: 0,
+                capacity: 0,
+                rotation: "".to_string(),
+                morale: 0,
+                wages: 0,
+            },
+            frame: Frame {
+                symbol: "".to_string(),
+                name: "".to_string(),
+                description: "".to_string(),
+                condition: 0.0,
+                integrity: 0.0,
+                module_slots: 0,
+                mounting_points: 0,
+                fuel_capacity: 0,
+                requirements: Requirements {
+                    power: None,
+                    crew: None,
+                    slots: None,
+                },
+            },
+            reactor: Reactor {
+                symbol: "".to_string(),
+                name: "".to_string(),
+                description: "".to_string(),
+                condition: 0.0,
+                integrity: 0.0,
+                power_output: 0,
+                requirements: Requirements {
+                    power: None,
+                    crew: None,
+                    slots: None,
+                },
+            },
+            engine: Engine {
+                symbol: "".to_string(),
+                name: "".to_string(),
+                description: "".to_string(),
+                condition: 0.0,
+                integrity: 0.0,
+                speed: 0,
+                requirements: Requirements {
+                    power: None,
+                    crew: None,
+                    slots: None,
+                },
+            },
+            cooldown: Cooldown {
+                ship_symbol: "".to_string(),
+                total_seconds: 0,
+                remaining_seconds: 0,
+                expiration: None,
+            },
+            modules: vec![],
+            mounts: vec![],
+            cargo: Cargo {
+                capacity: 0,
+                units: 0,
+                inventory: vec![],
+            },
+            fuel: Fuel {
+                current: 0,
+                capacity: 0,
+                consumed: FuelConsumed {
+                    amount: 0,
+                    timestamp: Default::default(),
+                },
+            },
+        };
+
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let result = ship_ops.dock().await;
+        let result = ship_ops.dock().await;
+        assert!(result.is_ok());
+    }
+}

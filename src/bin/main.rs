@@ -38,7 +38,7 @@ use flwi_spacetraders_agent::pagination::{
 use flwi_spacetraders_agent::pathfinder::pathfinder;
 use flwi_spacetraders_agent::reqwest_helpers::create_client;
 use flwi_spacetraders_agent::ship::ShipOperations;
-use flwi_spacetraders_agent::st_client::StClient;
+use flwi_spacetraders_agent::st_client::{StClient, StClientTrait};
 use flwi_spacetraders_agent::st_model::{
     AgentSymbol, FactionSymbol, LabelledCoordinate, MarketData, NavStatus, RegistrationRequest,
     SerializableCoordinate, Ship, SystemSymbol, Waypoint, WaypointInSystemResponseData,

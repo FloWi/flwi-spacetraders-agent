@@ -1,5 +1,5 @@
 use crate::pathfinder::pathfinder::TravelAction;
-use crate::st_client::StClient;
+use crate::st_client::{StClient, StClientTrait};
 use crate::st_model::{FlightMode, Nav, Ship, WaypointSymbol};
 use anyhow::*;
 use std::collections::VecDeque;
@@ -9,7 +9,7 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub struct ShipOperations {
     pub ship: Ship,
-    client: Arc<StClient>,
+    client: Arc<dyn StClientTrait>,
     pub route: VecDeque<TravelAction>,
     pub current_action: Option<TravelAction>,
 }
@@ -23,7 +23,7 @@ impl ShipOperations {
         self.route = VecDeque::from(new_route);
     }
 
-    pub fn new(ship: Ship, client: Arc<StClient>) -> Self {
+    pub fn new(ship: Ship, client: Arc<dyn StClientTrait>) -> Self {
         ShipOperations {
             ship,
             client,

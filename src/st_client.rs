@@ -7,10 +7,12 @@ use crate::st_model::{
     SystemSymbol, SystemsPageData, WaypointInSystemResponseData, WaypointSymbol,
 };
 use anyhow::{bail, Context, Result};
+use async_trait::async_trait;
 use reqwest_middleware::ClientWithMiddleware;
 use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Data<T> {
@@ -27,7 +29,24 @@ impl StClient {
         StClient { client }
     }
 
-    pub async fn register(
+    async fn make_api_call<T: DeserializeOwned>(request: RequestBuilder) -> Result<T> {
+        let resp = request.send().await.context("Failed to send request")?;
+
+        let status = resp.status();
+        let body = resp.text().await.context("Failed to get response body")?;
+
+        if !status.is_success() {
+            anyhow::bail!("API request failed. Status: {}, Body: {}", status, body);
+        }
+
+        serde_json::from_str(&body)
+            .with_context(|| format!("Failed to deserialize response: {}", body))
+    }
+}
+
+#[async_trait]
+impl StClientTrait for StClient {
+    async fn register(
         &self,
         registration_request: RegistrationRequest,
     ) -> Result<Data<RegistrationResponse>> {
@@ -49,8 +68,7 @@ impl StClient {
             bail!(body);
         }
     }
-
-    pub async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentInfoResponse> {
+    async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentInfoResponse> {
         Ok(self
             .client
             .get(format!(
@@ -62,8 +80,7 @@ impl StClient {
             .json()
             .await?)
     }
-
-    pub async fn get_agent(&self) -> Result<AgentInfoResponse> {
+    async fn get_agent(&self) -> Result<AgentInfoResponse> {
         Ok(self
             .client
             .get(format!("https://api.spacetraders.io/v2/my/agent",))
@@ -72,8 +89,7 @@ impl StClient {
             .json()
             .await?)
     }
-
-    pub async fn get_construction_site(
+    async fn get_construction_site(
         &self,
         waypoint_symbol: &WaypointSymbol,
     ) -> Result<GetConstructionResponse> {
@@ -89,40 +105,7 @@ impl StClient {
         let construction_site_info = resp?.json().await?;
         Ok(construction_site_info)
     }
-
-    // pub async fn get_waypoints_of_type_jump_gate(
-    //     &self,
-    //     system_symbol: SystemSymbol,
-    // ) -> Result<ListWaypointsInSystemResponse> {
-    //     let query_param_list = [("type", "JUMP_GATE")];
-    //     let request = self
-    //         .client
-    //         .get(format!(
-    //             "https://api.spacetraders.io/v2/systems/{}/waypoints",
-    //             system_symbol.0
-    //         ))
-    //         .query(&query_param_list);
-    //     let resp = request.send().await;
-    //
-    //     //TODO: implement pagination
-    //     Ok(resp?.json().await?)
-    // }
-
-    async fn make_api_call<T: DeserializeOwned>(request: RequestBuilder) -> Result<T> {
-        let resp = request.send().await.context("Failed to send request")?;
-
-        let status = resp.status();
-        let body = resp.text().await.context("Failed to get response body")?;
-
-        if !status.is_success() {
-            anyhow::bail!("API request failed. Status: {}, Body: {}", status, body);
-        }
-
-        serde_json::from_str(&body)
-            .with_context(|| format!("Failed to deserialize response: {}", body))
-    }
-
-    pub async fn dock_ship(&self, ship_symbol: String) -> Result<DockShipResponse> {
+    async fn dock_ship(&self, ship_symbol: String) -> Result<DockShipResponse> {
         Self::make_api_call(
             self.client.post(
                 format!(
@@ -134,8 +117,7 @@ impl StClient {
         )
         .await
     }
-
-    pub async fn set_flight_mode(
+    async fn set_flight_mode(
         &self,
         ship_symbol: String,
         mode: &FlightMode,
@@ -158,8 +140,7 @@ impl StClient {
         )
         .await
     }
-
-    pub async fn navigate(
+    async fn navigate(
         &self,
         ship_symbol: String,
         to: &WaypointSymbol,
@@ -182,8 +163,7 @@ impl StClient {
         )
         .await
     }
-
-    pub async fn orbit_ship(&self, ship_symbol: String) -> Result<OrbitShipResponse> {
+    async fn orbit_ship(&self, ship_symbol: String) -> Result<OrbitShipResponse> {
         Self::make_api_call(
             self.client.post(
                 format!(
@@ -195,8 +175,7 @@ impl StClient {
         )
         .await
     }
-
-    pub async fn list_ships(
+    async fn list_ships(
         &self,
         pagination_input: PaginationInput,
     ) -> Result<PaginatedResponse<Ship>> {
@@ -212,8 +191,7 @@ impl StClient {
 
         Self::make_api_call(request).await
     }
-
-    pub async fn list_waypoints_of_system_page(
+    async fn list_waypoints_of_system_page(
         &self,
         system_symbol: &SystemSymbol,
         pagination_input: PaginationInput,
@@ -233,8 +211,7 @@ impl StClient {
 
         Self::make_api_call(request).await
     }
-
-    pub async fn list_systems_page(
+    async fn list_systems_page(
         &self,
         pagination_input: PaginationInput,
     ) -> Result<PaginatedResponse<SystemsPageData>> {
@@ -250,11 +227,7 @@ impl StClient {
 
         Self::make_api_call(request).await
     }
-
-    pub async fn get_marketplace(
-        &self,
-        waypoint_symbol: WaypointSymbol,
-    ) -> Result<GetMarketResponse> {
+    async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> Result<GetMarketResponse> {
         let request = self.client.get(format!(
             "https://api.spacetraders.io/v2/systems/{}/waypoints/{}/market",
             waypoint_symbol.system_symbol().0,
@@ -263,8 +236,7 @@ impl StClient {
 
         Self::make_api_call(request).await
     }
-
-    pub async fn list_agents_page(
+    async fn list_agents_page(
         &self,
         pagination_input: PaginationInput,
     ) -> Result<ListAgentsResponse> {
@@ -280,8 +252,7 @@ impl StClient {
 
         Self::make_api_call(request).await
     }
-
-    pub async fn get_status(&self) -> Result<StStatusResponse> {
+    async fn get_status(&self) -> Result<StStatusResponse> {
         Ok(self
             .client
             .get("https://api.spacetraders.io/v2/")
@@ -290,6 +261,51 @@ impl StClient {
             .json()
             .await?)
     }
+}
+
+#[async_trait]
+pub trait StClientTrait: Send + Sync + Debug {
+    async fn register(
+        &self,
+        registration_request: RegistrationRequest,
+    ) -> Result<Data<RegistrationResponse>>;
+    async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentInfoResponse>;
+    async fn get_agent(&self) -> Result<AgentInfoResponse>;
+    async fn get_construction_site(
+        &self,
+        waypoint_symbol: &WaypointSymbol,
+    ) -> Result<GetConstructionResponse>;
+    async fn dock_ship(&self, ship_symbol: String) -> Result<DockShipResponse>;
+    async fn set_flight_mode(
+        &self,
+        ship_symbol: String,
+        mode: &FlightMode,
+    ) -> Result<PatchShipNavResponse>;
+    async fn navigate(
+        &self,
+        ship_symbol: String,
+        to: &WaypointSymbol,
+    ) -> Result<NavigateShipResponse>;
+    async fn orbit_ship(&self, ship_symbol: String) -> Result<OrbitShipResponse>;
+    async fn list_ships(
+        &self,
+        pagination_input: PaginationInput,
+    ) -> Result<PaginatedResponse<Ship>>;
+    async fn list_waypoints_of_system_page(
+        &self,
+        system_symbol: &SystemSymbol,
+        pagination_input: PaginationInput,
+    ) -> Result<PaginatedResponse<WaypointInSystemResponseData>>;
+    async fn list_systems_page(
+        &self,
+        pagination_input: PaginationInput,
+    ) -> Result<PaginatedResponse<SystemsPageData>>;
+    async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> Result<GetMarketResponse>;
+    async fn list_agents_page(
+        &self,
+        pagination_input: PaginationInput,
+    ) -> Result<ListAgentsResponse>;
+    async fn get_status(&self) -> Result<StStatusResponse>;
 }
 
 #[cfg(test)]
