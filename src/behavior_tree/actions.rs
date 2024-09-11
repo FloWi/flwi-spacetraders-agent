@@ -10,7 +10,7 @@ use crate::st_model::{
 };
 use anyhow::anyhow;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 
 #[async_trait]
 impl Actionable for ShipAction {
@@ -405,6 +405,7 @@ mod tests {
         SystemsPageData, Waypoint, WaypointSymbol,
     };
     use async_trait::async_trait;
+    use chrono::Local;
     use mockall::mock;
     use mockall::predicate::*;
     use std::sync::Arc;
@@ -484,18 +485,16 @@ mod tests {
             .with(eq(ShipSymbol("FLWI-1".to_string())))
             .return_once(move |_| {
                 Ok(DockShipResponse {
-                    data: NavResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Drift,
-                            NavStatus::InTransit,
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                        ),
-                    },
+                    data: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::InTransit,
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
                 })
             });
 
-        let ship = TestObjects::test_ship();
+        let ship = TestObjects::test_ship(500);
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
         let result = ship_ops.dock().await;
@@ -515,20 +514,18 @@ mod tests {
             .with(eq(ShipSymbol("FLWI-1".to_string())))
             .returning(move |_| {
                 Ok(DockShipResponse {
-                    data: NavResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Drift,
-                            NavStatus::InTransit,
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                        ),
-                    },
+                    data: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::InTransit,
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
                 })
             });
 
         // if ship is docked
 
-        let mut ship = TestObjects::test_ship();
+        let mut ship = TestObjects::test_ship(500);
         ship.nav.status = NavStatus::Docked;
 
         let behaviors = ship_navigation_behaviors();
@@ -554,20 +551,18 @@ mod tests {
             .with(eq(ShipSymbol("FLWI-1".to_string())))
             .returning(move |_| {
                 Ok(DockShipResponse {
-                    data: NavResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Drift,
-                            NavStatus::InTransit,
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                        ),
-                    },
+                    data: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::InTransit,
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
                 })
             });
 
         // if ship is docked
 
-        let mut ship = TestObjects::test_ship();
+        let mut ship = TestObjects::test_ship(500);
         ship.nav.status = NavStatus::InOrbit;
 
         let behaviors = ship_navigation_behaviors();
@@ -587,9 +582,8 @@ mod tests {
 
         let mut mock_test_blackboard = MockTestBlackboard::new();
 
-        // if ship is docked
-
-        let mut ship = TestObjects::test_ship();
+        let current_fuel: u32 = 500;
+        let mut ship = TestObjects::test_ship(current_fuel);
         ship.nav.status = NavStatus::InOrbit;
 
         let waypoint_symbol_a1 = WaypointSymbol("X1-FOO-A1".to_string());
@@ -626,7 +620,7 @@ mod tests {
                 eq(WaypointSymbol("X1-FOO-BAR".to_string())),
                 eq(waypoint_symbol_a1.clone()),
                 eq(30),
-                eq(100),
+                eq(current_fuel),
                 eq(600),
             )
             .returning(move |_, _, _, _, _| Ok(first_hop_actions.clone()));
@@ -653,6 +647,7 @@ mod tests {
                             WaypointSymbol("X1-FOO-BAR".to_string()),
                             waypoint_symbol_a1_clone.clone(),
                         ),
+                        fuel: TestObjects::create_fuel(current_fuel, 200),
                     },
                 })
             });
@@ -663,14 +658,12 @@ mod tests {
             .times(1)
             .returning(move |_, _| {
                 Ok(PatchShipNavResponse {
-                    data: NavResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Burn,
-                            NavStatus::InTransit,
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                        ),
-                    },
+                    data: TestObjects::create_nav(
+                        FlightMode::Burn,
+                        NavStatus::InTransit,
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
                 })
             });
 
@@ -713,7 +706,7 @@ mod tests {
 
         let mut mock_test_blackboard = MockTestBlackboard::new();
 
-        let mut ship = TestObjects::test_ship();
+        let mut ship = TestObjects::test_ship(500);
         ship.nav.status = NavStatus::InOrbit;
 
         let first_hop_actions: Vec<TravelAction> = vec![TravelAction::Navigate {
@@ -753,6 +746,7 @@ mod tests {
                             WaypointSymbol("X1-FOO-BAR".to_string()),
                             WaypointSymbol("X1-FOO-A1".to_string()),
                         ),
+                        fuel: TestObjects::create_fuel(500, 200),
                     },
                 })
             });
@@ -763,14 +757,12 @@ mod tests {
             .times(1)
             .returning(move |_, _| {
                 Ok(PatchShipNavResponse {
-                    data: NavResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Burn,
-                            NavStatus::InTransit,
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                        ),
-                    },
+                    data: TestObjects::create_nav(
+                        FlightMode::Burn,
+                        NavStatus::InTransit,
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
                 })
             });
 
@@ -834,6 +826,17 @@ impl TestObjects {
         }
     }
 
+    pub fn create_fuel(starting_fuel: u32, consumed: u32) -> Fuel {
+        Fuel {
+            current: (starting_fuel - consumed) as i32,
+            capacity: 600,
+            consumed: FuelConsumed {
+                amount: consumed as i32,
+                timestamp: Local::now().to_utc(),
+            },
+        }
+    }
+
     pub fn create_nav(
         mode: FlightMode,
         nav_status: NavStatus,
@@ -866,7 +869,7 @@ impl TestObjects {
         }
     }
 
-    pub fn test_ship() -> Ship {
+    pub fn test_ship(current_fuel: u32) -> Ship {
         Ship {
             symbol: ShipSymbol("FLWI-1".to_string()),
             registration: Registration {
@@ -943,7 +946,7 @@ impl TestObjects {
                 inventory: vec![],
             },
             fuel: Fuel {
-                current: 100,
+                current: current_fuel as i32,
                 capacity: 600,
                 consumed: FuelConsumed {
                     amount: 0,

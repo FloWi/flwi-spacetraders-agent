@@ -76,7 +76,7 @@ impl ShipOperations {
     pub async fn dock(&mut self) -> Result<Nav> {
         let response = self.client.dock_ship(self.ship.symbol.clone()).await?;
         println!("{:?}", response);
-        Ok(response.data.nav)
+        Ok(response.data)
     }
 
     pub(crate) async fn get_market(&self) -> Result<MarketData> {
@@ -118,7 +118,7 @@ impl ShipOperations {
             .set_flight_mode(self.ship.symbol.clone(), mode)
             .await?;
         println!("{:?}", response);
-        Ok(response.data.nav)
+        Ok(response.data)
     }
 
     pub async fn orbit(&mut self) -> Result<Nav> {

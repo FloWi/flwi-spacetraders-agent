@@ -602,13 +602,10 @@ pub enum FlightMode {
 #[serde(rename_all = "camelCase")]
 pub struct NavResponse {
     pub(crate) nav: Nav,
+    pub(crate) fuel: Fuel,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DockShipResponse {
-    pub(crate) data: NavResponse,
-}
+pub type DockShipResponse = Data<Nav>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -616,11 +613,7 @@ pub struct PatchShipNavRequest {
     pub(crate) flight_mode: FlightMode,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PatchShipNavResponse {
-    pub(crate) data: NavResponse,
-}
+pub type PatchShipNavResponse = Data<Nav>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
