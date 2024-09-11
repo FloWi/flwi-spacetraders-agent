@@ -311,7 +311,7 @@ pub enum Response {
 #[async_trait]
 pub trait Actionable: Serialize + Clone + Send + Sync {
     type ActionError: From<anyhow::Error> + Send + Sync + Display;
-    type ActionArgs: Clone + Send + Sync;
+    type ActionArgs: Send + Sync;
     type ActionState: Send + Sync;
 
     async fn run(

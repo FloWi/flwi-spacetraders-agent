@@ -1,4 +1,6 @@
-use crate::behavior_tree::behavior_args::{BehaviorArgs, ExplorationTask};
+use crate::behavior_tree::behavior_args::{
+    BehaviorArgs, BlackboardOps, DbBlackboard, ExplorationTask,
+};
 use crate::behavior_tree::behavior_tree::Response::Success;
 use crate::behavior_tree::behavior_tree::{Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
@@ -369,18 +371,21 @@ impl Actionable for ShipAction {
 #[cfg(test)]
 mod tests {
     use crate::behavior_tree::actions::TestObjects;
+    use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps, ExplorationTask};
     use crate::behavior_tree::behavior_tree::Actionable;
     use crate::behavior_tree::behavior_tree::Response;
     use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
     use crate::pagination::{PaginatedResponse, PaginationInput};
+    use crate::pathfinder::pathfinder::TravelAction;
     use crate::ship::ShipOperations;
     use crate::st_client::{Data, StClientTrait};
     use crate::st_model::{
-        AgentInfoResponse, AgentSymbol, DockShipResponse, FlightMode, GetConstructionResponse,
-        GetMarketResponse, ListAgentsResponse, NavResponse, NavStatus, NavigateShipResponse,
+        AgentInfoResponse, AgentSymbol, CreateChartResponse, DockShipResponse, FlightMode,
+        GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse,
+        JumpGate, ListAgentsResponse, MarketData, NavResponse, NavStatus, NavigateShipResponse,
         OrbitShipResponse, PatchShipNavResponse, RefuelShipResponse, RegistrationRequest,
-        RegistrationResponse, Ship, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint,
-        WaypointSymbol,
+        RegistrationResponse, Ship, ShipSymbol, Shipyard, StStatusResponse, SystemSymbol,
+        SystemsPageData, Waypoint, WaypointSymbol,
     };
     use async_trait::async_trait;
     use mockall::mock;
@@ -388,41 +393,69 @@ mod tests {
     use std::sync::Arc;
 
     mock! {
-            #[derive(Debug)]
-            pub StClient {}
+        #[derive(Debug)]
+        pub TestBlackboard {}
 
-            #[async_trait]
-            impl StClientTrait for StClient { async fn register(&self, registration_request: RegistrationRequest) -> anyhow::Result<Data<RegistrationResponse>> {}
+        #[async_trait]
+        impl BlackboardOps for TestBlackboard {
+            async fn compute_path(&self, from: WaypointSymbol, to: WaypointSymbol, ship: &Ship) -> anyhow::Result<Vec<TravelAction>> {}
 
-        async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> anyhow::Result<AgentInfoResponse> {}
+            async fn get_exploration_tasks_for_current_waypoint(&self, current_location: WaypointSymbol) -> anyhow::Result<Vec<ExplorationTask>> {}
 
-        async fn get_agent(&self) -> anyhow::Result<AgentInfoResponse> {}
+            async fn insert_waypoint(&self, waypoint: &Waypoint) -> anyhow::Result<()> {}
 
-        async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<GetConstructionResponse> {}
+            async fn insert_market(&self, market_data: MarketData) -> anyhow::Result<()> {}
 
-        async fn dock_ship(&self, ship_symbol: String) -> anyhow::Result<DockShipResponse> {}
+            async fn insert_jump_gate(&self, jump_gate: JumpGate) -> anyhow::Result<()> {}
 
-        async fn set_flight_mode(&self, ship_symbol: String, mode: &FlightMode) -> anyhow::Result<PatchShipNavResponse> {}
-
-        async fn navigate(&self, ship_symbol: String, to: &WaypointSymbol) -> anyhow::Result<NavigateShipResponse> {}
-
-    async fn refuel(&self, ship_symbol: String, amount: u32, from_cargo: bool) -> anyhow::Result<RefuelShipResponse> {}
-
-        async fn orbit_ship(&self, ship_symbol: String) -> anyhow::Result<OrbitShipResponse> {}
-
-        async fn list_ships(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Ship>> {}
-
-        async fn list_waypoints_of_system_page(&self, system_symbol: &SystemSymbol, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Waypoint >> {}
-
-        async fn list_systems_page(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<SystemsPageData>> {}
-
-        async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetMarketResponse> {}
-
-        async fn list_agents_page(&self, pagination_input: PaginationInput) -> anyhow::Result<ListAgentsResponse> {}
-
-        async fn get_status(&self) -> anyhow::Result<StStatusResponse> {}
-            }
+            async fn insert_shipyard(&self, shipyard: Shipyard) -> anyhow::Result<()> {}
         }
+    }
+
+    mock! {
+        #[derive(Debug)]
+        pub StClient {}
+
+        #[async_trait]
+        impl StClientTrait for StClient {
+            async fn register(&self, registration_request: RegistrationRequest) -> anyhow::Result<Data<RegistrationResponse>> {}
+
+            async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> anyhow::Result<AgentInfoResponse> {}
+
+            async fn get_agent(&self) -> anyhow::Result<AgentInfoResponse> {}
+
+            async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<GetConstructionResponse> {}
+
+            async fn dock_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<DockShipResponse> {}
+
+            async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> anyhow::Result<PatchShipNavResponse> {}
+
+            async fn navigate(&self, ship_symbol: ShipSymbol, to: &WaypointSymbol) -> anyhow::Result<NavigateShipResponse> {}
+
+            async fn refuel(&self, ship_symbol: ShipSymbol, amount: u32, from_cargo: bool) -> anyhow::Result<RefuelShipResponse> {}
+
+            async fn orbit_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<OrbitShipResponse> {}
+
+            async fn list_ships(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Ship>> {}
+
+            async fn list_waypoints_of_system_page(&self, system_symbol: &SystemSymbol, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Waypoint>> {}
+
+            async fn list_systems_page(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<SystemsPageData>> {}
+
+            async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetMarketResponse> {}
+
+            async fn get_jump_gate(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetJumpGateResponse> {}
+
+            async fn get_shipyard(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetShipyardResponse> {}
+
+            async fn create_chart(&self, ship_symbol: ShipSymbol) -> anyhow::Result<CreateChartResponse> {}
+
+            async fn list_agents_page(&self, pagination_input: PaginationInput) -> anyhow::Result<ListAgentsResponse> {}
+
+            async fn get_status(&self) -> anyhow::Result<StStatusResponse> {}
+
+        }
+    }
 
     #[tokio::test]
     async fn test_experiment_with_mockall() {
@@ -430,7 +463,7 @@ mod tests {
 
         mock_client
             .expect_dock_ship()
-            .with(eq("FLWI-1".to_string()))
+            .with(eq(ShipSymbol("FLWI-1".to_string())))
             .return_once(move |_| {
                 Ok(DockShipResponse {
                     data: NavResponse {
@@ -450,9 +483,13 @@ mod tests {
     async fn test_dock_if_necessary_behavior_on_docked_ship() {
         let mut mock_client = MockStClient::new();
 
+        let args = BehaviorArgs {
+            blackboard: Arc::new(MockTestBlackboard::new()),
+        };
+
         let mocked_client = mock_client
             .expect_dock_ship()
-            .with(eq("FLWI-1".to_string()))
+            .with(eq(ShipSymbol("FLWI-1".to_string())))
             .returning(move |_| {
                 Ok(DockShipResponse {
                     data: NavResponse {
@@ -472,7 +509,7 @@ mod tests {
         mocked_client.never();
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
-        let result = ship_behavior.run(&(), &mut ship_ops).await;
+        let result = ship_behavior.run(&args, &mut ship_ops).await;
         assert!(result.is_ok());
     }
 
@@ -480,9 +517,13 @@ mod tests {
     async fn test_dock_if_necessary_behavior_on_orbiting_ship() {
         let mut mock_client = MockStClient::new();
 
+        let args = BehaviorArgs {
+            blackboard: Arc::new(MockTestBlackboard::new()),
+        };
+
         let mocked_client = mock_client
             .expect_dock_ship()
-            .with(eq("FLWI-1".to_string()))
+            .with(eq(ShipSymbol("FLWI-1".to_string())))
             .returning(move |_| {
                 Ok(DockShipResponse {
                     data: NavResponse {
@@ -502,7 +543,41 @@ mod tests {
         mocked_client.times(1);
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
-        let result = ship_behavior.run(&(), &mut ship_ops).await.unwrap();
+        let result = ship_behavior.run(&args, &mut ship_ops).await.unwrap();
+        assert_eq!(result, Response::Success);
+    }
+
+    #[tokio::test]
+    async fn test_explorer_behavior() {
+        let mut mock_client = MockStClient::new();
+
+        let args = BehaviorArgs {
+            blackboard: Arc::new(MockTestBlackboard::new()),
+        };
+
+        let mocked_client = mock_client
+            .expect_dock_ship()
+            .with(eq(ShipSymbol("FLWI-1".to_string())))
+            .returning(move |_| {
+                Ok(DockShipResponse {
+                    data: NavResponse {
+                        nav: TestObjects::create_nav(),
+                    },
+                })
+            });
+
+        // if ship is docked
+
+        let mut ship = TestObjects::test_ship();
+        ship.nav.status = NavStatus::InOrbit;
+
+        let behaviors = ship_navigation_behaviors();
+        let ship_behavior = behaviors.explorer_behavior;
+
+        mocked_client.times(1);
+
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let result = ship_behavior.run(&args, &mut ship_ops).await.unwrap();
         assert_eq!(result, Response::Success);
     }
 }

@@ -7,17 +7,52 @@ use crate::st_model::{
     WaypointType,
 };
 use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use chrono::Local;
 use sqlx::{Pool, Postgres};
+use std::sync::Arc;
 use strum_macros::Display;
 
-#[derive(Debug, Clone)]
+#[async_trait]
+pub trait BlackboardOps: Send + Sync {
+    async fn compute_path(
+        &self,
+        from: WaypointSymbol,
+        to: WaypointSymbol,
+        ship: &Ship,
+    ) -> Result<Vec<TravelAction>>;
+    async fn get_exploration_tasks_for_current_waypoint(
+        &self,
+        current_location: WaypointSymbol,
+    ) -> Result<Vec<ExplorationTask>>;
+    async fn insert_waypoint(&self, waypoint: &Waypoint) -> Result<()>;
+    async fn insert_market(&self, market_data: MarketData) -> Result<()>;
+    async fn insert_jump_gate(&self, jump_gate: JumpGate) -> Result<()>;
+    async fn insert_shipyard(&self, shipyard: Shipyard) -> Result<()>;
+}
+
+#[derive(Clone)]
 pub struct BehaviorArgs {
+    pub(crate) blackboard: Arc<dyn BlackboardOps>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DbBlackboard {
     pub db: Pool<Postgres>,
 }
 
-impl BehaviorArgs {
-    pub(crate) async fn compute_path(
+// Implement Deref for BehaviorArgs to allow transparent access to BlackboardOps methods
+impl std::ops::Deref for BehaviorArgs {
+    type Target = dyn BlackboardOps;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.blackboard
+    }
+}
+
+#[async_trait]
+impl BlackboardOps for DbBlackboard {
+    async fn compute_path(
         &self,
         from: WaypointSymbol,
         to: WaypointSymbol,
@@ -54,8 +89,7 @@ impl BehaviorArgs {
             None => Err(anyhow!("No path found")),
         }
     }
-
-    pub async fn get_exploration_tasks_for_current_waypoint(
+    async fn get_exploration_tasks_for_current_waypoint(
         &self,
         current_location: WaypointSymbol,
     ) -> Result<Vec<ExplorationTask>> {
@@ -104,21 +138,19 @@ impl BehaviorArgs {
             }
         }
     }
-
-    pub async fn insert_waypoint(&self, waypoint: &Waypoint) -> Result<()> {
+    async fn insert_waypoint(&self, waypoint: &Waypoint) -> Result<()> {
         let now = Local::now().to_utc();
         upsert_waypoints(&self.db, vec![waypoint.clone()], now).await
     }
-
-    pub async fn insert_market(&self, market_data: MarketData) -> Result<()> {
+    async fn insert_market(&self, market_data: MarketData) -> Result<()> {
         let now = Local::now().to_utc();
         insert_market_data(&self.db, vec![market_data], now).await
     }
-    pub async fn insert_jump_gate(&self, jump_gate: JumpGate) -> Result<()> {
+    async fn insert_jump_gate(&self, jump_gate: JumpGate) -> Result<()> {
         let now = Local::now().to_utc();
         insert_jump_gates(&self.db, vec![jump_gate], now).await
     }
-    pub async fn insert_shipyard(&self, shipyard: Shipyard) -> Result<()> {
+    async fn insert_shipyard(&self, shipyard: Shipyard) -> Result<()> {
         let now = Local::now().to_utc();
         insert_shipyards(&self.db, vec![shipyard], now).await
     }

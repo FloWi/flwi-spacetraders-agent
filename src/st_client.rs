@@ -420,7 +420,10 @@ mod test {
 
         assert_eq!(registration.faction.symbol, "ASTRO");
 
-        assert_eq!(registration.ship.symbol, "FLWI_TEST-1");
+        assert_eq!(
+            registration.ship.symbol,
+            ShipSymbol("FLWI_TEST-1".to_string())
+        );
 
         assert_eq!(
             registration.ship.nav.system_symbol,
