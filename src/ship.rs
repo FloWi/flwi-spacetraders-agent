@@ -1,7 +1,11 @@
 use crate::pathfinder::pathfinder::TravelAction;
-use crate::st_client::{StClient, StClientTrait};
-use crate::st_model::{FlightMode, Fuel, Nav, RefuelShipResponse, Ship, WaypointSymbol};
+use crate::st_client::StClientTrait;
+use crate::st_model::{
+    CreateChartBody, FlightMode, Fuel, JumpGate, MarketData, Nav, RefuelShipResponse, Ship,
+    Shipyard, Waypoint, WaypointSymbol,
+};
 use anyhow::*;
+use itertools::Itertools;
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
@@ -33,6 +37,7 @@ impl ShipOperations {
     }
 
     pub fn set_route(&mut self, new_route: Vec<TravelAction>) {
+        self.current_travel_action = None;
         self.travel_action_queue = VecDeque::from(new_route);
     }
 
@@ -56,11 +61,53 @@ impl ShipOperations {
         self.current_explore_location = self.explore_location_queue.pop_front();
     }
 
+    pub fn set_explore_locations(&mut self, p0: Vec<Waypoint>) {
+        let mapped = p0.iter().map(|wp| wp.symbol.clone());
+        let collected = mapped.collect_vec();
+        let deque = VecDeque::from(collected);
+        self.explore_location_queue = deque;
+        self.current_explore_location = None;
+    }
+
     pub async fn dock(&mut self) -> Result<Nav> {
         let response = self.client.dock_ship(self.ship.symbol.clone()).await?;
         println!("{:?}", response);
         Ok(response.data.nav)
     }
+
+    pub(crate) async fn get_market(&self) -> Result<MarketData> {
+        let response = self
+            .client
+            .get_marketplace(self.nav.waypoint_symbol.clone())
+            .await?;
+        println!("{:?}", response);
+        Ok(response.data)
+    }
+
+    pub(crate) async fn get_jump_gate(&self) -> Result<JumpGate> {
+        let response = self
+            .client
+            .get_jump_gate(self.nav.waypoint_symbol.clone())
+            .await?;
+        println!("{:?}", response);
+        Ok(response.data)
+    }
+
+    pub(crate) async fn get_shipyard(&self) -> Result<Shipyard> {
+        let response = self
+            .client
+            .get_shipyard(self.nav.waypoint_symbol.clone())
+            .await?;
+        println!("{:?}", response);
+        Ok(response.data)
+    }
+
+    pub(crate) async fn chart_waypoint(&self) -> Result<CreateChartBody> {
+        let response = self.client.create_chart(self.symbol.clone()).await?;
+        println!("{:?}", response);
+        Ok(response.data)
+    }
+
     pub(crate) async fn set_flight_mode(&self, mode: &FlightMode) -> Result<Nav> {
         let response = self
             .client

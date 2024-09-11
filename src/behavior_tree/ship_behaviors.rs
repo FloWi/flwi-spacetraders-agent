@@ -34,6 +34,8 @@ pub enum ShipAction {
     HasRouteToDestination,
     ComputePathToDestination,
     CollectWaypointInfos,
+    MarkExploreLocationAsComplete,
+    SetExploreLocationAsDestination,
 }
 
 pub struct Behaviors {
@@ -165,10 +167,9 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         ]),
     );
 
-    let mut navigate_to_destination = Behavior::new_select(vec![
-        Behavior::new_invert(Behavior::new_action(ShipAction::HasDestination)),
+    let mut navigate_to_destination = Behavior::new_sequence(vec![
+        Behavior::new_action(ShipAction::HasDestination),
         wait_for_arrival_bt.clone(),
-        Behavior::new_action(ShipAction::IsAtDestination),
         Behavior::new_select(vec![
             Behavior::new_action(ShipAction::HasRouteToDestination),
             Behavior::new_action(ShipAction::ComputePathToDestination),
@@ -183,10 +184,15 @@ pub fn ship_navigation_behaviors() -> Behaviors {
             Behavior::new_select(vec![
                 Behavior::new_invert(Behavior::new_action(ShipAction::PrintExploreLocations)),
                 Behavior::new_action(ShipAction::HasActiveExploreLocationEntry),
-                Behavior::new_action(ShipAction::PopExploreLocationAsDestination),
+                Behavior::new_sequence(vec![
+                    Behavior::new_action(ShipAction::PopExploreLocationAsDestination),
+                    Behavior::new_action(ShipAction::PrintExploreLocations),
+                    Behavior::new_action(ShipAction::SetExploreLocationAsDestination),
+                ]),
             ]),
             navigate_to_destination.clone(),
             Behavior::new_action(ShipAction::CollectWaypointInfos),
+            Behavior::new_action(ShipAction::MarkExploreLocationAsComplete),
         ]),
     );
 

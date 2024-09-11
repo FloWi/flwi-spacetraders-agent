@@ -1,11 +1,11 @@
 use crate::pagination::{PaginatedResponse, PaginationInput};
 use crate::st_model::{
-    extract_system_symbol, AgentInfoResponse, AgentSymbol, DockShipResponse, FlightMode,
-    GetConstructionResponse, GetMarketResponse, ListAgentsResponse, MarketData,
-    NavigateShipRequest, NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest,
-    PatchShipNavResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest,
-    RegistrationResponse, Ship, StStatusResponse, SystemSymbol, SystemsPageData,
-    WaypointInSystemResponseData, WaypointSymbol,
+    extract_system_symbol, AgentInfoResponse, AgentSymbol, CreateChartResponse, DockShipResponse,
+    FlightMode, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse,
+    GetShipyardResponse, ListAgentsResponse, MarketData, NavigateShipRequest, NavigateShipResponse,
+    OrbitShipResponse, PatchShipNavRequest, PatchShipNavResponse, RefuelShipRequest,
+    RefuelShipResponse, RegistrationRequest, RegistrationResponse, Ship, ShipSymbol,
+    StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
 };
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
@@ -105,12 +105,12 @@ impl StClientTrait for StClient {
         let construction_site_info = resp?.json().await?;
         Ok(construction_site_info)
     }
-    async fn dock_ship(&self, ship_symbol: String) -> Result<DockShipResponse> {
+    async fn dock_ship(&self, ship_symbol: ShipSymbol) -> Result<DockShipResponse> {
         Self::make_api_call(
             self.client.post(
                 format!(
                     "https://api.spacetraders.io/v2/my/ships/{}/dock",
-                    ship_symbol
+                    ship_symbol.0
                 )
                 .to_string(),
             ),
@@ -119,7 +119,7 @@ impl StClientTrait for StClient {
     }
     async fn set_flight_mode(
         &self,
-        ship_symbol: String,
+        ship_symbol: ShipSymbol,
         mode: &FlightMode,
     ) -> Result<PatchShipNavResponse> {
         Self::make_api_call(
@@ -130,7 +130,7 @@ impl StClientTrait for StClient {
                 .patch(
                     format!(
                         "https://api.spacetraders.io/v2/my/ships/{}/nav",
-                        ship_symbol
+                        ship_symbol.0
                     )
                     .to_string(),
                 )
@@ -143,7 +143,7 @@ impl StClientTrait for StClient {
 
     async fn navigate(
         &self,
-        ship_symbol: String,
+        ship_symbol: ShipSymbol,
         to: &WaypointSymbol,
     ) -> Result<NavigateShipResponse> {
         Self::make_api_call(
@@ -154,7 +154,7 @@ impl StClientTrait for StClient {
                 .post(
                     format!(
                         "https://api.spacetraders.io/v2/my/ships/{}/navigate",
-                        ship_symbol
+                        ship_symbol.0
                     )
                     .to_string(),
                 )
@@ -167,7 +167,7 @@ impl StClientTrait for StClient {
 
     async fn refuel(
         &self,
-        ship_symbol: String,
+        ship_symbol: ShipSymbol,
         amount: u32,
         from_cargo: bool,
     ) -> Result<RefuelShipResponse> {
@@ -179,7 +179,7 @@ impl StClientTrait for StClient {
                 .post(
                     format!(
                         "https://api.spacetraders.io/v2/my/ships/{}/refuel",
-                        ship_symbol
+                        ship_symbol.0
                     )
                     .to_string(),
                 )
@@ -188,12 +188,12 @@ impl StClientTrait for StClient {
         .await
     }
 
-    async fn orbit_ship(&self, ship_symbol: String) -> Result<OrbitShipResponse> {
+    async fn orbit_ship(&self, ship_symbol: ShipSymbol) -> Result<OrbitShipResponse> {
         Self::make_api_call(
             self.client.post(
                 format!(
                     "https://api.spacetraders.io/v2/my/ships/{}/orbit",
-                    ship_symbol
+                    ship_symbol.0
                 )
                 .to_string(),
             ),
@@ -220,7 +220,7 @@ impl StClientTrait for StClient {
         &self,
         system_symbol: &SystemSymbol,
         pagination_input: PaginationInput,
-    ) -> Result<PaginatedResponse<WaypointInSystemResponseData>> {
+    ) -> Result<PaginatedResponse<Waypoint>> {
         let query_param_list = [
             ("page", pagination_input.page.to_string()),
             ("limit", pagination_input.limit.to_string()),
@@ -261,6 +261,36 @@ impl StClientTrait for StClient {
 
         Self::make_api_call(request).await
     }
+
+    async fn get_jump_gate(&self, waypoint_symbol: WaypointSymbol) -> Result<GetJumpGateResponse> {
+        let request = self.client.get(format!(
+            "https://api.spacetraders.io/v2/systems/{}/waypoints/{}/jump-gate",
+            waypoint_symbol.system_symbol().0,
+            waypoint_symbol.0
+        ));
+
+        Self::make_api_call(request).await
+    }
+
+    async fn get_shipyard(&self, waypoint_symbol: WaypointSymbol) -> Result<GetShipyardResponse> {
+        let request = self.client.get(format!(
+            "https://api.spacetraders.io/v2/systems/{}/waypoints/{}/shipyard",
+            waypoint_symbol.system_symbol().0,
+            waypoint_symbol.0
+        ));
+
+        Self::make_api_call(request).await
+    }
+
+    async fn create_chart(&self, ship_symbol: ShipSymbol) -> Result<CreateChartResponse> {
+        let request = self.client.post(format!(
+            "https://api.spacetraders.io/v2/my/ships/{}/chart",
+            ship_symbol.0,
+        ));
+
+        Self::make_api_call(request).await
+    }
+
     async fn list_agents_page(
         &self,
         pagination_input: PaginationInput,
@@ -294,48 +324,68 @@ pub trait StClientTrait: Send + Sync + Debug {
         &self,
         registration_request: RegistrationRequest,
     ) -> Result<Data<RegistrationResponse>>;
+
     async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentInfoResponse>;
+
     async fn get_agent(&self) -> Result<AgentInfoResponse>;
+
     async fn get_construction_site(
         &self,
         waypoint_symbol: &WaypointSymbol,
     ) -> Result<GetConstructionResponse>;
-    async fn dock_ship(&self, ship_symbol: String) -> Result<DockShipResponse>;
+
+    async fn dock_ship(&self, ship_symbol: ShipSymbol) -> Result<DockShipResponse>;
+
     async fn set_flight_mode(
         &self,
-        ship_symbol: String,
+        ship_symbol: ShipSymbol,
         mode: &FlightMode,
     ) -> Result<PatchShipNavResponse>;
+
     async fn navigate(
         &self,
-        ship_symbol: String,
+        ship_symbol: ShipSymbol,
         to: &WaypointSymbol,
     ) -> Result<NavigateShipResponse>;
+
     async fn refuel(
         &self,
-        ship_symbol: String,
+        ship_symbol: ShipSymbol,
         amount: u32,
         from_cargo: bool,
     ) -> Result<RefuelShipResponse>;
-    async fn orbit_ship(&self, ship_symbol: String) -> Result<OrbitShipResponse>;
+
+    async fn orbit_ship(&self, ship_symbol: ShipSymbol) -> Result<OrbitShipResponse>;
+
     async fn list_ships(
         &self,
         pagination_input: PaginationInput,
     ) -> Result<PaginatedResponse<Ship>>;
+
     async fn list_waypoints_of_system_page(
         &self,
         system_symbol: &SystemSymbol,
         pagination_input: PaginationInput,
-    ) -> Result<PaginatedResponse<WaypointInSystemResponseData>>;
+    ) -> Result<PaginatedResponse<Waypoint>>;
+
     async fn list_systems_page(
         &self,
         pagination_input: PaginationInput,
     ) -> Result<PaginatedResponse<SystemsPageData>>;
+
     async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> Result<GetMarketResponse>;
+
+    async fn get_jump_gate(&self, waypoint_symbol: WaypointSymbol) -> Result<GetJumpGateResponse>;
+
+    async fn get_shipyard(&self, waypoint_symbol: WaypointSymbol) -> Result<GetShipyardResponse>;
+
+    async fn create_chart(&self, ship_symbol: ShipSymbol) -> Result<CreateChartResponse>;
+
     async fn list_agents_page(
         &self,
         pagination_input: PaginationInput,
     ) -> Result<ListAgentsResponse>;
+
     async fn get_status(&self) -> Result<StStatusResponse>;
 }
 

@@ -1,9 +1,13 @@
+use crate::behavior_tree::behavior_args::{BehaviorArgs, ExplorationTask};
 use crate::behavior_tree::behavior_tree::Response::Success;
 use crate::behavior_tree::behavior_tree::{Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
-use crate::st_model::{NavStatus, RefuelShipResponse, RefuelShipResponseBody};
+use crate::st_model::{
+    NavRouteWaypoint, NavStatus, RefuelShipResponse, RefuelShipResponseBody, ShipSymbol,
+    WaypointType,
+};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -11,7 +15,7 @@ use chrono::{DateTime, Utc};
 #[async_trait]
 impl Actionable for ShipAction {
     type ActionError = anyhow::Error;
-    type ActionArgs = ();
+    type ActionArgs = BehaviorArgs;
     type ActionState = ShipOperations;
 
     async fn run(
@@ -236,7 +240,7 @@ impl Actionable for ShipAction {
             }
             ShipAction::PrintTravelActions => {
                 println!(
-                    "current action: {:?}\nqueue: {:?}",
+                    "current travel action: {:?}\ntravel_action queue: {:?}",
                     state.current_travel_action, state.travel_action_queue
                 );
                 Ok(Success)
@@ -245,9 +249,9 @@ impl Actionable for ShipAction {
                 let no_explore_location_left = state.explore_location_queue.is_empty()
                     && state.current_explore_location.is_none();
                 if no_explore_location_left {
-                    Ok(Success)
+                    Err(anyhow!("no_explore_location_left"))
                 } else {
-                    Ok(Response::Running)
+                    Ok(Success)
                 }
             }
             ShipAction::PopExploreLocationAsDestination => {
@@ -263,7 +267,7 @@ impl Actionable for ShipAction {
             }
             ShipAction::PrintExploreLocations => {
                 println!(
-                    "current action: {:?}\nqueue: {:?}",
+                    "current explore location: {:?}\nexplore_location_queue: {:?}",
                     state.current_explore_location, state.explore_location_queue
                 );
                 Ok(Success)
@@ -275,6 +279,11 @@ impl Actionable for ShipAction {
                     Err(anyhow!("No active navigation_destination"))
                 }
             }
+            ShipAction::SetExploreLocationAsDestination => {
+                state.current_navigation_destination = state.current_explore_location.clone();
+                Ok(Success)
+            }
+
             ShipAction::IsAtDestination => {
                 if let Some(current) = &state.current_navigation_destination {
                     if &state.nav.waypoint_symbol == current {
@@ -304,10 +313,54 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::ComputePathToDestination => {
-                todo!()
+                let from = state.nav.waypoint_symbol.clone();
+                let to = state.current_navigation_destination.clone().unwrap();
+                let path: Vec<TravelAction> = args.compute_path(from, to, state.get_ship()).await?;
+
+                state.set_route(path);
+                Ok(Success)
             }
             ShipAction::CollectWaypointInfos => {
-                todo!()
+                let exploration_tasks = args
+                    .get_exploration_tasks_for_current_waypoint(state.nav.waypoint_symbol.clone())
+                    .await
+                    .map_err(|_| anyhow!("inserting waypoint failed"))?;
+
+                if exploration_tasks.contains(&ExplorationTask::CreateChart) {
+                    let charted_waypoint = state.chart_waypoint().await?;
+                    args.insert_waypoint(&charted_waypoint.waypoint)
+                        .await
+                        .map_err(|_| anyhow!("inserting waypoint failed"))?;
+                }
+
+                let exploration_tasks = args
+                    .get_exploration_tasks_for_current_waypoint(state.nav.waypoint_symbol.clone())
+                    .await?;
+
+                for task in exploration_tasks {
+                    match task {
+                        ExplorationTask::CreateChart => {
+                            return Err(anyhow!("Waypoint should have been charted by now"))
+                        }
+                        ExplorationTask::GetMarket => {
+                            let market = state.get_market().await?;
+                            args.insert_market(market).await?;
+                        }
+                        ExplorationTask::GetJumpGate => {
+                            let jump_gate = state.get_jump_gate().await?;
+                            args.insert_jump_gate(jump_gate).await?;
+                        }
+                        ExplorationTask::GetShipyard => {
+                            let shipyard = state.get_shipyard().await?;
+                            args.insert_shipyard(shipyard).await?;
+                        }
+                    }
+                }
+                Ok(Success)
+            }
+            ShipAction::MarkExploreLocationAsComplete => {
+                state.current_explore_location = None;
+                Ok(Success)
             }
         }
     }
@@ -326,8 +379,8 @@ mod tests {
         AgentInfoResponse, AgentSymbol, DockShipResponse, FlightMode, GetConstructionResponse,
         GetMarketResponse, ListAgentsResponse, NavResponse, NavStatus, NavigateShipResponse,
         OrbitShipResponse, PatchShipNavResponse, RefuelShipResponse, RegistrationRequest,
-        RegistrationResponse, Ship, StStatusResponse, SystemSymbol, SystemsPageData,
-        WaypointInSystemResponseData, WaypointSymbol,
+        RegistrationResponse, Ship, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint,
+        WaypointSymbol,
     };
     use async_trait::async_trait;
     use mockall::mock;
@@ -359,7 +412,7 @@ mod tests {
 
         async fn list_ships(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Ship>> {}
 
-        async fn list_waypoints_of_system_page(&self, system_symbol: &SystemSymbol, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<WaypointInSystemResponseData>> {}
+        async fn list_waypoints_of_system_page(&self, system_symbol: &SystemSymbol, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Waypoint >> {}
 
         async fn list_systems_page(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<SystemsPageData>> {}
 
@@ -466,16 +519,16 @@ impl TestObjects {
             system_symbol: SystemSymbol("X1-FOO".to_string()),
             waypoint_symbol: WaypointSymbol("X1-FOO-BAR".to_string()),
             route: Route {
-                destination: Waypoint {
-                    symbol: "X1-FOO-BAR".to_string(),
-                    waypoint_type: "".to_string(),
+                destination: NavRouteWaypoint {
+                    symbol: WaypointSymbol("X1-FOO-BAR".to_string()),
+                    waypoint_type: WaypointType::PLANET,
                     system_symbol: SystemSymbol("X1-FOO".to_string()),
                     x: 0,
                     y: 0,
                 },
-                origin: Waypoint {
-                    symbol: "X1-FOO-BAR".to_string(),
-                    waypoint_type: "".to_string(),
+                origin: NavRouteWaypoint {
+                    symbol: WaypointSymbol("X1-FOO-BAR".to_string()),
+                    waypoint_type: WaypointType::PLANET,
                     system_symbol: SystemSymbol("X1-FOO".to_string()),
                     x: 0,
                     y: 0,
@@ -490,7 +543,7 @@ impl TestObjects {
 
     pub fn test_ship() -> Ship {
         Ship {
-            symbol: "FLWI-1".to_string(),
+            symbol: ShipSymbol("FLWI-1".to_string()),
             registration: Registration {
                 name: "FLWI".to_string(),
                 faction_symbol: "GALACTIC".to_string(),

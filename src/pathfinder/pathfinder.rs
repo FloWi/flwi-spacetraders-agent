@@ -1,5 +1,5 @@
 use crate::st_model::{distance_to, FlightMode, LabelledCoordinate, Ship, TradeGoodSymbol};
-use crate::st_model::{MarketData, WaypointInSystemResponseData, WaypointSymbol};
+use crate::st_model::{MarketData, Waypoint, WaypointSymbol};
 use futures::StreamExt;
 use itertools::Itertools;
 use pathfinding::prelude::astar;
@@ -20,7 +20,7 @@ impl MarketData {
 pub fn compute_path(
     from: WaypointSymbol,
     to: WaypointSymbol,
-    waypoints_of_system: Vec<WaypointInSystemResponseData>,
+    waypoints_of_system: Vec<Waypoint>,
     market_entries_of_system: Vec<MarketData>,
     ship: Ship,
 ) -> Option<Vec<TravelAction>> {

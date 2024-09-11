@@ -407,8 +407,7 @@ where
                                     err
                                 )))
                             }
-                            Ok(Response::Running) => return Ok(Response::Running),
-                            Ok(Response::Success) => {
+                            Ok(Response::Running | Response::Success) => {
                                 sleep(Duration::from_secs(1)).await;
                                 continue;
                             }

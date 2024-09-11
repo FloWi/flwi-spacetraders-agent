@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into shipyards (system_symbol, waypoint_symbol, entry, created_at, updated_at)\nvalues ($1, $2, $3, $4, $5)\non conflict (system_symbol, waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Jsonb",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2191a50a06e350224575a82ab5dd7950680b45f62b9da8b42aa3a365e3638110"
+}

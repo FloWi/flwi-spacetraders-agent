@@ -16,9 +16,117 @@ pub struct SystemSymbol(pub String);
 pub struct WaypointSymbol(pub String);
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct WaypointTraitSymbol(pub String);
+pub struct ShipSymbol(pub String);
+
+pub type GetJumpGateResponse = Data<JumpGate>;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct JumpGate {
+    pub symbol: WaypointSymbol,
+    pub connections: Vec<WaypointSymbol>,
+}
+
+pub type GetShipyardResponse = Data<Shipyard>;
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Shipyard {
+    pub(crate) symbol: WaypointSymbol,
+    connections: Vec<WaypointSymbol>,
+}
+
+pub type CreateChartResponse = Data<CreateChartBody>;
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateChartBody {
+    chart: Chart,
+    pub(crate) waypoint: Waypoint,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct Chart {
+    waypoint_symbol: Option<WaypointSymbol>,
+    submitted_by: Option<AgentSymbol>,
+    submitted_on: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Display)]
+#[allow(non_camel_case_types)]
+pub enum WaypointTraitSymbol {
+    UNCHARTED,
+    UNDER_CONSTRUCTION,
+    MARKETPLACE,
+    SHIPYARD,
+    OUTPOST,
+    SCATTERED_SETTLEMENTS,
+    SPRAWLING_CITIES,
+    MEGA_STRUCTURES,
+    PIRATE_BASE,
+    OVERCROWDED,
+    HIGH_TECH,
+    CORRUPT,
+    BUREAUCRATIC,
+    TRADING_HUB,
+    INDUSTRIAL,
+    BLACK_MARKET,
+    RESEARCH_FACILITY,
+    MILITARY_BASE,
+    SURVEILLANCE_OUTPOST,
+    EXPLORATION_OUTPOST,
+    MINERAL_DEPOSITS,
+    COMMON_METAL_DEPOSITS,
+    PRECIOUS_METAL_DEPOSITS,
+    RARE_METAL_DEPOSITS,
+    METHANE_POOLS,
+    ICE_CRYSTALS,
+    EXPLOSIVE_GASES,
+    STRONG_MAGNETOSPHERE,
+    VIBRANT_AURORAS,
+    SALT_FLATS,
+    CANYONS,
+    PERPETUAL_DAYLIGHT,
+    PERPETUAL_OVERCAST,
+    DRY_SEABEDS,
+    MAGMA_SEAS,
+    SUPERVOLCANOES,
+    ASH_CLOUDS,
+    VAST_RUINS,
+    MUTATED_FLORA,
+    TERRAFORMED,
+    EXTREME_TEMPERATURES,
+    EXTREME_PRESSURE,
+    DIVERSE_LIFE,
+    SCARCE_LIFE,
+    FOSSILS,
+    WEAK_GRAVITY,
+    STRONG_GRAVITY,
+    CRUSHING_GRAVITY,
+    TOXIC_ATMOSPHERE,
+    CORROSIVE_ATMOSPHERE,
+    BREATHABLE_ATMOSPHERE,
+    THIN_ATMOSPHERE,
+    JOVIAN,
+    ROCKY,
+    VOLCANIC,
+    FROZEN,
+    SWAMP,
+    BARREN,
+    TEMPERATE,
+    JUNGLE,
+    OCEAN,
+    RADIOACTIVE,
+    MICRO_GRAVITY_ANOMALIES,
+    DEBRIS_CLUSTER,
+    DEEP_CRATERS,
+    SHALLOW_CRATERS,
+    UNSTABLE_COMPOSITION,
+    HOLLOWED_INTERIOR,
+    STRIPPED,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
 pub struct WaypointTrait {
     pub symbol: WaypointTraitSymbol,
     pub name: String,
@@ -29,6 +137,7 @@ pub struct WaypointTrait {
 pub struct WaypointModifierSymbol(pub String);
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
 pub struct WaypointModifier {
     pub symbol: WaypointModifierSymbol,
     pub name: String,
@@ -132,14 +241,6 @@ pub struct Meta {
     pub limit: u32,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct Chart {
-    pub waypoint_symbol: Option<String>,
-    pub submitted_by: Option<String>,
-    pub submitted_on: Option<String>,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Faction {
@@ -151,23 +252,23 @@ pub struct Faction {
     pub is_recruiting: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct WaypointFaction {
     pub symbol: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Orbital {
     pub symbol: WaypointSymbol,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 #[serde(rename_all = "camelCase")]
-pub struct WaypointInSystemResponseData {
+pub struct Waypoint {
     pub symbol: WaypointSymbol,
     #[serde(rename = "type")]
-    pub r#type: String,
+    pub r#type: WaypointType,
     pub system_symbol: SystemSymbol,
     pub x: i64,
     pub y: i64,
@@ -349,7 +450,7 @@ pub fn distance_to(from_x: i64, from_y: i64, to_x: i64, to_y: i64) -> u32 {
     (dx * dx + dy * dy).sqrt().round() as u32
 }
 
-impl LabelledCoordinate<WaypointSymbol> for WaypointInSystemResponseData {
+impl LabelledCoordinate<WaypointSymbol> for Waypoint {
     fn x(&self) -> i64 {
         self.x
     }
@@ -448,7 +549,7 @@ pub struct FactionTrait {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Ship {
-    pub symbol: String,
+    pub symbol: ShipSymbol,
     pub registration: Registration,
     pub nav: Nav,
     pub crew: Crew,
@@ -559,18 +660,18 @@ pub struct OrbitShipResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Route {
-    pub destination: Waypoint,
-    pub origin: Waypoint,
+    pub destination: NavRouteWaypoint,
+    pub origin: NavRouteWaypoint,
     pub departure_time: DateTime<Utc>,
     pub arrival: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, Hash, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct Waypoint {
-    pub symbol: String,
+pub struct NavRouteWaypoint {
+    pub symbol: WaypointSymbol,
     #[serde(rename = "type")]
-    pub waypoint_type: String,
+    pub waypoint_type: WaypointType,
     pub system_symbol: SystemSymbol,
     pub x: i32,
     pub y: i32,
@@ -696,6 +797,24 @@ pub struct FuelConsumed {
     pub timestamp: DateTime<Utc>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[allow(non_camel_case_types)]
+pub enum WaypointType {
+    PLANET,
+    GAS_GIANT,
+    MOON,
+    ORBITAL_STATION,
+    JUMP_GATE,
+    ASTEROID_FIELD,
+    ASTEROID,
+    ENGINEERED_ASTEROID,
+    ASTEROID_BASE,
+    NEBULA,
+    DEBRIS_FIELD,
+    GRAVITY_WELL,
+    ARTIFICIAL_GRAVITY_WELL,
+    FUEL_STATION,
+}
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[allow(non_camel_case_types)]
 pub enum TradeGoodSymbol {

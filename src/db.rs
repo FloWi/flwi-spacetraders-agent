@@ -14,8 +14,8 @@ use tracing::{event, Level};
 use crate::configuration::AgentConfiguration;
 use crate::st_client::Data;
 use crate::st_model::{
-    distance_to, MarketData, RegistrationResponse, StStatusResponse, SystemSymbol, SystemsPageData,
-    WaypointInSystemResponseData, WaypointSymbol, WaypointTraitSymbol,
+    distance_to, JumpGate, MarketData, RegistrationResponse, Shipyard, StStatusResponse,
+    SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
 pub async fn prepare_database_schema(
@@ -218,7 +218,7 @@ values ($1, $2)
 pub struct DbWaypointEntry {
     system_symbol: String,
     waypoint_symbol: String,
-    pub entry: Json<WaypointInSystemResponseData>,
+    pub entry: Json<Waypoint>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -239,6 +239,24 @@ pub struct DbMarketEntry {
 }
 
 #[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbJumpGateData {
+    pub system_symbol: String,
+    pub waypoint_symbol: String,
+    pub entry: Json<JumpGate>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbShipyardData {
+    pub system_symbol: String,
+    pub waypoint_symbol: String,
+    pub entry: Json<Shipyard>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
 pub struct DbSystemCoordinateData {
     pub system_symbol: String,
     pub x: i64,
@@ -253,10 +271,10 @@ impl DbSystemCoordinateData {
 
 pub async fn upsert_waypoints_from_receiver(
     pool: &Pool<Postgres>,
-    mut rx: tokio::sync::mpsc::Receiver<(Vec<WaypointInSystemResponseData>, DateTime<Utc>)>,
+    mut rx: tokio::sync::mpsc::Receiver<(Vec<Waypoint>, DateTime<Utc>)>,
 ) -> Result<()> {
     while let Some((entries, now)) = rx.recv().await {
-        upsert_waypoints_of_system(pool, entries, now).await?;
+        upsert_waypoints(pool, entries, now).await?;
     }
     Ok(())
 }
@@ -304,9 +322,9 @@ on conflict (system_symbol) do UPDATE set entry = excluded.entry, updated_at = e
     Ok(())
 }
 
-pub async fn upsert_waypoints_of_system(
+pub async fn upsert_waypoints(
     pool: &Pool<Postgres>,
-    waypoints: Vec<WaypointInSystemResponseData>,
+    waypoints: Vec<Waypoint>,
     now: DateTime<Utc>,
 ) -> Result<()> {
     let db_entries: Vec<DbWaypointEntry> = waypoints
@@ -421,7 +439,7 @@ pub async fn select_waypoints_of_system(
         r#"
 select system_symbol
      , waypoint_symbol
-     , entry as "entry: Json<WaypointInSystemResponseData>"
+     , entry as "entry: Json<Waypoint>"
      , created_at
      , updated_at
 from waypoints
@@ -448,7 +466,7 @@ pub async fn select_waypoints_of_system_with_trait(
         WHERE jsonb_path_exists(entry, ('$.traits[*] ? (@.symbol == "' || $1::text || '")')::jsonpath)
         AND system_symbol = $2
     "#,
-        trait_symbol.0,
+        trait_symbol.to_string(),
         system_symbol.0
     )
     .fetch_all(pool)
@@ -466,7 +484,7 @@ pub async fn select_latest_marketplace_entry_of_system(
         r#"
 with latest_markets as (select DISTINCT ON (waypoint_symbol) waypoint_symbol, entry, created_at
                         from markets m
-                        order by waypoint_symbol, entry, created_at desc)
+                        order by waypoint_symbol, created_at desc, entry)
    , market_entries as (select w.system_symbol
                              , m.waypoint_symbol
                              , m.entry
@@ -534,4 +552,97 @@ where system_symbol = $1
     .await?;
 
     Ok(maybe_system)
+}
+
+pub(crate) async fn select_jump_gate(
+    pool: &Pool<Postgres>,
+    waypoint_symbol: &WaypointSymbol,
+) -> Result<Option<DbJumpGateData>> {
+    let maybe_jump_gate_data: Option<DbJumpGateData> = sqlx::query_as!(
+        DbJumpGateData,
+        r#"
+select system_symbol
+     , waypoint_symbol
+     , entry as "entry: Json<JumpGate>"
+     , created_at
+     , updated_at
+from waypoints
+where system_symbol = $1
+    "#,
+        waypoint_symbol.0
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(maybe_jump_gate_data)
+}
+
+pub(crate) async fn insert_jump_gates(
+    pool: &Pool<Postgres>,
+    jump_gates: Vec<JumpGate>,
+    now: DateTime<Utc>,
+) -> Result<()> {
+    let db_entries: Vec<DbJumpGateData> = jump_gates
+        .iter()
+        .map(|j| DbJumpGateData {
+            system_symbol: j.symbol.clone().system_symbol().0,
+            waypoint_symbol: j.symbol.clone().0,
+            entry: Json(j.clone()),
+            created_at: now,
+            updated_at: now,
+        })
+        .collect();
+
+    for entry in db_entries {
+        sqlx::query!(
+            r#"
+insert into jump_gates (system_symbol, waypoint_symbol, entry, created_at, updated_at)
+values ($1, $2, $3, $4, $5)
+on conflict (system_symbol, waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+        "#,
+            entry.system_symbol,
+            entry.waypoint_symbol,
+            entry.entry as _,
+            now,
+            now,
+        )
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn insert_shipyards(
+    pool: &Pool<Postgres>,
+    shipyards: Vec<Shipyard>,
+    now: DateTime<Utc>,
+) -> Result<()> {
+    let db_entries: Vec<DbShipyardData> = shipyards
+        .iter()
+        .map(|j| DbShipyardData {
+            system_symbol: j.symbol.clone().system_symbol().0,
+            waypoint_symbol: j.symbol.clone().0,
+            entry: Json(j.clone()),
+            created_at: now,
+            updated_at: now,
+        })
+        .collect();
+
+    for entry in db_entries {
+        sqlx::query!(
+            r#"
+insert into shipyards (system_symbol, waypoint_symbol, entry, created_at, updated_at)
+values ($1, $2, $3, $4, $5)
+on conflict (system_symbol, waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+        "#,
+            entry.system_symbol,
+            entry.waypoint_symbol,
+            entry.entry as _,
+            now,
+            now,
+        )
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
 }

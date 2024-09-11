@@ -1,4 +1,4 @@
-use crate::db::upsert_waypoints_of_system;
+use crate::db::upsert_waypoints;
 use crate::db::DbSystemCoordinateData;
 use anyhow::{Context, Error, Result};
 use chrono::Local;
@@ -22,6 +22,7 @@ use tracing::{event, span, Instrument, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use utoipa::OpenApi;
 
+use flwi_spacetraders_agent::behavior_tree::behavior_args::BehaviorArgs;
 use flwi_spacetraders_agent::behavior_tree::behavior_tree::Behavior;
 use flwi_spacetraders_agent::behavior_tree::ship_behaviors::{
     ship_navigation_behaviors, ShipAction,
@@ -41,8 +42,8 @@ use flwi_spacetraders_agent::ship::ShipOperations;
 use flwi_spacetraders_agent::st_client::{StClient, StClientTrait};
 use flwi_spacetraders_agent::st_model::{
     AgentSymbol, FactionSymbol, LabelledCoordinate, MarketData, NavStatus, RegistrationRequest,
-    SerializableCoordinate, Ship, SystemSymbol, Waypoint, WaypointInSystemResponseData,
-    WaypointSymbol, WaypointTrait, WaypointTraitSymbol,
+    SerializableCoordinate, Ship, ShipSymbol, SystemSymbol, Waypoint, WaypointSymbol,
+    WaypointTrait, WaypointTraitSymbol,
 };
 use flwi_spacetraders_agent::{cli_args, format_time_delta_hh_mm_ss};
 
@@ -143,7 +144,7 @@ async fn main() -> Result<()> {
                     .map(|s| ShipOperations::new(s.clone(), Arc::clone(&client)))
                     .collect();
 
-                let command_ship_name = spacetraders_agent_symbol + "-1";
+                let command_ship_name = ShipSymbol(spacetraders_agent_symbol + "-1");
 
                 let marketplace_entries =
                     select_latest_marketplace_entry_of_system(&pool, &headquarters_system_symbol)
@@ -221,22 +222,10 @@ async fn main() -> Result<()> {
                     "Detailed Routes with actions: \n{}",
                     serde_json::to_string(&route_debugging_list)?
                 );
-                let to = exploration_route.get(1).unwrap();
-                let path = pathfinder::compute_path(
-                    command_ship.nav.waypoint_symbol.clone(),
-                    to.symbol.clone(),
-                    waypoints_of_home_system.clone(),
-                    marketplace_entries
-                        .iter()
-                        .map(|db| db.entry.0.clone())
-                        .collect(),
-                    command_ship.ship.clone(),
-                )
-                .unwrap();
-                command_ship.set_route(path);
+                command_ship.set_explore_locations(exploration_route);
 
-                let blackboard: HashMap<String, String> = HashMap::new();
-                let _ = tokio::spawn(ship_loop(command_ship)).await?;
+                let args = BehaviorArgs { db: pool };
+                let _ = tokio::spawn(ship_loop(command_ship, args)).await?;
 
                 //let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
                 //dbg!(my_ships);
@@ -246,7 +235,7 @@ async fn main() -> Result<()> {
     }
 }
 
-pub async fn ship_loop(mut ship: ShipOperations) -> Result<()> {
+pub async fn ship_loop(mut ship: ShipOperations, args: BehaviorArgs) -> Result<()> {
     let behaviors = ship_navigation_behaviors();
     let ship_behavior = behaviors.explorer_behavior;
 
@@ -261,13 +250,13 @@ pub async fn ship_loop(mut ship: ShipOperations) -> Result<()> {
             Level::INFO,
             "ship_loop",
             tick,
-            ship = format!("{}", ship.symbol),
+            ship = format!("{}", ship.symbol.0),
         );
         tick += 1;
 
         let _enter = span.enter();
 
-        let result = ship_behavior.run(&(), &mut ship).await;
+        let result = ship_behavior.run(&args, &mut ship).await;
 
         match &result {
             Ok(o) => {
