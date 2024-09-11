@@ -367,9 +367,9 @@ pub struct TradeGood {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
-    pub waypoint_symbol: String,
-    pub ship_symbol: String,
-    pub trade_symbol: String,
+    pub waypoint_symbol: WaypointSymbol,
+    pub ship_symbol: ShipSymbol,
+    pub trade_symbol: TradeGoodSymbol,
     #[serde(rename = "type")]
     pub transaction_type: TransactionType,
     pub units: i32,
@@ -494,7 +494,7 @@ pub struct RegistrationResponse {
 #[serde(rename_all = "camelCase")]
 pub struct Agent {
     pub account_id: Option<String>,
-    pub symbol: String,
+    pub symbol: AgentSymbol,
     pub headquarters: String,
     pub credits: i64,
     pub starting_faction: String,
@@ -644,11 +644,7 @@ pub struct NavigateShipResponse {
     pub(crate) data: NavResponse,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OrbitShipResponse {
-    pub(crate) data: NavResponse,
-}
+pub type OrbitShipResponse = Data<Nav>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

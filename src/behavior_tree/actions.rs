@@ -5,8 +5,9 @@ use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
 use crate::st_model::{
-    MarketData, NavRouteWaypoint, NavStatus, RefuelShipResponse, RefuelShipResponseBody,
-    ShipSymbol, WaypointType,
+    Agent, AgentSymbol, MarketData, NavRouteWaypoint, NavStatus, RefuelShipResponse,
+    RefuelShipResponseBody, ShipSymbol, TradeGoodSymbol, Transaction, TransactionType,
+    WaypointType,
 };
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -725,6 +726,140 @@ mod tests {
                 eq(WaypointSymbol("X1-FOO-BAR".to_string())),
                 eq(WaypointSymbol("X1-FOO-A1".to_string())),
                 eq(30),
+                eq(500),
+                eq(600),
+            )
+            .returning(move |_, _, _, _, _| Ok(first_hop_actions.clone()));
+
+        mock_client
+            .expect_navigate()
+            .with(
+                eq(ShipSymbol("FLWI-1".to_string())),
+                eq(WaypointSymbol("X1-FOO-A1".to_string())),
+            )
+            .times(1)
+            .returning(move |_, _| {
+                Ok(NavigateShipResponse {
+                    data: NavResponse {
+                        nav: TestObjects::create_nav(
+                            FlightMode::Burn,
+                            NavStatus::InTransit,
+                            WaypointSymbol("X1-FOO-BAR".to_string()),
+                            WaypointSymbol("X1-FOO-A1".to_string()),
+                        ),
+                        fuel: TestObjects::create_fuel(500, 200),
+                    },
+                })
+            });
+
+        mock_client
+            .expect_set_flight_mode()
+            .with(eq(ShipSymbol("FLWI-1".to_string())), eq(FlightMode::Burn))
+            .times(1)
+            .returning(move |_, _| {
+                Ok(PatchShipNavResponse {
+                    data: TestObjects::create_nav(
+                        FlightMode::Burn,
+                        NavStatus::InTransit,
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
+                })
+            });
+
+        let behaviors = ship_navigation_behaviors();
+        let mut ship_behavior = behaviors.navigate_to_destination;
+
+        ship_behavior.update_indices();
+
+        println!("{}", ship_behavior.to_mermaid());
+
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let args = BehaviorArgs {
+            blackboard: Arc::new(mock_test_blackboard),
+        };
+
+        ship_ops.set_destination(WaypointSymbol("X1-FOO-A1".to_string()));
+        let result = ship_behavior.run(&args, &mut ship_ops).await.unwrap();
+        assert_eq!(result, Response::Success);
+        assert_eq!(
+            ship_ops.nav.waypoint_symbol,
+            WaypointSymbol("X1-FOO-A1".to_string())
+        );
+        assert_eq!(ship_ops.nav.status, NavStatus::InOrbit);
+        assert_eq!(ship_ops.travel_action_queue.len(), 0);
+        assert_eq!(ship_ops.current_navigation_destination, None);
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_navigate_to_destination_behavior_with_refuel() {
+        let mut mock_client = MockStClient::new();
+
+        let mut mock_test_blackboard = MockTestBlackboard::new();
+
+        let mut ship = TestObjects::test_ship(100);
+        ship.nav.status = NavStatus::InOrbit;
+
+        let first_hop_actions: Vec<TravelAction> = vec![
+            TravelAction::Refuel {
+                at: WaypointSymbol("X1-FOO-BAR".to_string()),
+                total_time: 2,
+            },
+            TravelAction::Navigate {
+                from: WaypointSymbol("X1-FOO-BAR".to_string()),
+                to: WaypointSymbol("X1-FOO-A1".to_string()),
+                distance: 100,
+                travel_time: 57,
+                fuel_consumption: 200,
+                mode: FlightMode::Burn,
+                total_time: 59,
+            },
+        ];
+
+        mock_client
+            .expect_dock_ship()
+            .with(eq(ShipSymbol("FLWI-1".to_string())))
+            .returning(move |_| {
+                Ok(DockShipResponse {
+                    data: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::Docked,
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
+                })
+            });
+
+        mock_client
+            .expect_orbit_ship()
+            .with(eq(ShipSymbol("FLWI-1".to_string())))
+            .returning(move |_| {
+                Ok(OrbitShipResponse {
+                    data: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::InOrbit,
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
+                })
+            });
+
+        mock_client
+            .expect_refuel()
+            .with(eq(ShipSymbol("FLWI-1".to_string())), eq(500), eq(false))
+            .returning(move |_, _, _| {
+                Ok(RefuelShipResponse {
+                    data: TestObjects::create_refuel_ship_response_body(500),
+                })
+            });
+
+        mock_test_blackboard
+            .expect_compute_path()
+            .with(
+                eq(WaypointSymbol("X1-FOO-BAR".to_string())),
+                eq(WaypointSymbol("X1-FOO-A1".to_string())),
+                eq(30),
                 eq(100),
                 eq(600),
             )
@@ -833,6 +968,30 @@ impl TestObjects {
             consumed: FuelConsumed {
                 amount: consumed as i32,
                 timestamp: Local::now().to_utc(),
+            },
+        }
+    }
+
+    pub fn create_refuel_ship_response_body(amount: u32) -> RefuelShipResponseBody {
+        RefuelShipResponseBody {
+            agent: Agent {
+                account_id: None,
+                symbol: AgentSymbol("".to_string()),
+                headquarters: "".to_string(),
+                credits: 42,
+                starting_faction: "".to_string(),
+                ship_count: 2,
+            },
+            fuel: Self::create_fuel(600, 0),
+            transaction: Transaction {
+                waypoint_symbol: WaypointSymbol("".to_string()),
+                ship_symbol: ShipSymbol("".to_string()),
+                trade_symbol: TradeGoodSymbol::FUEL,
+                transaction_type: TransactionType::Purchase,
+                units: amount as i32,
+                price_per_unit: 42,
+                total_price: 0,
+                timestamp: Default::default(),
             },
         }
     }

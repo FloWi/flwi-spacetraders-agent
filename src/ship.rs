@@ -124,7 +124,7 @@ impl ShipOperations {
     pub async fn orbit(&mut self) -> Result<Nav> {
         let response = self.client.orbit_ship(self.ship.symbol.clone()).await?;
         println!("{:?}", response);
-        Ok(response.data.nav)
+        Ok(response.data)
     }
 
     pub async fn navigate(&self, to: &WaypointSymbol) -> Result<Nav> {
