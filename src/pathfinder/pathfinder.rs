@@ -1,4 +1,4 @@
-use crate::st_model::{distance_to, FlightMode, LabelledCoordinate, Ship, TradeGoodSymbol};
+use crate::st_model::{distance_to, FlightMode, Fuel, LabelledCoordinate, Ship, TradeGoodSymbol};
 use crate::st_model::{MarketData, Waypoint, WaypointSymbol};
 use futures::StreamExt;
 use itertools::Itertools;
@@ -22,7 +22,9 @@ pub fn compute_path(
     to: WaypointSymbol,
     waypoints_of_system: Vec<Waypoint>,
     market_entries_of_system: Vec<MarketData>,
-    ship: Ship,
+    engine_speed: u32,
+    current_fuel: u32,
+    fuel_capacity: u32,
 ) -> Option<Vec<TravelAction>> {
     let waypoints: Vec<PathfindingWaypoint> = waypoints_of_system
         .iter()
@@ -45,7 +47,7 @@ pub fn compute_path(
 
     let start = State {
         waypoint_idx: start_idx,
-        fuel: 100,
+        fuel: current_fuel,
     };
 
     let distance_map: Vec<Vec<u32>> = waypoints
@@ -66,9 +68,9 @@ pub fn compute_path(
         goal_idx,
         waypoints: waypoints.clone(),
         distance_map,
-        fuel_capacity: 600,
+        fuel_capacity,
         refuel_time: 2,
-        engine_speed: ship.engine.speed as u32,
+        engine_speed,
         allowed_flight_modes: vec![FlightMode::Burn, FlightMode::Cruise, FlightMode::Drift],
     };
 

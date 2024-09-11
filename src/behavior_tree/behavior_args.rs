@@ -19,7 +19,9 @@ pub trait BlackboardOps: Send + Sync {
         &self,
         from: WaypointSymbol,
         to: WaypointSymbol,
-        ship: &Ship,
+        engine_speed: u32,
+        current_fuel: u32,
+        fuel_capacity: u32,
     ) -> Result<Vec<TravelAction>>;
     async fn get_exploration_tasks_for_current_waypoint(
         &self,
@@ -56,7 +58,9 @@ impl BlackboardOps for DbBlackboard {
         &self,
         from: WaypointSymbol,
         to: WaypointSymbol,
-        ship: &Ship,
+        engine_speed: u32,
+        current_fuel: u32,
+        fuel_capacity: u32,
     ) -> Result<Vec<TravelAction>> {
         assert_eq!(
             from.system_symbol(),
@@ -83,7 +87,9 @@ impl BlackboardOps for DbBlackboard {
             to,
             waypoints_of_system,
             market_entries_of_system,
-            ship.clone(),
+            engine_speed,
+            current_fuel,
+            fuel_capacity,
         ) {
             Some(path) => Ok(path),
             None => Err(anyhow!("No path found")),
