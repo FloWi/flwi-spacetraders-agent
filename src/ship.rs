@@ -57,6 +57,10 @@ impl ShipOperations {
         self.current_travel_action = self.travel_action_queue.pop_front();
     }
 
+    pub fn set_destination(&mut self, destination: WaypointSymbol) {
+        self.current_navigation_destination = Some(destination)
+    }
+
     pub fn pop_explore_location(&mut self) {
         self.current_explore_location = self.explore_location_queue.pop_front();
     }

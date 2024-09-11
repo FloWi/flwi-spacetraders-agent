@@ -387,7 +387,7 @@ pub async fn insert_market_data(
     let db_entries: Vec<DbMarketEntry> = market_entries
         .iter()
         .map(|me| DbMarketEntry {
-            waypoint_symbol: me.symbol.clone(),
+            waypoint_symbol: me.symbol.0.clone(),
             entry: Json(me.clone()),
 
             created_at: now,

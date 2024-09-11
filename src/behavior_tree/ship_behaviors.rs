@@ -36,6 +36,7 @@ pub enum ShipAction {
     CollectWaypointInfos,
     MarkExploreLocationAsComplete,
     SetExploreLocationAsDestination,
+    RemoveDestination,
 }
 
 pub struct Behaviors {
@@ -160,10 +161,13 @@ pub fn ship_navigation_behaviors() -> Behaviors {
             wait_for_arrival_bt.clone(),
             Behavior::new_select(vec![
                 Behavior::new_invert(Behavior::new_action(ShipAction::PrintTravelActions)),
-                Behavior::new_action(ShipAction::HasActiveTravelAction),
-                Behavior::new_action(ShipAction::PopTravelAction),
+                Behavior::new_action(ShipAction::IsAtDestination),
+                Behavior::new_invert(Behavior::new_select(vec![
+                    Behavior::new_action(ShipAction::HasActiveTravelAction),
+                    Behavior::new_action(ShipAction::PopTravelAction),
+                ])),
+                travel_action_behavior.clone(),
             ]),
-            travel_action_behavior.clone(),
         ]),
     );
 
@@ -175,6 +179,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
             Behavior::new_action(ShipAction::ComputePathToDestination),
         ]),
         follow_travel_actions.clone(),
+        Behavior::new_action(ShipAction::RemoveDestination),
     ]);
 
     let mut explorer_behavior = Behavior::new_while(

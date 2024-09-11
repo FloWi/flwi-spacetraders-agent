@@ -340,7 +340,7 @@ pub struct GetMarketResponse {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketData {
-    pub symbol: String,
+    pub symbol: WaypointSymbol,
     pub exports: Vec<TradeGood>,
     pub imports: Vec<TradeGood>,
     pub exchange: Vec<TradeGood>,
