@@ -596,6 +596,9 @@ mod tests {
         // Clone, to make borrow-checker happy - I know, I know
         let waypoint_symbol_a1_clone = waypoint_symbol_a1.clone();
 
+        // Clone #2, bring it on, borrow checker
+        let waypoint_symbol_a1_clone_2 = waypoint_symbol_a1.clone();
+
         mock_test_blackboard
             .expect_get_exploration_tasks_for_current_waypoint()
             .with(eq(waypoint_symbol_a1.clone()))
@@ -677,7 +680,7 @@ mod tests {
             .times(1)
             .return_once(move |_| {
                 Ok(GetMarketResponse {
-                    data: TestObjects::create_market_data(waypoint_symbol_a1.clone()),
+                    data: TestObjects::create_market_data(waypoint_symbol_a1_clone_2),
                 })
             });
 
@@ -696,6 +699,11 @@ mod tests {
         ship_ops.set_explore_locations(explorer_waypoints);
         let result = ship_behavior.run(&args, &mut ship_ops).await.unwrap();
         assert_eq!(result, Response::Success);
+        assert_eq!(ship_ops.nav.waypoint_symbol, waypoint_symbol_a1.clone());
+        assert_eq!(ship_ops.current_travel_action, None);
+        assert_eq!(ship_ops.travel_action_queue.len(), 0);
+        assert_eq!(ship_ops.current_explore_location, None);
+        assert_eq!(ship_ops.explore_location_queue.len(), 0);
     }
 
     #[tokio::test]
