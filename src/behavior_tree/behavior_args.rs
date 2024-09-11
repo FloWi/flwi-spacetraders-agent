@@ -35,7 +35,7 @@ pub trait BlackboardOps: Send + Sync {
 
 #[derive(Clone)]
 pub struct BehaviorArgs {
-    pub(crate) blackboard: Arc<dyn BlackboardOps>,
+    pub blackboard: Arc<dyn BlackboardOps>,
 }
 
 #[derive(Debug, Clone)]

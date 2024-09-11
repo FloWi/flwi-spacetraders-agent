@@ -22,7 +22,7 @@ use tracing::{event, span, Instrument, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use utoipa::OpenApi;
 
-use flwi_spacetraders_agent::behavior_tree::behavior_args::DbBlackboard;
+use flwi_spacetraders_agent::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use flwi_spacetraders_agent::behavior_tree::behavior_tree::Behavior;
 use flwi_spacetraders_agent::behavior_tree::ship_behaviors::{
     ship_navigation_behaviors, ShipAction,
@@ -194,7 +194,9 @@ async fn main() -> Result<()> {
                                 .iter()
                                 .map(|db| db.entry.0.clone())
                                 .collect(),
-                            command_ship.ship.clone(),
+                            command_ship.ship.engine.speed as u32,
+                            command_ship.ship.fuel.current as u32,
+                            command_ship.ship.fuel.capacity as u32,
                         ) {
                             debug_info.insert("actions", json!(&travel_instructions));
 
@@ -224,7 +226,9 @@ async fn main() -> Result<()> {
                 );
                 command_ship.set_explore_locations(exploration_route);
 
-                let args = DbBlackboard { db: pool };
+                let args = BehaviorArgs {
+                    blackboard: Arc::new(DbBlackboard { db: pool }),
+                };
                 let _ = tokio::spawn(ship_loop(command_ship, args)).await?;
 
                 //let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
@@ -235,7 +239,7 @@ async fn main() -> Result<()> {
     }
 }
 
-pub async fn ship_loop(mut ship: ShipOperations, args: DbBlackboard) -> Result<()> {
+pub async fn ship_loop(mut ship: ShipOperations, args: BehaviorArgs) -> Result<()> {
     let behaviors = ship_navigation_behaviors();
     let ship_behavior = behaviors.explorer_behavior;
 
