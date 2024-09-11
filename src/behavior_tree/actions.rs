@@ -489,8 +489,8 @@ mod tests {
                     data: TestObjects::create_nav(
                         FlightMode::Drift,
                         NavStatus::InTransit,
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
                     ),
                 })
             });
@@ -518,8 +518,8 @@ mod tests {
                     data: TestObjects::create_nav(
                         FlightMode::Drift,
                         NavStatus::InTransit,
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
                     ),
                 })
             });
@@ -555,8 +555,8 @@ mod tests {
                     data: TestObjects::create_nav(
                         FlightMode::Drift,
                         NavStatus::InTransit,
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
                     ),
                 })
             });
@@ -576,38 +576,34 @@ mod tests {
         assert_eq!(result, Response::Success);
     }
 
+    // Helper function to create a WaypointSymbol
+    fn wp(s: &str) -> Arc<WaypointSymbol> {
+        Arc::new(WaypointSymbol(s.to_string()))
+    }
+
     #[tokio::test]
     #[traced_test]
     async fn test_explorer_behavior() {
         let mut mock_client = MockStClient::new();
-
         let mut mock_test_blackboard = MockTestBlackboard::new();
 
         let current_fuel: u32 = 500;
         let mut ship = TestObjects::test_ship(current_fuel);
         ship.nav.status = NavStatus::InOrbit;
 
-        let waypoint_symbol_a1 = WaypointSymbol("X1-FOO-A1".to_string());
-        // Clone, to make borrow-checker happy - I know, I know
-        let waypoint_symbol_a1_clone = waypoint_symbol_a1.clone();
-
-        // Clone #2, bring it on, borrow checker
-        let waypoint_symbol_a1_clone_2 = waypoint_symbol_a1.clone();
+        let waypoint_a1 = wp("X1-FOO-A1");
+        let waypoint_bar = wp("X1-FOO-BAR");
 
         mock_test_blackboard
             .expect_get_exploration_tasks_for_current_waypoint()
-            .with(eq(waypoint_symbol_a1.clone()))
+            .with(eq((*waypoint_a1).clone()))
             .returning(|_| Ok(vec![ExplorationTask::GetMarket]));
 
-        let explorer_waypoints = vec![TestObjects::create_waypoint(
-            waypoint_symbol_a1.clone(),
-            100,
-            0,
-        )];
+        let explorer_waypoints = vec![TestObjects::create_waypoint(&waypoint_a1, 100, 0)];
 
-        let first_hop_actions: Vec<TravelAction> = vec![TravelAction::Navigate {
-            from: WaypointSymbol("X1-FOO-BAR".to_string()),
-            to: waypoint_symbol_a1.clone(),
+        let first_hop_actions = vec![TravelAction::Navigate {
+            from: (*waypoint_bar).clone(),
+            to: (*waypoint_a1).clone(),
             distance: 100,
             travel_time: 57,
             fuel_consumption: 200,
@@ -618,8 +614,8 @@ mod tests {
         mock_test_blackboard
             .expect_compute_path()
             .with(
-                eq(WaypointSymbol("X1-FOO-BAR".to_string())),
-                eq(waypoint_symbol_a1.clone()),
+                eq((*waypoint_bar).clone()),
+                eq((*waypoint_a1).clone()),
                 eq(30),
                 eq(current_fuel),
                 eq(600),
@@ -630,13 +626,15 @@ mod tests {
             .expect_insert_market()
             .with(mockall::predicate::always())
             .once()
-            .returning(move |_| Ok(()));
+            .returning(|_| Ok(()));
 
+        let waypoint_a1_clone = Arc::clone(&waypoint_a1);
+        let waypoint_bar_clone = Arc::clone(&waypoint_bar);
         mock_client
             .expect_navigate()
             .with(
                 eq(ShipSymbol("FLWI-1".to_string())),
-                eq(waypoint_symbol_a1.clone()),
+                eq((*waypoint_a1).clone()),
             )
             .times(1)
             .returning(move |_, _| {
@@ -645,14 +643,15 @@ mod tests {
                         nav: TestObjects::create_nav(
                             FlightMode::Burn,
                             NavStatus::InTransit,
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                            waypoint_symbol_a1_clone.clone(),
+                            &waypoint_bar_clone,
+                            &waypoint_a1_clone,
                         ),
                         fuel: TestObjects::create_fuel(current_fuel, 200),
                     },
                 })
             });
 
+        let waypoint_bar_clone = Arc::clone(&waypoint_bar);
         mock_client
             .expect_set_flight_mode()
             .with(eq(ShipSymbol("FLWI-1".to_string())), eq(FlightMode::Burn))
@@ -662,25 +661,25 @@ mod tests {
                     data: TestObjects::create_nav(
                         FlightMode::Burn,
                         NavStatus::InTransit,
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &waypoint_bar_clone,
+                        &waypoint_bar_clone,
                     ),
                 })
             });
 
+        let waypoint_a1_clone = Arc::clone(&waypoint_a1);
         mock_client
             .expect_get_marketplace()
-            .with(eq(waypoint_symbol_a1.clone()))
+            .with(eq((*waypoint_a1).clone()))
             .times(1)
             .return_once(move |_| {
                 Ok(GetMarketResponse {
-                    data: TestObjects::create_market_data(waypoint_symbol_a1_clone_2),
+                    data: TestObjects::create_market_data(&waypoint_a1_clone),
                 })
             });
 
         let behaviors = ship_navigation_behaviors();
         let mut ship_behavior = behaviors.explorer_behavior;
-
         ship_behavior.update_indices();
 
         println!("{}", ship_behavior.to_mermaid());
@@ -692,14 +691,14 @@ mod tests {
 
         ship_ops.set_explore_locations(explorer_waypoints);
         let result = ship_behavior.run(&args, &mut ship_ops).await.unwrap();
+
         assert_eq!(result, Response::Success);
-        assert_eq!(ship_ops.nav.waypoint_symbol, waypoint_symbol_a1.clone());
+        assert_eq!(ship_ops.nav.waypoint_symbol, *waypoint_a1);
         assert_eq!(ship_ops.current_travel_action, None);
         assert_eq!(ship_ops.travel_action_queue.len(), 0);
         assert_eq!(ship_ops.current_explore_location, None);
         assert_eq!(ship_ops.explore_location_queue.len(), 0);
     }
-
     #[tokio::test]
     #[traced_test]
     async fn test_navigate_to_destination_behavior() {
@@ -744,8 +743,8 @@ mod tests {
                         nav: TestObjects::create_nav(
                             FlightMode::Burn,
                             NavStatus::InTransit,
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                            WaypointSymbol("X1-FOO-A1".to_string()),
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                            &WaypointSymbol("X1-FOO-A1".to_string()),
                         ),
                         fuel: TestObjects::create_fuel(500, 200),
                     },
@@ -761,8 +760,8 @@ mod tests {
                     data: TestObjects::create_nav(
                         FlightMode::Burn,
                         NavStatus::InTransit,
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
                     ),
                 })
             });
@@ -825,8 +824,8 @@ mod tests {
                     data: TestObjects::create_nav(
                         FlightMode::Drift,
                         NavStatus::Docked,
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
                     ),
                 })
             });
@@ -839,8 +838,8 @@ mod tests {
                     data: TestObjects::create_nav(
                         FlightMode::Drift,
                         NavStatus::InOrbit,
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
                     ),
                 })
             });
@@ -878,8 +877,8 @@ mod tests {
                         nav: TestObjects::create_nav(
                             FlightMode::Burn,
                             NavStatus::InTransit,
-                            WaypointSymbol("X1-FOO-BAR".to_string()),
-                            WaypointSymbol("X1-FOO-A1".to_string()),
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                            &WaypointSymbol("X1-FOO-A1".to_string()),
                         ),
                         fuel: TestObjects::create_fuel(500, 200),
                     },
@@ -895,8 +894,8 @@ mod tests {
                     data: TestObjects::create_nav(
                         FlightMode::Burn,
                         NavStatus::InTransit,
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
-                        WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
                     ),
                 })
             });
@@ -933,7 +932,7 @@ use crate::st_model::{
 };
 
 impl TestObjects {
-    pub fn create_waypoint(waypoint_symbol: WaypointSymbol, x: i64, y: i64) -> Waypoint {
+    pub fn create_waypoint(waypoint_symbol: &WaypointSymbol, x: i64, y: i64) -> Waypoint {
         Waypoint {
             symbol: waypoint_symbol.clone(),
             r#type: WaypointType::PLANET,
@@ -950,7 +949,7 @@ impl TestObjects {
         }
     }
 
-    pub fn create_market_data(waypoint_symbol: WaypointSymbol) -> MarketData {
+    pub fn create_market_data(waypoint_symbol: &WaypointSymbol) -> MarketData {
         MarketData {
             symbol: waypoint_symbol.clone(),
             exports: vec![],
@@ -999,8 +998,8 @@ impl TestObjects {
     pub fn create_nav(
         mode: FlightMode,
         nav_status: NavStatus,
-        origin_waypoint_symbol: WaypointSymbol,
-        destination_waypoint_symbol: WaypointSymbol,
+        origin_waypoint_symbol: &WaypointSymbol,
+        destination_waypoint_symbol: &WaypointSymbol,
     ) -> Nav {
         Nav {
             system_symbol: destination_waypoint_symbol.system_symbol(),
@@ -1039,8 +1038,8 @@ impl TestObjects {
             nav: Self::create_nav(
                 FlightMode::Drift,
                 NavStatus::InTransit,
-                WaypointSymbol("X1-FOO-BAR".to_string()),
-                WaypointSymbol("X1-FOO-BAR".to_string()),
+                &WaypointSymbol("X1-FOO-BAR".to_string()),
+                &WaypointSymbol("X1-FOO-BAR".to_string()),
             ),
             crew: Crew {
                 current: 0,
