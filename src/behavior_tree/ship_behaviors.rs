@@ -182,8 +182,13 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         Behavior::new_action(ShipAction::PopExploreLocationAsDestination),
     ]);
 
-    let process_explorer_queue_until_empty = Behavior::new_while(
+    let while_condition_explorer = Behavior::new_select(vec![
+        Behavior::new_action(ShipAction::HasDestination),
         Behavior::new_action(ShipAction::HasExploreLocationEntry),
+    ]);
+
+    let process_explorer_queue_until_empty = Behavior::new_while(
+        while_condition_explorer,
         Behavior::new_sequence(vec![
             Behavior::new_action(ShipAction::PrintExploreLocations),
             wait_for_arrival_bt.clone(),
