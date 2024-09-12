@@ -405,10 +405,10 @@ mod tests {
     use crate::st_model::{
         AgentInfoResponse, AgentSymbol, CreateChartResponse, DockShipResponse, FlightMode,
         GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse,
-        JumpGate, ListAgentsResponse, MarketData, NavResponse, NavStatus, NavigateShipResponse,
-        OrbitShipResponse, PatchShipNavResponse, RefuelShipResponse, RegistrationRequest,
-        RegistrationResponse, Ship, ShipSymbol, Shipyard, StStatusResponse, SystemSymbol,
-        SystemsPageData, Waypoint, WaypointSymbol,
+        JumpGate, ListAgentsResponse, MarketData, NavAndFuelResponse, NavOnlyResponse, NavStatus,
+        NavigateShipResponse, OrbitShipResponse, PatchShipNavResponse, RefuelShipResponse,
+        RegistrationRequest, RegistrationResponse, Ship, ShipSymbol, Shipyard, StStatusResponse,
+        SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
     };
     use async_trait::async_trait;
     use chrono::Local;
@@ -493,12 +493,14 @@ mod tests {
             .with(eq(ShipSymbol("FLWI-1".to_string())))
             .return_once(move |_| {
                 Ok(DockShipResponse {
-                    data: TestObjects::create_nav(
-                        FlightMode::Drift,
-                        NavStatus::InTransit,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
+                    data: NavOnlyResponse {
+                        nav: TestObjects::create_nav(
+                            FlightMode::Drift,
+                            NavStatus::InTransit,
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        ),
+                    },
                 })
             });
 
@@ -522,12 +524,14 @@ mod tests {
             .with(eq(ShipSymbol("FLWI-1".to_string())))
             .returning(move |_| {
                 Ok(DockShipResponse {
-                    data: TestObjects::create_nav(
-                        FlightMode::Drift,
-                        NavStatus::InTransit,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
+                    data: NavOnlyResponse {
+                        nav: TestObjects::create_nav(
+                            FlightMode::Drift,
+                            NavStatus::InTransit,
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        ),
+                    },
                 })
             });
 
@@ -561,12 +565,14 @@ mod tests {
             .with(eq(ShipSymbol("FLWI-1".to_string())))
             .returning(move |_| {
                 Ok(DockShipResponse {
-                    data: TestObjects::create_nav(
-                        FlightMode::Drift,
-                        NavStatus::InTransit,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
+                    data: NavOnlyResponse {
+                        nav: TestObjects::create_nav(
+                            FlightMode::Drift,
+                            NavStatus::InTransit,
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        ),
+                    },
                 })
             });
 
@@ -692,7 +698,7 @@ mod tests {
                     )
                 };
                 Ok(NavigateShipResponse {
-                    data: NavResponse {
+                    data: NavAndFuelResponse {
                         nav: return_nav,
                         fuel: TestObjects::create_fuel(current_fuel, 200),
                     },
@@ -795,7 +801,7 @@ mod tests {
             .times(1)
             .returning(move |_, _| {
                 Ok(NavigateShipResponse {
-                    data: NavResponse {
+                    data: NavAndFuelResponse {
                         nav: TestObjects::create_nav(
                             FlightMode::Burn,
                             NavStatus::InTransit,
@@ -890,12 +896,14 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| {
                 Ok(DockShipResponse {
-                    data: TestObjects::create_nav(
-                        FlightMode::Drift,
-                        NavStatus::Docked,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
+                    data: NavOnlyResponse {
+                        nav: TestObjects::create_nav(
+                            FlightMode::Drift,
+                            NavStatus::Docked,
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        ),
+                    },
                 })
             });
 
@@ -907,12 +915,14 @@ mod tests {
             .in_sequence(&mut seq)
             .return_once(move |_| {
                 Ok(OrbitShipResponse {
-                    data: TestObjects::create_nav(
-                        FlightMode::Drift,
-                        NavStatus::InOrbit,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
+                    data: NavOnlyResponse {
+                        nav: TestObjects::create_nav(
+                            FlightMode::Drift,
+                            NavStatus::InOrbit,
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                            &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        ),
+                    },
                 })
             });
 
@@ -924,12 +934,14 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| {
                 Ok(DockShipResponse {
-                    data: TestObjects::create_nav(
-                        FlightMode::Burn,
-                        NavStatus::Docked,
-                        &WaypointSymbol("X1-FOO-A1".to_string()),
-                        &WaypointSymbol("X1-FOO-A1".to_string()),
-                    ),
+                    data: NavOnlyResponse {
+                        nav: TestObjects::create_nav(
+                            FlightMode::Burn,
+                            NavStatus::Docked,
+                            &WaypointSymbol("X1-FOO-A1".to_string()),
+                            &WaypointSymbol("X1-FOO-A1".to_string()),
+                        ),
+                    },
                 })
             });
 
@@ -941,12 +953,14 @@ mod tests {
             .in_sequence(&mut seq)
             .return_once(move |_| {
                 Ok(OrbitShipResponse {
-                    data: TestObjects::create_nav(
-                        FlightMode::Burn,
-                        NavStatus::InOrbit,
-                        &WaypointSymbol("X1-FOO-A1".to_string()),
-                        &WaypointSymbol("X1-FOO-A1".to_string()),
-                    ),
+                    data: NavOnlyResponse {
+                        nav: TestObjects::create_nav(
+                            FlightMode::Burn,
+                            NavStatus::InOrbit,
+                            &WaypointSymbol("X1-FOO-A1".to_string()),
+                            &WaypointSymbol("X1-FOO-A1".to_string()),
+                        ),
+                    },
                 })
             });
 
@@ -988,7 +1002,7 @@ mod tests {
             .times(1)
             .returning(move |_, _| {
                 Ok(NavigateShipResponse {
-                    data: NavResponse {
+                    data: NavAndFuelResponse {
                         nav: TestObjects::create_nav(
                             FlightMode::Burn,
                             NavStatus::InTransit,
