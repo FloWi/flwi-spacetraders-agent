@@ -591,7 +591,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    async fn test_explorer_behavior() {
+    async fn test_explorer_behavior_with_two_waypoints() {
         let mut mock_client = MockStClient::new();
         let mut mock_test_blackboard = MockTestBlackboard::new();
 
@@ -600,18 +600,32 @@ mod tests {
         ship.nav.status = NavStatus::InOrbit;
 
         let waypoint_a1 = wp("X1-FOO-A1");
+        let waypoint_a2 = wp("X1-FOO-A2");
         let waypoint_bar = wp("X1-FOO-BAR");
 
         mock_test_blackboard
             .expect_get_exploration_tasks_for_current_waypoint()
-            .with(eq((*waypoint_a1).clone()))
+            .withf(|wp| wp.0.contains("X1-FOO-A"))
             .returning(|_| Ok(vec![ExplorationTask::GetMarket]));
 
-        let explorer_waypoints = vec![TestObjects::create_waypoint(&waypoint_a1, 100, 0)];
+        let explorer_waypoints = vec![
+            TestObjects::create_waypoint(&waypoint_a1, 100, 0),
+            TestObjects::create_waypoint(&waypoint_a2, 200, 0),
+        ];
 
         let first_hop_actions = vec![TravelAction::Navigate {
             from: (*waypoint_bar).clone(),
             to: (*waypoint_a1).clone(),
+            distance: 100,
+            travel_time: 57,
+            fuel_consumption: 200,
+            mode: FlightMode::Burn,
+            total_time: 57,
+        }];
+
+        let second_hop_actions = vec![TravelAction::Navigate {
+            from: (*waypoint_a1).clone(),
+            to: (*waypoint_a2).clone(),
             distance: 100,
             travel_time: 57,
             fuel_consumption: 200,
@@ -631,29 +645,51 @@ mod tests {
             .returning(move |_, _, _, _, _| Ok(first_hop_actions.clone()));
 
         mock_test_blackboard
+            .expect_compute_path()
+            .with(
+                eq((*waypoint_a1).clone()),
+                eq((*waypoint_a2).clone()),
+                eq(30),
+                eq(current_fuel),
+                eq(600),
+            )
+            .returning(move |_, _, _, _, _| Ok(second_hop_actions.clone()));
+
+        mock_test_blackboard
             .expect_insert_market()
             .with(mockall::predicate::always())
-            .once()
+            .times(2)
             .returning(|_| Ok(()));
 
         let waypoint_a1_clone = Arc::clone(&waypoint_a1);
+        let waypoint_a2_clone = Arc::clone(&waypoint_a2);
         let waypoint_bar_clone = Arc::clone(&waypoint_bar);
+
         mock_client
             .expect_navigate()
-            .with(
-                eq(ShipSymbol("FLWI-1".to_string())),
-                eq((*waypoint_a1).clone()),
-            )
-            .times(1)
-            .returning(move |_, _| {
+            .withf(|ship_symbol, to| {
+                ship_symbol == &ShipSymbol("FLWI-1".to_string()) && to.0.contains("X1-FOO-A")
+            })
+            .times(2)
+            .returning(move |_, to| {
+                let return_nav = if to.0.ends_with("A1") {
+                    TestObjects::create_nav(
+                        FlightMode::Burn,
+                        NavStatus::InTransit,
+                        &waypoint_bar_clone,
+                        &waypoint_a1_clone,
+                    )
+                } else {
+                    TestObjects::create_nav(
+                        FlightMode::Burn,
+                        NavStatus::InTransit,
+                        &waypoint_a1_clone,
+                        &waypoint_a2_clone,
+                    )
+                };
                 Ok(NavigateShipResponse {
                     data: NavResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Burn,
-                            NavStatus::InTransit,
-                            &waypoint_bar_clone,
-                            &waypoint_a1_clone,
-                        ),
+                        nav: return_nav,
                         fuel: TestObjects::create_fuel(current_fuel, 200),
                     },
                 })
@@ -676,14 +712,19 @@ mod tests {
             });
 
         let waypoint_a1_clone = Arc::clone(&waypoint_a1);
+        let waypoint_a2_clone = Arc::clone(&waypoint_a2);
         mock_client
             .expect_get_marketplace()
-            .with(eq((*waypoint_a1).clone()))
-            .times(1)
-            .return_once(move |_| {
-                Ok(GetMarketResponse {
-                    data: TestObjects::create_market_data(&waypoint_a1_clone),
-                })
+            .withf(|wp| wp.0.contains("X1-FOO-A"))
+            .times(2)
+            .returning(move |wp| {
+                let market_data = if wp.0.ends_with("A1") {
+                    TestObjects::create_market_data(&waypoint_a1_clone)
+                } else {
+                    TestObjects::create_market_data(&waypoint_a2_clone)
+                };
+
+                Ok(GetMarketResponse { data: market_data })
             });
 
         let behaviors = ship_navigation_behaviors();
@@ -704,12 +745,13 @@ mod tests {
             .unwrap();
 
         assert_eq!(result, Response::Success);
-        assert_eq!(ship_ops.nav.waypoint_symbol, *waypoint_a1);
+        assert_eq!(ship_ops.nav.waypoint_symbol, *waypoint_a2);
         assert_eq!(ship_ops.current_travel_action, None);
         assert_eq!(ship_ops.travel_action_queue.len(), 0);
         assert_eq!(ship_ops.current_explore_location, None);
         assert_eq!(ship_ops.explore_location_queue.len(), 0);
     }
+
     #[tokio::test]
     #[traced_test]
     async fn test_navigate_to_destination_behavior() {
