@@ -5,9 +5,9 @@ use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
 use crate::st_model::{
-    Agent, AgentSymbol, MarketData, NavRouteWaypoint, NavStatus, RefuelShipResponse,
-    RefuelShipResponseBody, ShipSymbol, TradeGoodSymbol, Transaction, TransactionType,
-    WaypointType,
+    Agent, AgentSymbol, MarketData, NavOnlyResponse, NavRouteWaypoint, NavStatus,
+    RefuelShipResponse, RefuelShipResponseBody, ShipSymbol, TradeGoodSymbol, Transaction,
+    TransactionType, WaypointType,
 };
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -24,7 +24,7 @@ impl Actionable for ShipAction {
         &self,
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
-        duration: Duration,
+        _: Duration,
     ) -> Result<Response, Self::ActionError> {
         match self {
             ShipAction::HasTravelActionEntry => {
@@ -251,8 +251,7 @@ impl Actionable for ShipAction {
                 Ok(Success)
             }
             ShipAction::HasExploreLocationEntry => {
-                let no_explore_location_left = state.explore_location_queue.is_empty()
-                    && state.current_explore_location.is_none();
+                let no_explore_location_left = state.explore_location_queue.is_empty();
                 if no_explore_location_left {
                     Err(anyhow!("no_explore_location_left"))
                 } else {
@@ -260,21 +259,12 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::PopExploreLocationAsDestination => {
-                state.pop_explore_location();
+                state.pop_explore_location_as_destination();
                 Ok(Success)
             }
-            ShipAction::HasActiveExploreLocationEntry => {
-                if state.current_explore_location.is_some() {
-                    Ok(Success)
-                } else {
-                    Err(anyhow!("No active explore_destination"))
-                }
-            }
+
             ShipAction::PrintExploreLocations => {
-                println!(
-                    "current explore location: {:?}\nexplore_location_queue: {:?}",
-                    state.current_explore_location, state.explore_location_queue
-                );
+                println!("explore_location_queue: {:?}", state.explore_location_queue);
                 Ok(Success)
             }
             ShipAction::RemoveDestination => {
@@ -288,10 +278,6 @@ impl Actionable for ShipAction {
                 } else {
                     Err(anyhow!("No active navigation_destination"))
                 }
-            }
-            ShipAction::SetExploreLocationAsDestination => {
-                state.current_navigation_destination = state.current_explore_location.clone();
-                Ok(Success)
             }
 
             ShipAction::IsAtDestination => {
@@ -381,10 +367,6 @@ impl Actionable for ShipAction {
                         }
                     }
                 }
-                Ok(Success)
-            }
-            ShipAction::MarkExploreLocationAsComplete => {
-                state.current_explore_location = None;
                 Ok(Success)
             }
         }
@@ -757,7 +739,6 @@ mod tests {
         assert_eq!(result, Response::Success);
         assert_eq!(ship_ops.nav.waypoint_symbol, *waypoint_a2);
         assert_eq!(ship_ops.travel_action_queue.len(), 0);
-        assert_eq!(ship_ops.current_explore_location, None);
         assert_eq!(ship_ops.explore_location_queue.len(), 0);
     }
 

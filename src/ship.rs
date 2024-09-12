@@ -17,7 +17,6 @@ pub struct ShipOperations {
     pub travel_action_queue: VecDeque<TravelAction>,
     pub current_navigation_destination: Option<WaypointSymbol>,
     pub explore_location_queue: VecDeque<WaypointSymbol>,
-    pub current_explore_location: Option<WaypointSymbol>,
 }
 
 impl ShipOperations {
@@ -48,7 +47,6 @@ impl ShipOperations {
             travel_action_queue: VecDeque::new(),
             current_navigation_destination: None,
             explore_location_queue: VecDeque::new(),
-            current_explore_location: None,
         }
     }
 
@@ -60,8 +58,8 @@ impl ShipOperations {
         self.current_navigation_destination = Some(destination)
     }
 
-    pub fn pop_explore_location(&mut self) {
-        self.current_explore_location = self.explore_location_queue.pop_front();
+    pub fn pop_explore_location_as_destination(&mut self) {
+        self.current_navigation_destination = self.explore_location_queue.pop_front();
     }
 
     pub fn set_explore_locations(&mut self, p0: Vec<Waypoint>) {
@@ -69,7 +67,6 @@ impl ShipOperations {
         let collected = mapped.collect_vec();
         let deque = VecDeque::from(collected);
         self.explore_location_queue = deque;
-        self.current_explore_location = None;
     }
 
     pub async fn dock(&mut self) -> Result<Nav> {

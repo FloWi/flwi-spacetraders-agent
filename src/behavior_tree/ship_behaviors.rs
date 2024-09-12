@@ -26,15 +26,12 @@ pub enum ShipAction {
     PrintTravelActions,
     HasExploreLocationEntry,
     PopExploreLocationAsDestination,
-    HasActiveExploreLocationEntry,
     PrintExploreLocations,
     HasDestination,
     IsAtDestination,
     HasRouteToDestination,
     ComputePathToDestination,
     CollectWaypointInfos,
-    MarkExploreLocationAsComplete,
-    SetExploreLocationAsDestination,
     RemoveDestination,
     SkipRefueling,
 }
@@ -180,24 +177,25 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         Behavior::new_action(ShipAction::RemoveDestination),
     ]);
 
-    let mut explorer_behavior = Behavior::new_while(
+    let prime_explorer_destination_with_first_explorer_location = Behavior::new_select(vec![
+        Behavior::new_action(ShipAction::HasDestination),
+        Behavior::new_action(ShipAction::PopExploreLocationAsDestination),
+    ]);
+
+    let process_explorer_queue_until_empty = Behavior::new_while(
         Behavior::new_action(ShipAction::HasExploreLocationEntry),
         Behavior::new_sequence(vec![
+            Behavior::new_action(ShipAction::PrintExploreLocations),
             wait_for_arrival_bt.clone(),
-            Behavior::new_select(vec![
-                Behavior::new_invert(Behavior::new_action(ShipAction::PrintExploreLocations)),
-                Behavior::new_action(ShipAction::HasActiveExploreLocationEntry),
-                Behavior::new_sequence(vec![
-                    Behavior::new_action(ShipAction::PopExploreLocationAsDestination),
-                    Behavior::new_action(ShipAction::PrintExploreLocations),
-                    Behavior::new_action(ShipAction::SetExploreLocationAsDestination),
-                ]),
-            ]),
             navigate_to_destination.clone(),
             Behavior::new_action(ShipAction::CollectWaypointInfos),
-            Behavior::new_action(ShipAction::MarkExploreLocationAsComplete),
+            Behavior::new_action(ShipAction::PopExploreLocationAsDestination),
         ]),
     );
+    let mut explorer_behavior = Behavior::new_sequence(vec![
+        prime_explorer_destination_with_first_explorer_location,
+        process_explorer_queue_until_empty,
+    ]);
 
     Behaviors {
         wait_for_arrival_bt: wait_for_arrival_bt.update_indices().clone(),
