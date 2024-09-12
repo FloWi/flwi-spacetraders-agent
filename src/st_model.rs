@@ -1,6 +1,7 @@
 use crate::st_client::Data;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
+use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt::Display;
 use std::hash::Hash;
@@ -29,9 +30,33 @@ pub struct JumpGate {
 pub type GetShipyardResponse = Data<Shipyard>;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
 pub struct Shipyard {
     pub(crate) symbol: WaypointSymbol,
-    connections: Vec<WaypointSymbol>,
+    pub(crate) ship_types: Vec<ShipTypeEntry>,
+    pub(crate) transactions: Vec<ShipTransaction>,
+    pub(crate) ships: Vec<ShipyardShip>,
+    pub(crate) modifications_fee: i32,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct ShipTransaction {}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct ShipyardShip {
+    name: String,
+    description: String,
+    supply: SupplyLevel,
+    activity: ActivityLevel,
+    purchase_price: u32,
+    frame: Frame,
+    reactor: Reactor,
+    engine: Engine,
+    modules: Vec<Module>,
+    mounts: Vec<Mount>,
+    crew: ShipyardShipCrew,
 }
 
 pub type CreateChartResponse = Data<CreateChartBody>;
@@ -49,6 +74,29 @@ pub struct Chart {
     waypoint_symbol: Option<WaypointSymbol>,
     submitted_by: Option<AgentSymbol>,
     submitted_on: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[allow(non_camel_case_types)]
+pub struct ShipTypeEntry {
+    r#type: ShipType,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Display)]
+#[allow(non_camel_case_types)]
+pub enum ShipType {
+    SHIP_PROBE,
+    SHIP_MINING_DRONE,
+    SHIP_SIPHON_DRONE,
+    SHIP_INTERCEPTOR,
+    SHIP_LIGHT_HAULER,
+    SHIP_COMMAND_FRIGATE,
+    SHIP_EXPLORER,
+    SHIP_HEAVY_FREIGHTER,
+    SHIP_LIGHT_SHUTTLE,
+    SHIP_ORE_HOUND,
+    SHIP_REFINING_FREIGHTER,
+    SHIP_SURVEYOR,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Display)]
@@ -241,7 +289,7 @@ pub struct Meta {
     pub limit: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Faction {
     pub symbol: String,
@@ -364,7 +412,7 @@ pub struct TradeGood {
     pub description: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub waypoint_symbol: WaypointSymbol,
@@ -378,7 +426,7 @@ pub struct Transaction {
     pub timestamp: DateTime<Utc>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TransactionType {
     Purchase,
@@ -406,7 +454,7 @@ pub enum TradeGoodType {
     Exchange,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SupplyLevel {
     Scarce,
@@ -416,7 +464,7 @@ pub enum SupplyLevel {
     Abundant,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ActivityLevel {
     Weak,
@@ -472,7 +520,7 @@ pub struct SerializableCoordinate<T> {
     label: T,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct RegistrationRequest {
     pub faction: FactionSymbol,
@@ -480,7 +528,7 @@ pub struct RegistrationRequest {
     pub email: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct RegistrationResponse {
     pub agent: Agent,
@@ -490,7 +538,7 @@ pub struct RegistrationResponse {
     pub token: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Agent {
     pub account_id: Option<String>,
@@ -501,7 +549,7 @@ pub struct Agent {
     pub ship_count: i32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Contract {
     pub id: String,
@@ -514,7 +562,7 @@ pub struct Contract {
     pub deadline_to_accept: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ContractTerms {
     pub deadline: DateTime<Utc>,
@@ -522,14 +570,14 @@ pub struct ContractTerms {
     pub deliver: Vec<Delivery>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Payment {
     pub on_accepted: i64,
     pub on_fulfilled: i64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Delivery {
     pub trade_symbol: String,
@@ -538,7 +586,7 @@ pub struct Delivery {
     pub units_fulfilled: i32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct FactionTrait {
     pub symbol: String,
@@ -546,7 +594,7 @@ pub struct FactionTrait {
     pub description: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Ship {
     pub symbol: ShipSymbol,
@@ -563,7 +611,7 @@ pub struct Ship {
     pub fuel: Fuel,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Registration {
     pub name: String,
@@ -571,7 +619,7 @@ pub struct Registration {
     pub role: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Nav {
     pub system_symbol: SystemSymbol,
@@ -581,7 +629,7 @@ pub struct Nav {
     pub flight_mode: FlightMode,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum NavStatus {
     InTransit,
@@ -598,26 +646,26 @@ pub enum FlightMode {
     Burn,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct NavAndFuelResponse {
     pub(crate) nav: Nav,
     pub(crate) fuel: Fuel,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct NavOnlyResponse {
     pub(crate) nav: Nav,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct DockShipResponse {
     pub(crate) data: NavOnlyResponse,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct PatchShipNavRequest {
     pub(crate) flight_mode: FlightMode,
@@ -625,13 +673,13 @@ pub struct PatchShipNavRequest {
 
 pub type PatchShipNavResponse = Data<Nav>;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct NavigateShipRequest {
     pub(crate) waypoint_symbol: WaypointSymbol,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct RefuelShipRequest {
     pub(crate) from_cargo: bool,
@@ -640,7 +688,7 @@ pub struct RefuelShipRequest {
 
 pub type RefuelShipResponse = Data<RefuelShipResponseBody>;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct RefuelShipResponseBody {
     pub(crate) agent: Agent,
@@ -648,19 +696,19 @@ pub struct RefuelShipResponseBody {
     pub(crate) transaction: Transaction,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct NavigateShipResponse {
     pub(crate) data: NavAndFuelResponse,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct OrbitShipResponse {
     pub(crate) data: NavOnlyResponse,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Route {
     pub destination: NavRouteWaypoint,
@@ -680,7 +728,7 @@ pub struct NavRouteWaypoint {
     pub y: i32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Crew {
     pub current: i32,
@@ -691,45 +739,52 @@ pub struct Crew {
     pub wages: i32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct ShipyardShipCrew {
+    pub required: i32,
+    pub capacity: i32,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Frame {
     pub symbol: String,
     pub name: String,
     pub description: String,
-    pub condition: f32,
-    pub integrity: f32,
+    pub condition: OrderedFloat<f32>,
+    pub integrity: OrderedFloat<f32>,
     pub module_slots: i32,
     pub mounting_points: i32,
     pub fuel_capacity: i32,
     pub requirements: Requirements,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Reactor {
     pub symbol: String,
     pub name: String,
     pub description: String,
-    pub condition: f32,
-    pub integrity: f32,
+    pub condition: OrderedFloat<f32>,
+    pub integrity: OrderedFloat<f32>,
     pub power_output: i32,
     pub requirements: Requirements,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Engine {
     pub symbol: String,
     pub name: String,
     pub description: String,
-    pub condition: f32,
-    pub integrity: f32,
+    pub condition: OrderedFloat<f32>,
+    pub integrity: OrderedFloat<f32>,
     pub speed: i32,
     pub requirements: Requirements,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Requirements {
     pub power: Option<i32>,
@@ -737,7 +792,7 @@ pub struct Requirements {
     pub slots: Option<i32>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Cooldown {
     pub ship_symbol: String,
@@ -746,7 +801,7 @@ pub struct Cooldown {
     pub expiration: Option<DateTime<Utc>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Module {
     pub symbol: String,
@@ -757,7 +812,7 @@ pub struct Module {
     pub requirements: Requirements,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Mount {
     pub symbol: String,
@@ -768,7 +823,7 @@ pub struct Mount {
     pub requirements: Requirements,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Cargo {
     pub capacity: i32,
@@ -776,7 +831,7 @@ pub struct Cargo {
     pub inventory: Vec<Inventory>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Inventory {
     pub symbol: String,
@@ -785,7 +840,7 @@ pub struct Inventory {
     pub units: i32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Fuel {
     pub current: i32,
@@ -793,7 +848,7 @@ pub struct Fuel {
     pub consumed: FuelConsumed,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct FuelConsumed {
     pub amount: i32,

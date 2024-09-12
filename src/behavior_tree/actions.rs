@@ -267,6 +267,14 @@ impl Actionable for ShipAction {
                 println!("explore_location_queue: {:?}", state.explore_location_queue);
                 Ok(Success)
             }
+            ShipAction::PrintDestination => {
+                println!(
+                    "current_navigation_destination: {:?}",
+                    state.current_navigation_destination
+                );
+                Ok(Success)
+            }
+
             ShipAction::RemoveDestination => {
                 state.current_navigation_destination = None;
                 Ok(Success)
@@ -347,6 +355,11 @@ impl Actionable for ShipAction {
                 } else {
                     exploration_tasks
                 };
+
+                println!(
+                    "CollectWaypointInfos - exploration_tasks: {:?}",
+                    exploration_tasks
+                );
 
                 for task in exploration_tasks {
                     match task {
@@ -1170,8 +1183,8 @@ impl TestObjects {
                 symbol: "".to_string(),
                 name: "".to_string(),
                 description: "".to_string(),
-                condition: 0.0,
-                integrity: 0.0,
+                condition: 0.0.into(),
+                integrity: 0.0.into(),
                 module_slots: 0,
                 mounting_points: 0,
                 fuel_capacity: 0,
@@ -1185,8 +1198,8 @@ impl TestObjects {
                 symbol: "".to_string(),
                 name: "".to_string(),
                 description: "".to_string(),
-                condition: 0.0,
-                integrity: 0.0,
+                condition: 0.0.into(),
+                integrity: 0.0.into(),
                 power_output: 0,
                 requirements: Requirements {
                     power: None,
@@ -1198,8 +1211,8 @@ impl TestObjects {
                 symbol: "".to_string(),
                 name: "".to_string(),
                 description: "".to_string(),
-                condition: 0.0,
-                integrity: 0.0,
+                condition: 0.0.into(),
+                integrity: 0.0.into(),
                 speed: 30,
                 requirements: Requirements {
                     power: None,

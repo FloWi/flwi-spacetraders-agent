@@ -96,39 +96,41 @@ where
         }
     }
 
-    // 2-opt improvement
-    let mut improved = true;
-    while improved {
-        improved = false;
-        for i in 0..n - 2 {
-            for j in i + 2..n {
-                let a = tour[i];
-                let b = tour[i + 1];
-                let c = tour[j];
-                let d = tour[(j + 1) % n];
+    if n >= 2 {
+        // 2-opt improvement
+        let mut improved = true;
+        while improved {
+            improved = false;
+            for i in 0..n - 2 {
+                for j in i + 2..n {
+                    let a = tour[i];
+                    let b = tour[i + 1];
+                    let c = tour[j];
+                    let d = tour[(j + 1) % n];
 
-                let current_cost = graph
-                    .edge_weight(graph.find_edge(node_indices[a], node_indices[b]).unwrap())
-                    .unwrap()
-                    + graph
-                        .edge_weight(graph.find_edge(node_indices[c], node_indices[d]).unwrap())
-                        .unwrap();
+                    let current_cost = graph
+                        .edge_weight(graph.find_edge(node_indices[a], node_indices[b]).unwrap())
+                        .unwrap()
+                        + graph
+                            .edge_weight(graph.find_edge(node_indices[c], node_indices[d]).unwrap())
+                            .unwrap();
 
-                let new_cost = graph
-                    .edge_weight(graph.find_edge(node_indices[a], node_indices[c]).unwrap())
-                    .unwrap()
-                    + graph
-                        .edge_weight(graph.find_edge(node_indices[b], node_indices[d]).unwrap())
-                        .unwrap();
+                    let new_cost = graph
+                        .edge_weight(graph.find_edge(node_indices[a], node_indices[c]).unwrap())
+                        .unwrap()
+                        + graph
+                            .edge_weight(graph.find_edge(node_indices[b], node_indices[d]).unwrap())
+                            .unwrap();
 
-                if new_cost < current_cost {
-                    tour[i + 1..=j].reverse();
-                    improved = true;
+                    if new_cost < current_cost {
+                        tour[i + 1..=j].reverse();
+                        improved = true;
+                        break;
+                    }
+                }
+                if improved {
                     break;
                 }
-            }
-            if improved {
-                break;
             }
         }
     }

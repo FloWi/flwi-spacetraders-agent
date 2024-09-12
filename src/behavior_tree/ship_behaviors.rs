@@ -34,6 +34,7 @@ pub enum ShipAction {
     CollectWaypointInfos,
     RemoveDestination,
     SkipRefueling,
+    PrintDestination,
 }
 
 pub struct Behaviors {
@@ -178,6 +179,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
     ]);
 
     let prime_explorer_destination_with_first_explorer_location = Behavior::new_select(vec![
+        Behavior::new_invert(Behavior::new_action(ShipAction::PrintExploreLocations)),
         Behavior::new_action(ShipAction::HasDestination),
         Behavior::new_action(ShipAction::PopExploreLocationAsDestination),
     ]);
@@ -190,6 +192,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
     let process_explorer_queue_until_empty = Behavior::new_while(
         while_condition_explorer,
         Behavior::new_sequence(vec![
+            Behavior::new_action(ShipAction::PrintDestination),
             Behavior::new_action(ShipAction::PrintExploreLocations),
             wait_for_arrival_bt.clone(),
             navigate_to_destination.clone(),

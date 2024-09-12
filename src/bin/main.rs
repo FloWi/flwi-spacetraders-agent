@@ -174,7 +174,7 @@ async fn main() -> Result<()> {
                     &waypoints_of_home_system,
                     &current_location,
                 )
-                .unwrap();
+                .unwrap_or(Vec::new());
 
                 let mut route_debugging_list: Vec<JsonValue> = Vec::new();
 
@@ -249,40 +249,39 @@ pub async fn ship_loop(mut ship: ShipOperations, args: BehaviorArgs) -> Result<(
     );
 
     let mut tick: usize = 0;
-    loop {
-        let span = span!(
-            Level::INFO,
-            "ship_loop",
-            tick,
-            ship = format!("{}", ship.symbol.0),
-        );
-        tick += 1;
+    let span = span!(
+        Level::INFO,
+        "ship_loop",
+        tick,
+        ship = format!("{}", ship.symbol.0),
+    );
+    tick += 1;
 
-        let _enter = span.enter();
+    let _enter = span.enter();
 
-        let result = ship_behavior
-            .run(&args, &mut ship, Duration::from_secs(1))
-            .await;
+    let result = ship_behavior
+        .run(&args, &mut ship, Duration::from_secs(1))
+        .await;
 
-        match &result {
-            Ok(o) => {
-                event!(
-                    name: "Ship Tick done ",
-                    Level::INFO,
-                    result = %o,
-                );
-            }
-            Err(e) => {
-                event!(
-                    name: "Ship Tick done with Error",
-                    Level::INFO,
-                    result = %e,
-                );
-            }
+    match &result {
+        Ok(o) => {
+            event!(
+                name: "Ship Tick done ",
+                Level::INFO,
+                result = %o,
+            );
         }
-
-        sleep(Duration::from_secs(1)).await;
+        Err(e) => {
+            event!(
+                name: "Ship Tick done with Error",
+                Level::INFO,
+                result = %e,
+            );
+        }
     }
+
+    event!(Level::INFO, "Ship Loop done",);
+
     Ok(())
 }
 
