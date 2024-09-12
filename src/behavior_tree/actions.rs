@@ -228,8 +228,9 @@ impl Actionable for ShipAction {
                 if let Some(action) = &state.current_travel_action {
                     match action {
                         TravelAction::Navigate { to, .. } => {
-                            let new_nav = state.navigate(to).await?;
-                            state.set_nav(new_nav.clone());
+                            let nav_response = state.navigate(to).await?;
+                            state.set_nav(nav_response.nav.clone());
+                            state.set_fuel(nav_response.fuel.clone());
                             Ok(Success)
                         }
                         TravelAction::Refuel { .. } => Err(anyhow!(
@@ -412,6 +413,7 @@ mod tests {
     use core::time::Duration;
     use mockall::mock;
     use mockall::predicate::*;
+    use sqlx::__rt::timeout;
     use std::sync::Arc;
     use tracing_test::traced_test;
 
@@ -849,6 +851,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn test_navigate_to_destination_behavior_with_refuel() {
+        // let result = timeout(Duration::from_secs(3), async {
         let mut mock_client = MockStClient::new();
 
         let mut mock_test_blackboard = MockTestBlackboard::new();
@@ -870,11 +873,20 @@ mod tests {
                 mode: FlightMode::Burn,
                 total_time: 59,
             },
+            TravelAction::Refuel {
+                at: WaypointSymbol("X1-FOO-A1".to_string()),
+                total_time: 2,
+            },
         ];
 
+        let mut seq = mockall::Sequence::new();
+
+        // 1st waypoint: Dock for refueling
         mock_client
             .expect_dock_ship()
             .with(eq(ShipSymbol("FLWI-1".to_string())))
+            .once()
+            .in_sequence(&mut seq)
             .returning(move |_| {
                 Ok(DockShipResponse {
                     data: TestObjects::create_nav(
@@ -886,10 +898,13 @@ mod tests {
                 })
             });
 
+        // 1st waypoint: Orbit after refueling
         mock_client
             .expect_orbit_ship()
             .with(eq(ShipSymbol("FLWI-1".to_string())))
-            .returning(move |_| {
+            .once()
+            .in_sequence(&mut seq)
+            .return_once(move |_| {
                 Ok(OrbitShipResponse {
                     data: TestObjects::create_nav(
                         FlightMode::Drift,
@@ -900,12 +915,55 @@ mod tests {
                 })
             });
 
+        // 2nd waypoint: Dock for refueling
+        mock_client
+            .expect_dock_ship()
+            .with(eq(ShipSymbol("FLWI-1".to_string())))
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_| {
+                Ok(DockShipResponse {
+                    data: TestObjects::create_nav(
+                        FlightMode::Burn,
+                        NavStatus::Docked,
+                        &WaypointSymbol("X1-FOO-A1".to_string()),
+                        &WaypointSymbol("X1-FOO-A1".to_string()),
+                    ),
+                })
+            });
+
+        // 2nd waypoint: Orbit after refueling
+        mock_client
+            .expect_orbit_ship()
+            .with(eq(ShipSymbol("FLWI-1".to_string())))
+            .once()
+            .in_sequence(&mut seq)
+            .return_once(move |_| {
+                Ok(OrbitShipResponse {
+                    data: TestObjects::create_nav(
+                        FlightMode::Burn,
+                        NavStatus::InOrbit,
+                        &WaypointSymbol("X1-FOO-A1".to_string()),
+                        &WaypointSymbol("X1-FOO-A1".to_string()),
+                    ),
+                })
+            });
+
         mock_client
             .expect_refuel()
             .with(eq(ShipSymbol("FLWI-1".to_string())), eq(500), eq(false))
             .returning(move |_, _, _| {
                 Ok(RefuelShipResponse {
                     data: TestObjects::create_refuel_ship_response_body(500),
+                })
+            });
+
+        mock_client
+            .expect_refuel()
+            .with(eq(ShipSymbol("FLWI-1".to_string())), eq(200), eq(false))
+            .returning(move |_, _, _| {
+                Ok(RefuelShipResponse {
+                    data: TestObjects::create_refuel_ship_response_body(200),
                 })
             });
 
@@ -936,7 +994,7 @@ mod tests {
                             &WaypointSymbol("X1-FOO-BAR".to_string()),
                             &WaypointSymbol("X1-FOO-A1".to_string()),
                         ),
-                        fuel: TestObjects::create_fuel(500, 200),
+                        fuel: TestObjects::create_fuel(600, 200),
                     },
                 })
             });
@@ -981,6 +1039,10 @@ mod tests {
         assert_eq!(ship_ops.nav.status, NavStatus::InOrbit);
         assert_eq!(ship_ops.travel_action_queue.len(), 0);
         assert_eq!(ship_ops.current_navigation_destination, None);
+        // })
+        // .await;
+        //
+        // assert!(result.is_ok(), "test-timed out");
     }
 }
 

@@ -109,7 +109,9 @@ pub fn ship_navigation_behaviors() -> Behaviors {
     let mut wait_for_arrival_bt = Behavior::new_sequence(vec![
         Behavior::new_action(ShipAction::WaitForArrival),
         Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
+        Behavior::new_action(ShipAction::PrintTravelActions),
         Behavior::new_action(ShipAction::MarkTravelActionAsCompleteIfPossible),
+        Behavior::new_action(ShipAction::PrintTravelActions),
     ]);
 
     let mut orbit_if_necessary = Behavior::new_select(vec![
@@ -161,7 +163,6 @@ pub fn ship_navigation_behaviors() -> Behaviors {
             wait_for_arrival_bt.clone(),
             Behavior::new_select(vec![
                 Behavior::new_invert(Behavior::new_action(ShipAction::PrintTravelActions)),
-                Behavior::new_action(ShipAction::IsAtDestination),
                 Behavior::new_invert(Behavior::new_select(vec![
                     Behavior::new_action(ShipAction::HasActiveTravelAction),
                     Behavior::new_action(ShipAction::PopTravelAction),
@@ -177,6 +178,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         Behavior::new_select(vec![
             Behavior::new_action(ShipAction::HasRouteToDestination),
             Behavior::new_action(ShipAction::ComputePathToDestination),
+            Behavior::new_action(ShipAction::PrintTravelActions),
         ]),
         follow_travel_actions.clone(),
         Behavior::new_action(ShipAction::RemoveDestination),

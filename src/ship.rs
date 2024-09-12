@@ -1,8 +1,8 @@
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::st_client::StClientTrait;
 use crate::st_model::{
-    CreateChartBody, FlightMode, Fuel, JumpGate, MarketData, Nav, RefuelShipResponse, Ship,
-    Shipyard, Waypoint, WaypointSymbol,
+    CreateChartBody, FlightMode, Fuel, JumpGate, MarketData, Nav, NavResponse, RefuelShipResponse,
+    Ship, Shipyard, Waypoint, WaypointSymbol,
 };
 use anyhow::*;
 use itertools::Itertools;
@@ -127,10 +127,10 @@ impl ShipOperations {
         Ok(response.data)
     }
 
-    pub async fn navigate(&self, to: &WaypointSymbol) -> Result<Nav> {
+    pub async fn navigate(&self, to: &WaypointSymbol) -> Result<NavResponse> {
         let response = self.client.navigate(self.ship.symbol.clone(), to).await?;
         println!("{:?}", response);
-        Ok(response.data.nav)
+        Ok(response.data)
     }
 
     pub(crate) async fn refuel(&self, from_cargo: bool) -> Result<RefuelShipResponse> {
