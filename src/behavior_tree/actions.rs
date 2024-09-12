@@ -12,6 +12,7 @@ use crate::st_model::{
 use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Local, Utc};
+use core::time::Duration;
 
 #[async_trait]
 impl Actionable for ShipAction {
@@ -23,6 +24,7 @@ impl Actionable for ShipAction {
         &self,
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
+        duration: Duration,
     ) -> Result<Response, Self::ActionError> {
         match self {
             ShipAction::HasActiveTravelAction => {
@@ -407,6 +409,7 @@ mod tests {
     };
     use async_trait::async_trait;
     use chrono::Local;
+    use core::time::Duration;
     use mockall::mock;
     use mockall::predicate::*;
     use std::sync::Arc;
@@ -535,7 +538,9 @@ mod tests {
         mocked_client.never();
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
-        let result = ship_behavior.run(&args, &mut ship_ops).await;
+        let result = ship_behavior
+            .run(&args, &mut ship_ops, Duration::from_millis(1))
+            .await;
         assert!(result.is_ok());
     }
 
@@ -572,7 +577,10 @@ mod tests {
         mocked_client.times(1);
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
-        let result = ship_behavior.run(&args, &mut ship_ops).await.unwrap();
+        let result = ship_behavior
+            .run(&args, &mut ship_ops, Duration::from_millis(1))
+            .await
+            .unwrap();
         assert_eq!(result, Response::Success);
     }
 
@@ -690,7 +698,10 @@ mod tests {
         };
 
         ship_ops.set_explore_locations(explorer_waypoints);
-        let result = ship_behavior.run(&args, &mut ship_ops).await.unwrap();
+        let result = ship_behavior
+            .run(&args, &mut ship_ops, Duration::from_millis(1))
+            .await
+            .unwrap();
 
         assert_eq!(result, Response::Success);
         assert_eq!(ship_ops.nav.waypoint_symbol, *waypoint_a1);
@@ -779,7 +790,10 @@ mod tests {
         };
 
         ship_ops.set_destination(WaypointSymbol("X1-FOO-A1".to_string()));
-        let result = ship_behavior.run(&args, &mut ship_ops).await.unwrap();
+        let result = ship_behavior
+            .run(&args, &mut ship_ops, Duration::from_millis(1))
+            .await
+            .unwrap();
         assert_eq!(result, Response::Success);
         assert_eq!(
             ship_ops.nav.waypoint_symbol,
@@ -913,7 +927,10 @@ mod tests {
         };
 
         ship_ops.set_destination(WaypointSymbol("X1-FOO-A1".to_string()));
-        let result = ship_behavior.run(&args, &mut ship_ops).await.unwrap();
+        let result = ship_behavior
+            .run(&args, &mut ship_ops, Duration::from_millis(1))
+            .await
+            .unwrap();
         assert_eq!(result, Response::Success);
         assert_eq!(
             ship_ops.nav.waypoint_symbol,

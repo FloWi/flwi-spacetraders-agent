@@ -260,7 +260,9 @@ pub async fn ship_loop(mut ship: ShipOperations, args: BehaviorArgs) -> Result<(
 
         let _enter = span.enter();
 
-        let result = ship_behavior.run(&args, &mut ship).await;
+        let result = ship_behavior
+            .run(&args, &mut ship, Duration::from_secs(1))
+            .await;
 
         match &result {
             Ok(o) => {

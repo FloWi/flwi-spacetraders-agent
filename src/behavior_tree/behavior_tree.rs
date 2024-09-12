@@ -318,6 +318,7 @@ pub trait Actionable: Serialize + Clone + Send + Sync {
         &self,
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
+        duration: Duration,
     ) -> Result<Response, Self::ActionError>;
 }
 
@@ -334,6 +335,7 @@ where
         &self,
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
+        sleep_duration: Duration,
     ) -> Result<Response, Self::ActionError> {
         let hash = self.calculate_hash();
 
@@ -347,11 +349,11 @@ where
 
         let result = match self {
             Behavior::Action(a, _) => {
-                let result = a.run(args, state).await;
+                let result = a.run(args, state, sleep_duration).await;
                 result
             }
             Behavior::Invert(b, _) => {
-                let result = b.run(args, state).await;
+                let result = b.run(args, state, sleep_duration).await;
                 match result {
                     Ok(r) => {
                         let inverted = match r {
@@ -367,7 +369,7 @@ where
             }
             Behavior::Select(behaviors, _) => {
                 for b in behaviors {
-                    let result = b.run(args, state).await;
+                    let result = b.run(args, state, sleep_duration).await;
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(r) => return Ok(r),
@@ -380,7 +382,7 @@ where
             // Behavior::While { .. } => {}
             Behavior::Sequence(behaviors, _) => {
                 for b in behaviors {
-                    let result = b.run(args, state).await;
+                    let result = b.run(args, state, sleep_duration).await;
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(_) => continue,
@@ -394,12 +396,12 @@ where
             Behavior::While {
                 condition, action, ..
             } => loop {
-                let condition_result = condition.run(args, state).await;
+                let condition_result = condition.run(args, state, sleep_duration).await;
 
                 match condition_result {
                     Err(_) => return Ok(Response::Success),
                     Ok(_) => {
-                        let action_result = action.run(args, state).await;
+                        let action_result = action.run(args, state, sleep_duration).await;
                         match action_result {
                             Err(err) => {
                                 return Err(Self::ActionError::from(anyhow!(
@@ -408,7 +410,7 @@ where
                                 )))
                             }
                             Ok(Response::Running | Response::Success) => {
-                                sleep(Duration::from_secs(1)).await;
+                                sleep(sleep_duration).await;
                                 continue;
                             }
                         }
@@ -447,6 +449,7 @@ mod tests {
     use crate::behavior_tree::behavior_tree::Response::Running;
     use anyhow::anyhow;
     use async_trait::async_trait;
+    use core::time::Duration;
     use serde::Serialize;
     use strum_macros::Display;
 
@@ -468,6 +471,7 @@ mod tests {
             &self,
             args: &Self::ActionArgs,
             state: &mut Self::ActionState,
+            duration: Duration,
         ) -> Result<Response, Self::ActionError> {
             match self {
                 MyAction::Increase => {
@@ -503,7 +507,9 @@ mod tests {
 
         let mut my_state = MyState(0);
 
-        bt.run(&(), &mut my_state).await.unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1))
+            .await
+            .unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(1));
     }
@@ -518,7 +524,9 @@ mod tests {
 
         let mut my_state = MyState(0);
 
-        bt.run(&(), &mut my_state).await.unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1))
+            .await
+            .unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(0));
     }
@@ -534,7 +542,10 @@ mod tests {
 
         let mut my_state = MyState(0);
 
-        let result = bt.run(&(), &mut my_state).await.unwrap();
+        let result = bt
+            .run(&(), &mut my_state, Duration::from_millis(1))
+            .await
+            .unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(1));
         assert_eq!(result, Running)
@@ -549,7 +560,9 @@ mod tests {
 
         let mut my_state = MyState(0);
 
-        bt.run(&(), &mut my_state).await.unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1))
+            .await
+            .unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(2));
     }
@@ -563,7 +576,7 @@ mod tests {
 
         let mut my_state = MyState(42);
 
-        let result = bt.run(&(), &mut my_state).await;
+        let result = bt.run(&(), &mut my_state, Duration::from_millis(1)).await;
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(42));
         matches!(result, Ok(_));
