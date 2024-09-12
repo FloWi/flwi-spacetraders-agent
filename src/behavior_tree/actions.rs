@@ -27,17 +27,8 @@ impl Actionable for ShipAction {
         duration: Duration,
     ) -> Result<Response, Self::ActionError> {
         match self {
-            ShipAction::HasActiveTravelAction => {
-                if state.current_travel_action.is_some() {
-                    Ok(Success)
-                } else {
-                    Err(anyhow!("No active travel_action"))
-                }
-            }
-
             ShipAction::HasTravelActionEntry => {
-                let no_action_left =
-                    state.travel_action_queue.is_empty() && state.current_travel_action.is_none();
+                let no_action_left = state.travel_action_queue.is_empty();
                 if no_action_left {
                     Err(anyhow!("No action left"))
                 } else {
@@ -45,16 +36,20 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::PopTravelAction => {
-                state.pop_travel_action();
-                Ok(Success)
+                if state.travel_action_queue.is_empty() {
+                    Err(anyhow!("PopTravelAction called, but queue is empty"))
+                } else {
+                    state.pop_travel_action();
+                    Ok(Success)
+                }
             }
 
-            ShipAction::IsNavigationAction => match state.current_travel_action {
+            ShipAction::IsNavigationAction => match state.current_travel_action() {
                 Some(TravelAction::Navigate { .. }) => Ok(Success),
                 _ => Err(anyhow!("Failed")),
             },
 
-            ShipAction::IsRefuelAction => match state.current_travel_action {
+            ShipAction::IsRefuelAction => match state.current_travel_action() {
                 Some(TravelAction::Refuel { .. }) => Ok(Success),
                 _ => Err(anyhow!("Failed")),
             },
@@ -101,7 +96,7 @@ impl Actionable for ShipAction {
             },
 
             ShipAction::IsCorrectFlightMode => {
-                if let Some(action) = &state.current_travel_action {
+                if let Some(action) = &state.current_travel_action() {
                     match action {
                         TravelAction::Navigate { mode, .. } => {
                             let current_mode = &state.get_ship().nav.flight_mode;
@@ -124,7 +119,7 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::MarkTravelActionAsCompleteIfPossible => {
-                match &state.current_travel_action {
+                match &state.current_travel_action() {
                     None => Ok(Success),
                     Some(action) => {
                         let is_done = match action {
@@ -140,13 +135,13 @@ impl Actionable for ShipAction {
                         };
 
                         if is_done {
-                            state.current_travel_action = None;
+                            state.pop_travel_action();
                         }
                         Ok(Success)
                     }
                 }
             }
-            ShipAction::CanSkipRefueling => match &state.current_travel_action {
+            ShipAction::CanSkipRefueling => match &state.current_travel_action() {
                 None => Err(anyhow!(
                     "Called CanSkipRefueling, but current action is None",
                 )),
@@ -187,6 +182,16 @@ impl Actionable for ShipAction {
                     }
                 }
             },
+            ShipAction::SkipRefueling => match state.current_travel_action() {
+                Some(TravelAction::Refuel { .. }) => {
+                    state.pop_travel_action();
+                    Ok(Success)
+                }
+                _ => Err(anyhow!(
+                    "Called SkipRefueling, but current_travel_action is {:?}",
+                    state.current_travel_action()
+                )),
+            },
 
             ShipAction::Refuel => {
                 let RefuelShipResponse {
@@ -209,7 +214,7 @@ impl Actionable for ShipAction {
             }
 
             ShipAction::SetFlightMode => {
-                if let Some(action) = &state.current_travel_action {
+                if let Some(action) = &state.current_travel_action() {
                     match action {
                         TravelAction::Navigate { mode, .. } => {
                             let new_nav = state.set_flight_mode(mode).await?;
@@ -225,7 +230,7 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::NavigateToWaypoint => {
-                if let Some(action) = &state.current_travel_action {
+                if let Some(action) = &state.current_travel_action() {
                     match action {
                         TravelAction::Navigate { to, .. } => {
                             let nav_response = state.navigate(to).await?;
@@ -242,10 +247,7 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::PrintTravelActions => {
-                println!(
-                    "current travel action: {:?}\ntravel_action queue: {:?}",
-                    state.current_travel_action, state.travel_action_queue
-                );
+                println!("travel_action queue: {:?}", state.travel_action_queue);
                 Ok(Success)
             }
             ShipAction::HasExploreLocationEntry => {
@@ -652,7 +654,7 @@ mod tests {
                 eq((*waypoint_a1).clone()),
                 eq((*waypoint_a2).clone()),
                 eq(30),
-                eq(current_fuel),
+                eq(300),
                 eq(600),
             )
             .returning(move |_, _, _, _, _| Ok(second_hop_actions.clone()));
@@ -748,7 +750,6 @@ mod tests {
 
         assert_eq!(result, Response::Success);
         assert_eq!(ship_ops.nav.waypoint_symbol, *waypoint_a2);
-        assert_eq!(ship_ops.current_travel_action, None);
         assert_eq!(ship_ops.travel_action_queue.len(), 0);
         assert_eq!(ship_ops.current_explore_location, None);
         assert_eq!(ship_ops.explore_location_queue.len(), 0);

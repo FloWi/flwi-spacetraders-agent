@@ -15,17 +15,18 @@ pub struct ShipOperations {
     pub ship: Ship,
     client: Arc<dyn StClientTrait>,
     pub travel_action_queue: VecDeque<TravelAction>,
-    pub current_travel_action: Option<TravelAction>,
     pub current_navigation_destination: Option<WaypointSymbol>,
     pub explore_location_queue: VecDeque<WaypointSymbol>,
     pub current_explore_location: Option<WaypointSymbol>,
 }
 
 impl ShipOperations {
+    pub(crate) fn current_travel_action(&self) -> Option<&TravelAction> {
+        self.travel_action_queue.front()
+    }
+
     pub fn last_travel_action(&self) -> Option<&TravelAction> {
-        self.current_travel_action
-            .as_ref()
-            .or_else(|| self.travel_action_queue.back())
+        self.travel_action_queue.back()
     }
 
     pub(crate) fn set_nav(&mut self, new_nav: Nav) {
@@ -37,7 +38,6 @@ impl ShipOperations {
     }
 
     pub fn set_route(&mut self, new_route: Vec<TravelAction>) {
-        self.current_travel_action = None;
         self.travel_action_queue = VecDeque::from(new_route);
     }
 
@@ -46,7 +46,6 @@ impl ShipOperations {
             ship,
             client,
             travel_action_queue: VecDeque::new(),
-            current_travel_action: None,
             current_navigation_destination: None,
             explore_location_queue: VecDeque::new(),
             current_explore_location: None,
@@ -54,7 +53,7 @@ impl ShipOperations {
     }
 
     pub fn pop_travel_action(&mut self) {
-        self.current_travel_action = self.travel_action_queue.pop_front();
+        let _ = self.travel_action_queue.pop_front();
     }
 
     pub fn set_destination(&mut self, destination: WaypointSymbol) {
@@ -128,6 +127,7 @@ impl ShipOperations {
     }
 
     pub async fn navigate(&self, to: &WaypointSymbol) -> Result<NavResponse> {
+        println!("Called ship.navigate");
         let response = self.client.navigate(self.ship.symbol.clone(), to).await?;
         println!("{:?}", response);
         Ok(response.data)

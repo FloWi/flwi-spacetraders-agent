@@ -23,7 +23,6 @@ pub enum ShipAction {
     IsRefuelAction,
     MarkTravelActionAsCompleteIfPossible,
     CanSkipRefueling,
-    HasActiveTravelAction,
     PrintTravelActions,
     HasExploreLocationEntry,
     PopExploreLocationAsDestination,
@@ -37,6 +36,7 @@ pub enum ShipAction {
     MarkExploreLocationAsComplete,
     SetExploreLocationAsDestination,
     RemoveDestination,
+    SkipRefueling,
 }
 
 pub struct Behaviors {
@@ -109,7 +109,6 @@ pub fn ship_navigation_behaviors() -> Behaviors {
     let mut wait_for_arrival_bt = Behavior::new_sequence(vec![
         Behavior::new_action(ShipAction::WaitForArrival),
         Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
-        Behavior::new_action(ShipAction::PrintTravelActions),
         Behavior::new_action(ShipAction::MarkTravelActionAsCompleteIfPossible),
         Behavior::new_action(ShipAction::PrintTravelActions),
     ]);
@@ -149,7 +148,6 @@ pub fn ship_navigation_behaviors() -> Behaviors {
                 orbit_if_necessary.clone(),
             ]),
         ]),
-        Behavior::new_action(ShipAction::PopTravelAction),
     ]);
 
     let mut travel_action_behavior = Behavior::new_select(vec![
@@ -157,18 +155,16 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         execute_refuel_travel_action.clone(),
     ]);
 
-    let mut follow_travel_actions = Behavior::new_while(
+    let while_condition_travel_action = Behavior::new_sequence(vec![
+        wait_for_arrival_bt.clone(),
         Behavior::new_action(ShipAction::HasTravelActionEntry),
+    ]);
+
+    let mut follow_travel_actions = Behavior::new_while(
+        while_condition_travel_action,
         Behavior::new_sequence(vec![
             wait_for_arrival_bt.clone(),
-            Behavior::new_select(vec![
-                Behavior::new_invert(Behavior::new_action(ShipAction::PrintTravelActions)),
-                Behavior::new_invert(Behavior::new_select(vec![
-                    Behavior::new_action(ShipAction::HasActiveTravelAction),
-                    Behavior::new_action(ShipAction::PopTravelAction),
-                ])),
-                travel_action_behavior.clone(),
-            ]),
+            Behavior::new_select(vec![travel_action_behavior.clone()]),
         ]),
     );
 
