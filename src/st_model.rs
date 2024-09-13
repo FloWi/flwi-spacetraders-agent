@@ -873,7 +873,7 @@ pub enum WaypointType {
     ARTIFICIAL_GRAVITY_WELL,
     FUEL_STATION,
 }
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Display)]
 #[allow(non_camel_case_types)]
 pub enum TradeGoodSymbol {
     PRECIOUS_STONES,

@@ -2,22 +2,15 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
+use crate::st_model::TradeGoodSymbol;
 use anyhow::Result;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct TradeGood(pub String);
-
-impl TradeGood {
-    pub fn new(value: &str) -> TradeGood {
-        TradeGood(value.to_string())
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TradeRelation {
-    pub export: TradeGood,
-    pub imports: Vec<TradeGood>,
+    pub export: TradeGoodSymbol,
+    pub imports: Vec<TradeGoodSymbol>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -25,20 +18,73 @@ pub struct SupplyChain {
     pub relations: Vec<TradeRelation>,
 }
 
+impl SupplyChain {
+    /*
+    def cleanUpProductionGraph(graph: List[ProductionDependency]): List[ProductionDependency] = {
+        graph.filterNot {
+          case ProductionDependency(_, List(onlyImport)) if onlyImport == EXPLOSIVES || onlyImport == MACHINERY =>
+    //      case ProductionDependency(_, List(onlyImport)) if onlyImport == TradeSymbol.MACHINERY =>
+            // println(s"Removed only import ${onlyImport.value} from ${export.value}")
+            true
+          case _ => false
+        }
+      }
+
+         */
+    pub fn trade_map(&self) -> HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>> {
+        self.relations
+            .iter()
+            .map(|relation| (relation.export.clone(), relation.imports.clone()))
+            .filter(|(exp, imp)| {
+                // if the only import is MACHINERY || EXPLOSIVES, we filter it out
+                match imp.as_slice() {
+                    [TradeGoodSymbol::EXPLOSIVES] | [TradeGoodSymbol::MACHINERY] => false,
+                    _ => true,
+                }
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug)]
 pub struct SupplyChainNode {
-    good: TradeGood,
-    dependencies: Vec<TradeGood>,
+    good: TradeGoodSymbol,
+    dependencies: Vec<TradeGoodSymbol>,
+}
+
+pub trait SupplyChainNodeVecExt {
+    fn to_mermaid(&self) -> String;
+}
+
+impl SupplyChainNodeVecExt for Vec<SupplyChainNode> {
+    fn to_mermaid(&self) -> String {
+        let mut connections = Vec::new();
+        for node in self {
+            for dependency in &node.dependencies {
+                connections.push(format!("{} --> {}", dependency, node.good));
+            }
+        }
+
+        format!(
+            r###"```mermaid
+%%{{init: {{"#flowchart": {{"htmlLabels": false}}}} }}%%
+graph LR
+{}
+```
+"###,
+            connections.iter().join("\n")
+        )
+    }
 }
 
 pub fn find_complete_supply_chain(
-    product: &TradeGood,
-    trade_relations: &HashMap<TradeGood, Vec<TradeGood>>,
+    product: &TradeGoodSymbol,
+    trade_relations: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>,
 ) -> Vec<SupplyChainNode> {
     fn recursive_search(
-        product: &TradeGood,
-        trade_relations: &HashMap<TradeGood, Vec<TradeGood>>,
-        visited: &mut HashSet<TradeGood>,
+        product: &TradeGoodSymbol,
+        trade_relations: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>,
+        visited: &mut HashSet<TradeGoodSymbol>,
         result: &mut Vec<SupplyChainNode>,
     ) {
         if visited.insert(product.clone()) {
