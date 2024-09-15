@@ -78,7 +78,7 @@ graph LR
 }
 
 pub fn find_complete_supply_chain(
-    product: &TradeGoodSymbol,
+    products: Vec<TradeGoodSymbol>,
     trade_relations: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>,
 ) -> Vec<SupplyChainNode> {
     fn recursive_search(
@@ -102,7 +102,9 @@ pub fn find_complete_supply_chain(
 
     let mut visited = HashSet::new();
     let mut result = Vec::new();
-    recursive_search(product, trade_relations, &mut visited, &mut result);
+    for product in products {
+        recursive_search(&product, trade_relations, &mut visited, &mut result);
+    }
     result
 }
 pub async fn read_supply_chain() -> Result<SupplyChain> {

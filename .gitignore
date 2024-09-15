@@ -2,3 +2,4 @@
 grafana-storage
 postgres-data
 server/prometheus-storage
+.hide
