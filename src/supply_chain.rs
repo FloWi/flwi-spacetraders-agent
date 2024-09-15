@@ -46,10 +46,10 @@ impl SupplyChain {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SupplyChainNode {
-    good: TradeGoodSymbol,
-    dependencies: Vec<TradeGoodSymbol>,
+    pub good: TradeGoodSymbol,
+    pub dependencies: Vec<TradeGoodSymbol>,
 }
 
 pub trait SupplyChainNodeVecExt {

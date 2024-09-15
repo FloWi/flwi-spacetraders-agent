@@ -446,7 +446,7 @@ pub struct MarketTradeGood {
     pub sell_price: i32,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TradeGoodType {
     Export,
