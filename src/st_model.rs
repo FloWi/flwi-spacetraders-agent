@@ -446,7 +446,7 @@ pub struct MarketTradeGood {
     pub sell_price: i32,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, Display)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TradeGoodType {
     Export,
@@ -454,7 +454,7 @@ pub enum TradeGoodType {
     Exchange,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, Display)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SupplyLevel {
     Scarce,
@@ -464,7 +464,7 @@ pub enum SupplyLevel {
     Abundant,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, Display)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ActivityLevel {
     Weak,

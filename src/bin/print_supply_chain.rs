@@ -8,6 +8,7 @@ pub use flwi_spacetraders_agent::supply_chain::*;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use strum_macros::Display;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -51,7 +52,7 @@ async fn main() -> Result<()> {
             .join("\n")
     );
 
-    materialize_supply_chain(&complete_chain, &market_entries, &waypoints);
+    let materialized = materialize_supply_chain(&complete_chain, &market_entries, &waypoints);
 
     Ok(())
 }
@@ -77,7 +78,7 @@ pub fn materialize_supply_chain(
     complete_chain: &Vec<SupplyChainNode>,
     market_entries: &Vec<MarketEntry>,
     waypoints: &Vec<Waypoint>,
-) {
+) -> (Vec<TradeGoodRoute>, ApiSupplyChain) {
     let ranked = rank_supply_chain(&complete_chain);
 
     let raw_materials: Vec<TradeGoodSymbol> = ranked
@@ -175,13 +176,18 @@ pub fn materialize_supply_chain(
         })
         .into_group_map();
 
+    // let waypoints_importing_raw_materials: HashMap<
+    //     &TradeGoodSymbol,
+    //     Vec<(&MarketEntry, WaypointSymbol)>,
+    // > = merge_hashmaps(
+    //     &exchange_markets_of_raw_materials,
+    //     &markets_requiring_raw_materials,
+    // );
+
     let waypoints_importing_raw_materials: HashMap<
         &TradeGoodSymbol,
         Vec<(&MarketEntry, WaypointSymbol)>,
-    > = merge_hashmaps(
-        &exchange_markets_of_raw_materials,
-        &markets_requiring_raw_materials,
-    );
+    > = markets_requiring_raw_materials;
 
     let routes_of_raw_materials: Vec<TradeGoodRoute> = waypoints_importing_raw_materials
         .clone()
@@ -270,40 +276,52 @@ pub fn materialize_supply_chain(
                 distance: best_one.2,
             };
 
-            let additional_routes =
-                if route.delivery_market_entry.trade_good_type == TradeGoodType::Exchange {
-                    // if we deliver to an exchange market in between, we need to add a route to each of the export_markets that require this trade_good
-                    export_markets_to_supply
-                        .into_iter()
-                        .map(|(export_wp, export_me, _distance)| {
-                            // we are now delivering to an export market. For displaying the "health" of the supply-chain we need the corresponding import-entry at that marketplace
-                            let import_entry_at_export_market = market_entries
-                                .iter()
-                                .find(|me| {
-                                    me.trade_good_type == TradeGoodType::Import
-                                        && me.waypoint_symbol == export_me.waypoint_symbol
-                                        && me.trade_good_symbol == tgs.clone()
-                                })
-                                .unwrap();
+            let additional_routes = if route.delivery_market_entry.trade_good_type
+                == TradeGoodType::Exchange
+            {
+                // if we deliver to an exchange market in between, we need to add a route to each of the export_markets that require this trade_good
+                export_markets_to_supply
+                    .into_iter()
+                    .map(|(export_wp, export_me, _distance)| {
+                        // we are now delivering to an export market. For displaying the "health" of the supply-chain we need the corresponding import-entry at that marketplace
+                        let import_entry_at_export_market = market_entries
+                            .iter()
+                            .find(|me| {
+                                me.trade_good_type == TradeGoodType::Import
+                                    && me.waypoint_symbol == export_me.waypoint_symbol
+                                    && me.trade_good_symbol == tgs.clone()
+                            })
+                            .unwrap();
 
-                            TradeGoodRoute {
-                                trade_good_symbol: tgs.clone(),
-                                source_waypoint: best_one.0.clone(),
-                                maybe_source_market_entry: Some(best_one.1.clone()),
-                                delivery_waypoint: export_wp.clone(),
-                                delivery_market_entry: import_entry_at_export_market.clone(),
-                                destination_market_entry: export_me.clone(),
-                                maybe_raw_material_source_type: raw_materials_source_types
-                                    .get(&tgs.clone())
-                                    .cloned(),
-                                level: 1,
-                                distance: best_one.0.distance_to(export_wp),
+                        let result = TradeGoodRoute {
+                            trade_good_symbol: tgs.clone(),
+                            source_waypoint: best_one.0.clone(),
+                            maybe_source_market_entry: Some(route.destination_market_entry.clone()),
+                            delivery_waypoint: export_wp.clone(),
+                            delivery_market_entry: import_entry_at_export_market.clone(),
+                            destination_market_entry: export_me.clone(),
+                            maybe_raw_material_source_type: None,
+                            level: 1,
+                            distance: best_one.0.distance_to(export_wp),
+                        };
+
+                        match &result.maybe_source_market_entry {
+                            None => {}
+                            Some(me) => {
+                                if me.trade_good_type == TradeGoodType::Import {
+                                    // dbg!(&result);
+                                    // dbg!(best_one);
+                                    println!("found broken entry - source market entry is IMPORT");
+                                }
                             }
-                        })
-                        .collect()
-                } else {
-                    vec![]
-                };
+                        }
+
+                        result
+                    })
+                    .collect()
+            } else {
+                vec![]
+            };
 
             vec![route]
                 .into_iter()
@@ -323,6 +341,8 @@ pub fn materialize_supply_chain(
         market_entries,
         waypoints,
     );
+
+    let api_supply_chain = routes_to_api_supply_chain(all_routes.as_slice());
 
     // println!(
     //     "\n\n## raw_material_extract_locations: \n\n```json\n\n{}\n ```",
@@ -349,10 +369,15 @@ pub fn materialize_supply_chain(
     //     serde_json::to_string_pretty(&routes_of_raw_materials).unwrap()
     // );
 
-    println!(
-        "\n\n## all_routes: \n\n```json\n\n{}\n ```",
-        serde_json::to_string_pretty(&all_routes).unwrap()
-    );
+    // println!(
+    //     "\n\n## all_routes: \n\n```json\n\n{}\n ```",
+    //     serde_json::to_string_pretty(&all_routes).unwrap()
+    // );
+    //
+    // println!(
+    //     "\n\n## api_supply_chain: \n\n```json\n\n{}\n ```",
+    //     serde_json::to_string_pretty(&api_supply_chain).unwrap()
+    // );
     // we ship
 
     // println!(
@@ -361,6 +386,8 @@ pub fn materialize_supply_chain(
     //     serde_json::to_string(market_entries).unwrap(),
     //     serde_json::to_string(waypoints).unwrap()
     // );
+
+    (all_routes, api_supply_chain)
 }
 
 fn merge_hashmaps<'a>(
@@ -388,6 +415,7 @@ fn recurse_collect_rest_routes(
     market_entries: &Vec<MarketEntry>,
     waypoints: &Vec<Waypoint>,
 ) -> Vec<TradeGoodRoute> {
+
     let open_entries = higher_order_entries
         .clone()
         .into_iter()
@@ -438,19 +466,40 @@ fn recurse_collect_rest_routes(
                 .find(|wp| wp.symbol == export_market_entry.waypoint_symbol)
                 .unwrap();
 
-            let supply_waypoint = route_of_dependency.delivery_waypoint.clone();
+            let supply_waypoint = route_of_dependency.source_waypoint.clone();
 
-            TradeGoodRoute {
-                trade_good_symbol: tgs_to_supply.clone(),
+            let result = TradeGoodRoute {
+                trade_good_symbol: route_of_dependency.trade_good_symbol.clone(),
                 source_waypoint: supply_waypoint,
-                maybe_source_market_entry: Some(route_of_dependency.delivery_market_entry.clone()),
+                maybe_source_market_entry: Some(
+                    route_of_dependency.destination_market_entry.clone(),
+                ),
                 delivery_waypoint: waypoint.clone(),
                 delivery_market_entry: import_entry_at_export_market.clone(),
                 destination_market_entry: export_market_entry.clone(),
                 maybe_raw_material_source_type: None,
                 level: route_of_dependency.level + 1,
                 distance: route_of_dependency.delivery_waypoint.distance_to(waypoint),
+            };
+
+            match &result.maybe_source_market_entry {
+                None => {}
+                Some(me) => {
+                    if me.trade_good_type == TradeGoodType::Import {
+                        // dbg!(&result);
+                        // dbg!(&route_of_dependency);
+                        println!("found broken entry - source market entry is IMPORT");
+                    }
+                }
             }
+
+            if result.delivery_waypoint.symbol == result.source_waypoint.symbol {
+                // dbg!(&result);
+                // dbg!(&route_of_dependency);
+                println!("found broken entry - source and delivery waypoint are identical");
+            }
+
+            result
         })
         .collect_vec();
 
@@ -518,7 +567,7 @@ fn rank_supply_chain(complete_chain: &Vec<SupplyChainNode>) -> HashMap<TradeGood
     ranked
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Display)]
 enum RawMaterialSourceType {
     Extraction,
     Siphoning,
@@ -580,4 +629,372 @@ fn get_waypoint_entries() -> Result<Vec<Waypoint>> {
     let waypoints: Vec<Waypoint> = serde_json::from_str(&test_data_json)?;
 
     Ok(waypoints)
+}
+
+fn to_sc_trade_node(me: &MarketEntry, waypoint_symbol: &WaypointSymbol) -> ApiSupplyChainNode {
+    ApiSupplyChainNode {
+        id: node_id_of_market_entry(me, waypoint_symbol),
+        trade_good_symbol: me.trade_good_symbol.clone(),
+        api_supply_chain_trade_node: Some(ApiSupplyChainTradeNode {
+            trade_good_supply: me.trade_good_supply.clone(),
+            trade_good_activity: me.trade_good_activity.clone(),
+            trade_good_type: me.trade_good_type.clone(),
+            trade_volume: me.trade_good_trade_volume,
+            price: me.trade_good_purchase_price,
+        }),
+    }
+}
+
+fn routes_to_api_supply_chain(routes: &[TradeGoodRoute]) -> ApiSupplyChain {
+    let delivery_waypoints = routes
+        .into_iter()
+        .chunk_by(|route| {
+            (
+                route.delivery_waypoint.clone(),
+                route.trade_good_symbol.clone(),
+            )
+        })
+        .into_iter()
+        .filter_map(
+            |((delivery_waypoint, trade_good_symbol), delivery_routes)| {
+                let delivery_routes = delivery_routes.collect_vec();
+                if let Some(first_route) = delivery_routes.clone().get(0) {
+                    let import_nodes = delivery_routes
+                        .clone()
+                        .into_iter()
+                        .map(|route| {
+                            to_sc_trade_node(
+                                &route.delivery_market_entry,
+                                &delivery_waypoint.symbol,
+                            )
+                        })
+                        .collect_vec();
+
+                    // we can pick any of the matching delivery_routes, since they should go to the same
+
+                    let export_node = to_sc_trade_node(
+                        &first_route.destination_market_entry,
+                        &first_route.delivery_waypoint.symbol,
+                    );
+
+                    let destination_waypoint = ApiSupplyChainWaypoint {
+                        waypoint_symbol: delivery_waypoint.symbol.clone(),
+                        location: ApiSupplyChainLocation {
+                            x: delivery_waypoint.x as i32,
+                            y: delivery_waypoint.y as i32,
+                        },
+                        export_node,
+                        import_nodes,
+                    };
+
+                    Some(destination_waypoint)
+                } else {
+                    None
+                }
+            },
+        )
+        .collect_vec();
+
+    let raw_producer_waypoints = routes
+        .into_iter()
+        .filter_map(|route| {
+            route
+                .maybe_raw_material_source_type
+                .clone()
+                .map(|raw_material_source_type| ApiSupplyChainWaypoint {
+                    waypoint_symbol: route.source_waypoint.symbol.clone(),
+                    location: ApiSupplyChainLocation {
+                        x: route.source_waypoint.x as i32,
+                        y: route.source_waypoint.y as i32,
+                    },
+                    export_node: ApiSupplyChainNode {
+                        id: node_id_of_raw_material_origin(
+                            &raw_material_source_type,
+                            &route.trade_good_symbol,
+                            &route.source_waypoint.symbol,
+                        ),
+                        api_supply_chain_trade_node: None,
+                        trade_good_symbol: route.trade_good_symbol.clone(),
+                    },
+                    import_nodes: vec![],
+                })
+        })
+        .collect_vec();
+
+    let waypoints = delivery_waypoints
+        .into_iter()
+        .chain(raw_producer_waypoints.into_iter())
+        .collect_vec();
+
+    let edges = routes
+        .iter()
+        .flat_map(|route| {
+            let source_market_to_destination_edge = match &route.maybe_source_market_entry {
+                None => {
+                    vec![]
+                }
+                Some(source_me) => {
+                    let from_id =
+                        node_id_of_market_entry(&source_me, &route.source_waypoint.symbol);
+
+                    let to_id = node_id_of_market_entry(
+                        &route.delivery_market_entry,
+                        &route.delivery_waypoint.symbol,
+                    );
+                    let distance = route.source_waypoint.distance_to(&route.delivery_waypoint);
+
+                    if distance == 0 {
+                        println!("HELLO");
+                    }
+
+                    vec![ApiSupplyChainEdge {
+                        source: from_id,
+                        target: to_id,
+                        distance,
+                    }]
+                }
+            };
+
+            let raw_source_to_destination_edge = match &route.maybe_raw_material_source_type {
+                None => {
+                    vec![]
+                }
+                Some(raw_material_source_type) => {
+                    let from_id = node_id_of_raw_material_origin(
+                        &raw_material_source_type,
+                        &route.trade_good_symbol,
+                        &route.source_waypoint.symbol,
+                    );
+                    let to_id = node_id_of_market_entry(
+                        &route.delivery_market_entry,
+                        &route.delivery_waypoint.symbol,
+                    );
+                    let distance = route.source_waypoint.distance_to(&route.delivery_waypoint);
+
+                    if from_id == to_id {
+                        println!("HELLO");
+                    }
+
+                    vec![ApiSupplyChainEdge {
+                        source: from_id,
+                        target: to_id,
+                        distance,
+                    }]
+                }
+            };
+
+            source_market_to_destination_edge
+                .into_iter()
+                .chain(raw_source_to_destination_edge.into_iter())
+        })
+        .collect_vec();
+
+    ApiSupplyChain { waypoints, edges }
+}
+
+fn validate_routes(trade_good_routes: &[TradeGoodRoute]) {
+    // for some reason we have an import market as a source market entry
+
+    trade_good_routes
+        .iter()
+        .for_each(|route| match route.maybe_source_market_entry.clone() {
+            None => {}
+            Some(source_me) => {
+                if source_me.trade_good_type == TradeGoodType::Import {
+                    println!(
+                        "ERROR: found route where source market entry is IMPORT: tradeGood: {}; delivery_waypoint: {}, delivery_me.waypoint: {}, destination_me.waypoint: {}, source_waypoint: {}, source_me.waypoint: {}, source_me.trade_symbol: {}",
+                        route.trade_good_symbol,
+                        route.delivery_waypoint.symbol.0,
+                        route.delivery_market_entry.waypoint_symbol.0,
+                        route.destination_market_entry.waypoint_symbol.0,
+                        route.source_waypoint.symbol.0,
+                        source_me.waypoint_symbol.0,
+                        source_me.trade_good_symbol,
+
+                    )
+                }
+            }
+        });
+}
+
+fn validate_supply_chain(api_supply_chain: &ApiSupplyChain) {
+    /*
+    found broken entry - source market entry is IMPORT
+    ERROR - edge_node_id Import of ALUMINUM_ORE at X1-BA38-DE5F not found in any of the waypoints
+    ERROR - edge_node_id Import of ALUMINUM_ORE at X1-BA38-DE5F not found in any of the waypoints
+    ERROR - edge_node_id Import of COPPER_ORE at X1-BA38-DE5F not found in any of the waypoints
+    ERROR - edge_node_id Import of FERTILIZERS at X1-BA38-C46 not found in any of the waypoints
+    ERROR - edge_node_id Import of IRON_ORE at X1-BA38-DE5F not found in any of the waypoints
+    ERROR - edge_node_id Import of IRON_ORE at X1-BA38-DE5F not found in any of the waypoints
+    ERROR - edge_node_id Import of LIQUID_NITROGEN at X1-BA38-C46 not found in any of the waypoints
+    ERROR - edge_node_id Import of LIQUID_NITROGEN at X1-BA38-C46 not found in any of the waypoints
+    ERROR - edge_node_id Import of QUARTZ_SAND at X1-BA38-H57 not found in any of the waypoints
+    ERROR - edge_node_id Import of SILICON_CRYSTALS at X1-BA38-H57 not found in any of the waypoints
+    ERROR - edge_node_id Import of SILICON_CRYSTALS at X1-BA38-H57 not found in any of the waypoints
+    ERROR - edge_node_id Import of SILICON_CRYSTALS at X1-BA38-H57 not found in any of the waypoints
+    ERROR - edge_node_id Import of SILICON_CRYSTALS at X1-BA38-H57 not found in any of the waypoints
+     */
+
+    // all the source- and target-ids of edges should exist
+    api_supply_chain
+        .edges
+        .iter()
+        .flat_map(|edge| vec![edge.source.clone(), edge.target.clone()])
+        .for_each(|edge_node_id| {
+            let matching_waypoints = api_supply_chain
+                .waypoints
+                .iter()
+                .filter(|wp| {
+                    wp.export_node.id == edge_node_id
+                        || wp
+                            .import_nodes
+                            .iter()
+                            .any(|import_node| import_node.id == edge_node_id)
+                })
+                .collect_vec();
+
+            if matching_waypoints.is_empty() {
+                println!(
+                    "ERROR - edge_node_id {} not found in any of the waypoints",
+                    edge_node_id
+                )
+            }
+        })
+}
+
+fn node_id_of_raw_material_origin(
+    raw_material_source_type: &RawMaterialSourceType,
+    trade_good_symbol: &TradeGoodSymbol,
+    waypoint_symbol: &WaypointSymbol,
+) -> String {
+    format!(
+        "{} of {} at {}",
+        raw_material_source_type, trade_good_symbol, waypoint_symbol.0
+    )
+}
+
+fn node_id_of_market_entry(me: &MarketEntry, waypoint_symbol: &WaypointSymbol) -> String {
+    format!(
+        "{} of {} at {}",
+        me.trade_good_type, me.trade_good_symbol, waypoint_symbol.0
+    )
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct ApiSupplyChain {
+    waypoints: Vec<ApiSupplyChainWaypoint>,
+    edges: Vec<ApiSupplyChainEdge>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct ApiSupplyChainWaypoint {
+    waypoint_symbol: WaypointSymbol,
+    location: ApiSupplyChainLocation,
+    export_node: ApiSupplyChainNode,
+    import_nodes: Vec<ApiSupplyChainNode>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct ApiSupplyChainLocation {
+    x: i32,
+    y: i32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct ApiSupplyChainNode {
+    id: String,
+    trade_good_symbol: TradeGoodSymbol,
+    api_supply_chain_trade_node: Option<ApiSupplyChainTradeNode>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct ApiSupplyChainTradeNode {
+    trade_good_supply: SupplyLevel,
+    trade_good_type: TradeGoodType,
+    trade_good_activity: Option<ActivityLevel>,
+    trade_volume: u32,
+    price: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct ApiSupplyChainEdge {
+    source: String,
+    target: String,
+    distance: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        get_market_entries, get_waypoint_entries, materialize_supply_chain, rank_supply_chain,
+        validate_routes, validate_supply_chain,
+    };
+    use anyhow::Result;
+    use flwi_spacetraders_agent::st_model::TradeGoodSymbol;
+    use flwi_spacetraders_agent::supply_chain::*;
+    use itertools::Itertools;
+
+    #[tokio::test]
+    async fn test_supply_chain_materialization() -> Result<()> {
+        let supply_chain = read_supply_chain().await?;
+
+        let trade_map = supply_chain.trade_map();
+
+        let goods_of_interest = [
+            // TradeGoodSymbol::ADVANCED_CIRCUITRY,
+            TradeGoodSymbol::FAB_MATS,
+            // TradeGoodSymbol::SHIP_PLATING,
+            // TradeGoodSymbol::MICROPROCESSORS,
+            // TradeGoodSymbol::CLOTHING,
+        ];
+        for trade_good in goods_of_interest.clone() {
+            let chain = find_complete_supply_chain(Vec::from([trade_good.clone()]), &trade_map);
+            println!("\n\n## {} Supply Chain", trade_good);
+            println!("{}", chain.to_mermaid());
+        }
+
+        let complete_chain = find_complete_supply_chain(Vec::from(&goods_of_interest), &trade_map);
+        println!("\n\n## Complete Supply Chain");
+        println!("{}", complete_chain.to_mermaid());
+
+        let market_entries = get_market_entries()?;
+        let waypoints = get_waypoint_entries()?;
+
+        let ranked = rank_supply_chain(&complete_chain);
+
+        let ordered: Vec<(TradeGoodSymbol, u32)> =
+            ranked.into_iter().sorted_by_key(|kv| kv.1).collect();
+
+        println!(
+            "ranked supply chain sorted: \n```text\n{}\n```",
+            &ordered
+                .into_iter()
+                .map(|(tg, rank)| format!("#{}: {}", rank, tg.to_string()))
+                .join("\n")
+        );
+
+        let (all_routes, api_supply_chain) =
+            materialize_supply_chain(&complete_chain, &market_entries, &waypoints);
+
+        validate_routes(all_routes.as_slice());
+        validate_supply_chain(&api_supply_chain);
+
+        println!(
+            "\n\n## all_routes: \n\n```json\n\n{}\n ```",
+            serde_json::to_string_pretty(&all_routes).unwrap()
+        );
+
+        println!(
+            "\n\n## api_supply_chain: \n\n```json\n\n{}\n ```",
+            serde_json::to_string_pretty(&api_supply_chain).unwrap()
+        );
+
+        Ok(())
+    }
 }
