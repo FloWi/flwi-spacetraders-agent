@@ -176,18 +176,13 @@ pub fn materialize_supply_chain(
         })
         .into_group_map();
 
-    // let waypoints_importing_raw_materials: HashMap<
-    //     &TradeGoodSymbol,
-    //     Vec<(&MarketEntry, WaypointSymbol)>,
-    // > = merge_hashmaps(
-    //     &exchange_markets_of_raw_materials,
-    //     &markets_requiring_raw_materials,
-    // );
-
     let waypoints_importing_raw_materials: HashMap<
         &TradeGoodSymbol,
         Vec<(&MarketEntry, WaypointSymbol)>,
-    > = markets_requiring_raw_materials;
+    > = merge_hashmaps(
+        &exchange_markets_of_raw_materials,
+        &markets_requiring_raw_materials,
+    );
 
     let routes_of_raw_materials: Vec<TradeGoodRoute> = waypoints_importing_raw_materials
         .clone()
@@ -330,14 +325,9 @@ pub fn materialize_supply_chain(
         })
         .collect();
 
-    let higher_order_entries: Vec<&SupplyChainNode> = complete_chain
-        .into_iter()
-        .filter(|scn| ranked.get(&scn.good).unwrap_or(&0u32) > &0u32)
-        .collect_vec();
-
     let all_routes = recurse_collect_rest_routes(
         routes_of_raw_materials.clone(),
-        higher_order_entries,
+        &complete_chain,
         market_entries,
         waypoints,
     );
@@ -411,94 +401,119 @@ fn merge_hashmaps<'a>(
 
 fn recurse_collect_rest_routes(
     current_routes: Vec<TradeGoodRoute>,
-    higher_order_entries: Vec<&SupplyChainNode>,
+    complete_chain: &Vec<SupplyChainNode>,
     market_entries: &Vec<MarketEntry>,
     waypoints: &Vec<Waypoint>,
 ) -> Vec<TradeGoodRoute> {
+    let ranked = rank_supply_chain(&complete_chain);
 
-    let open_entries = higher_order_entries
-        .clone()
-        .into_iter()
-        .filter(|scn| {
-            current_routes
+    // which routes need to exist (tuples of materials)
+
+    let offerings: Vec<(TradeGoodSymbol, WaypointSymbol, Option<MarketEntry>)> = current_routes
+        .iter()
+        .map(|tgr| {
+            (
+                tgr.trade_good_symbol.clone(),
+                tgr.source_waypoint.symbol.clone(),
+                tgr.maybe_source_market_entry.clone(),
+            )
+        })
+        .chain(current_routes.iter().map(|tgr| {
+            (
+                tgr.destination_market_entry.trade_good_symbol.clone(),
+                tgr.destination_market_entry.waypoint_symbol.clone(),
+                Some(tgr.destination_market_entry.clone()),
+            )
+        }))
+        .collect_vec();
+
+    let all_import_export_pairs = complete_chain
+        .iter()
+        .flat_map(|scn| {
+            scn.dependencies
                 .iter()
-                .any(|route| route.trade_good_symbol == scn.good)
-                == false
+                .map(|import_dep| (import_dep.clone(), scn.good.clone()))
         })
         .collect_vec();
 
-    if open_entries.is_empty() {
+    let already_fulfilled_pairs = current_routes
+        .iter()
+        .map(|tgr| {
+            (
+                tgr.trade_good_symbol.clone(),
+                tgr.destination_market_entry.trade_good_symbol.clone(),
+            )
+        })
+        .collect_vec();
+
+    let open_pairs: Vec<&(TradeGoodSymbol, TradeGoodSymbol)> = all_import_export_pairs
+        .iter()
+        .filter(|pair| !already_fulfilled_pairs.contains(pair))
+        .collect();
+
+    // ending recursion - we're done
+    if open_pairs.is_empty() {
         return current_routes;
     }
 
-    let relevant_supply_entries = open_entries.iter().flat_map(|scn| {
-        scn.dependencies.iter().filter_map(|import_tgs| {
-            current_routes
-                .iter()
-                .filter(|r| r.trade_good_symbol == *import_tgs)
-                .sorted_by_key(|r| r.level)
-                .last()
-                .map(|route| (route, scn.good.clone()))
-        })
-    });
-
-    let new_routes = relevant_supply_entries
-        .map(|(route_of_dependency, tgs_to_supply)| {
-            let export_market_entry = market_entries
+    let new_routes = open_pairs
+        .iter()
+        .filter_map(|(import_good, export_good)| {
+            let receiving_market = market_entries
                 .iter()
                 .find(|me| {
-                    me.trade_good_type == TradeGoodType::Export
-                        && me.trade_good_symbol == tgs_to_supply
+                    me.trade_good_symbol == *export_good
+                        && me.trade_good_type == TradeGoodType::Export
                 })
                 .unwrap();
 
-            let import_entry_at_export_market = market_entries
+            let import_market_at_receiving_market = market_entries
                 .iter()
                 .find(|me| {
-                    me.trade_good_type == TradeGoodType::Import
-                        && me.trade_good_symbol == route_of_dependency.trade_good_symbol
-                        && me.waypoint_symbol == export_market_entry.waypoint_symbol
+                    me.trade_good_symbol == *import_good
+                        && me.waypoint_symbol == receiving_market.waypoint_symbol
+                        && me.trade_good_type == TradeGoodType::Import
                 })
                 .unwrap();
 
-            let waypoint = waypoints
+            let supplying_markets = offerings
                 .iter()
-                .find(|wp| wp.symbol == export_market_entry.waypoint_symbol)
-                .unwrap();
+                .filter(|(offered_good, pickup_waypoint, maybe_market_entry)| {
+                    offered_good == import_good
+                })
+                .collect_vec();
 
-            let supply_waypoint = route_of_dependency.source_waypoint.clone();
+            if supplying_markets.len() > 1 {
+                println!(
+                    "found multiple supplying markets for import/export pair {}-{}: {:?}",
+                    &import_good, &export_good, &supplying_markets
+                );
+            }
 
-            let result = TradeGoodRoute {
-                trade_good_symbol: route_of_dependency.trade_good_symbol.clone(),
-                source_waypoint: supply_waypoint,
-                maybe_source_market_entry: Some(
-                    route_of_dependency.destination_market_entry.clone(),
-                ),
-                delivery_waypoint: waypoint.clone(),
-                delivery_market_entry: import_entry_at_export_market.clone(),
-                destination_market_entry: export_market_entry.clone(),
-                maybe_raw_material_source_type: None,
-                level: route_of_dependency.level + 1,
-                distance: route_of_dependency.delivery_waypoint.distance_to(waypoint),
-            };
-
-            match &result.maybe_source_market_entry {
-                None => {}
-                Some(me) => {
-                    if me.trade_good_type == TradeGoodType::Import {
-                        // dbg!(&result);
-                        // dbg!(&route_of_dependency);
-                        println!("found broken entry - source market entry is IMPORT");
+            let result = supplying_markets.first().map(
+                |(offered_good, pickup_waypoint_symbol, maybe_market_entry)| {
+                    let pickup_waypoint = waypoints
+                        .iter()
+                        .find(|wp| wp.symbol == *pickup_waypoint_symbol)
+                        .unwrap();
+                    let delivery_waypoint = waypoints
+                        .iter()
+                        .find(|wp| wp.symbol == receiving_market.waypoint_symbol)
+                        .unwrap();
+                    TradeGoodRoute {
+                        trade_good_symbol: offered_good.clone(),
+                        source_waypoint: pickup_waypoint.clone(),
+                        maybe_source_market_entry: maybe_market_entry.clone(),
+                        delivery_waypoint: delivery_waypoint.clone(),
+                        delivery_market_entry: import_market_at_receiving_market.clone(),
+                        destination_market_entry: receiving_market.clone(),
+                        maybe_raw_material_source_type: None,
+                        level: 42,
+                        distance: pickup_waypoint.distance_to(delivery_waypoint),
                     }
-                }
-            }
-
-            if result.delivery_waypoint.symbol == result.source_waypoint.symbol {
-                // dbg!(&result);
-                // dbg!(&route_of_dependency);
-                println!("found broken entry - source and delivery waypoint are identical");
-            }
-
+                },
+            );
+            println!("Hello, debug");
             result
         })
         .collect_vec();
@@ -510,7 +525,7 @@ fn recurse_collect_rest_routes(
 
     recurse_collect_rest_routes(
         new_current_routes,
-        higher_order_entries,
+        complete_chain,
         market_entries,
         waypoints,
     )
@@ -947,11 +962,13 @@ mod tests {
         let trade_map = supply_chain.trade_map();
 
         let goods_of_interest = [
-            // TradeGoodSymbol::ADVANCED_CIRCUITRY,
+            TradeGoodSymbol::ADVANCED_CIRCUITRY,
             TradeGoodSymbol::FAB_MATS,
-            // TradeGoodSymbol::SHIP_PLATING,
-            // TradeGoodSymbol::MICROPROCESSORS,
-            // TradeGoodSymbol::CLOTHING,
+            TradeGoodSymbol::SHIP_PLATING,
+            TradeGoodSymbol::SHIP_PARTS,
+            TradeGoodSymbol::MICROPROCESSORS,
+            TradeGoodSymbol::ELECTRONICS,
+            TradeGoodSymbol::CLOTHING,
         ];
         for trade_good in goods_of_interest.clone() {
             let chain = find_complete_supply_chain(Vec::from([trade_good.clone()]), &trade_map);
