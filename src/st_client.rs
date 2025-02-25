@@ -7,7 +7,7 @@ use crate::st_model::{
     RefuelShipResponse, RegistrationRequest, RegistrationResponse, Ship, ShipSymbol,
     StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use reqwest_middleware::ClientWithMiddleware;
 use reqwest_middleware::RequestBuilder;
@@ -40,7 +40,13 @@ impl StClient {
             anyhow::bail!("API request failed. Status: {}, Body: {}", status, body);
         }
 
-        serde_json::from_str(&body).map_err(|e| anyhow::anyhow!(e))
+        serde_json::from_str(&body).map_err(|e| {
+            anyhow::anyhow!(
+                "Error decoding response: '{:?}'. Response body was: '{}'",
+                e,
+                body
+            )
+        })
     }
 }
 
@@ -50,24 +56,14 @@ impl StClientTrait for StClient {
         &self,
         registration_request: RegistrationRequest,
     ) -> Result<Data<RegistrationResponse>> {
-        let response = self
-            .client
-            .post("https://api.spacetraders.io/v2/register")
-            .json(&registration_request)
-            .send()
-            .await
-            .expect("broken");
-
-        if response.status().is_success() {
-            let content = response.json::<Data<RegistrationResponse>>().await?;
-
-            Ok(content)
-        } else {
-            let body = response.text().await?;
-
-            bail!(body);
-        }
+        Self::make_api_call(
+            self.client
+                .post("https://api.spacetraders.io/v2/register")
+                .json(&registration_request),
+        )
+        .await
     }
+
     async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentInfoResponse> {
         Ok(self
             .client

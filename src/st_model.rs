@@ -352,7 +352,13 @@ pub struct SystemsPageData {
     pub y: i64,
     pub waypoints: Vec<SystemPageWaypoint>,
     pub orbits: Option<WaypointSymbol>,
-    pub factions: Vec<Faction>,
+    pub factions: Vec<SystemFaction>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemFaction {
+    pub symbol: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -457,11 +463,11 @@ pub enum TradeGoodType {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, Display)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SupplyLevel {
-    Scarce,
-    Limited,
-    Moderate,
-    High,
     Abundant,
+    High,
+    Moderate,
+    Limited,
+    Scarce,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, Display)]
@@ -534,7 +540,7 @@ pub struct RegistrationResponse {
     pub agent: Agent,
     pub contract: Contract,
     pub faction: Faction,
-    pub ship: Ship,
+    pub ships: Vec<Ship>,
     pub token: String,
 }
 
