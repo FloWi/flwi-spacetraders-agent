@@ -19,5 +19,7 @@ pub enum Commands {
         spacetraders_agent_symbol: String,
         #[arg(long, env("SPACETRADERS_REGISTRATION_EMAIL"))]
         spacetraders_registration_email: String,
+        #[arg(long, env("SPACETRADERS_ACCOUNT_TOKEN"))]
+        spacetraders_account_token: String,
     },
 }

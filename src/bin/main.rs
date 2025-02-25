@@ -54,10 +54,11 @@ async fn main() -> Result<()> {
     match args {
         Cli { command } => match command.clone() {
             Commands::RunAgent {
-                database_url,
+                database_url: _database_url,
                 spacetraders_agent_faction,
                 spacetraders_agent_symbol,
                 spacetraders_registration_email,
+                spacetraders_account_token,
             } => {
                 tracing_subscriber::registry()
                     .with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE))
@@ -66,17 +67,16 @@ async fn main() -> Result<()> {
 
                 let cfg = AgentConfiguration::new(command.clone());
 
-                let reqwest_client_with_middleware = create_client(None);
+                let client_with_account_token =
+                    StClient::new(create_client(Some(spacetraders_account_token)));
 
-                let unauthenticated_client = StClient::new(reqwest_client_with_middleware);
-
-                let status = unauthenticated_client.get_status().await?;
+                let status = client_with_account_token.get_status().await?;
 
                 let pool = db::prepare_database_schema(&status, cfg.clone()).await?;
 
                 let authenticated_client = get_authenticated_client(
                     &pool,
-                    unauthenticated_client,
+                    client_with_account_token,
                     spacetraders_agent_faction,
                     spacetraders_agent_symbol.clone(),
                     spacetraders_registration_email,
@@ -379,16 +379,16 @@ async fn collect_all_ships(client: &StClient) -> Result<Vec<Ship>> {
 
 async fn get_authenticated_client(
     pool: &Pool<Postgres>,
-    unauthenticated_client: StClient,
+    client_with_account_token: StClient,
     spacetraders_agent_faction: String,
     spacetraders_agent_symbol: String,
     spacetraders_registration_email: String,
 ) -> Result<StClient> {
     event!(Level::INFO, "Trying to load registration from database",);
 
-    let maybe_existing_reqistration = db::load_registration(pool).await?;
+    let maybe_existing_registration = db::load_registration(pool).await?;
 
-    match maybe_existing_reqistration {
+    match maybe_existing_registration {
         Some(db_entry) => {
             event!(
                 Level::INFO,
@@ -403,7 +403,7 @@ async fn get_authenticated_client(
                 "No registration infos found in database. Registering new agent",
             );
 
-            let registration_response = unauthenticated_client
+            let registration_response = client_with_account_token
                 .register(RegistrationRequest {
                     faction: FactionSymbol(spacetraders_agent_faction),
                     symbol: spacetraders_agent_symbol,

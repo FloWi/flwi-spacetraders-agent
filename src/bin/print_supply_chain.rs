@@ -882,17 +882,11 @@ fn node_id_of_raw_material_origin(
     trade_good_symbol: &TradeGoodSymbol,
     waypoint_symbol: &WaypointSymbol,
 ) -> String {
-    format!(
-        "{} of {} at {}",
-        raw_material_source_type, trade_good_symbol, waypoint_symbol.0
-    )
+    format!("{} of {}", raw_material_source_type, trade_good_symbol)
 }
 
 fn node_id_of_market_entry(me: &MarketEntry, waypoint_symbol: &WaypointSymbol) -> String {
-    format!(
-        "{} of {} at {}",
-        me.trade_good_type, me.trade_good_symbol, waypoint_symbol.0
-    )
+    format!("{} of {}", me.trade_good_type, me.trade_good_symbol)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]

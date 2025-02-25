@@ -7,6 +7,7 @@ pub struct AgentConfiguration {
     pub spacetraders_agent_faction: String,
     pub spacetraders_agent_symbol: String,
     pub spacetraders_registration_email: String,
+    pub spacetraders_account_token: String,
 }
 
 impl AgentConfiguration {
@@ -29,11 +30,13 @@ impl AgentConfiguration {
                 spacetraders_agent_faction,
                 spacetraders_agent_symbol,
                 spacetraders_registration_email,
+                spacetraders_account_token,
             } => Self {
                 database_url,
                 spacetraders_agent_faction,
                 spacetraders_agent_symbol,
                 spacetraders_registration_email,
+                spacetraders_account_token,
             },
         }
     }
