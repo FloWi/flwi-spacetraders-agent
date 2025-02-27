@@ -71,7 +71,6 @@ async fn get_supply_chain() -> Result<String, ServerFnError> {
     }
 }
 
-/// Renders the home page of your application.
 #[component]
 fn SupplyChainPage() -> impl IntoView {
     // Use create_resource which is the standard way to handle async data in Leptos

@@ -20,7 +20,6 @@ tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
 wasm-bindgen = { version = "=0.2.100", optional = true }
 serde_json = { version = "1.0.139", optional = true }
 
-
 st-core = { path = "../st-core", optional = true }
 
 
