@@ -3726,6 +3726,7 @@ dependencies = [
  "leptos_axum",
  "leptos_meta",
  "leptos_router",
+ "st-core",
  "tokio",
  "tracing-test",
  "wasm-bindgen",

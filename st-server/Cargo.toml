@@ -20,6 +20,10 @@ tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
 wasm-bindgen = { version = "=0.2.100", optional = true }
 
 
+st-core = { path = "../st-core", optional = true }
+
+
+
 [dev-dependencies]
 tracing-test = "0.2.5"
 
@@ -36,6 +40,7 @@ ssr = [
     "leptos/ssr",
     "leptos_meta/ssr",
     "leptos_router/ssr",
+    "dep:st-core"
 ]
 
 

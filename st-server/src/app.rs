@@ -1,3 +1,4 @@
+use leptos::leptos_dom::log;
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
@@ -41,9 +42,47 @@ pub fn App() -> impl IntoView {
             <main>
                 <Routes fallback=|| "Page not found.".into_view()>
                     <Route path=StaticSegment("") view=HomePage/>
+                    <Route path=StaticSegment("supply-chain") view=SupplyChainPage/>
                 </Routes>
             </main>
         </Router>
+    }
+}
+
+// Server function uses conversion
+#[server]
+async fn get_supply_chain() -> Result<String, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use st_core;
+        let supply_chain = st_core::supply_chain::read_supply_chain().await.unwrap();
+        log!("supply-chain: {supply_chain:?}");
+
+        Ok(format!("{supply_chain:?}"))
+    }
+
+    #[cfg(not(feature = "ssr"))]
+    {
+        Err(ServerFnError::new("Server-side function"))
+    }
+}
+
+/// Renders the home page of your application.
+#[component]
+fn SupplyChainPage() -> impl IntoView {
+    let supply_chain_resource = OnceResource::new(get_supply_chain());
+
+
+    view! {
+         <Title text="Leptos + Tailwindcss"/>
+        <main>
+            <div class="bg-gradient-to-tl from-blue-800 to-blue-500 text-white font-mono flex flex-col min-h-screen">
+                {move || match supply_chain_resource.get() {
+                    None => "Loading...".to_string(),
+                    Some(Ok(data)) => format!("{data:?}"),
+                    Some(Err(e)) => format!("Error: {}", e),
+                }}            </div>
+        </main>
     }
 }
 
