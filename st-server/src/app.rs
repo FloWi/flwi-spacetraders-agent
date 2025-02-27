@@ -1,5 +1,6 @@
 use leptos::leptos_dom::log;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
     components::{Route, Router, Routes},
@@ -58,7 +59,10 @@ async fn get_supply_chain() -> Result<String, ServerFnError> {
         let supply_chain = st_core::supply_chain::read_supply_chain().await.unwrap();
         log!("supply-chain: {supply_chain:?}");
 
-        Ok(format!("{supply_chain:?}"))
+        Ok(format!(
+            "{}",
+            serde_json::to_string_pretty(&supply_chain).unwrap()
+        ))
     }
 
     #[cfg(not(feature = "ssr"))]
@@ -70,18 +74,29 @@ async fn get_supply_chain() -> Result<String, ServerFnError> {
 /// Renders the home page of your application.
 #[component]
 fn SupplyChainPage() -> impl IntoView {
-    let supply_chain_resource = OnceResource::new(get_supply_chain());
-
+    // Use create_resource which is the standard way to handle async data in Leptos
+    let supply_chain = Resource::new(
+        || (),                  // No dependencies, just load once
+        |_| get_supply_chain(), // Your server function
+    );
 
     view! {
-         <Title text="Leptos + Tailwindcss"/>
+        <Title text="Leptos + Tailwindcss"/>
         <main>
             <div class="bg-gradient-to-tl from-blue-800 to-blue-500 text-white font-mono flex flex-col min-h-screen">
-                {move || match supply_chain_resource.get() {
-                    None => "Loading...".to_string(),
-                    Some(Ok(data)) => format!("{data:?}"),
-                    Some(Err(e)) => format!("Error: {}", e),
-                }}            </div>
+                <Suspense fallback=move || view! { <p>"Loading..."</p> }>
+                    <ErrorBoundary fallback=|errors| view! { <p>"Error: " {format!("{errors:?}")}</p> }>
+                        {move || {
+                            supply_chain.get().map(|result| {
+                                match result {
+                                    Ok(data) => view! { <pre>{data}</pre> }.into_any(),
+                                    Err(e) => view! { <p>"Error: " {e.to_string()}</p> }.into_any(),
+                                }
+                            })
+                        }}
+                    </ErrorBoundary>
+                </Suspense>
+            </div>
         </main>
     }
 }
