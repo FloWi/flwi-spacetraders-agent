@@ -1,12 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
-  content: {
-    files: ["*.css", "./src/**/*.rs"],
-    transform: {
-      rs: (content) => content.replace(/(?:^|\s)class:/g, ' '),
-    },
-  },
+  content: [
+    "./st-server/src/**/*.rs",
+    "./st-server/style/**/*.css"
+  ],
   theme: {
     container: {
       center: true,
