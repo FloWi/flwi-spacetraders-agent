@@ -3,3 +3,4 @@ grafana-storage
 postgres-data
 server/prometheus-storage
 .hide
+st-server/node_modules

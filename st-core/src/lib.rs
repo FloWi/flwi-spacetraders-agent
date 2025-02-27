@@ -1,4 +1,3 @@
-pub mod cli_args;
 pub mod configuration;
 pub mod db;
 pub mod pagination;
@@ -11,6 +10,7 @@ pub mod supply_chain;
 use chrono::TimeDelta;
 use st_model::FlightMode;
 
+pub mod agent;
 pub mod behavior_tree;
 pub mod exploration;
 pub mod marketplaces;

@@ -1,4 +1,3 @@
-use crate::cli_args::Commands;
 use crate::st_model::StStatusResponse;
 
 #[derive(Clone, Debug)]
@@ -22,22 +21,22 @@ impl AgentConfiguration {
     pub fn get_schema_name_for_reset_date(self: &Self, reset_date: String) -> String {
         format!("reset_{}", reset_date.replace("-", "_"))
     }
-
-    pub fn new(commands: Commands) -> Self {
-        match commands {
-            Commands::RunAgent {
-                database_url,
-                spacetraders_agent_faction,
-                spacetraders_agent_symbol,
-                spacetraders_registration_email,
-                spacetraders_account_token,
-            } => Self {
-                database_url,
-                spacetraders_agent_faction,
-                spacetraders_agent_symbol,
-                spacetraders_registration_email,
-                spacetraders_account_token,
-            },
-        }
-    }
+    //
+    // pub fn new(commands: Commands) -> Self {
+    //     match commands {
+    //         Commands::RunAgent {
+    //             database_url,
+    //             spacetraders_agent_faction,
+    //             spacetraders_agent_symbol,
+    //             spacetraders_registration_email,
+    //             spacetraders_account_token,
+    //         } => Self {
+    //             database_url,
+    //             spacetraders_agent_faction,
+    //             spacetraders_agent_symbol,
+    //             spacetraders_registration_email,
+    //             spacetraders_account_token,
+    //         },
+    //     }
+    // }
 }

@@ -1,0 +1,43 @@
+[package]
+name = "st-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12.4", features = ["json"] }
+serde = { version = "1.0.197", features = ["derive"] }
+reqwest-middleware = { version = "0.3.1", features = ["json"] }
+governor = "0.6.3"
+async-trait = "0.1.78"
+task-local-extensions = "0.1.0"
+futures = "0.3.30"
+itertools = "0.13.0"
+chrono = { version = "0.4.35", features = ["serde"] }
+anyhow = "1.0.81"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "std"] }
+sqlx = { version = "0.8.0", features = ["postgres", "runtime-tokio-native-tls", "chrono", "migrate", "json"] }
+tokio-cron-scheduler = "0.11.0"
+axum = "0.7.5"
+utoipa = { version = "4.2.0", features = ["axum_extras", "chrono"] }
+utoipa-swagger-ui = { version = "7.0.1", features = ["axum"] }
+utoipa-redoc = { version = "4.0.0", features = ["axum"] }
+utoipa-rapidoc = { version = "4.0.0", features = ["axum"] }
+envy = "0.4.2"
+tower-http = { version = "0.5.2", features = ["cors", "trace", "fs"] }
+serde_json = { version = "1.0.116", features = ["raw_value"] }
+clap = { version = "4.5.4", features = ["derive", "env"] }
+reqwest-retry = "0.6.1"
+serde_path_to_error = "0.1.16"
+metrics = "0.23.0"
+metrics-exporter-prometheus = "0.15.3"
+log = "0.4.22"
+petgraph = "0.6.5"
+rand = "0.8.5"
+pathfinding = "4.11.0"
+strum_macros = "0.26.4"
+tracing-core = "0.1.32"
+mockall = "0.13.0"
+ordered-float = { version = "4.2.2", features = ["serde"] }

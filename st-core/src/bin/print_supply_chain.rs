@@ -1,10 +1,6 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use flwi_spacetraders_agent::st_model::{
-    ActivityLevel, LabelledCoordinate, SupplyLevel, SystemSymbol, TradeGood, TradeGoodSymbol,
-    TradeGoodType, WaypointSymbol, WaypointType,
-};
-pub use flwi_spacetraders_agent::supply_chain::*;
+
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -624,7 +620,13 @@ struct MarketEntry {
     pub trade_good_trade_volume: u32,
 }
 
-use flwi_spacetraders_agent::st_model::Waypoint;
+use st_core::st_model::{
+    ActivityLevel, LabelledCoordinate, SupplyLevel, SystemSymbol, TradeGood, TradeGoodSymbol,
+    TradeGoodType, Waypoint, WaypointSymbol, WaypointType,
+};
+use st_core::supply_chain::{
+    find_complete_supply_chain, read_supply_chain, SupplyChainNode, SupplyChainNodeVecExt,
+};
 
 fn get_market_entries() -> Result<Vec<MarketEntry>> {
     let test_data_json = r#"
@@ -945,9 +947,11 @@ mod tests {
         validate_routes, validate_supply_chain,
     };
     use anyhow::Result;
-    use flwi_spacetraders_agent::st_model::TradeGoodSymbol;
-    use flwi_spacetraders_agent::supply_chain::*;
     use itertools::Itertools;
+    use st_core::st_model::TradeGoodSymbol;
+    use st_core::supply_chain::{
+        find_complete_supply_chain, read_supply_chain, SupplyChainNodeVecExt,
+    };
 
     #[tokio::test]
     async fn test_supply_chain_materialization() -> Result<()> {
