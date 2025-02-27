@@ -116,6 +116,33 @@ async fn main() -> Result<()> {
                 let systems_with_waypoint_details_to_be_loaded: Vec<DbSystemCoordinateData> =
                     db::select_systems_with_waypoint_details_to_be_loaded(&pool).await?;
 
+                let number_of_systems_with_missing_waypoint_infos =
+                    systems_with_waypoint_details_to_be_loaded.len();
+                let need_collect_waypoints_of_systems =
+                    number_of_systems_with_missing_waypoint_infos > 0;
+                if need_collect_waypoints_of_systems {
+                    event!(
+                        Level::INFO,
+                        "Not all waypoints are stored in database. Need to update {} of {} systems",
+                        number_of_systems_with_missing_waypoint_infos,
+                        status.stats.systems,
+                    );
+
+                    let _ = collect_waypoints_for_systems(
+                        &authenticated_client,
+                        &systems_with_waypoint_details_to_be_loaded,
+                        &headquarters_system_symbol,
+                        &pool,
+                    )
+                    .await?;
+                } else {
+                    event!(
+                        Level::INFO,
+                        "No need to collect waypoints for systems - all {} systems have detailed waypoint infos",
+                        number_systems_in_db
+                    );
+                }
+
                 // let marketplaces_of_system = db::select_waypoints_of_system_with_trait(
                 //     &pool,
                 //     headquarters_system_symbol.clone(),
