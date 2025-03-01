@@ -620,8 +620,13 @@ struct MarketEntry {
     pub trade_good_trade_volume: u32,
 }
 
-use st_domain::{ActivityLevel, LabelledCoordinate, SupplyChainNode, SupplyLevel, SystemSymbol, TradeGood, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType};
-use st_core::supply_chain::{find_complete_supply_chain, read_supply_chain, trade_map, SupplyChainNodeVecExt};
+use st_core::supply_chain::{
+    find_complete_supply_chain, read_supply_chain, trade_map, SupplyChainNodeVecExt,
+};
+use st_domain::{
+    ActivityLevel, LabelledCoordinate, SupplyChainNode, SupplyLevel, SystemSymbol, TradeGood,
+    TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType,
+};
 
 fn get_market_entries() -> Result<Vec<MarketEntry>> {
     let test_data_json = r#"
@@ -943,7 +948,9 @@ mod tests {
     };
     use anyhow::Result;
     use itertools::Itertools;
-    use st_core::supply_chain::{find_complete_supply_chain, read_supply_chain, trade_map, SupplyChainNodeVecExt};
+    use st_core::supply_chain::{
+        find_complete_supply_chain, read_supply_chain, trade_map, SupplyChainNodeVecExt,
+    };
     use st_domain::TradeGoodSymbol;
 
     #[tokio::test]
