@@ -1,4 +1,3 @@
-use st_core::supply_chain;
 use st_server::app::{shell, App};
 
 #[cfg(feature = "ssr")]

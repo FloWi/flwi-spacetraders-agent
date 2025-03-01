@@ -13,7 +13,7 @@ async fn main() -> Result<()> {
     //println!("Complete Supply Chain");
     //dbg!(supply_chain.clone());
 
-    let trade_map = supply_chain.trade_map();
+    let trade_map = trade_map(&supply_chain);
 
     let goods_of_interest = [
         TradeGoodSymbol::ADVANCED_CIRCUITRY,
@@ -620,13 +620,8 @@ struct MarketEntry {
     pub trade_good_trade_volume: u32,
 }
 
-use st_core::st_model::{
-    ActivityLevel, LabelledCoordinate, SupplyLevel, SystemSymbol, TradeGood, TradeGoodSymbol,
-    TradeGoodType, Waypoint, WaypointSymbol, WaypointType,
-};
-use st_core::supply_chain::{
-    find_complete_supply_chain, read_supply_chain, SupplyChainNode, SupplyChainNodeVecExt,
-};
+use st_domain::{ActivityLevel, LabelledCoordinate, SupplyChainNode, SupplyLevel, SystemSymbol, TradeGood, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType};
+use st_core::supply_chain::{find_complete_supply_chain, read_supply_chain, trade_map, SupplyChainNodeVecExt};
 
 fn get_market_entries() -> Result<Vec<MarketEntry>> {
     let test_data_json = r#"
@@ -948,16 +943,14 @@ mod tests {
     };
     use anyhow::Result;
     use itertools::Itertools;
-    use st_core::st_model::TradeGoodSymbol;
-    use st_core::supply_chain::{
-        find_complete_supply_chain, read_supply_chain, SupplyChainNodeVecExt,
-    };
+    use st_core::supply_chain::{find_complete_supply_chain, read_supply_chain, trade_map, SupplyChainNodeVecExt};
+    use st_domain::TradeGoodSymbol;
 
     #[tokio::test]
     async fn test_supply_chain_materialization() -> Result<()> {
         let supply_chain = read_supply_chain().await?;
 
-        let trade_map = supply_chain.trade_map();
+        let trade_map = trade_map(&supply_chain);
 
         let goods_of_interest = [
             TradeGoodSymbol::ADVANCED_CIRCUITRY,

@@ -1,5 +1,5 @@
-use crate::db::DbMarketEntry;
-use crate::st_model::WaypointSymbol;
+use st_domain::WaypointSymbol;
+use st_store::DbMarketEntry;
 
 pub fn find_marketplaces_for_exploration(
     all_marketplaces: Vec<DbMarketEntry>,

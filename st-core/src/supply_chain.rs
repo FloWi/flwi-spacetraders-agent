@@ -2,54 +2,24 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-use crate::st_model::TradeGoodSymbol;
 use anyhow::Result;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use st_domain::{SupplyChain, SupplyChainNode, TradeGoodSymbol, TradeRelation};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct TradeRelation {
-    pub export: TradeGoodSymbol,
-    pub imports: Vec<TradeGoodSymbol>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SupplyChain {
-    pub relations: Vec<TradeRelation>,
-}
-
-impl SupplyChain {
-    /*
-    def cleanUpProductionGraph(graph: List[ProductionDependency]): List[ProductionDependency] = {
-        graph.filterNot {
-          case ProductionDependency(_, List(onlyImport)) if onlyImport == EXPLOSIVES || onlyImport == MACHINERY =>
-    //      case ProductionDependency(_, List(onlyImport)) if onlyImport == TradeSymbol.MACHINERY =>
-            // println(s"Removed only import ${onlyImport.value} from ${export.value}")
-            true
-          case _ => false
-        }
-      }
-
-         */
-    pub fn trade_map(&self) -> HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>> {
-        self.relations
-            .iter()
-            .map(|relation| (relation.export.clone(), relation.imports.clone()))
-            .filter(|(exp, imp)| {
-                // if the only import is MACHINERY || EXPLOSIVES, we filter it out
-                match imp.as_slice() {
-                    [TradeGoodSymbol::EXPLOSIVES] | [TradeGoodSymbol::MACHINERY] => false,
-                    _ => true,
-                }
-            })
-            .collect()
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SupplyChainNode {
-    pub good: TradeGoodSymbol,
-    pub dependencies: Vec<TradeGoodSymbol>,
+pub fn trade_map(supply_chain: &SupplyChain) -> HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>> {
+    supply_chain
+        .relations
+        .iter()
+        .map(|relation| (relation.export.clone(), relation.imports.clone()))
+        .filter(|(exp, imp)| {
+            // if the only import is MACHINERY || EXPLOSIVES, we filter it out
+            match imp.as_slice() {
+                [TradeGoodSymbol::EXPLOSIVES] | [TradeGoodSymbol::MACHINERY] => false,
+                _ => true,
+            }
+        })
+        .collect()
 }
 
 pub trait SupplyChainNodeVecExt {

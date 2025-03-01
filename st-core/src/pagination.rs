@@ -9,7 +9,7 @@ use serde::Deserialize;
 use tracing::log::trace;
 use tracing::{event, trace_span, Instrument, Level};
 
-use crate::st_model::GetMeta;
+use st_domain::GetMeta;
 
 #[derive(Debug, Clone)]
 pub struct PaginationInput {

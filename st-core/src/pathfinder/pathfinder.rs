@@ -1,20 +1,20 @@
-use crate::st_model::{distance_to, FlightMode, Fuel, LabelledCoordinate, Ship, TradeGoodSymbol};
-use crate::st_model::{MarketData, Waypoint, WaypointSymbol};
+use crate::{calculate_fuel_consumption, calculate_time};
 use futures::StreamExt;
 use itertools::Itertools;
 use pathfinding::prelude::astar;
 use serde::{Deserialize, Serialize};
+use st_domain::{distance_to, FlightMode, LabelledCoordinate, TradeGoodSymbol};
+use st_domain::{MarketData, Waypoint, WaypointSymbol};
 use strum_macros::Display;
 
-impl MarketData {
-    fn all_trade_goods(&self) -> Vec<TradeGoodSymbol> {
-        self.imports
-            .iter()
-            .chain(self.exports.iter())
-            .chain(self.exchange.iter())
-            .map(|tg| tg.symbol.clone())
-            .collect()
-    }
+pub fn all_trade_goods(market_data: &MarketData) -> Vec<TradeGoodSymbol> {
+    market_data
+        .imports
+        .iter()
+        .chain(market_data.exports.iter())
+        .chain(market_data.exchange.iter())
+        .map(|tg| tg.symbol.clone())
+        .collect()
 }
 
 pub fn compute_path(
@@ -30,7 +30,7 @@ pub fn compute_path(
         .iter()
         .map(|wps| {
             let is_refueling_station = market_entries_of_system.iter().any(|me| {
-                me.symbol == wps.symbol && me.all_trade_goods().contains(&TradeGoodSymbol::FUEL)
+                me.symbol == wps.symbol && all_trade_goods(&me).contains(&TradeGoodSymbol::FUEL)
             });
 
             PathfindingWaypoint {
@@ -148,7 +148,7 @@ fn determine_travel_mode(problem: &Problem, fuel_consumed: u32, distance: u32) -
         .allowed_flight_modes
         .iter()
         .find(|fm| {
-            let consumption = fm.calculate_fuel_consumption(distance);
+            let consumption = calculate_fuel_consumption(&fm, distance);
             fuel_consumed == consumption
         })
         .unwrap()
@@ -192,8 +192,8 @@ impl Problem {
 
             if waypoint_idx != state.waypoint_idx && can_improve_condition {
                 for mode in self.allowed_flight_modes.iter() {
-                    let fuel_consumption = mode.calculate_fuel_consumption(*distance);
-                    let time = mode.calculate_time(*distance, self.engine_speed);
+                    let fuel_consumption = calculate_fuel_consumption(&mode, *distance);
+                    let time = calculate_time(&mode, *distance, self.engine_speed);
 
                     if current_waypoint.is_refueling_station {
                         let can_reach = self.fuel_capacity >= fuel_consumption;
@@ -232,7 +232,7 @@ impl Problem {
             .unwrap()
             .get(self.goal_idx)
             .unwrap();
-        FlightMode::Burn.calculate_time(*distance, self.engine_speed)
+        calculate_time(&FlightMode::Burn, *distance, self.engine_speed)
 
         // *self.heuristic_values.get(state.waypoint_idx).unwrap()
     }
@@ -267,7 +267,7 @@ fn compute_travel_actions(problem: &Problem, path: &Vec<State>) -> Vec<TravelAct
                 from.fuel - to.fuel
             };
             let mode = determine_travel_mode(&problem, fuel_consumed, distance);
-            let travel_time = mode.calculate_time(distance, problem.engine_speed);
+            let travel_time = calculate_time(&mode, distance, problem.engine_speed);
 
             new_actions.push(TravelAction::Navigate {
                 from: from_waypoint.label.clone(),

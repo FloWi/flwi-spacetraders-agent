@@ -1,11 +1,11 @@
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::st_client::StClientTrait;
-use crate::st_model::{
+use anyhow::*;
+use itertools::Itertools;
+use st_domain::{
     CreateChartBody, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse,
     RefuelShipResponse, Ship, Shipyard, Waypoint, WaypointSymbol,
 };
-use anyhow::*;
-use itertools::Itertools;
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;

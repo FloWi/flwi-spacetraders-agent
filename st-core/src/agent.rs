@@ -1,10 +1,9 @@
 use crate::behavior_tree::behavior_tree::{Actionable, Response};
-use crate::db::upsert_waypoints;
-use crate::db::DbSystemCoordinateData;
-use crate::db::{
-    insert_market_data, select_latest_marketplace_entry_of_system, select_waypoints_of_system,
-    upsert_systems_from_receiver, upsert_waypoints_from_receiver, DbWaypointEntry,
+use st_store::{
+    db, select_latest_marketplace_entry_of_system, select_waypoints_of_system,
+    upsert_systems_from_receiver, upsert_waypoints_from_receiver, DbSystemCoordinateData,
 };
+
 use anyhow::{Context, Error, Result};
 use chrono::Local;
 use clap::Parser;
@@ -27,6 +26,7 @@ use crate::behavior_tree::behavior_tree::Behavior;
 use crate::behavior_tree::ship_behaviors::{ship_navigation_behaviors, ShipAction};
 use crate::configuration::AgentConfiguration;
 use crate::exploration::exploration::generate_exploration_route;
+use crate::format_time_delta_hh_mm_ss;
 use crate::marketplaces::marketplaces::find_marketplaces_for_exploration;
 use crate::pagination::{
     collect_results, fetch_all_pages, fetch_all_pages_into_queue, PaginatedResponse,
@@ -36,12 +36,12 @@ use crate::pathfinder::pathfinder;
 use crate::reqwest_helpers::create_client;
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
-use crate::st_model::{
+use st_domain::{
     AgentSymbol, FactionSymbol, LabelledCoordinate, MarketData, NavStatus, RegistrationRequest,
     SerializableCoordinate, Ship, ShipSymbol, SystemSymbol, Waypoint, WaypointSymbol,
     WaypointTrait, WaypointTraitSymbol,
 };
-use crate::{db, format_time_delta_hh_mm_ss};
+
 async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
     tracing_subscriber::registry()
         .with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE))
@@ -53,7 +53,7 @@ async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
 
     let status = client_with_account_token.get_status().await?;
 
-    let pool = db::prepare_database_schema(&status, cfg.clone()).await?;
+    let pool = db::prepare_database_schema(&status, cfg.pg_connection_string()).await?;
 
     let authenticated_client = get_authenticated_client(
         &pool,

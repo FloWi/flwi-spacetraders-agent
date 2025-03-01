@@ -1,4 +1,5 @@
-use crate::st_model::StStatusResponse;
+use st_domain::StStatusResponse;
+use st_store::PgConnectionString;
 
 #[derive(Clone, Debug)]
 pub struct AgentConfiguration {
@@ -10,33 +11,7 @@ pub struct AgentConfiguration {
 }
 
 impl AgentConfiguration {
-    pub fn pg_connection_string(self: &Self) -> String {
-        self.database_url.clone()
+    pub fn pg_connection_string(self: &Self) -> PgConnectionString {
+        PgConnectionString(self.database_url.clone())
     }
-
-    pub fn get_schema_name(self: &Self, st_status_response: StStatusResponse) -> String {
-        self.get_schema_name_for_reset_date(st_status_response.reset_date)
-    }
-
-    pub fn get_schema_name_for_reset_date(self: &Self, reset_date: String) -> String {
-        format!("reset_{}", reset_date.replace("-", "_"))
-    }
-    //
-    // pub fn new(commands: Commands) -> Self {
-    //     match commands {
-    //         Commands::RunAgent {
-    //             database_url,
-    //             spacetraders_agent_faction,
-    //             spacetraders_agent_symbol,
-    //             spacetraders_registration_email,
-    //             spacetraders_account_token,
-    //         } => Self {
-    //             database_url,
-    //             spacetraders_agent_faction,
-    //             spacetraders_agent_symbol,
-    //             spacetraders_registration_email,
-    //             spacetraders_account_token,
-    //         },
-    //     }
-    // }
 }

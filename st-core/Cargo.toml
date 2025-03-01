@@ -5,18 +5,25 @@ edition = "2021"
 
 [dependencies]
 
-tokio = { version = "1", features = ["full"] }
+st-domain = { path = "../st-domain", default-features = false }
+st-store = { path = "../st-store" }
+
+
+itertools = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+strum_macros = { workspace = true }
+futures = { workspace = true }
+tracing = { workspace = true }
+tracing-test = "0.2.5"
+
 reqwest = { version = "0.12.4", features = ["json"] }
 serde = { version = "1.0.197", features = ["derive"] }
 reqwest-middleware = { version = "0.3.1", features = ["json"] }
 governor = "0.6.3"
 async-trait = "0.1.78"
 task-local-extensions = "0.1.0"
-futures = "0.3.30"
-itertools = "0.13.0"
-chrono = { version = "0.4.35", features = ["serde"] }
-anyhow = "1.0.81"
-tracing = "0.1.40"
+anyhow = { workspace = true }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "std"] }
 sqlx = { version = "0.8.0", features = ["postgres", "runtime-tokio-native-tls", "chrono", "migrate", "json"] }
 tokio-cron-scheduler = "0.11.0"
@@ -37,7 +44,6 @@ log = "0.4.22"
 petgraph = "0.6.5"
 rand = "0.8.5"
 pathfinding = "4.11.0"
-strum_macros = "0.26.4"
 tracing-core = "0.1.32"
 mockall = "0.13.0"
 ordered-float = { version = "4.2.2", features = ["serde"] }

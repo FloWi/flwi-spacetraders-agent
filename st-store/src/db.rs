@@ -11,28 +11,32 @@ use sqlx::{ConnectOptions, Pool, Postgres};
 use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
-use crate::configuration::AgentConfiguration;
-use crate::st_client::Data;
-use crate::st_model::{
-    distance_to, JumpGate, MarketData, RegistrationResponse, Shipyard, StStatusResponse,
+use st_domain::{
+    distance_to, Data, JumpGate, MarketData, RegistrationResponse, Shipyard, StStatusResponse,
     SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
+pub struct PgConnectionString(pub String);
+
+impl PgConnectionString {
+    pub fn get_schema_name_for_reset_date(self: &Self, reset_date: String) -> String {
+        format!("reset_{}", reset_date.replace("-", "_"))
+    }
+}
+
 pub async fn prepare_database_schema(
     api_status: &StStatusResponse,
-    cfg: AgentConfiguration,
+    connection_string: PgConnectionString,
 ) -> Result<Pool<Postgres>> {
     event!(Level::INFO, "Got status: {:?}", api_status);
-
-    event!(Level::INFO, "Agent config: {:?}", cfg);
 
     event!(
         Level::INFO,
         "Postgres connection string: '{:?}'",
-        cfg.pg_connection_string()
+        connection_string.0
     );
 
-    let database_url = cfg.database_url.clone();
+    let database_url = connection_string.0.clone();
 
     let database_connection_options: PgConnectOptions = database_url
         .parse::<PgConnectOptions>()?
@@ -73,7 +77,7 @@ pub async fn prepare_database_schema(
                 Ok(pg_connection_pool)
             } else {
                 let archive_schema_name =
-                    cfg.get_schema_name_for_reset_date(db_status.reset_date.clone());
+                    connection_string.get_schema_name_for_reset_date(db_status.reset_date.clone());
                 event!(
                     Level::INFO,
                     "Current schema public is for reset '{}', but the api is for reset '{}'. Archiving public schema to {}",
@@ -577,7 +581,7 @@ where system_symbol = $1
     Ok(maybe_jump_gate_data)
 }
 
-pub(crate) async fn insert_jump_gates(
+pub async fn insert_jump_gates(
     pool: &Pool<Postgres>,
     jump_gates: Vec<JumpGate>,
     now: DateTime<Utc>,
@@ -612,7 +616,7 @@ on conflict (system_symbol, waypoint_symbol) do UPDATE set entry = excluded.entr
     Ok(())
 }
 
-pub(crate) async fn insert_shipyards(
+pub async fn insert_shipyards(
     pool: &Pool<Postgres>,
     shipyards: Vec<Shipyard>,
     now: DateTime<Utc>,

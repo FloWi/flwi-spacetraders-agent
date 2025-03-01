@@ -4,15 +4,16 @@ use crate::behavior_tree::behavior_tree::{Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
-use crate::st_model::{
-    Agent, AgentSymbol, MarketData, NavOnlyResponse, NavRouteWaypoint, NavStatus,
-    RefuelShipResponse, RefuelShipResponseBody, ShipSymbol, TradeGoodSymbol, Transaction,
-    TransactionType, WaypointType,
-};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Local, Utc};
 use core::time::Duration;
+use st_domain::{
+    Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed,
+    MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse,
+    RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipSymbol, TradeGoodSymbol,
+    Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
+};
 
 #[async_trait]
 impl Actionable for ShipAction {
@@ -396,21 +397,23 @@ mod tests {
     use crate::pagination::{PaginatedResponse, PaginationInput};
     use crate::pathfinder::pathfinder::TravelAction;
     use crate::ship::ShipOperations;
-    use crate::st_client::{Data, StClientTrait};
-    use crate::st_model::{
-        AgentInfoResponse, AgentSymbol, CreateChartResponse, DockShipResponse, FlightMode,
-        GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse,
-        JumpGate, ListAgentsResponse, MarketData, NavAndFuelResponse, NavOnlyResponse, NavStatus,
-        NavigateShipResponse, OrbitShipResponse, PatchShipNavResponse, RefuelShipResponse,
-        RegistrationRequest, RegistrationResponse, Ship, ShipSymbol, Shipyard, StStatusResponse,
-        SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
-    };
     use async_trait::async_trait;
     use chrono::Local;
     use core::time::Duration;
     use mockall::mock;
     use mockall::predicate::*;
     use sqlx::__rt::timeout;
+    use st_domain::{
+        AgentInfoResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse,
+        DockShipResponse, FlightMode, FlightMode, GetConstructionResponse, GetJumpGateResponse,
+        GetMarketResponse, GetShipyardResponse, JumpGate, ListAgentsResponse, MarketData,
+        NavAndFuelResponse, NavOnlyResponse, NavOnlyResponse, NavStatus, NavStatus,
+        NavigateShipResponse, OrbitShipResponse, PatchShipNavResponse, RefuelShipResponse,
+        RegistrationRequest, RegistrationResponse, Ship, ShipSymbol, ShipSymbol, Shipyard,
+        StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointSymbol,
+    };
+
+    use crate::st_client::StClientTrait;
     use std::sync::Arc;
     use tracing_test::traced_test;
 
@@ -1056,10 +1059,6 @@ mod tests {
 }
 
 struct TestObjects;
-use crate::st_model::{
-    Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, Nav, Reactor,
-    Registration, Requirements, Route, Ship, Waypoint, WaypointSymbol,
-};
 
 impl TestObjects {
     pub fn create_waypoint(waypoint_symbol: &WaypointSymbol, x: i64, y: i64) -> Waypoint {
