@@ -28,14 +28,12 @@ pub fn create_client(maybe_bearer_token: Option<String>) -> ClientWithMiddleware
         .with(ErrorLoggingMiddleware)
         .with(rate_limiting_middleware);
 
-    let client = match maybe_bearer_token {
+    match maybe_bearer_token {
         None => client_builder.build(),
         Some(token) => client_builder
             .with(AuthenticatedHeaderMiddleware::new(token))
             .build(),
-    };
-
-    client
+    }
 }
 
 struct AuthenticatedHeaderMiddleware {
@@ -82,9 +80,9 @@ impl Middleware for RateLimitingMiddleware {
         // println!("rate_limit check ok");
 
         // println!("Request started {:?}", req);
-        let res = next.run(req, extensions).await;
+
         // println!("   got response: {:?}", res);
-        res
+        next.run(req, extensions).await
     }
 }
 
@@ -92,6 +90,12 @@ impl Middleware for RateLimitingMiddleware {
 /// to have a content-type of application/json and a content-length of 0.
 #[derive(Clone)]
 pub struct EmptyPostMiddleware;
+
+impl Default for EmptyPostMiddleware {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl EmptyPostMiddleware {
     pub fn new() -> Self {

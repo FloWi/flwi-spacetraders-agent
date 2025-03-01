@@ -1,14 +1,13 @@
 use crate::pagination::{PaginatedResponse, PaginationInput};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use reqwest_middleware::ClientWithMiddleware;
 use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 use st_domain::{
     extract_system_symbol, AgentInfoResponse, AgentSymbol, CreateChartResponse, Data,
     DockShipResponse, FlightMode, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse,
-    GetShipyardResponse, ListAgentsResponse, MarketData, NavigateShipRequest, NavigateShipResponse,
+    GetShipyardResponse, ListAgentsResponse, NavigateShipRequest, NavigateShipResponse,
     OrbitShipResponse, PatchShipNavRequest, PatchShipNavResponse, RefuelShipRequest,
     RefuelShipResponse, RegistrationRequest, RegistrationResponse, Ship, ShipSymbol,
     StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
@@ -74,7 +73,7 @@ impl StClientTrait for StClient {
     async fn get_agent(&self) -> Result<AgentInfoResponse> {
         Ok(self
             .client
-            .get(format!("https://api.spacetraders.io/v2/my/agent",))
+            .get("https://api.spacetraders.io/v2/my/agent".to_string())
             .send()
             .await?
             .json()
@@ -88,7 +87,7 @@ impl StClientTrait for StClient {
             .client
             .get(format!(
                 "https://api.spacetraders.io/v2/systems/{}/waypoints/{}/construction",
-                extract_system_symbol(&waypoint_symbol).0,
+                extract_system_symbol(waypoint_symbol).0,
                 waypoint_symbol.0
             ))
             .send()

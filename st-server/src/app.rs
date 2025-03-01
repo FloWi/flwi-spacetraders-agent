@@ -1,6 +1,4 @@
-use leptos::leptos_dom::log;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
     components::{Route, Router, Routes},

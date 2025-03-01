@@ -11,9 +11,9 @@ where
     })
 }
 
-pub fn generate_exploration_route<'a, T, U>(
+pub fn generate_exploration_route<T, U>(
     waypoint_symbols: &[U],
-    all_waypoints_system: &'a [T],
+    all_waypoints_system: &[T],
     current_location: &U,
 ) -> Option<Vec<T>>
 where
@@ -21,12 +21,12 @@ where
     U: PartialEq + Eq + std::hash::Hash + std::clone::Clone,
 {
     let relevant_waypoints: Vec<T> = waypoint_symbols
-        .into_iter()
+        .iter()
         .filter_map(|wps| {
             all_waypoints_system
                 .iter()
                 .find(|wp| wp.label() == wps)
-                .map(|wp| wp.clone())
+                .cloned()
         })
         .collect();
 

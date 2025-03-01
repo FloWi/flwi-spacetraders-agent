@@ -2,7 +2,7 @@ use axum::http::Extensions;
 
 use async_trait::async_trait;
 use futures::future::{BoxFuture, FutureExt};
-use governor::clock::{DefaultClock, ReasonablyRealtime};
+use governor::clock::DefaultClock;
 use governor::state::keyed::DefaultKeyedStateStore;
 use governor::{Quota, RateLimiter};
 use metrics::{counter, describe_histogram, histogram, Unit};
@@ -169,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize metrics
     let socket: SocketAddr = "127.0.0.1:9000".parse().expect("Invalid address");
     let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
-    let handle = builder
+    builder
         .with_http_listener(socket)
         .install()
         .expect("Failed to install Prometheus recorder");

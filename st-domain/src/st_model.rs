@@ -1,8 +1,7 @@
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
-use serde::{Deserialize, Serialize, Serializer};
-use std::fmt::Display;
+use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use strum_macros::Display;
 

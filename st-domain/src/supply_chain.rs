@@ -1,8 +1,4 @@
-use std::collections::{HashMap, HashSet};
-
 use crate::TradeGoodSymbol;
-use anyhow::Result;
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

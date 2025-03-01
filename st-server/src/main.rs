@@ -1,5 +1,3 @@
-use st_server::app::{shell, App};
-
 #[cfg(feature = "ssr")]
 #[tokio::main]
 async fn main() {

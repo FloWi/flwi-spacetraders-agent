@@ -155,7 +155,7 @@ impl Actionable for ShipAction {
                     // - queued_action #2 is: refuel_at_waypoint X
                     // - we have enough fuel to reach X in desired flight mode without refueling
                     let maybe_navigate_action: Option<&TravelAction> =
-                        state.travel_action_queue.get(0);
+                        state.travel_action_queue.front();
                     let maybe_refuel_action: Option<&TravelAction> =
                         state.travel_action_queue.get(1);
 
@@ -387,30 +387,215 @@ impl Actionable for ShipAction {
     }
 }
 
+struct TestObjects;
+
+impl TestObjects {
+    pub fn create_waypoint(waypoint_symbol: &WaypointSymbol, x: i64, y: i64) -> Waypoint {
+        Waypoint {
+            symbol: waypoint_symbol.clone(),
+            r#type: WaypointType::PLANET,
+            system_symbol: waypoint_symbol.system_symbol(),
+            x,
+            y,
+            orbitals: vec![],
+            orbits: None,
+            faction: None,
+            traits: vec![],
+            modifiers: vec![],
+            chart: None,
+            is_under_construction: false,
+        }
+    }
+
+    pub fn create_market_data(waypoint_symbol: &WaypointSymbol) -> MarketData {
+        MarketData {
+            symbol: waypoint_symbol.clone(),
+            exports: vec![],
+            imports: vec![],
+            exchange: vec![],
+            transactions: None,
+            trade_goods: None,
+        }
+    }
+
+    pub fn create_fuel(starting_fuel: u32, consumed: u32) -> Fuel {
+        Fuel {
+            current: (starting_fuel - consumed) as i32,
+            capacity: 600,
+            consumed: FuelConsumed {
+                amount: consumed as i32,
+                timestamp: Local::now().to_utc(),
+            },
+        }
+    }
+
+    pub fn create_refuel_ship_response_body(amount: u32) -> RefuelShipResponseBody {
+        RefuelShipResponseBody {
+            agent: Agent {
+                account_id: None,
+                symbol: AgentSymbol("".to_string()),
+                headquarters: "".to_string(),
+                credits: 42,
+                starting_faction: "".to_string(),
+                ship_count: 2,
+            },
+            fuel: Self::create_fuel(600, 0),
+            transaction: Transaction {
+                waypoint_symbol: WaypointSymbol("".to_string()),
+                ship_symbol: ShipSymbol("".to_string()),
+                trade_symbol: TradeGoodSymbol::FUEL,
+                transaction_type: TransactionType::Purchase,
+                units: amount as i32,
+                price_per_unit: 42,
+                total_price: 0,
+                timestamp: Default::default(),
+            },
+        }
+    }
+
+    pub fn create_nav(
+        mode: FlightMode,
+        nav_status: NavStatus,
+        origin_waypoint_symbol: &WaypointSymbol,
+        destination_waypoint_symbol: &WaypointSymbol,
+    ) -> Nav {
+        Nav {
+            system_symbol: destination_waypoint_symbol.system_symbol(),
+            waypoint_symbol: destination_waypoint_symbol.clone(),
+            route: Route {
+                destination: NavRouteWaypoint {
+                    symbol: destination_waypoint_symbol.clone(),
+                    waypoint_type: WaypointType::PLANET,
+                    system_symbol: destination_waypoint_symbol.system_symbol(),
+                    x: 0,
+                    y: 0,
+                },
+                origin: NavRouteWaypoint {
+                    symbol: origin_waypoint_symbol.clone(),
+                    waypoint_type: WaypointType::PLANET,
+                    system_symbol: origin_waypoint_symbol.system_symbol(),
+                    x: 0,
+                    y: 0,
+                },
+                departure_time: Default::default(),
+                arrival: Default::default(),
+            },
+            status: nav_status,
+            flight_mode: mode,
+        }
+    }
+
+    pub fn test_ship(current_fuel: u32) -> Ship {
+        Ship {
+            symbol: ShipSymbol("FLWI-1".to_string()),
+            registration: Registration {
+                name: "FLWI".to_string(),
+                faction_symbol: "GALACTIC".to_string(),
+                role: "".to_string(),
+            },
+            nav: Self::create_nav(
+                FlightMode::Drift,
+                NavStatus::InTransit,
+                &WaypointSymbol("X1-FOO-BAR".to_string()),
+                &WaypointSymbol("X1-FOO-BAR".to_string()),
+            ),
+            crew: Crew {
+                current: 0,
+                required: 0,
+                capacity: 0,
+                rotation: "".to_string(),
+                morale: 0,
+                wages: 0,
+            },
+            frame: Frame {
+                symbol: "".to_string(),
+                name: "".to_string(),
+                description: "".to_string(),
+                condition: 0.0.into(),
+                integrity: 0.0.into(),
+                module_slots: 0,
+                mounting_points: 0,
+                fuel_capacity: 0,
+                requirements: Requirements {
+                    power: None,
+                    crew: None,
+                    slots: None,
+                },
+            },
+            reactor: Reactor {
+                symbol: "".to_string(),
+                name: "".to_string(),
+                description: "".to_string(),
+                condition: 0.0.into(),
+                integrity: 0.0.into(),
+                power_output: 0,
+                requirements: Requirements {
+                    power: None,
+                    crew: None,
+                    slots: None,
+                },
+            },
+            engine: Engine {
+                symbol: "".to_string(),
+                name: "".to_string(),
+                description: "".to_string(),
+                condition: 0.0.into(),
+                integrity: 0.0.into(),
+                speed: 30,
+                requirements: Requirements {
+                    power: None,
+                    crew: None,
+                    slots: None,
+                },
+            },
+            cooldown: Cooldown {
+                ship_symbol: "".to_string(),
+                total_seconds: 0,
+                remaining_seconds: 0,
+                expiration: None,
+            },
+            modules: vec![],
+            mounts: vec![],
+            cargo: Cargo {
+                capacity: 0,
+                units: 0,
+                inventory: vec![],
+            },
+            fuel: Fuel {
+                current: current_fuel as i32,
+                capacity: 600,
+                consumed: FuelConsumed {
+                    amount: 0,
+                    timestamp: Default::default(),
+                },
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::behavior_tree::actions::TestObjects;
     use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps, ExplorationTask};
+    use crate::behavior_tree::behavior_tree::Actionable;
     use crate::behavior_tree::behavior_tree::Response;
-    use crate::behavior_tree::behavior_tree::{Actionable, Behavior};
     use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
     use crate::pagination::{PaginatedResponse, PaginationInput};
     use crate::pathfinder::pathfinder::TravelAction;
     use crate::ship::ShipOperations;
     use async_trait::async_trait;
-    use chrono::Local;
+
     use core::time::Duration;
     use mockall::mock;
     use mockall::predicate::*;
-    use sqlx::__rt::timeout;
+
     use st_domain::{
-        AgentInfoResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse,
-        DockShipResponse, FlightMode, FlightMode, GetConstructionResponse, GetJumpGateResponse,
-        GetMarketResponse, GetShipyardResponse, JumpGate, ListAgentsResponse, MarketData,
-        NavAndFuelResponse, NavOnlyResponse, NavOnlyResponse, NavStatus, NavStatus,
+        AgentInfoResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode,
+        GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse,
+        JumpGate, ListAgentsResponse, MarketData, NavAndFuelResponse, NavOnlyResponse, NavStatus,
         NavigateShipResponse, OrbitShipResponse, PatchShipNavResponse, RefuelShipResponse,
-        RegistrationRequest, RegistrationResponse, Ship, ShipSymbol, ShipSymbol, Shipyard,
-        StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointSymbol,
+        RegistrationRequest, RegistrationResponse, Ship, ShipSymbol, Shipyard, StStatusResponse,
+        SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
     };
 
     use crate::st_client::StClientTrait;
@@ -1055,191 +1240,5 @@ mod tests {
         // .await;
         //
         // assert!(result.is_ok(), "test-timed out");
-    }
-}
-
-struct TestObjects;
-
-impl TestObjects {
-    pub fn create_waypoint(waypoint_symbol: &WaypointSymbol, x: i64, y: i64) -> Waypoint {
-        Waypoint {
-            symbol: waypoint_symbol.clone(),
-            r#type: WaypointType::PLANET,
-            system_symbol: waypoint_symbol.system_symbol(),
-            x,
-            y,
-            orbitals: vec![],
-            orbits: None,
-            faction: None,
-            traits: vec![],
-            modifiers: vec![],
-            chart: None,
-            is_under_construction: false,
-        }
-    }
-
-    pub fn create_market_data(waypoint_symbol: &WaypointSymbol) -> MarketData {
-        MarketData {
-            symbol: waypoint_symbol.clone(),
-            exports: vec![],
-            imports: vec![],
-            exchange: vec![],
-            transactions: None,
-            trade_goods: None,
-        }
-    }
-
-    pub fn create_fuel(starting_fuel: u32, consumed: u32) -> Fuel {
-        Fuel {
-            current: (starting_fuel - consumed) as i32,
-            capacity: 600,
-            consumed: FuelConsumed {
-                amount: consumed as i32,
-                timestamp: Local::now().to_utc(),
-            },
-        }
-    }
-
-    pub fn create_refuel_ship_response_body(amount: u32) -> RefuelShipResponseBody {
-        RefuelShipResponseBody {
-            agent: Agent {
-                account_id: None,
-                symbol: AgentSymbol("".to_string()),
-                headquarters: "".to_string(),
-                credits: 42,
-                starting_faction: "".to_string(),
-                ship_count: 2,
-            },
-            fuel: Self::create_fuel(600, 0),
-            transaction: Transaction {
-                waypoint_symbol: WaypointSymbol("".to_string()),
-                ship_symbol: ShipSymbol("".to_string()),
-                trade_symbol: TradeGoodSymbol::FUEL,
-                transaction_type: TransactionType::Purchase,
-                units: amount as i32,
-                price_per_unit: 42,
-                total_price: 0,
-                timestamp: Default::default(),
-            },
-        }
-    }
-
-    pub fn create_nav(
-        mode: FlightMode,
-        nav_status: NavStatus,
-        origin_waypoint_symbol: &WaypointSymbol,
-        destination_waypoint_symbol: &WaypointSymbol,
-    ) -> Nav {
-        Nav {
-            system_symbol: destination_waypoint_symbol.system_symbol(),
-            waypoint_symbol: destination_waypoint_symbol.clone(),
-            route: Route {
-                destination: NavRouteWaypoint {
-                    symbol: destination_waypoint_symbol.clone(),
-                    waypoint_type: WaypointType::PLANET,
-                    system_symbol: destination_waypoint_symbol.system_symbol(),
-                    x: 0,
-                    y: 0,
-                },
-                origin: NavRouteWaypoint {
-                    symbol: origin_waypoint_symbol.clone(),
-                    waypoint_type: WaypointType::PLANET,
-                    system_symbol: origin_waypoint_symbol.system_symbol(),
-                    x: 0,
-                    y: 0,
-                },
-                departure_time: Default::default(),
-                arrival: Default::default(),
-            },
-            status: nav_status,
-            flight_mode: mode,
-        }
-    }
-
-    pub fn test_ship(current_fuel: u32) -> Ship {
-        Ship {
-            symbol: ShipSymbol("FLWI-1".to_string()),
-            registration: Registration {
-                name: "FLWI".to_string(),
-                faction_symbol: "GALACTIC".to_string(),
-                role: "".to_string(),
-            },
-            nav: Self::create_nav(
-                FlightMode::Drift,
-                NavStatus::InTransit,
-                &WaypointSymbol("X1-FOO-BAR".to_string()),
-                &WaypointSymbol("X1-FOO-BAR".to_string()),
-            ),
-            crew: Crew {
-                current: 0,
-                required: 0,
-                capacity: 0,
-                rotation: "".to_string(),
-                morale: 0,
-                wages: 0,
-            },
-            frame: Frame {
-                symbol: "".to_string(),
-                name: "".to_string(),
-                description: "".to_string(),
-                condition: 0.0.into(),
-                integrity: 0.0.into(),
-                module_slots: 0,
-                mounting_points: 0,
-                fuel_capacity: 0,
-                requirements: Requirements {
-                    power: None,
-                    crew: None,
-                    slots: None,
-                },
-            },
-            reactor: Reactor {
-                symbol: "".to_string(),
-                name: "".to_string(),
-                description: "".to_string(),
-                condition: 0.0.into(),
-                integrity: 0.0.into(),
-                power_output: 0,
-                requirements: Requirements {
-                    power: None,
-                    crew: None,
-                    slots: None,
-                },
-            },
-            engine: Engine {
-                symbol: "".to_string(),
-                name: "".to_string(),
-                description: "".to_string(),
-                condition: 0.0.into(),
-                integrity: 0.0.into(),
-                speed: 30,
-                requirements: Requirements {
-                    power: None,
-                    crew: None,
-                    slots: None,
-                },
-            },
-            cooldown: Cooldown {
-                ship_symbol: "".to_string(),
-                total_seconds: 0,
-                remaining_seconds: 0,
-                expiration: None,
-            },
-            modules: vec![],
-            mounts: vec![],
-            cargo: Cargo {
-                capacity: 0,
-                units: 0,
-                inventory: vec![],
-            },
-            fuel: Fuel {
-                current: current_fuel as i32,
-                capacity: 600,
-                consumed: FuelConsumed {
-                    amount: 0,
-                    timestamp: Default::default(),
-                },
-            },
-        }
     }
 }

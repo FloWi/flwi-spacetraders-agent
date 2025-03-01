@@ -3,7 +3,6 @@ use std::time::Duration;
 use anyhow::{Error, Result};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::types::Json;
@@ -19,7 +18,7 @@ use st_domain::{
 pub struct PgConnectionString(pub String);
 
 impl PgConnectionString {
-    pub fn get_schema_name_for_reset_date(self: &Self, reset_date: String) -> String {
+    pub fn get_schema_name_for_reset_date(&self, reset_date: String) -> String {
         format!("reset_{}", reset_date.replace("-", "_"))
     }
 }
@@ -153,9 +152,8 @@ select count(*) as count
     .fetch_one(pool)
     .await?;
 
-    Ok(row
-        .count
-        .ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))?)
+    row.count
+        .ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
 }
 
 async fn insert_status(pool: &Pool<Postgres>, db_status: DbStatus) -> Result<()> {
@@ -344,7 +342,7 @@ pub async fn upsert_waypoints(
 
     let (first_vec, rest) = db_entries.split_at(1);
 
-    if let Some(first) = first_vec.get(0) {
+    if let Some(first) = first_vec.first() {
         // insert first entry manually to get sqlx compile-time check
 
         sqlx::query!(
@@ -362,7 +360,7 @@ on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at =
         .execute(pool)
         .await?;
 
-        let json_array = serde_json::to_value(&rest)?;
+        let json_array = serde_json::to_value(rest)?;
         let debug_string = json_array.to_string();
 
         sqlx::query!(
@@ -400,7 +398,7 @@ pub async fn insert_market_data(
 
     let (first_vec, rest) = db_entries.split_at(1);
 
-    if let Some(first) = first_vec.get(0) {
+    if let Some(first) = first_vec.first() {
         // insert first entry manually to get sqlx compile-time check
         sqlx::query!(
             r#"
@@ -414,7 +412,7 @@ values ($1, $2, $3)
         .execute(pool)
         .await?;
 
-        let json_array = serde_json::to_value(&rest)?;
+        let json_array = serde_json::to_value(rest)?;
         let debug_string = json_array.clone().to_string();
 
         sqlx::query!(

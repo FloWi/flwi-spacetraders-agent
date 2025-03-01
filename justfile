@@ -39,4 +39,4 @@ clippy-fix:
 #    echo "✓ Published to SPA directory. https://spa.flwi.de/{{spa_project_name}}/"
 
 leptosfmt:
-    leptosfmt aoc-2024-wasm
+    leptosfmt st-server

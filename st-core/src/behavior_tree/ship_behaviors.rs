@@ -1,8 +1,6 @@
-use crate::behavior_tree::behavior_tree::Behavior::*;
 use crate::behavior_tree::behavior_tree::*;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::fmt::Display;
 use strum_macros::Display;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Display, Hash)]
@@ -158,7 +156,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         Behavior::new_action(ShipAction::HasTravelActionEntry),
     ]);
 
-    let mut follow_travel_actions = Behavior::new_while(
+    let follow_travel_actions = Behavior::new_while(
         while_condition_travel_action,
         Behavior::new_sequence(vec![
             wait_for_arrival_bt.clone(),

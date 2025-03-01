@@ -30,7 +30,7 @@ pub fn compute_path(
         .iter()
         .map(|wps| {
             let is_refueling_station = market_entries_of_system.iter().any(|me| {
-                me.symbol == wps.symbol && all_trade_goods(&me).contains(&TradeGoodSymbol::FUEL)
+                me.symbol == wps.symbol && all_trade_goods(me).contains(&TradeGoodSymbol::FUEL)
             });
 
             PathfindingWaypoint {
@@ -53,13 +53,7 @@ pub fn compute_path(
     let distance_map: Vec<Vec<u32>> = waypoints
         .iter()
         .map(|from| {
-            let to_map: Vec<u32> = waypoints
-                .iter()
-                .map(|to| {
-                    let distance = from.distance_to(to);
-                    distance
-                })
-                .collect();
+            let to_map: Vec<u32> = waypoints.iter().map(|to| from.distance_to(to)).collect();
             to_map
         })
         .collect();
@@ -148,7 +142,7 @@ fn determine_travel_mode(problem: &Problem, fuel_consumed: u32, distance: u32) -
         .allowed_flight_modes
         .iter()
         .find(|fm| {
-            let consumption = calculate_fuel_consumption(&fm, distance);
+            let consumption = calculate_fuel_consumption(fm, distance);
             fuel_consumed == consumption
         })
         .unwrap()
@@ -192,8 +186,8 @@ impl Problem {
 
             if waypoint_idx != state.waypoint_idx && can_improve_condition {
                 for mode in self.allowed_flight_modes.iter() {
-                    let fuel_consumption = calculate_fuel_consumption(&mode, *distance);
-                    let time = calculate_time(&mode, *distance, self.engine_speed);
+                    let fuel_consumption = calculate_fuel_consumption(mode, *distance);
+                    let time = calculate_time(mode, *distance, self.engine_speed);
 
                     if current_waypoint.is_refueling_station {
                         let can_reach = self.fuel_capacity >= fuel_consumption;
@@ -260,13 +254,13 @@ fn compute_travel_actions(problem: &Problem, path: &Vec<State>) -> Vec<TravelAct
             }
 
             // Navigation action
-            let distance = from_waypoint.distance_to(&to_waypoint);
+            let distance = from_waypoint.distance_to(to_waypoint);
             let fuel_consumed = if from_waypoint.is_refueling_station {
                 problem.fuel_capacity - to.fuel
             } else {
                 from.fuel - to.fuel
             };
-            let mode = determine_travel_mode(&problem, fuel_consumed, distance);
+            let mode = determine_travel_mode(problem, fuel_consumed, distance);
             let travel_time = calculate_time(&mode, distance, problem.engine_speed);
 
             new_actions.push(TravelAction::Navigate {

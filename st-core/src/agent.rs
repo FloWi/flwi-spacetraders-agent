@@ -1,45 +1,37 @@
-use crate::behavior_tree::behavior_tree::{Actionable, Response};
+use crate::behavior_tree::behavior_tree::Actionable;
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_waypoints_of_system,
     upsert_systems_from_receiver, upsert_waypoints_from_receiver, DbSystemCoordinateData,
 };
 
-use anyhow::{Context, Error, Result};
+use anyhow::Result;
 use chrono::Local;
-use clap::Parser;
 use futures::StreamExt;
 use itertools::Itertools;
 use serde_json::json;
 use sqlx::types::JsonValue;
-use sqlx::{ConnectOptions, Executor, Pool, Postgres};
+use sqlx::{Pool, Postgres};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::mpsc;
-use tokio::time::sleep;
-use tracing::{event, span, Instrument, Level};
+use tracing::{event, span, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use utoipa::OpenApi;
 
 use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
-use crate::behavior_tree::behavior_tree::Behavior;
-use crate::behavior_tree::ship_behaviors::{ship_navigation_behaviors, ShipAction};
+use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
 use crate::configuration::AgentConfiguration;
 use crate::exploration::exploration::generate_exploration_route;
 use crate::format_time_delta_hh_mm_ss;
 use crate::marketplaces::marketplaces::find_marketplaces_for_exploration;
-use crate::pagination::{
-    collect_results, fetch_all_pages, fetch_all_pages_into_queue, PaginatedResponse,
-    PaginationInput,
-};
+use crate::pagination::{fetch_all_pages, fetch_all_pages_into_queue, PaginationInput};
 use crate::pathfinder::pathfinder;
 use crate::reqwest_helpers::create_client;
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
 use st_domain::{
-    AgentSymbol, FactionSymbol, LabelledCoordinate, MarketData, NavStatus, RegistrationRequest,
-    SerializableCoordinate, Ship, ShipSymbol, SystemSymbol, Waypoint, WaypointSymbol,
-    WaypointTrait, WaypointTraitSymbol,
+    FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship,
+    ShipSymbol, SystemSymbol, WaypointSymbol,
 };
 
 async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
@@ -84,7 +76,7 @@ async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
             number_systems_in_db,
         );
 
-        let _ = collect_all_systems(&authenticated_client, &pool).await?;
+        collect_all_systems(&authenticated_client, &pool).await?;
     } else {
         event!(
             Level::INFO,
@@ -107,7 +99,7 @@ async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
             status.stats.systems,
         );
 
-        let _ = collect_waypoints_for_systems(
+        collect_waypoints_for_systems(
             &authenticated_client,
             &systems_with_waypoint_details_to_be_loaded,
             &headquarters_system_symbol,

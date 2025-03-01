@@ -4,7 +4,6 @@ use std::path::Path;
 
 use anyhow::Result;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use st_domain::{SupplyChain, SupplyChainNode, TradeGoodSymbol, TradeRelation};
 
 pub fn trade_map(supply_chain: &SupplyChain) -> HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>> {

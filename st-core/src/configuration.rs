@@ -1,4 +1,3 @@
-use st_domain::StStatusResponse;
 use st_store::PgConnectionString;
 
 #[derive(Clone, Debug)]
@@ -11,7 +10,7 @@ pub struct AgentConfiguration {
 }
 
 impl AgentConfiguration {
-    pub fn pg_connection_string(self: &Self) -> PgConnectionString {
+    pub fn pg_connection_string(&self) -> PgConnectionString {
         PgConnectionString(self.database_url.clone())
     }
 }

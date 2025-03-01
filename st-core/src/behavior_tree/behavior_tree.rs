@@ -8,9 +8,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
 use strum_macros::Display;
 use tokio::time::sleep;
-use tracing::{event, span, Level, Span};
-use tracing_core::field::{Field, Visit};
-use tracing_subscriber::fmt::format;
+use tracing::{event, Level};
 // inspired by @chamlis design from spacetraders discord
 
 #[derive(Debug, Clone, Serialize, Eq, PartialEq)]
@@ -348,22 +346,14 @@ where
         );
 
         let result = match self {
-            Behavior::Action(a, _) => {
-                let result = a.run(args, state, sleep_duration).await;
-                result
-            }
+            Behavior::Action(a, _) => a.run(args, state, sleep_duration).await,
             Behavior::Invert(b, _) => {
                 let result = b.run(args, state, sleep_duration).await;
                 match result {
-                    Ok(r) => {
-                        let inverted = match r {
-                            Response::Success => {
-                                Err(Self::ActionError::from(anyhow!("Inverted Ok")))
-                            }
-                            Response::Running => Ok(Response::Running),
-                        };
-                        inverted
-                    }
+                    Ok(r) => match r {
+                        Response::Success => Err(Self::ActionError::from(anyhow!("Inverted Ok"))),
+                        Response::Running => Ok(Response::Running),
+                    },
                     Err(_) => Ok(Response::Success),
                 }
             }
@@ -502,8 +492,7 @@ mod tests {
         let bt: Behavior<MyAction> = Behavior::new_select(vec![
             Behavior::new_action(MyAction::Increase),
             Behavior::new_action(MyAction::Decrease),
-        ])
-        .into();
+        ]);
 
         let mut my_state = MyState(0);
 
@@ -519,8 +508,7 @@ mod tests {
         let bt: Behavior<MyAction> = Behavior::new_sequence(vec![
             Behavior::new_action(MyAction::Increase),
             Behavior::new_action(MyAction::Decrease),
-        ])
-        .into();
+        ]);
 
         let mut my_state = MyState(0);
 
@@ -537,8 +525,7 @@ mod tests {
             Behavior::new_action(MyAction::Increase),
             Behavior::new_action(MyAction::ReturnRunning),
             Behavior::new_action(MyAction::Decrease),
-        ])
-        .into();
+        ]);
 
         let mut my_state = MyState(0);
 
@@ -579,7 +566,7 @@ mod tests {
         let result = bt.run(&(), &mut my_state, Duration::from_millis(1)).await;
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(42));
-        matches!(result, Ok(_));
+        result.is_ok();
     }
 
     #[tokio::test]
