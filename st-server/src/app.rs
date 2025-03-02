@@ -1,3 +1,4 @@
+use leptos::logging::log;
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
@@ -48,25 +49,16 @@ pub fn App() -> impl IntoView {
     }
 }
 
+use st_domain::SupplyChain;
+
 // Server function uses conversion
 #[server]
-async fn get_supply_chain() -> Result<String, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use st_core;
-        let supply_chain = st_core::supply_chain::read_supply_chain().await.unwrap();
-        log!("supply-chain: {supply_chain:?}");
+async fn get_supply_chain() -> Result<SupplyChain, ServerFnError> {
+    use st_core;
+    let supply_chain = st_core::supply_chain::read_supply_chain().await.unwrap();
+    log!("supply-chain: {supply_chain:?}");
 
-        Ok(format!(
-            "{}",
-            serde_json::to_string_pretty(&supply_chain).unwrap()
-        ))
-    }
-
-    #[cfg(not(feature = "ssr"))]
-    {
-        Err(ServerFnError::new("Server-side function"))
-    }
+    Ok(supply_chain)
 }
 
 #[component]
@@ -86,7 +78,7 @@ fn SupplyChainPage() -> impl IntoView {
                         {move || {
                             supply_chain.get().map(|result| {
                                 match result {
-                                    Ok(data) => view! { <pre>{data}</pre> }.into_any(),
+                                    Ok(data) => view! { <pre>{serde_json::to_string_pretty(&data).unwrap()}</pre> }.into_any(),
                                     Err(e) => view! { <p>"Error: " {e.to_string()}</p> }.into_any(),
                                 }
                             })

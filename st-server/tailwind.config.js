@@ -2,6 +2,7 @@
 module.exports = {
   darkMode: ["class"],
   content: [
+    /* paths have to be relative to root */
     "./st-server/src/**/*.rs",
     "./st-server/style/**/*.css"
   ],

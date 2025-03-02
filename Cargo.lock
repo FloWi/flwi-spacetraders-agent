@@ -3764,6 +3764,8 @@ dependencies = [
  "leptos_router",
  "serde_json",
  "st-core",
+ "st-domain",
+ "st-store",
  "tokio",
  "tracing-test",
  "wasm-bindgen",
