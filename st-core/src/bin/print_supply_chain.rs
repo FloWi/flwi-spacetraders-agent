@@ -25,12 +25,12 @@ async fn main() -> Result<()> {
     for trade_good in goods_of_interest.clone() {
         let chain = find_complete_supply_chain(Vec::from([trade_good.clone()]), &trade_map);
         println!("\n\n## {} Supply Chain", trade_good);
-        println!("{}", chain.to_mermaid());
+        println!("{}", chain.to_mermaid_md());
     }
 
     let complete_chain = find_complete_supply_chain(Vec::from(&goods_of_interest), &trade_map);
     println!("\n\n## Complete Supply Chain");
-    println!("{}", complete_chain.to_mermaid());
+    println!("{}", complete_chain.to_mermaid_md());
 
     let market_entries = get_market_entries()?;
     let waypoints = get_waypoint_entries()?;
@@ -960,12 +960,12 @@ mod tests {
         for trade_good in goods_of_interest.clone() {
             let chain = find_complete_supply_chain(Vec::from([trade_good.clone()]), &trade_map);
             println!("\n\n## {} Supply Chain", trade_good);
-            println!("{}", chain.to_mermaid());
+            println!("{}", chain.to_mermaid_md());
         }
 
         let complete_chain = find_complete_supply_chain(Vec::from(&goods_of_interest), &trade_map);
         println!("\n\n## Complete Supply Chain");
-        println!("{}", complete_chain.to_mermaid());
+        println!("{}", complete_chain.to_mermaid_md());
 
         let market_entries = get_market_entries()?;
         let waypoints = get_waypoint_entries()?;
