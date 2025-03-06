@@ -142,20 +142,6 @@ select reset_date
     Ok(maybe_result)
 }
 
-pub async fn select_count_of_systems(pool: &Pool<Postgres>) -> Result<i64> {
-    let row = sqlx::query!(
-        r#"
-select count(*) as count
-  from systems
-        "#,
-    )
-    .fetch_one(pool)
-    .await?;
-
-    row.count
-        .ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
-}
-
 async fn insert_status(pool: &Pool<Postgres>, db_status: DbStatus) -> Result<()> {
     sqlx::query!(
         r#"
@@ -647,4 +633,8 @@ on conflict (system_symbol, waypoint_symbol) do UPDATE set entry = excluded.entr
             .await?;
     }
     Ok(())
+}
+
+pub async fn select_count_of_systems(p0: &Pool<Postgres>) -> Result<i64> {
+    Ok(0)
 }

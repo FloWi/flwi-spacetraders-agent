@@ -9,10 +9,13 @@ use chrono::TimeDelta;
 use st_domain::FlightMode;
 
 pub mod agent;
+pub mod app_state;
 pub mod behavior_tree;
 pub mod exploration;
 pub mod marketplaces;
 pub mod pathfinder;
+
+pub use app_state::*;
 
 pub fn calculate_fuel_consumption(flight_mode: &FlightMode, distance: u32) -> u32 {
     match flight_mode {
