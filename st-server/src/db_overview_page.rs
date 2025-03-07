@@ -28,46 +28,29 @@ async fn get_db_overview() -> Result<DbOverview, ServerFnError> {
         num_systems,
         num_waypoints,
     })
-
-    // use axum::extract::State;
-    // use leptos_axum::extract_with_state;
-    // pub use st_core::app_state::AppState;
-    // use store {
-    //     ctx::Ctx,
-    //     FleetBmc,
-    //     DbModelManager,
-    // };
-    //
-    // let state = expect_context::<AppState>();
-    // let State(mm) = extract_with_state::<State<DbModelManager>, _>(&state).await?;
-    //
-    // let fleet = FleetBmc::get_by_name(&Ctx::Anonymous, &mm, &fleet).await?;
-    //
-    // Ok(fleet)
 }
 
 #[component]
 pub fn DbOverviewPage() -> impl IntoView {
-    // Use create_resource which is the standard way to handle async data in Leptos
-    let db_overview = OnceResource::new(get_db_overview());
 
     view! {
-        <Suspense fallback=|| ()>
-            {move || Suspend::new(async move {
-                let data = db_overview.await;
-                view! {
-                    <div class="flex flex-col gap-4">
+        <Await future=get_db_overview() let:data>
+            {match data {
+                Ok(data) => {
+                    view! {
                         <p>
                             <span>"Number of systems: "</span>
-                            <span>{db_overview.get().unwrap().unwrap().num_systems}</span>
+                            <span>{data.num_systems}</span>
                         </p>
                         <p>
                             <span>"Number of waypoints: "</span>
-                            <span>{db_overview.get().unwrap().unwrap().num_waypoints}</span>
+                            <span>{data.num_waypoints}</span>
                         </p>
-                    </div>
+                    }
+                        .into_any()
                 }
-            })}
-        </Suspense>
+                Err(err) => view! { <p>"Error: " {err.to_string()}</p> }.into_any(),
+            }}
+        </Await>
     }
 }
