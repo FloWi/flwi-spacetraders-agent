@@ -1,20 +1,21 @@
-use leptos_axum::LeptosRoutes;
-use st_core::configuration::AgentConfiguration;
-use st_core::reqwest_helpers::create_client;
-use st_core::st_client::{StClient, StClientTrait};
-use st_server::app::{shell, App, AppState};
-use st_server::cli_args::AppConfig;
-use st_store::{db, DbModelManager};
 use std::any::Any;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[cfg(feature = "ssr")]
 #[tokio::main]
 async fn main() {
+    use axum::routing::get;
     use axum::Router;
     use leptos::logging::log;
     use leptos::prelude::*;
     use leptos_axum::generate_route_list;
+    use leptos_axum::LeptosRoutes;
+    use st_core::configuration::AgentConfiguration;
+    use st_core::reqwest_helpers::create_client;
+    use st_core::st_client::{StClient, StClientTrait};
+    use st_server::app::{shell, App};
+    use st_server::cli_args::AppConfig;
+    use st_store::{db, DbModelManager};
+    use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     let conf = get_configuration(None).unwrap();
     let addr = conf.leptos_options.site_addr;
@@ -56,7 +57,9 @@ async fn main() {
     let model_manager = DbModelManager::new(pool);
 
     // let app_state = app::AppState::new(model_manager.clone());
-    let app_state = AppState::new("Hello from Main".to_string());
+    let app_state = st_server::app::AppState {
+        db_model_manager: model_manager.clone(),
+    };
     println!("inside main.rs: AppState type is {:?}", app_state.type_id());
 
     // Generate the list of routes in your Leptos App

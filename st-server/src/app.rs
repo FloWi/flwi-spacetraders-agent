@@ -88,13 +88,5 @@ fn HomePage() -> impl IntoView {
 #[cfg(feature = "ssr")]
 #[derive(Clone)]
 pub struct AppState {
-    //pub db_model_manager: st_store::DbModelManager,
-    pub test_value: String,
-}
-
-#[cfg(feature = "ssr")]
-impl AppState {
-    pub fn new(test_value: String) -> AppState {
-        AppState { test_value }
-    }
+    pub db_model_manager: st_store::DbModelManager,
 }

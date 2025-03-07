@@ -13,27 +13,20 @@ pub struct DbOverview {
 async fn get_db_overview() -> Result<DbOverview, ServerFnError> {
     use st_store::{Ctx, StatusBmc};
 
-    println!(
-        "inside get_db_overview: AppState type is: {:?}",
-        crate::app::AppState {
-            test_value: "Hello".to_string()
-        }
-        .type_id()
-    );
+    let state = expect_context::<crate::app::AppState>();
+    let mm = state.db_model_manager;
 
-    let state = use_context::<crate::app::AppState>().unwrap();
-    // let mm = state.db_model_manager;
-    //
-    // let num_systems = StatusBmc::get_num_systems(&Ctx::Anonymous, &mm)
-    //     .await
-    //     .expect("num_systems");
-    // let num_waypoints = StatusBmc::get_num_waypoints(&Ctx::Anonymous, &mm)
-    //     .await
-    //     .expect("num_waypoints");
+    let num_systems = StatusBmc::get_num_systems(&Ctx::Anonymous, &mm)
+        .await
+        .expect("num_systems");
+
+    let num_waypoints = StatusBmc::get_num_waypoints(&Ctx::Anonymous, &mm)
+        .await
+        .expect("num_waypoints");
 
     Ok(DbOverview {
-        num_systems: 0,
-        num_waypoints: 0,
+        num_systems,
+        num_waypoints,
     })
 
     // use axum::extract::State;
@@ -59,15 +52,22 @@ pub fn DbOverviewPage() -> impl IntoView {
     let db_overview = OnceResource::new(get_db_overview());
 
     view! {
-        <div class="flex flex-col gap-4">
-        <p>
-        <span>"Number of systems: "</span>
-        <span>{db_overview.get().unwrap().unwrap().num_systems}</span>
-        </p>
-        <p>
-        <span>"Number of waypoints: "</span>
-        <span>{db_overview.get().unwrap().unwrap().num_waypoints}</span>
-        </p>
-        </div>
+        <Suspense fallback=|| ()>
+            {move || Suspend::new(async move {
+                let data = db_overview.await;
+                view! {
+                    <div class="flex flex-col gap-4">
+                        <p>
+                            <span>"Number of systems: "</span>
+                            <span>{db_overview.get().unwrap().unwrap().num_systems}</span>
+                        </p>
+                        <p>
+                            <span>"Number of waypoints: "</span>
+                            <span>{db_overview.get().unwrap().unwrap().num_waypoints}</span>
+                        </p>
+                    </div>
+                }
+            })}
+        </Suspense>
     }
 }
