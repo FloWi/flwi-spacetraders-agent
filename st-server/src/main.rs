@@ -3,7 +3,6 @@ use std::any::Any;
 #[cfg(feature = "ssr")]
 #[tokio::main]
 async fn main() {
-    use axum::routing::get;
     use axum::Router;
     use leptos::logging::log;
     use leptos::prelude::*;
@@ -56,7 +55,6 @@ async fn main() {
 
     let model_manager = DbModelManager::new(pool);
 
-    // let app_state = app::AppState::new(model_manager.clone());
     let app_state = st_server::app::AppState {
         db_model_manager: model_manager.clone(),
     };
@@ -82,6 +80,9 @@ async fn main() {
     // `axum::Server` is a re-export of `hyper::Server`
     log!("listening on http://{}", &addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+
+
+    tokio::spawn(st_core::agent::run_agent(cfg));
 
     axum::serve(listener, app.into_make_service())
         .await

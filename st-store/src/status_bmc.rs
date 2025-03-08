@@ -2,6 +2,7 @@ use crate::ctx::Ctx;
 use crate::DbModelManager;
 use anyhow::*;
 use sqlx::{Pool, Postgres};
+use st_domain::StStatusResponse;
 
 pub struct StatusBmc;
 
@@ -29,6 +30,12 @@ select count(*) as count
             .ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
     }
 
+    pub async fn get_status(ctx: &Ctx, mm: &DbModelManager) -> Result<Option<StStatusResponse>> {
+
+        Ok(crate::db::load_status(mm.pool()).await?.map(|db_status| db_status.entry.0))
+
+    }
+
     pub async fn get_num_systems(ctx: &Ctx, mm: &DbModelManager) -> Result<i64> {
         let row = sqlx::query!(
             r#"
@@ -42,4 +49,6 @@ select count(*) as count
         row.count
             .ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
     }
+
+
 }

@@ -35,11 +35,7 @@ use st_domain::{
     ShipSymbol, SystemSymbol, WaypointSymbol,
 };
 
-async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
-    tracing_subscriber::registry()
-        .with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE))
-        .with(EnvFilter::from_default_env())
-        .init();
+pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
 
     let client_with_account_token =
         StClient::new(create_client(Some(cfg.spacetraders_account_token.clone())));

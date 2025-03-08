@@ -126,7 +126,7 @@ async fn create_schema(pg_connection_pool: &Pool<Postgres>, schema_name: &str) -
     Ok(())
 }
 
-async fn load_status(pool: &Pool<Postgres>) -> Result<Option<DbStatus>, Error> {
+pub(crate) async fn load_status(pool: &Pool<Postgres>) -> Result<Option<DbStatus>, Error> {
     let maybe_result = sqlx::query_as!(
         DbStatus,
         r#"
@@ -158,9 +158,9 @@ on conflict (reset_date) do nothing
     Ok(())
 }
 
-struct DbStatus {
+pub struct DbStatus {
     reset_date: String,
-    entry: Json<StStatusResponse>,
+    pub entry: Json<StStatusResponse>,
 }
 
 pub struct DbRegistrationResponse {
@@ -635,6 +635,15 @@ on conflict (system_symbol, waypoint_symbol) do UPDATE set entry = excluded.entr
     Ok(())
 }
 
-pub async fn select_count_of_systems(p0: &Pool<Postgres>) -> Result<i64> {
-    Ok(0)
+pub async fn select_count_of_systems(pool: &Pool<Postgres>) -> Result<i64> {
+    let count: Option<i64> = sqlx::query_scalar!(
+        r#"
+select count(*)
+from systems s
+"#,
+    )
+        .fetch_one(pool)
+        .await?;
+
+    Ok(count.unwrap_or(0))
 }

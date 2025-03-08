@@ -2,11 +2,13 @@ use leptos::prelude::*;
 use leptos::{component, server, view, IntoView};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
+use st_domain::StStatusResponse;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DbOverview {
     num_systems: i64,
     num_waypoints: i64,
+    status: StStatusResponse
 }
 
 #[server]
@@ -24,9 +26,15 @@ async fn get_db_overview() -> Result<DbOverview, ServerFnError> {
         .await
         .expect("num_waypoints");
 
+    let status = StatusBmc::get_status(&Ctx::Anonymous, &mm)
+        .await
+        .expect("status")
+        .unwrap();
+
     Ok(DbOverview {
         num_systems,
         num_waypoints,
+        status
     })
 }
 
@@ -41,10 +49,14 @@ pub fn DbOverviewPage() -> impl IntoView {
                         <p>
                             <span>"Number of systems: "</span>
                             <span>{data.num_systems}</span>
+                            <span>" of "</span>
+                            <span>{data.status.stats.systems}</span>
                         </p>
                         <p>
                             <span>"Number of waypoints: "</span>
                             <span>{data.num_waypoints}</span>
+                            <span>" of "</span>
+                            <span>{data.status.stats.waypoints}</span>
                         </p>
                     }
                         .into_any()
