@@ -3766,6 +3766,7 @@ dependencies = [
  "clap",
  "console_error_panic_hook",
  "dotenv",
+ "itertools 0.14.0",
  "leptos",
  "leptos_axum",
  "leptos_meta",

@@ -4,6 +4,7 @@ pub mod supply_chain_page;
 
 #[cfg(feature = "ssr")]
 pub mod cli_args;
+pub mod ship_overview_page;
 
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]

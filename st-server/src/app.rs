@@ -6,6 +6,7 @@ use leptos_router::{
     components::{Route, Router, Routes},
     StaticSegment,
 };
+use crate::ship_overview_page::ShipOverviewPage;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
@@ -45,6 +46,7 @@ pub fn App() -> impl IntoView {
                     <Route path=StaticSegment("") view=HomePage />
                     <Route path=StaticSegment("supply-chain") view=SupplyChainPage />
                     <Route path=StaticSegment("db-overview") view=DbOverviewPage />
+                    <Route path=StaticSegment("ship-overview") view=ShipOverviewPage />
                 </Routes>
             </main>
         </Router>
