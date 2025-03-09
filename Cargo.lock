@@ -2556,6 +2556,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "phosphor-leptos"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc52b88c2b2cc1c8388e8742cd2b0e63e440c36c42238f375cab55a1787790c1"
+dependencies = [
+ "leptos",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3904,6 +3913,7 @@ dependencies = [
  "leptos_axum",
  "leptos_meta",
  "leptos_router",
+ "phosphor-leptos",
  "serde",
  "serde_json",
  "st-core",
