@@ -12,13 +12,17 @@ crate-type = ["cdylib", "rlib"]
 
 leptos = { version = "0.7.7" }
 leptos_router = { version = "0.7.7" }
-axum = { version = "0.7", optional = true }
-console_error_panic_hook = { version = "0.1", optional = true }
 leptos_axum = { version = "0.7.7", optional = true }
 leptos_meta = { version = "0.7.7" }
+leptos-use = { version = "0.15.6", features = ["use_interval", "use_interval_fn"] }
+axum = { version = "0.7", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
 wasm-bindgen = { version = "=0.2.100", optional = true }
 serde_json = { version = "1.0.139" }
+itertools = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+
 
 st-domain = { path = "../st-domain" }
 st-store = { path = "../st-store", optional = true }
@@ -50,6 +54,8 @@ ssr = [
     "st-store",
     "dep:tracing-subscriber",
     "dep:dotenv",
+    "leptos-use/ssr" # <== add this
+
 ]
 
 

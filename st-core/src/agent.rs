@@ -6,7 +6,7 @@ use st_store::{
 };
 
 use anyhow::Result;
-use chrono::Local;
+use chrono::{Local, Utc};
 use futures::StreamExt;
 use itertools::Itertools;
 use serde_json::json;
@@ -60,6 +60,10 @@ pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
     let headquarters_system_symbol = headquarters_waypoint_symbol.system_symbol();
 
     let now = Local::now().to_utc();
+
+    let ships = collect_all_ships(&authenticated_client).await?;
+    let _ = db::upsert_ships(&pool, &ships, now).await?;
+
 
     let number_systems_in_db = db::select_count_of_systems(&pool).await?;
 
@@ -131,7 +135,6 @@ pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
     //
     // let _ = insert_market_data(&pool, market_data.clone(), now).await;
 
-    let ships = collect_all_ships(&authenticated_client).await?;
     let client: Arc<dyn StClientTrait> = Arc::new(authenticated_client);
 
     let mut my_ships: Vec<_> = ships

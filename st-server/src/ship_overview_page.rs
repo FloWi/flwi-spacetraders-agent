@@ -2,18 +2,21 @@ use chrono::{DateTime, Utc};
 use itertools::*;
 use leptos::logging::log;
 use leptos::prelude::*;
-use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::*;
+use leptos::*;
 use leptos::{component, view, IntoView};
+use leptos_use::{use_interval, UseIntervalReturn};
 use serde::{Deserialize, Serialize};
 use st_domain::{Ship, ShipSymbol, StStatusResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
     ships: Vec<Ship>,
+    last_update: DateTime<Utc>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -23,7 +26,7 @@ pub enum GetShipsMode {
 }
 
 #[server]
-async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<Vec<Ship>, ServerFnError> {
+async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOverview, ServerFnError> {
     use st_store::{Ctx, ShipBmc};
 
     let state = expect_context::<crate::app::AppState>();
@@ -40,56 +43,74 @@ async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<Vec<Ship>, S
         .await
         .expect("get_ships");
 
-    Ok(ships)
+    Ok(ShipsOverview {
+        ships,
+        last_update: Utc::now(),
+    })
 }
 
 #[component]
 pub fn ShipOverviewPage() -> impl IntoView {
-    let (ships, set_ships) = signal::<HashMap<ShipSymbol, Ship>>(HashMap::new());
-    let (last_update_ts, set_last_update_ts) = signal::<Option<DateTime<Utc>>>(None);
+    let UseIntervalReturn {
+        counter,
+        reset,
+        is_active,
+        pause,
+        resume,
+    } = use_interval(5000);
 
-    // Convert the HashMap to a Vector for easy rendering
-    let ships_list = move || {
-        let ships_map = ships.get();
-        ships_map.values().cloned().into_iter().collect_vec()
-    };
-
-    let get_ships_mode = move || {
-        match last_update_ts.get() {
-            None => { GetShipsMode::AllShips },
-            Some(ts) => { GetShipsMode::OnlyChangesSince { filter_timestamp_gte: ts.clone() } }
-    } };
-
+    let ships_resource = Resource::new(
+        move || counter.get(),
+        |count| get_ships_overview(GetShipsMode::AllShips),
+    );
 
     view! {
-        <Await future=get_ships_overview(get_ships_mode()) let:data>
-            {match data {
-                Err(err) => view! { <p>"Error: " {err.to_string()}</p> }.into_any(),
-                Ok(ships) => {
-                    view! {
-                        <div>
-                            <h2>"Ships Status"</h2>
-                            <div>
-                                {ships
-                                    .into_iter()
-                                    .map(|ship| {
-                                        view! {
-                                            <div>
-                                                <h3>{format!("{}", &ship.symbol.0)}</h3>
-                                                <p>
-                                                    {format!("Location: {}", &ship.nav.waypoint_symbol.0)}
-                                                </p>
+        <div>
+            <h2>"Ships Status"</h2>
+            <div>
+                <Suspense>
+                    {move || {
+                        match ships_resource.get() {
+                            Some(Ok(ships_overview)) => {
 
-                                            </div>
-                                        }
-                                    })
-                                    .collect_view()}
-                            </div>
-                        </div>
-                    }
-                        .into_any()
-                }
-            }}
-        </Await>
+                                view! {
+                                    <div class="flex flex-col gap-4 p-4">
+                                        <h2 class="font-bold text-xl">
+                                            {format!(
+                                                "Fleet has {} ships",
+                                                ships_overview.ships.len(),
+                                            )}
+                                        </h2>
+                                        <p>{format!("Last Update: {:?}", ships_overview.last_update)}</p>
+                                        <div class="flex flex-wrap">
+                                            {ships_overview
+                                                .ships
+                                                .iter()
+                                                .map(|ship| {
+                                                    view! {
+                                                        <div>
+                                                            <h3>{format!("{}", &ship.symbol.0)}</h3>
+                                                            <p>
+                                                                {format!("Location: {}", &ship.nav.waypoint_symbol.0)}
+                                                            </p>
+                                                        </div>
+                                                    }
+                                                })
+                                                .collect_view()}
+                                        </div>
+                                    </div>
+                                }
+                                    .into_any()
+                            }
+                            _ => {
+
+                                view! { <div>"No ships"</div> }
+                                    .into_any()
+                            }
+                        }
+                    }}
+                </Suspense>
+            </div>
+        </div>
     }
 }
