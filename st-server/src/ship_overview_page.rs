@@ -66,7 +66,7 @@ pub fn ShipOverviewPage() -> impl IntoView {
 
     view! {
         <div>
-            <h2>"Ships Status"</h2>
+            <h1 class="font-bold text-2xl">"Ships Status"</h1>
             <div>
                 <Suspense>
                     {move || {
