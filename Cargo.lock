@@ -3763,6 +3763,7 @@ name = "st-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "chrono",
  "clap",
  "console_error_panic_hook",
  "dotenv",

@@ -11,8 +11,8 @@ use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
 use st_domain::{
-    distance_to, Data, JumpGate, MarketData, RegistrationResponse, Shipyard, StStatusResponse,
-    SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    distance_to, Data, JumpGate, MarketData, RegistrationResponse, Ship, Shipyard,
+    StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
 pub struct PgConnectionString(pub String);
@@ -240,6 +240,14 @@ pub struct DbShipyardData {
     pub system_symbol: String,
     pub waypoint_symbol: String,
     pub entry: Json<Shipyard>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbShipEntry {
+    pub ship_symbol: String,
+    pub entry: Json<Ship>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -642,8 +650,59 @@ select count(*)
 from systems s
 "#,
     )
-        .fetch_one(pool)
-        .await?;
+    .fetch_one(pool)
+    .await?;
 
     Ok(count.unwrap_or(0))
+}
+
+pub async fn upsert_ships(pool: &Pool<Postgres>, ships: &Vec<Ship>, now: DateTime<Utc>) -> Result<()> {
+    let db_entries: Vec<DbShipEntry> = ships
+        .iter()
+        .map(|ship| DbShipEntry {
+            ship_symbol: ship.symbol.0.clone(),
+            entry: Json(ship.clone()),
+            created_at: now,
+            updated_at: now,
+        })
+        .collect();
+
+    let (first_vec, rest) = db_entries.split_at(1);
+
+    if let Some(first) = first_vec.first() {
+        // insert first entry manually to get sqlx compile-time check
+
+        sqlx::query!(
+            r#"
+insert into ships (ship_symbol, entry, created_at, updated_at)
+values ($1, $2, $3, $4)
+on conflict (ship_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+        "#,
+            first.ship_symbol,
+            first.entry as _,
+            now,
+            now,
+        )
+        .execute(pool)
+        .await?;
+
+        let json_array = serde_json::to_value(rest)?;
+        let debug_string = json_array.to_string();
+
+        sqlx::query!(
+            r#"
+insert into ships
+select *
+from jsonb_populate_recordset(NULL::ships, $1)
+on conflict (ship_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+            "#,
+            json_array
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    } else {
+        Ok(())
+    }
 }
