@@ -113,7 +113,7 @@ pub fn ShipOverviewPage() -> impl IntoView {
         <div class="bg-blue-950 text-white flex flex-col min-h-screen">
             <h1 class="font-bold text-2xl">"Ships Status"</h1>
             <div>
-                <Suspense>
+                <Transition>
                     {move || {
                         match ships_resource.get() {
                             Some(Ok(ships_overview)) => {
@@ -146,7 +146,7 @@ pub fn ShipOverviewPage() -> impl IntoView {
                             }
                         }
                     }}
-                </Suspense>
+                </Transition>
             </div>
         </div>
     }
