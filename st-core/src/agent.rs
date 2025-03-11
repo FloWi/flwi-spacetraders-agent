@@ -24,7 +24,9 @@ use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
 use crate::configuration::AgentConfiguration;
 use crate::exploration::exploration::generate_exploration_route;
 use crate::format_time_delta_hh_mm_ss;
-use crate::marketplaces::marketplaces::find_marketplaces_for_exploration;
+use crate::marketplaces::marketplaces::{
+    find_marketplaces_for_exploration, find_marketplaces_to_collect_remotely,
+};
 use crate::pagination::{fetch_all_pages, fetch_all_pages_into_queue, PaginationInput};
 use crate::pathfinder::pathfinder;
 use crate::reqwest_helpers::create_client;
@@ -36,7 +38,6 @@ use st_domain::{
 };
 
 pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
-
     let client_with_account_token =
         StClient::new(create_client(Some(cfg.spacetraders_account_token.clone())));
 
@@ -63,7 +64,6 @@ pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
 
     let ships = collect_all_ships(&authenticated_client).await?;
     let _ = db::upsert_ships(&pool, &ships, now).await?;
-
 
     let number_systems_in_db = db::select_count_of_systems(&pool).await?;
 
@@ -135,6 +135,24 @@ pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
     //
     // let _ = insert_market_data(&pool, market_data.clone(), now).await;
 
+    let marketplace_entries =
+        select_latest_marketplace_entry_of_system(&pool, &headquarters_system_symbol).await?;
+
+    let waypoint_entries_of_home_system =
+        select_waypoints_of_system(&pool, &headquarters_system_symbol).await?;
+
+    let marketplaces_to_collect_remotely = find_marketplaces_to_collect_remotely(
+        marketplace_entries.clone(),
+        &waypoint_entries_of_home_system,
+    );
+
+    let _ = collect_marketplaces(
+        &authenticated_client,
+        &marketplaces_to_collect_remotely,
+        &pool,
+    )
+    .await?;
+
     let client: Arc<dyn StClientTrait> = Arc::new(authenticated_client);
 
     let mut my_ships: Vec<_> = ships
@@ -147,10 +165,9 @@ pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
     let marketplace_entries =
         select_latest_marketplace_entry_of_system(&pool, &headquarters_system_symbol).await?;
 
-    let marketplaces_to_explore = find_marketplaces_for_exploration(marketplace_entries.clone());
-
-    let waypoint_entries_of_home_system =
-        select_waypoints_of_system(&pool, &headquarters_system_symbol).await?;
+    let marketplaces_to_explore = find_marketplaces_for_exploration(
+        marketplace_entries.clone(),
+    );
 
     let waypoints_of_home_system: Vec<_> = waypoint_entries_of_home_system
         .into_iter()
@@ -287,6 +304,25 @@ async fn collect_all_systems(client: &StClient, pool: &Pool<Postgres>) -> Result
     );
 
     tokio::try_join!(producer, upsert_systems_from_receiver(pool, rx))?;
+    Ok(())
+}
+
+async fn collect_marketplaces(
+    client: &StClient,
+    marketplace_waypoint_symbols: &[WaypointSymbol],
+    pool: &Pool<Postgres>,
+) -> Result<()> {
+
+    event!(
+        Level::INFO,
+        "Collecting marketplace infos (remotely) for {} waypoint_symbols",
+        marketplace_waypoint_symbols.len()
+    );
+
+    for wp in marketplace_waypoint_symbols {
+        let marketplace = client.get_marketplace(wp.clone()).await?;
+        db::insert_market_data(pool, vec![marketplace.data], Utc::now()).await?;
+    }
     Ok(())
 }
 
