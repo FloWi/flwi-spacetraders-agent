@@ -19,6 +19,12 @@ pub struct ShipOperations {
     pub explore_location_queue: VecDeque<WaypointSymbol>,
 }
 
+impl PartialEq for ShipOperations {
+    fn eq(&self, other: &Self) -> bool {
+        self.ship.eq(&other.ship)
+    }
+}
+
 impl ShipOperations {
     pub(crate) fn current_travel_action(&self) -> Option<&TravelAction> {
         self.travel_action_queue.front()

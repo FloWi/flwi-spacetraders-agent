@@ -8,12 +8,12 @@ use leptos::*;
 use leptos::{component, view, IntoView};
 use leptos_use::{use_interval, UseIntervalReturn};
 use serde::{Deserialize, Serialize};
-use st_domain::{FlightMode, Ship, ShipSymbol, StStatusResponse};
+use st_domain::{FlightMode, NavStatus, Ship, ShipSymbol, StStatusResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use leptos::attr::height;
-use phosphor_leptos::{Icon, IconWeight, TRUCK, ROCKET, AIRPLANE_LANDING, AIRPLANE_TAKEOFF, GAS_PUMP, GAS_CAN, PACKAGE};
+use phosphor_leptos::{Icon, IconWeight, TRUCK, ROCKET, AIRPLANE_LANDING, AIRPLANE_TAKEOFF, GAS_PUMP, GAS_CAN, PACKAGE, CLOCK};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
@@ -54,19 +54,27 @@ async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOvervie
 #[component]
 pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
 
-    let is_traveling = match ship.nav.flight_mode {
-        FlightMode::Cruise => true,
-        FlightMode::Drift => false,
-        FlightMode::Stealth => false,
-        FlightMode::Burn => false
+    let is_traveling = match ship.nav.status {
+        NavStatus::InTransit => { true }
+        NavStatus::InOrbit => { false}
+        NavStatus::Docked => { false}
     };
+
+    let maybe_travel_seconds_left = is_traveling.then(||{
+        let now = Utc::now();
+
+        let travel_time_left =  ship.nav.route.arrival - now;
+        let num_seconds =  travel_time_left.num_seconds();
+        num_seconds
+    });
 
     let fuel_str = format!("{} / {}", ship.fuel.current, ship.fuel.capacity,);
     let cargo_str = format!("{} / {}", ship.cargo.units, ship.cargo.capacity,);
 
+
     view! {
         <div class="p-3 border-4 border-blue-900 text-slate-400">
-            <div class="flex flex-row gap-4">
+            <div class="flex flex-row gap-4 items-center">
                 <Icon icon=TRUCK size="3em" />
                 <div class="flex flex-col gap-1">
                     <h3 class="text-xl text-white">{format!("{}", &ship.symbol.0)}</h3>
@@ -74,9 +82,18 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
                 </div>
             </div>
             <div class="flex flex-col gap-1">
-                <div class="flex flex-row gap-2">
+                <div class="flex flex-row gap-2 items-center">
                     <Icon icon=TRUCK />
                     <p>{format!("Location: {}", &ship.nav.waypoint_symbol.0)}</p>
+                    {maybe_travel_seconds_left
+                        .map(|seconds| {
+                            view! {
+                                <>
+                                    <Icon icon=CLOCK />
+                                    <p>{seconds.to_string()}</p>
+                                </>
+                            }
+                        })}
                 </div>
                 <div class="flex flex-row items-center gap-2">
                     <div class="flex flex-row items-center gap-1">

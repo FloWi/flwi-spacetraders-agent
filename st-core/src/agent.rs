@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{event, span, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -165,9 +166,7 @@ pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
     let marketplace_entries =
         select_latest_marketplace_entry_of_system(&pool, &headquarters_system_symbol).await?;
 
-    let marketplaces_to_explore = find_marketplaces_for_exploration(
-        marketplace_entries.clone(),
-    );
+    let marketplaces_to_explore = find_marketplaces_for_exploration(marketplace_entries.clone());
 
     let waypoints_of_home_system: Vec<_> = waypoint_entries_of_home_system
         .into_iter()
@@ -239,16 +238,55 @@ pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
     command_ship.set_explore_locations(exploration_route);
 
     let args = BehaviorArgs {
-        blackboard: Arc::new(DbBlackboard { db: pool }),
+        blackboard: Arc::new(DbBlackboard { db: pool.clone() }),
     };
-    let _ = tokio::spawn(ship_loop(command_ship, args)).await?;
+
+    let (ship_updated_tx, mut ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) =
+        mpsc::channel::<ShipOperations>(32);
+
+    let _ = tokio::spawn(ship_loop(command_ship, args, ship_updated_tx));
+
+    let _ = tokio::spawn(listen_to_ship_changes_and_persist(ship_updated_rx, pool));
 
     //let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
     //dbg!(my_ships);
     Ok(())
 }
 
-pub async fn ship_loop(mut ship: ShipOperations, args: BehaviorArgs) -> Result<()> {
+pub async fn listen_to_ship_changes_and_persist(
+    mut ship_updated_rx: Receiver<ShipOperations>,
+    pool: Pool<Postgres>,
+) -> Result<()> {
+    let mut old_ship_state: Option<ShipOperations> = None;
+
+    while let Some(updated_ship) = ship_updated_rx.recv().await {
+        match old_ship_state {
+            Some(old_ship_ops) if old_ship_ops.ship == updated_ship.ship => {
+                // no need to update
+                event!(
+                    Level::INFO,
+                    "No need to update ship {}. No change detected",
+                    updated_ship.symbol.0
+                );
+            }
+            _ => {
+                event!(Level::INFO, "Ship {} updated", updated_ship.symbol.0);
+                let _ =
+                    db::upsert_ships(&pool, &vec![updated_ship.ship.clone()], Utc::now()).await?;
+            }
+        }
+
+        old_ship_state = Some(updated_ship.clone());
+    }
+
+    Ok(())
+}
+
+pub async fn ship_loop(
+    mut ship: ShipOperations,
+    args: BehaviorArgs,
+    ship_updated_tx: Sender<ShipOperations>,
+) -> Result<()> {
     let behaviors = ship_navigation_behaviors();
     let ship_behavior = behaviors.explorer_behavior;
 
@@ -269,7 +307,7 @@ pub async fn ship_loop(mut ship: ShipOperations, args: BehaviorArgs) -> Result<(
     let _enter = span.enter();
 
     let result = ship_behavior
-        .run(&args, &mut ship, Duration::from_secs(1))
+        .run(&args, &mut ship, Duration::from_secs(1), &ship_updated_tx)
         .await;
 
     match &result {
@@ -312,7 +350,6 @@ async fn collect_marketplaces(
     marketplace_waypoint_symbols: &[WaypointSymbol],
     pool: &Pool<Postgres>,
 ) -> Result<()> {
-
     event!(
         Level::INFO,
         "Collecting marketplace infos (remotely) for {} waypoint_symbols",

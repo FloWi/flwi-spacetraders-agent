@@ -8,6 +8,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Local, Utc};
 use core::time::Duration;
+use tokio::sync::mpsc::Sender;
 use st_domain::{
     Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed,
     MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse,
@@ -26,6 +27,7 @@ impl Actionable for ShipAction {
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
         _: Duration,
+        state_changed_tx: &Sender<Self::ActionState>
     ) -> Result<Response, Self::ActionError> {
         match self {
             ShipAction::HasTravelActionEntry => {
