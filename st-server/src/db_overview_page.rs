@@ -1,7 +1,6 @@
 use leptos::prelude::*;
 use leptos::{component, server, view, IntoView};
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 use st_domain::StStatusResponse;
 
 #[derive(Serialize, Deserialize, Clone)]

@@ -1,19 +1,11 @@
 use chrono::{DateTime, Utc};
 use itertools::*;
-use leptos::logging::log;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
-use leptos::*;
-use leptos::*;
 use leptos::{component, view, IntoView};
 use leptos_use::{use_interval, UseIntervalReturn};
 use serde::{Deserialize, Serialize};
-use st_domain::{FlightMode, NavStatus, Ship, ShipSymbol, StStatusResponse};
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
-use leptos::attr::height;
-use phosphor_leptos::{Icon, IconWeight, TRUCK, ROCKET, AIRPLANE_LANDING, AIRPLANE_TAKEOFF, GAS_PUMP, GAS_CAN, PACKAGE, CLOCK};
+use st_domain::{NavStatus, Ship};
+use phosphor_leptos::{Icon, TRUCK, GAS_PUMP, PACKAGE, CLOCK};
 use crate::format_duration;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -73,7 +65,7 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
         resume,
     } = use_interval(1000);
 
-    let arrival_time = ship.nav.route.arrival.clone();
+    let arrival_time = ship.nav.route.arrival;
 
     let maybe_travel_time_left = move || {
         // make this closure depend on the counter signal
@@ -92,14 +84,14 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
             <div class="flex flex-row gap-4 items-center">
                 <Icon icon=TRUCK size="3em" />
                 <div class="flex flex-col gap-1">
-                    <h3 class="text-xl text-white">{format!("{}", &ship.symbol.0)}</h3>
+                    <h3 class="text-xl text-white">{ship.symbol.0.to_string()}</h3>
                     <p class="text-slate-400">"Role"</p>
                 </div>
             </div>
             <div class="flex flex-col gap-1">
                 <div class="flex flex-row gap-2 items-center">
                     <Icon icon=TRUCK />
-                    <p>{format!("{}", &ship.nav.waypoint_symbol.0)}</p>
+                    <p>{ship.nav.waypoint_symbol.0.to_string()}</p>
                     {move || {
                         maybe_travel_time_left()
                             .map(|duration| {

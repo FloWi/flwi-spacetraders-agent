@@ -1,15 +1,8 @@
 use itertools::Itertools;
-use leptos::html::{script, Div, HtmlElement, Pre, H2};
-use leptos::logging::log;
 use leptos::prelude::*;
-use leptos::tachys::html::class::Class;
-use leptos_meta::{provide_meta_context, MetaTags, Script, Stylesheet, Title};
-use leptos_router::{
-    components::{Route, Router, Routes},
-    StaticSegment,
-};
+use leptos_meta::Title;
 use serde::{Deserialize, Serialize};
-use st_domain::{find_complete_supply_chain, trade_map, MarketData, MarketTradeGood, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol};
+use st_domain::{find_complete_supply_chain, trade_map, MarketTradeGood, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol};
 
 // Server function uses conversion
 #[server]
