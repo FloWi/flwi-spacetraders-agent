@@ -72,6 +72,17 @@ pub trait SupplyChainNodeVecExt {
 }
 
 impl SupplyChainNodeVecExt for Vec<SupplyChainNode> {
+    fn to_mermaid_md(&self) -> String {
+        let mermaid_str = self.to_mermaid();
+        format!(
+            r###"```mermaid
+{}
+```
+"###,
+            mermaid_str
+        )
+    }
+
     fn to_mermaid(&self) -> String {
         let mut connections = Vec::new();
         for node in self {
@@ -86,17 +97,6 @@ graph LR
 {}
 "###,
             connections.iter().join("\n")
-        )
-    }
-
-    fn to_mermaid_md(&self) -> String {
-        let mermaid_str = self.to_mermaid();
-        format!(
-            r###"```mermaid
-{}
-```
-"###,
-            mermaid_str
         )
     }
 }

@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use leptos::attr::height;
 use phosphor_leptos::{Icon, IconWeight, TRUCK, ROCKET, AIRPLANE_LANDING, AIRPLANE_TAKEOFF, GAS_PUMP, GAS_CAN, PACKAGE, CLOCK};
+use crate::format_duration;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
@@ -60,16 +61,30 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
         NavStatus::Docked => { false}
     };
 
-    let maybe_travel_seconds_left = is_traveling.then(||{
-        let now = Utc::now();
-
-        let travel_time_left =  ship.nav.route.arrival - now;
-        let num_seconds =  travel_time_left.num_seconds();
-        num_seconds
-    });
 
     let fuel_str = format!("{} / {}", ship.fuel.current, ship.fuel.capacity,);
     let cargo_str = format!("{} / {}", ship.cargo.units, ship.cargo.capacity,);
+
+    let UseIntervalReturn {
+        counter,
+        reset,
+        is_active,
+        pause,
+        resume,
+    } = use_interval(1000);
+
+    let arrival_time = ship.nav.route.arrival.clone();
+
+    let maybe_travel_time_left = move || {
+        // make this closure depend on the counter signal
+        let _ = counter.get();
+        //log!("Counter changed to {counter_value}");
+        is_traveling.then(|| {
+            let now = Utc::now();
+
+            arrival_time - now
+        })
+    };
 
 
     view! {
@@ -84,17 +99,20 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
             <div class="flex flex-col gap-1">
                 <div class="flex flex-row gap-2 items-center">
                     <Icon icon=TRUCK />
-                    <p>{format!("Location: {}", &ship.nav.waypoint_symbol.0)}</p>
-                    {maybe_travel_seconds_left
-                        .map(|seconds| {
-                            view! {
-                                <>
-                                    <Icon icon=CLOCK />
-                                    <p>{seconds.to_string()}</p>
-                                </>
-                            }
-                        })}
+                    <p>{format!("{}", &ship.nav.waypoint_symbol.0)}</p>
+                    {move || {
+                        maybe_travel_time_left()
+                            .map(|duration| {
+                                view! {
+                                    <>
+                                        <Icon icon=CLOCK />
+                                        <p>{format_duration(&duration)}</p>
+                                    </>
+                                }
+                            })
+                    }}
                 </div>
+
                 <div class="flex flex-row items-center gap-2">
                     <div class="flex flex-row items-center gap-1">
                         <Icon icon=GAS_PUMP />

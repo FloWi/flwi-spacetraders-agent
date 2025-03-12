@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use leptos::html::{script, Div, HtmlElement, Pre, H2};
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -7,9 +8,8 @@ use leptos_router::{
     components::{Route, Router, Routes},
     StaticSegment,
 };
-use st_domain::{
-    find_complete_supply_chain, trade_map, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol,
-};
+use serde::{Deserialize, Serialize};
+use st_domain::{find_complete_supply_chain, trade_map, MarketData, MarketTradeGood, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol};
 
 // Server function uses conversion
 #[server]
@@ -20,10 +20,35 @@ async fn get_supply_chain() -> Result<SupplyChain, ServerFnError> {
     Ok(supply_chain)
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RelevantMarketData {
+    waypoint_symbol: WaypointSymbol,
+    trade_goods: Vec<MarketTradeGood>
+}
+
+#[server]
+async fn get_supply_chain_data() -> Result<(SupplyChain, Vec<RelevantMarketData>), ServerFnError> {
+    use st_core;
+    let supply_chain = st_core::supply_chain::read_supply_chain().await.unwrap();
+
+    use st_store::{Ctx,AgentBmc, StatusBmc, MarketBmc};
+
+    let state = expect_context::<crate::app::AppState>();
+    let mm = state.db_model_manager;
+
+    let agent = AgentBmc::get_initial_agent(&Ctx::Anonymous, &mm).await.expect("get_initial_agent");
+    let headquarters_waypoint = WaypointSymbol(agent.headquarters);
+    let market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol().0).await.expect("status");
+    let relevant_market_data: Vec<RelevantMarketData> = market_data.iter().map(|md| RelevantMarketData{ waypoint_symbol: md.symbol.clone(), trade_goods: md.trade_goods.clone().unwrap_or_default() } ).collect_vec();
+
+    Ok((supply_chain, relevant_market_data))
+}
+
 #[component]
 pub fn SupplyChainPage() -> impl IntoView {
     // Use create_resource which is the standard way to handle async data in Leptos
-    let supply_chain = OnceResource::new(get_supply_chain());
+    let supply_chain_resource = OnceResource::new(get_supply_chain_data());
+
 
     view! {
         <Title text="Leptos + Tailwindcss" />
@@ -34,11 +59,24 @@ pub fn SupplyChainPage() -> impl IntoView {
                         view! { <p>"Error: " {format!("{errors:?}")}</p> }
                     }>
                         {move || {
-                            supply_chain
+                            supply_chain_resource
                                 .get()
                                 .map(|result| {
                                     match result {
-                                        Ok(data) => render_mermaid_chains(data).into_any(),
+                                        Ok((supply_chain_data, market_data)) => {
+                                            view! {
+                                                <div class="flex flex-row gap-4">
+                                                    <pre class="w-1/2">
+                                                        {serde_json::to_string_pretty(&market_data)}
+                                                    </pre>
+                                                    <div class="w-1/2">
+                                                        {render_mermaid_chains(supply_chain_data).into_any()}
+                                                    </div>
+
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
                                         Err(e) => {
                                             view! { <p>"Error: " {e.to_string()}</p> }.into_any()
                                         }
@@ -89,6 +127,7 @@ fn render_mermaid_chains(supply_chain: SupplyChain) -> impl IntoView {
                         <div class="flex flex-col">
                             <h2 class="text-2xl font-bold">{trade_good.to_string()}</h2>
                             <pre class="mermaid">{chain.to_mermaid()}</pre>
+                            <pre class="no-mermaid">{chain.to_mermaid()}</pre>
                         </div>
                     }
                 })
