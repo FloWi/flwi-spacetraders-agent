@@ -1,8 +1,12 @@
 use itertools::Itertools;
+use leptos::attr::rows;
 use leptos::prelude::*;
 use leptos_meta::Title;
+use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
-use st_domain::{find_complete_supply_chain, trade_map, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol};
+use st_domain::{find_complete_supply_chain, trade_map, ActivityLevel, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, SupplyLevel, TradeGoodSymbol, TradeGoodType, TradingOpportunity, WaypointSymbol};
+use crate::tailwind::TailwindClassesPreset;
+use crate::trading_opportunity_table::TradingOpportunityRow;
 
 // Server function uses conversion
 #[server]
@@ -123,15 +127,33 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                 materialized_supply_chain,
                                             ),
                                         ) => {
+                                            let trading_opportunities_table_data: Vec<
+                                                TradingOpportunityRow,
+                                            > = materialized_supply_chain
+                                                .trading_opportunities
+                                                .iter()
+                                                .cloned()
+                                                .map(TradingOpportunityRow::from)
+                                                .collect_vec();
 
                                             view! {
                                                 <div class="flex flex-row gap-4">
                                                     <div class="w-1/2 flex flex-col gap-4">
                                                         <h2 class="text-2xl font-bold">"Explanation"</h2>
-
                                                         <pre>{materialized_supply_chain.explanation}</pre>
-                                                        <h2 class="text-2xl font-bold">"Construction Site"</h2>
+                                                        <h2 class="text-2xl font-bold">"Trading Opportunities"</h2>
+                                                        <div class="rounded-md overflow-clip m-10 border dark:border-gray-700 float-left"
+                                                            .to_string()>
+                                                            <table class="text-sm text-left text-gray-500 dark:text-gray-400 mb-[-1px]">
+                                                                <TableContent
+                                                                    rows=trading_opportunities_table_data
+                                                                    scroll_container="html"
+                                                                />
 
+                                                            </table>
+                                                        </div>
+
+                                                        <h2 class="text-2xl font-bold">"Construction Site"</h2>
                                                         <pre>
                                                             {serde_json::to_string_pretty(&maybe_construction_site)}
                                                         </pre>
@@ -204,4 +226,5 @@ fn render_mermaid_chains(
         </div>
     }
 }
+
 

@@ -480,7 +480,7 @@ version = "4.5.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "501d359d5f3dcaf6ecdeee48833ae73ec6e42723a1e52419c79abf9507eec0a0"
 dependencies = [
- "heck",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.98",
@@ -1330,6 +1330,12 @@ dependencies = [
 
 [[package]]
 name = "heck"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
+
+[[package]]
+name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
@@ -1728,6 +1734,36 @@ dependencies = [
  "typed-builder-macro",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "leptos-struct-table"
+version = "0.14.0-beta2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53bb425925d86978234af38f12e44571fa24790c4097c1ad840c7c99dcd9b3fd"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-struct-table-macro",
+ "leptos-use",
+ "send_wrapper",
+ "serde",
+ "thiserror 1.0.63",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "leptos-struct-table-macro"
+version = "0.13.0-beta2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f532e98aabb7a52784f24a04612826d2c1f81ea70014709db92a8126bfe13b1"
+dependencies = [
+ "darling",
+ "heck 0.4.1",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.98",
 ]
 
 [[package]]
@@ -3716,7 +3752,7 @@ checksum = "1a099220ae541c5db479c6424bdf1b200987934033c2584f79a0e1693601e776"
 dependencies = [
  "dotenvy",
  "either",
- "heck",
+ "heck 0.5.0",
  "hex",
  "once_cell",
  "proc-macro2",
@@ -3909,6 +3945,7 @@ dependencies = [
  "dotenv",
  "itertools 0.14.0",
  "leptos",
+ "leptos-struct-table",
  "leptos-use",
  "leptos_axum",
  "leptos_meta",
@@ -3964,7 +4001,7 @@ version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
 dependencies = [
- "heck",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "rustversion",

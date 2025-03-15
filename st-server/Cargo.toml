@@ -15,6 +15,7 @@ leptos_router = { version = "0.7.7" }
 leptos_axum = { version = "0.7.7", optional = true }
 leptos_meta = { version = "0.7.7" }
 leptos-use = { version = "0.15.6", features = ["use_interval", "use_interval_fn"] }
+leptos-struct-table = { version = "0.14.0-beta2", features = ["chrono"] }
 phosphor-leptos = { version = "0.7.0", default-features = false, features = ["objects", "finance", "commerce", "system", "development"] }
 axum = { version = "0.7", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
@@ -55,8 +56,7 @@ ssr = [
     "st-store",
     "dep:tracing-subscriber",
     "dep:dotenv",
-    "leptos-use/ssr" # <== add this
-
+    "leptos-use/ssr"
 ]
 
 

@@ -7,6 +7,8 @@ pub mod supply_chain_page;
 #[cfg(feature = "ssr")]
 pub mod cli_args;
 pub mod ship_overview_page;
+pub mod tailwind;
+mod trading_opportunity_table;
 
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]
