@@ -2,7 +2,7 @@ use itertools::Itertools;
 use leptos::prelude::*;
 use leptos_meta::Title;
 use serde::{Deserialize, Serialize};
-use st_domain::{find_complete_supply_chain, trade_map, GetConstructionResponse, MarketTradeGood, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol};
+use st_domain::{find_complete_supply_chain, trade_map, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol};
 
 // Server function uses conversion
 #[server]
@@ -15,27 +15,78 @@ async fn get_supply_chain() -> Result<SupplyChain, ServerFnError> {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RelevantMarketData {
-    waypoint_symbol: WaypointSymbol,
-    trade_goods: Vec<MarketTradeGood>
+    pub waypoint_symbol: WaypointSymbol,
+    pub trade_goods: Vec<MarketTradeGood>,
 }
 
 #[server]
-async fn get_supply_chain_data() -> Result<(SupplyChain, Vec<RelevantMarketData>, Option<GetConstructionResponse>), ServerFnError> {
+async fn get_supply_chain_data() -> Result<
+    (
+        SupplyChain,
+        Vec<RelevantMarketData>,
+        Option<GetConstructionResponse>,
+        MaterializedSupplyChain,
+    ),
+    ServerFnError,
+> {
     use st_core;
+
     let supply_chain = st_core::supply_chain::read_supply_chain().await.unwrap();
 
-    use st_store::{Ctx,AgentBmc, StatusBmc, MarketBmc, ConstructionBmc};
+    use st_store::{AgentBmc, ConstructionBmc, Ctx, MarketBmc, StatusBmc, SystemBmc};
 
     let state = expect_context::<crate::app::AppState>();
     let mm = state.db_model_manager;
 
-    let agent = AgentBmc::get_initial_agent(&Ctx::Anonymous, &mm).await.expect("get_initial_agent");
+    let agent = AgentBmc::get_initial_agent(&Ctx::Anonymous, &mm)
+        .await
+        .expect("get_initial_agent");
     let headquarters_waypoint = WaypointSymbol(agent.headquarters);
-    let market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol().0).await.expect("status");
-    let relevant_market_data: Vec<RelevantMarketData> = market_data.iter().map(|md| RelevantMarketData{ waypoint_symbol: md.symbol.clone(), trade_goods: md.trade_goods.clone().unwrap_or_default() } ).collect_vec();
-    let construction_site = ConstructionBmc::get_construction_site_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol()).await.expect("construction_site");
 
-    Ok((supply_chain, relevant_market_data, construction_site))
+    let market_data = MarketBmc::get_latest_market_data_for_system(
+        &Ctx::Anonymous,
+        &mm,
+        headquarters_waypoint.system_symbol().0,
+    )
+    .await
+    .expect("status");
+
+    let relevant_market_data: Vec<RelevantMarketData> = market_data
+        .iter()
+        .map(|md| RelevantMarketData {
+            waypoint_symbol: md.symbol.clone(),
+            trade_goods: md.trade_goods.clone().unwrap_or_default(),
+        })
+        .collect_vec();
+
+    let maybe_construction_site = ConstructionBmc::get_construction_site_for_system(
+        &Ctx::Anonymous,
+        &mm,
+        headquarters_waypoint.system_symbol(),
+    )
+    .await
+    .expect("construction_site");
+
+    let waypoints_of_system = SystemBmc::get_waypoints_of_system(
+        &Ctx::Anonymous,
+        &mm,
+        &headquarters_waypoint.system_symbol(),
+    )
+    .await
+    .expect("waypoints");
+
+    let materialized_supply_chain = st_core::supply_chain::materialize_supply_chain(
+        &supply_chain,
+        &relevant_market_data
+            .iter()
+            .cloned()
+            .map(|relevant_md| (relevant_md.waypoint_symbol, relevant_md.trade_goods))
+            .collect_vec(),
+        &waypoints_of_system,
+        &maybe_construction_site,
+    );
+
+    Ok((supply_chain, relevant_market_data, maybe_construction_site, materialized_supply_chain))
 }
 
 #[component]
@@ -43,6 +94,13 @@ pub fn SupplyChainPage() -> impl IntoView {
     // Use create_resource which is the standard way to handle async data in Leptos
     let supply_chain_resource = OnceResource::new(get_supply_chain_data());
 
+    let goods_of_interest = vec![
+        TradeGoodSymbol::ADVANCED_CIRCUITRY,
+        TradeGoodSymbol::FAB_MATS,
+        TradeGoodSymbol::SHIP_PLATING,
+        TradeGoodSymbol::MICROPROCESSORS,
+        TradeGoodSymbol::CLOTHING,
+    ];
 
     view! {
         <Title text="Leptos + Tailwindcss" />
@@ -57,17 +115,32 @@ pub fn SupplyChainPage() -> impl IntoView {
                                 .get()
                                 .map(|result| {
                                     match result {
-                                        Ok((supply_chain_data, market_data, maybe_construction_site)) => {
+                                        Ok(
+                                            (
+                                                supply_chain,
+                                                market_data,
+                                                maybe_construction_site,
+                                                materialized_supply_chain,
+                                            ),
+                                        ) => {
+
                                             view! {
                                                 <div class="flex flex-row gap-4">
-                                                    <pre class="w-1/2">
-                                                        {serde_json::to_string_pretty(&maybe_construction_site)}
-                                                    </pre>
-                                                    <pre class="w-1/2">
-                                                        {serde_json::to_string_pretty(&market_data)}
-                                                    </pre>
+                                                    <div class="w-1/2 flex flex-col gap-4">
+                                                        <h2 class="text-2xl font-bold">"Explanation"</h2>
+
+                                                        <pre>{materialized_supply_chain.explanation}</pre>
+                                                        <h2 class="text-2xl font-bold">"Construction Site"</h2>
+
+                                                        <pre>
+                                                            {serde_json::to_string_pretty(&maybe_construction_site)}
+                                                        </pre>
+                                                        <h2 class="text-2xl font-bold">"Market Data"</h2>
+                                                        <pre>{serde_json::to_string_pretty(&market_data)}</pre>
+                                                    </div>
                                                     <div class="w-1/2">
-                                                        {render_mermaid_chains(supply_chain_data).into_any()}
+                                                        {render_mermaid_chains(supply_chain, &goods_of_interest)
+                                                            .into_any()}
                                                     </div>
 
                                                 </div>
@@ -90,18 +163,16 @@ pub fn SupplyChainPage() -> impl IntoView {
     }
 }
 
-fn render_mermaid_chains(supply_chain: SupplyChain) -> impl IntoView {
+fn render_mermaid_chains(
+    supply_chain: SupplyChain,
+    goods_of_interest: &[TradeGoodSymbol],
+) -> impl IntoView {
     let trade_map = trade_map(&supply_chain);
 
-    let goods_of_interest = [
-        TradeGoodSymbol::ADVANCED_CIRCUITRY,
-        TradeGoodSymbol::FAB_MATS,
-        TradeGoodSymbol::SHIP_PLATING,
-        TradeGoodSymbol::MICROPROCESSORS,
-        TradeGoodSymbol::CLOTHING,
-    ];
-
-    let complete_chain = find_complete_supply_chain(goods_of_interest.clone().into(), &trade_map);
+    let complete_chain = find_complete_supply_chain(
+        goods_of_interest.into_iter().cloned().collect_vec(),
+        &trade_map,
+    );
 
     view! {
         <div class="flex flex-col gap-4">
@@ -114,7 +185,8 @@ fn render_mermaid_chains(supply_chain: SupplyChain) -> impl IntoView {
                 }
             }
             {goods_of_interest
-                .clone()
+                .into_iter()
+                .cloned()
                 .map(|trade_good| {
                     let chain = find_complete_supply_chain(
                         Vec::from([trade_good.clone()]),

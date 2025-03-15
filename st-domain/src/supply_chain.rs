@@ -20,6 +20,12 @@ pub struct SupplyChainNode {
     pub dependencies: Vec<TradeGoodSymbol>,
 }
 
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MaterializedSupplyChain {
+    pub explanation: String
+}
+
 pub fn find_complete_supply_chain(
     products: Vec<TradeGoodSymbol>,
     trade_relations: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>,
