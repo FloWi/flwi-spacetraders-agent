@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into construction_sites (waypoint_symbol, entry, created_at, updated_at)\nvalues ($1, $2, $3, $4)\non conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Jsonb",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "94e436c91d9a778bcdd9ee132e8b268b7cc2ab35feb1ac966e824c861037e530"
+}

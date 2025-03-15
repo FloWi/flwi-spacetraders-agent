@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT DISTINCT ON (waypoint_symbol)\n       waypoint_symbol\n     , entry as \"entry: Json<MarketData>\"\n     , created_at\n  from markets\n where waypoint_symbol like $1\nORDER BY waypoint_symbol, created_at DESC\n\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "waypoint_symbol",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "entry: Json<MarketData>",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 2,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fb6423f2e114cd66e0a25e3c8365d7ece53cc7b025b8b2299132cd204fe5954a"
+}

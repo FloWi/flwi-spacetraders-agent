@@ -33,10 +33,7 @@ use crate::pathfinder::pathfinder;
 use crate::reqwest_helpers::create_client;
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
-use st_domain::{
-    FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship,
-    ShipSymbol, SystemSymbol, WaypointSymbol,
-};
+use st_domain::{FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship, ShipSymbol, SystemSymbol, WaypointSymbol, WaypointType};
 
 pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
     let client_with_account_token =
@@ -168,15 +165,21 @@ pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
 
     let marketplaces_to_explore = find_marketplaces_for_exploration(marketplace_entries.clone());
 
-    let waypoints_of_home_system: Vec<_> = waypoint_entries_of_home_system
+    let waypoints_of_home_system = waypoint_entries_of_home_system
         .into_iter()
         .map(|db| db.entry.0.clone())
-        .collect();
+        .collect_vec();
+
+    let jump_gate_wp_of_home_system = waypoints_of_home_system.iter().find(|wp| wp.r#type == WaypointType::JUMP_GATE).expect("home system should have a jump-gate");
+    let construction_site = client.get_construction_site(&jump_gate_wp_of_home_system.symbol).await?;
+
+    let _ = db::upsert_construction_site(&pool, construction_site, now).await?;
 
     let command_ship_index = my_ships
         .iter()
         .position(|s| s.symbol == command_ship_name)
         .unwrap();
+
 
     let mut command_ship = my_ships.remove(command_ship_index);
     let current_location = command_ship.nav.waypoint_symbol.clone();

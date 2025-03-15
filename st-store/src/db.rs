@@ -11,8 +11,9 @@ use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
 use st_domain::{
-    distance_to, Data, JumpGate, MarketData, RegistrationResponse, Ship, Shipyard,
-    StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    distance_to, Data, GetConstructionResponse, JumpGate, MarketData, RegistrationResponse, Ship,
+    Shipyard, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
+    WaypointTraitSymbol,
 };
 
 pub struct PgConnectionString(pub String);
@@ -248,6 +249,14 @@ pub struct DbShipyardData {
 pub struct DbShipEntry {
     pub ship_symbol: String,
     pub entry: Json<Ship>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbConstructionSiteEntry {
+    pub waypoint_symbol: String,
+    pub entry: Json<GetConstructionResponse>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -656,7 +665,11 @@ from systems s
     Ok(count.unwrap_or(0))
 }
 
-pub async fn upsert_ships(pool: &Pool<Postgres>, ships: &Vec<Ship>, now: DateTime<Utc>) -> Result<()> {
+pub async fn upsert_ships(
+    pool: &Pool<Postgres>,
+    ships: &Vec<Ship>,
+    now: DateTime<Utc>,
+) -> Result<()> {
     let db_entries: Vec<DbShipEntry> = ships
         .iter()
         .map(|ship| DbShipEntry {
@@ -706,3 +719,33 @@ on conflict (ship_symbol) do UPDATE set entry = excluded.entry, updated_at = exc
         Ok(())
     }
 }
+
+pub async fn upsert_construction_site(
+    pool: &Pool<Postgres>,
+    construction: GetConstructionResponse,
+    now: DateTime<Utc>,
+) -> Result<()> {
+    let db_entry: DbConstructionSiteEntry = DbConstructionSiteEntry {
+        waypoint_symbol: construction.data.symbol.clone(),
+        entry: Json(construction.clone()),
+        created_at: now,
+        updated_at: now,
+    };
+
+    sqlx::query!(
+        r#"
+insert into construction_sites (waypoint_symbol, entry, created_at, updated_at)
+values ($1, $2, $3, $4)
+on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+        "#,
+        db_entry.waypoint_symbol,
+        db_entry.entry as _,
+        now,
+        now,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+

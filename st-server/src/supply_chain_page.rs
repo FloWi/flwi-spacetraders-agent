@@ -2,7 +2,7 @@ use itertools::Itertools;
 use leptos::prelude::*;
 use leptos_meta::Title;
 use serde::{Deserialize, Serialize};
-use st_domain::{find_complete_supply_chain, trade_map, MarketTradeGood, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol};
+use st_domain::{find_complete_supply_chain, trade_map, GetConstructionResponse, MarketTradeGood, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol};
 
 // Server function uses conversion
 #[server]
@@ -20,11 +20,11 @@ pub struct RelevantMarketData {
 }
 
 #[server]
-async fn get_supply_chain_data() -> Result<(SupplyChain, Vec<RelevantMarketData>), ServerFnError> {
+async fn get_supply_chain_data() -> Result<(SupplyChain, Vec<RelevantMarketData>, Option<GetConstructionResponse>), ServerFnError> {
     use st_core;
     let supply_chain = st_core::supply_chain::read_supply_chain().await.unwrap();
 
-    use st_store::{Ctx,AgentBmc, StatusBmc, MarketBmc};
+    use st_store::{Ctx,AgentBmc, StatusBmc, MarketBmc, ConstructionBmc};
 
     let state = expect_context::<crate::app::AppState>();
     let mm = state.db_model_manager;
@@ -33,8 +33,9 @@ async fn get_supply_chain_data() -> Result<(SupplyChain, Vec<RelevantMarketData>
     let headquarters_waypoint = WaypointSymbol(agent.headquarters);
     let market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol().0).await.expect("status");
     let relevant_market_data: Vec<RelevantMarketData> = market_data.iter().map(|md| RelevantMarketData{ waypoint_symbol: md.symbol.clone(), trade_goods: md.trade_goods.clone().unwrap_or_default() } ).collect_vec();
+    let construction_site = ConstructionBmc::get_construction_site_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol()).await.expect("construction_site");
 
-    Ok((supply_chain, relevant_market_data))
+    Ok((supply_chain, relevant_market_data, construction_site))
 }
 
 #[component]
@@ -56,9 +57,12 @@ pub fn SupplyChainPage() -> impl IntoView {
                                 .get()
                                 .map(|result| {
                                     match result {
-                                        Ok((supply_chain_data, market_data)) => {
+                                        Ok((supply_chain_data, market_data, maybe_construction_site)) => {
                                             view! {
                                                 <div class="flex flex-row gap-4">
+                                                    <pre class="w-1/2">
+                                                        {serde_json::to_string_pretty(&maybe_construction_site)}
+                                                    </pre>
                                                     <pre class="w-1/2">
                                                         {serde_json::to_string_pretty(&market_data)}
                                                     </pre>

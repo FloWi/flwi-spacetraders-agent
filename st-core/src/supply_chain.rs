@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use itertools::Itertools;
-use st_domain::{SupplyChain, TradeRelation};
+use st_domain::{MarketData, SupplyChain, TradeRelation, Waypoint};
 
 pub async fn read_supply_chain() -> Result<SupplyChain> {
     // Construct the path to the JSON file
@@ -19,4 +19,8 @@ pub async fn read_supply_chain() -> Result<SupplyChain> {
     Ok(SupplyChain {
         relations: trade_relations,
     })
+}
+
+pub fn materialize_supply_chain(supply_chain: SupplyChain, market_data: Vec<MarketData>, waypoints: Vec<Waypoint>) {
+
 }

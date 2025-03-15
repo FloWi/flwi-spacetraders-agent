@@ -57,7 +57,6 @@ async fn main() {
     let app_state = st_server::app::AppState {
         db_model_manager: model_manager.clone(),
     };
-    println!("inside main.rs: AppState type is {:?}", app_state.type_id());
 
     // Generate the list of routes in your Leptos App
     let routes = generate_route_list(App);
