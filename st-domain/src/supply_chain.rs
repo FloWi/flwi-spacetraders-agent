@@ -1,4 +1,4 @@
-use crate::TradeGoodSymbol;
+use crate::{ConstructionMaterial, GetConstructionResponse, MarketTradeGood, TradeGoodSymbol, Waypoint, WaypointSymbol};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -105,4 +105,39 @@ graph LR
             connections.iter().join("\n")
         )
     }
+}
+
+pub fn materialize_supply_chain(
+    supply_chain: &SupplyChain,
+    market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
+    waypoints: &[Waypoint],
+    maybe_construction_site: &Option<GetConstructionResponse>,
+) -> MaterializedSupplyChain {
+    let missing_construction_materials: Vec<&ConstructionMaterial> = match maybe_construction_site {
+        None => {
+            vec![]
+        }
+        Some(construction_site) => construction_site
+            .data
+            .materials
+            .iter()
+            .filter(|cm| cm.fulfilled < cm.required)
+            .collect_vec(),
+    };
+
+    let completion_explanation = missing_construction_materials
+        .iter()
+        .map(|cm| {
+            let percent_done = cm.fulfilled as f64 / cm.required as f64 * 100.0;
+            format!(
+                "{}: {:} of {:} delivered ({:.1}%)",
+                cm.trade_symbol, cm.fulfilled, cm.required, percent_done
+            )
+        })
+        .join("\n");
+
+    MaterializedSupplyChain { explanation: format!(
+        r#"Completion Overview:
+{completion_explanation}"#
+    )}
 }

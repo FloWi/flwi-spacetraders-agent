@@ -75,7 +75,7 @@ async fn get_supply_chain_data() -> Result<
     .await
     .expect("waypoints");
 
-    let materialized_supply_chain = st_core::supply_chain::materialize_supply_chain(
+    let materialized_supply_chain = st_domain::supply_chain::materialize_supply_chain(
         &supply_chain,
         &relevant_market_data
             .iter()
