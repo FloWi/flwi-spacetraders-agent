@@ -204,3 +204,4 @@ fn render_mermaid_chains(
         </div>
     }
 }
+

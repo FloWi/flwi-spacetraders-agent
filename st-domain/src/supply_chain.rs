@@ -1,4 +1,7 @@
-use crate::{ConstructionMaterial, GetConstructionResponse, MarketTradeGood, TradeGoodSymbol, Waypoint, WaypointSymbol};
+use crate::{
+    ConstructionMaterial, GetConstructionResponse, MarketTradeGood, TradeGoodSymbol, TradeGoodType,
+    Waypoint, WaypointSymbol,
+};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -20,10 +23,10 @@ pub struct SupplyChainNode {
     pub dependencies: Vec<TradeGoodSymbol>,
 }
 
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MaterializedSupplyChain {
-    pub explanation: String
+    pub explanation: String,
+    pub trading_opportunities: Vec<TradingOpportunity>
 }
 
 pub fn find_complete_supply_chain(
@@ -136,8 +139,23 @@ pub fn materialize_supply_chain(
         })
         .join("\n");
 
-    MaterializedSupplyChain { explanation: format!(
-        r#"Completion Overview:
-{completion_explanation}"#
-    )}
+
+
+    MaterializedSupplyChain {
+        explanation: format!(
+            r#"Completion Overview:
+{completion_explanation}
+"#,
+        ),
+        trading_opportunities: crate::trading::find_trading_opportunities(&market_data, &waypoints)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TradingOpportunity {
+    pub purchase_waypoint_symbol: WaypointSymbol,
+    pub purchase_market_trade_good_entry: MarketTradeGood,
+    pub sell_waypoint_symbol: WaypointSymbol,
+    pub sell_market_trade_good_entry: MarketTradeGood,
+    pub profit: u64,
 }
