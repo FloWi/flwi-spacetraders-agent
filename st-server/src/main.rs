@@ -1,3 +1,5 @@
+use st_core::reqwest_helpers::ResetSignal;
+use tokio::sync::mpsc;
 
 #[cfg(feature = "ssr")]
 #[tokio::main]
@@ -7,6 +9,7 @@ async fn main() {
     use leptos::prelude::*;
     use leptos_axum::generate_route_list;
     use leptos_axum::LeptosRoutes;
+    use st_core::agent_manager::AgentManager;
     use st_core::configuration::AgentConfiguration;
     use st_core::reqwest_helpers::create_client;
     use st_core::st_client::{StClient, StClientTrait};
@@ -40,15 +43,10 @@ async fn main() {
         spacetraders_account_token,
     };
 
-    let client_with_account_token =
-        StClient::new(create_client(Some(cfg.spacetraders_account_token.clone())));
+    // Create the agent manager and get the reset channel
+    let (mut agent_manager, _reset_tx) = AgentManager::new(cfg.clone());
 
-    let status = client_with_account_token
-        .get_status()
-        .await
-        .expect("get_status should work");
-
-    let pool = db::prepare_database_schema(&status, cfg.pg_connection_string())
+    let pool = db::get_pg_connection_pool(cfg.pg_connection_string())
         .await
         .expect("should be able to get pool");
 
@@ -79,8 +77,12 @@ async fn main() {
     log!("listening on http://{}", &addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 
-
-    tokio::spawn(st_core::agent::run_agent(cfg));
+    // Run the agent manager in the background
+    tokio::spawn(async move {
+        if let Err(e) = agent_manager.run().await {
+            eprintln!("Agent manager error: {}", e);
+        }
+    });
 
     axum::serve(listener, app.into_make_service())
         .await

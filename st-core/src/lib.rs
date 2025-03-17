@@ -9,6 +9,7 @@ use chrono::TimeDelta;
 use st_domain::FlightMode;
 
 pub mod agent;
+pub mod agent_manager;
 pub mod app_state;
 pub mod behavior_tree;
 pub mod exploration;

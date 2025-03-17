@@ -33,25 +33,17 @@ use crate::pathfinder::pathfinder;
 use crate::reqwest_helpers::create_client;
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
-use st_domain::{FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship, ShipSymbol, SystemSymbol, WaypointSymbol, WaypointType};
+use st_domain::{
+    FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship,
+    ShipSymbol, StStatusResponse, SystemSymbol, WaypointSymbol, WaypointType,
+};
 
-pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
-    let client_with_account_token =
-        StClient::new(create_client(Some(cfg.spacetraders_account_token.clone())));
-
-    let status = client_with_account_token.get_status().await?;
-
-    let pool = db::prepare_database_schema(&status, cfg.pg_connection_string()).await?;
-
-    let authenticated_client = get_authenticated_client(
-        &pool,
-        client_with_account_token,
-        cfg.spacetraders_agent_faction,
-        cfg.spacetraders_agent_symbol.clone(),
-        cfg.spacetraders_registration_email,
-    )
-    .await?;
-
+pub async fn run_agent(
+    cfg: AgentConfiguration,
+    status: StStatusResponse,
+    authenticated_client: StClient,
+    pool: Pool<Postgres>,
+) -> Result<()> {
     let my_agent = authenticated_client.get_agent().await?;
     dbg!(my_agent.clone());
 
@@ -170,8 +162,13 @@ pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
         .map(|db| db.entry.0.clone())
         .collect_vec();
 
-    let jump_gate_wp_of_home_system = waypoints_of_home_system.iter().find(|wp| wp.r#type == WaypointType::JUMP_GATE).expect("home system should have a jump-gate");
-    let construction_site = client.get_construction_site(&jump_gate_wp_of_home_system.symbol).await?;
+    let jump_gate_wp_of_home_system = waypoints_of_home_system
+        .iter()
+        .find(|wp| wp.r#type == WaypointType::JUMP_GATE)
+        .expect("home system should have a jump-gate");
+    let construction_site = client
+        .get_construction_site(&jump_gate_wp_of_home_system.symbol)
+        .await?;
 
     let _ = db::upsert_construction_site(&pool, construction_site, now).await?;
 
@@ -179,7 +176,6 @@ pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
         .iter()
         .position(|s| s.symbol == command_ship_name)
         .unwrap();
-
 
     let mut command_ship = my_ships.remove(command_ship_index);
     let current_location = command_ship.nav.waypoint_symbol.clone();
@@ -249,7 +245,10 @@ pub async fn run_agent(cfg: AgentConfiguration) -> Result<()> {
 
     let _ = tokio::spawn(ship_loop(command_ship, args, ship_updated_tx));
 
-    let _ = tokio::spawn(listen_to_ship_changes_and_persist(ship_updated_rx, pool));
+    let _ = tokio::spawn(listen_to_ship_changes_and_persist(
+        ship_updated_rx,
+        pool.clone(),
+    ));
 
     //let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
     //dbg!(my_ships);
@@ -443,54 +442,4 @@ async fn collect_all_ships(client: &StClient) -> Result<Vec<Ship>> {
     let ships: Vec<Ship> = fetch_all_pages(|p| client.list_ships(p)).await?;
 
     Ok(ships)
-}
-
-async fn get_authenticated_client(
-    pool: &Pool<Postgres>,
-    client_with_account_token: StClient,
-    spacetraders_agent_faction: String,
-    spacetraders_agent_symbol: String,
-    spacetraders_registration_email: String,
-) -> Result<StClient> {
-    event!(Level::INFO, "Trying to load registration from database",);
-
-    let maybe_existing_registration = db::load_registration(pool).await?;
-
-    match maybe_existing_registration {
-        Some(db_entry) => {
-            event!(
-                Level::INFO,
-                "Found registration infos in database. Creating authenticated client",
-            );
-
-            Ok(StClient::new(create_client(Some(db_entry.token))))
-        }
-        None => {
-            event!(
-                Level::INFO,
-                "No registration infos found in database. Registering new agent",
-            );
-
-            let registration_response = client_with_account_token
-                .register(RegistrationRequest {
-                    faction: FactionSymbol(spacetraders_agent_faction),
-                    symbol: spacetraders_agent_symbol,
-                    email: spacetraders_registration_email,
-                })
-                .await
-                .expect("Error during registration");
-
-            event!(
-                Level::INFO,
-                "Registration complete: {:?}",
-                registration_response
-            );
-
-            let _ = db::save_registration(pool, registration_response.clone()).await;
-
-            Ok(StClient::new(create_client(Some(
-                registration_response.clone().data.token,
-            ))))
-        }
-    }
 }

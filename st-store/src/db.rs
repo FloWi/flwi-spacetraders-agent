@@ -16,12 +16,30 @@ use st_domain::{
     WaypointTraitSymbol,
 };
 
+#[derive(Clone)]
 pub struct PgConnectionString(pub String);
 
 impl PgConnectionString {
     pub fn get_schema_name_for_reset_date(&self, reset_date: String) -> String {
         format!("reset_{}", reset_date.replace("-", "_"))
     }
+}
+
+pub async fn get_pg_connection_pool(
+    connection_string: PgConnectionString,
+) -> Result<Pool<Postgres>> {
+    let database_url = connection_string.0.clone();
+
+    let database_connection_options: PgConnectOptions = database_url
+        .parse::<PgConnectOptions>()?
+        .log_slow_statements(LevelFilter::Warn, Duration::from_secs(60));
+
+    let pg_connection_pool: Pool<Postgres> = PgPoolOptions::new()
+        .max_connections(5)
+        .connect_with(database_connection_options)
+        .await?;
+
+    Ok(pg_connection_pool)
 }
 
 pub async fn prepare_database_schema(
@@ -36,16 +54,7 @@ pub async fn prepare_database_schema(
         connection_string.0
     );
 
-    let database_url = connection_string.0.clone();
-
-    let database_connection_options: PgConnectOptions = database_url
-        .parse::<PgConnectOptions>()?
-        .log_slow_statements(LevelFilter::Warn, Duration::from_secs(60));
-
-    let pg_connection_pool: Pool<Postgres> = PgPoolOptions::new()
-        .max_connections(5)
-        .connect_with(database_connection_options)
-        .await?;
+    let pg_connection_pool = get_pg_connection_pool(connection_string.clone()).await?;
 
     perform_migration(&pg_connection_pool).await?;
 
@@ -748,4 +757,3 @@ on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at =
 
     Ok(())
 }
-
