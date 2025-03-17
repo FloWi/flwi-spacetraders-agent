@@ -15,6 +15,7 @@ pub mod behavior_tree;
 pub mod exploration;
 pub mod marketplaces;
 pub mod pathfinder;
+mod fleet;
 
 pub use app_state::*;
 

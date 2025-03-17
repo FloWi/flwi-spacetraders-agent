@@ -1,9 +1,5 @@
 use crate::behavior_tree::behavior_tree::Actionable;
-use st_store::{
-    db, select_latest_marketplace_entry_of_system, select_waypoints_of_system,
-    upsert_systems_from_receiver, upsert_waypoints_from_receiver, DbModelManager,
-    DbSystemCoordinateData,
-};
+use st_store::{db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, select_waypoints_of_system, upsert_systems_from_receiver, upsert_waypoints_from_receiver, DbModelManager, DbSystemCoordinateData, DbWaypointEntry};
 
 use anyhow::Result;
 use chrono::{Local, Utc};
@@ -25,18 +21,14 @@ use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
 use crate::configuration::AgentConfiguration;
 use crate::exploration::exploration::generate_exploration_route;
 use crate::format_time_delta_hh_mm_ss;
-use crate::marketplaces::marketplaces::{
-    find_marketplaces_for_exploration, find_marketplaces_to_collect_remotely,
-};
+use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_marketplaces_to_collect_remotely, find_shipyards_to_collect_remotely};
 use crate::pagination::{fetch_all_pages, fetch_all_pages_into_queue, PaginationInput};
 use crate::pathfinder::pathfinder;
 use crate::reqwest_helpers::create_client;
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
-use st_domain::{
-    FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship,
-    ShipSymbol, StStatusResponse, SystemSymbol, WaypointSymbol, WaypointType,
-};
+use st_domain::{FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship, ShipSymbol, StStatusResponse, SystemSymbol, Waypoint, WaypointSymbol, WaypointType};
+use crate::fleet::Fleet;
 
 pub async fn run_agent(
     cfg: AgentConfiguration,
@@ -85,11 +77,19 @@ pub async fn run_agent(
     let marketplace_entries =
         select_latest_marketplace_entry_of_system(&pool, &headquarters_system_symbol).await?;
 
+    let shipyard_entries =
+        select_latest_shipyard_entry_of_system(&pool, &headquarters_system_symbol).await?;
+
     let waypoint_entries_of_home_system =
         select_waypoints_of_system(&pool, &headquarters_system_symbol).await?;
 
     let marketplaces_to_collect_remotely = find_marketplaces_to_collect_remotely(
         marketplace_entries.clone(),
+        &waypoint_entries_of_home_system,
+    );
+
+    let shipyards_to_collect_remotely = find_shipyards_to_collect_remotely(
+        shipyard_entries.clone(),
         &waypoint_entries_of_home_system,
     );
 
@@ -100,7 +100,16 @@ pub async fn run_agent(
     )
     .await?;
 
+    let _ = collect_shipyards(
+        &authenticated_client,
+        &shipyards_to_collect_remotely,
+        &pool,
+    )
+    .await?;
+
     let client: Arc<dyn StClientTrait> = Arc::new(authenticated_client);
+
+    let fleets = create_or_load_fleets(&*client, &pool, &headquarters_system_symbol, &waypoint_entries_of_home_system).await?;
 
     let mut my_ships: Vec<_> = ships
         .iter()
@@ -114,15 +123,11 @@ pub async fn run_agent(
 
     let marketplaces_to_explore = find_marketplaces_for_exploration(marketplace_entries.clone());
 
-    let waypoints_of_home_system = waypoint_entries_of_home_system
-        .into_iter()
-        .map(|db| db.entry.0.clone())
-        .collect_vec();
-
-    let jump_gate_wp_of_home_system = waypoints_of_home_system
+    let jump_gate_wp_of_home_system = waypoint_entries_of_home_system
         .iter()
         .find(|wp| wp.r#type == WaypointType::JUMP_GATE)
         .expect("home system should have a jump-gate");
+
     let construction_site = client
         .get_construction_site(&jump_gate_wp_of_home_system.symbol)
         .await?;
@@ -139,7 +144,7 @@ pub async fn run_agent(
 
     let exploration_route = generate_exploration_route(
         &marketplaces_to_explore,
-        &waypoints_of_home_system,
+        &waypoint_entries_of_home_system,
         &current_location,
     )
     .unwrap_or(Vec::new());
@@ -157,7 +162,7 @@ pub async fn run_agent(
             if let Some(travel_instructions) = pathfinder::compute_path(
                 from.symbol.clone(),
                 to.symbol.clone(),
-                waypoints_of_home_system.clone(),
+                waypoint_entries_of_home_system.clone(),
                 marketplace_entries
                     .iter()
                     .map(|db| db.entry.0.clone())
@@ -262,6 +267,41 @@ async fn load_home_system_and_waypoints_if_necessary(
             collect_waypoints_of_system(client, pool, headquarters_system_symbol.clone()).await?;
     }
     Ok(())
+}
+
+async fn create_or_load_fleets(
+    client: &dyn StClientTrait,
+    pool: &Pool<Postgres>,
+    home_system_symbol: &SystemSymbol,
+    waypoints_of_home_system: &[Waypoint],
+) -> Result<Vec<Fleet>> {
+    let ships: Vec<Ship> = load_or_collect_ships(client, &pool).await?;
+    let db_fleets: Vec<Fleet> = Vec::new();
+
+    if db_fleets.is_empty() {
+        let fleets = crate::fleet::compute_initial_fleet(ships, home_system_symbol, waypoints_of_home_system)?;
+        // persist fleet config
+        Ok(fleets)
+    } else {
+        Ok(db_fleets)
+    }
+
+}
+
+
+async fn load_or_collect_ships(
+    client: &dyn StClientTrait,
+    pool: &Pool<Postgres>,
+) -> Result<Vec<Ship>> {
+    let ships_from_db: Vec<Ship> = db::select_ships(&pool).await?;
+
+    if ships_from_db.is_empty() {
+        let ships = collect_all_ships(client).await?;
+        Ok(ships)
+    } else {
+        Ok(ships_from_db)
+    }
+
 }
 
 async fn load_systems_and_waypoints_if_necessary(
@@ -432,6 +472,24 @@ async fn collect_marketplaces(
     Ok(())
 }
 
+async fn collect_shipyards(
+    client: &StClient,
+    shipyard_waypoint_symbols: &[WaypointSymbol],
+    pool: &Pool<Postgres>,
+) -> Result<()> {
+    event!(
+        Level::INFO,
+        "Collecting shipyard infos (remotely) for {} waypoint_symbols",
+        shipyard_waypoint_symbols.len()
+    );
+
+    for wp in shipyard_waypoint_symbols {
+        let shipyard = client.get_shipyard(wp.clone()).await?;
+        db::insert_shipyards(pool, vec![shipyard.data], Utc::now()).await?;
+    }
+    Ok(())
+}
+
 async fn collect_waypoints_for_systems(
     client: &dyn StClientTrait,
     systems: &[DbSystemCoordinateData],
@@ -505,7 +563,7 @@ async fn collect_waypoints_of_system(
     Ok(())
 }
 
-async fn collect_all_ships(client: &StClient) -> Result<Vec<Ship>> {
+async fn collect_all_ships(client: &dyn StClientTrait) -> Result<Vec<Ship>> {
     let ships: Vec<Ship> = fetch_all_pages(|p| client.list_ships(p)).await?;
 
     Ok(ships)

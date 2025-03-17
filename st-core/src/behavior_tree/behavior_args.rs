@@ -72,9 +72,7 @@ impl BlackboardOps for DbBlackboard {
         let waypoints_of_system: Vec<Waypoint> =
             select_waypoints_of_system(&self.db, &from.system_symbol())
                 .await?
-                .into_iter()
-                .map(|db_wp| db_wp.entry.0.clone())
-                .collect();
+                ;
 
         let market_entries_of_system: Vec<MarketData> =
             select_latest_marketplace_entry_of_system(&self.db, &from.system_symbol())
@@ -107,13 +105,12 @@ impl BlackboardOps for DbBlackboard {
 
         match waypoints
             .iter()
-            .find(|wp| wp.entry.symbol == current_location)
+            .find(|wp| wp.symbol == current_location)
         {
             None => Err(anyhow::anyhow!("can't find waypoint in db")),
             Some(wp) => {
                 let mut tasks = Vec::new();
                 if wp
-                    .entry
                     .traits
                     .iter()
                     .any(|t| t.symbol == WaypointTraitSymbol::UNCHARTED)
@@ -121,7 +118,7 @@ impl BlackboardOps for DbBlackboard {
                     tasks.push(ExplorationTask::CreateChart);
                 }
                 if wp
-                    .entry
+
                     .traits
                     .iter()
                     .any(|t| t.symbol == WaypointTraitSymbol::SHIPYARD)
@@ -129,14 +126,14 @@ impl BlackboardOps for DbBlackboard {
                     tasks.push(ExplorationTask::GetShipyard);
                 }
                 if wp
-                    .entry
+
                     .traits
                     .iter()
                     .any(|t| t.symbol == WaypointTraitSymbol::MARKETPLACE)
                 {
                     tasks.push(ExplorationTask::GetMarket);
                 }
-                if wp.entry.r#type == WaypointType::JUMP_GATE {
+                if wp.r#type == WaypointType::JUMP_GATE {
                     //maybe_jump_gate.map(|db_jg| db_jg.)
                     tasks.push(ExplorationTask::GetJumpGate);
                 }

@@ -8,12 +8,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Local, Utc};
 use core::time::Duration;
-use st_domain::{
-    Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed,
-    MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse,
-    RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipSymbol, TradeGoodSymbol,
-    Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
-};
+use st_domain::{Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType};
 use tokio::sync::mpsc::Sender;
 
 #[async_trait]
@@ -493,7 +488,7 @@ impl TestObjects {
             registration: Registration {
                 name: "FLWI".to_string(),
                 faction_symbol: "GALACTIC".to_string(),
-                role: "".to_string(),
+                role: ShipRegistrationRole::Command,
             },
             nav: Self::create_nav(
                 FlightMode::Drift,
@@ -653,6 +648,8 @@ mod tests {
             async fn list_waypoints_of_system_page(&self, system_symbol: &SystemSymbol, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Waypoint>> {}
 
             async fn list_systems_page(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<SystemsPageData>> {}
+
+            async fn get_system(&self, system_symbol: &SystemSymbol) -> anyhow::Result<SystemsPageData> {}
 
             async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetMarketResponse> {}
 

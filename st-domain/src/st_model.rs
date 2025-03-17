@@ -625,7 +625,26 @@ pub struct Ship {
 pub struct Registration {
     pub name: String,
     pub faction_symbol: String,
-    pub role: String,
+    pub role: ShipRegistrationRole,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ShipRegistrationRole {
+    Fabricator,
+    Harvester,
+    Hauler,
+    Interceptor,
+    Excavator,
+    Transport,
+    Repair,
+    Surveyor,
+    Command,
+    Carrier,
+    Patrol,
+    Satellite,
+    Explorer,
+    Refinery,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
