@@ -3,6 +3,7 @@ use std::time::Duration;
 use anyhow::{Error, Result};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::types::Json;
@@ -447,7 +448,7 @@ from jsonb_populate_recordset(NULL::markets, $1)
 pub async fn select_waypoints_of_system(
     pool: &Pool<Postgres>,
     system_symbol: &SystemSymbol,
-) -> Result<Vec<DbWaypointEntry>> {
+) -> Result<Vec<Waypoint>> {
     let waypoint_entries: Vec<DbWaypointEntry> = sqlx::query_as!(
         DbWaypointEntry,
         r#"
@@ -464,7 +465,26 @@ where system_symbol = $1
     .fetch_all(pool)
     .await?;
 
-    Ok(waypoint_entries)
+    Ok(waypoint_entries.iter().map(|db_waypoint_entry| db_waypoint_entry.entry.0.clone()).collect_vec())
+}
+
+pub async fn select_ships(
+    pool: &Pool<Postgres>,
+) -> Result<Vec<Ship>> {
+    let ship_entries: Vec<DbShipEntry> = sqlx::query_as!(
+        DbShipEntry,
+        r#"
+select ship_symbol
+     , entry as "entry: Json<Ship>"
+     , created_at
+     , updated_at
+from ships
+    "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(ship_entries.iter().map(|db_ship| db_ship.entry.0.clone()).collect_vec())
 }
 
 pub async fn select_waypoints_of_system_with_trait(
@@ -517,6 +537,28 @@ where system_symbol = $1
     .await?;
 
     Ok(market_data_entries)
+}
+pub async fn select_latest_shipyard_entry_of_system(
+    pool: &Pool<Postgres>,
+    system_symbol: &SystemSymbol,
+) -> Result<Vec<DbShipyardData>> {
+    let db_entries: Vec<DbShipyardData> = sqlx::query_as!(
+        DbShipyardData,
+        r#"
+select system_symbol
+     , waypoint_symbol
+     , entry as "entry: Json<Shipyard>"
+     , created_at
+     , updated_at
+from shipyards
+where system_symbol = $1
+    "#,
+        system_symbol.0
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(db_entries)
 }
 
 pub async fn select_systems_with_waypoint_details_to_be_loaded(
