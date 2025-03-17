@@ -55,55 +55,12 @@ pub async fn run_agent(
     let ships = collect_all_ships(&authenticated_client).await?;
     let _ = db::upsert_ships(&pool, &ships, now).await?;
 
-    let number_systems_in_db = db::select_count_of_systems(&pool).await?;
-
-    let need_collect_systems = status.stats.systems as i64 != number_systems_in_db;
-
-    if need_collect_systems {
-        event!(
-            Level::INFO,
-            "Not all {} systems are in database. Currently stored: {}",
-            status.stats.systems,
-            number_systems_in_db,
-        );
-
-        collect_all_systems(&authenticated_client, &pool).await?;
-    } else {
-        event!(
-            Level::INFO,
-            "No need to collect systems - all {} systems are already in db",
-            number_systems_in_db
-        );
-    }
-
-    let systems_with_waypoint_details_to_be_loaded: Vec<DbSystemCoordinateData> =
-        db::select_systems_with_waypoint_details_to_be_loaded(&pool).await?;
-
-    let number_of_systems_with_missing_waypoint_infos =
-        systems_with_waypoint_details_to_be_loaded.len();
-    let need_collect_waypoints_of_systems = number_of_systems_with_missing_waypoint_infos > 0;
-    if need_collect_waypoints_of_systems {
-        event!(
-            Level::INFO,
-            "Not all waypoints are stored in database. Need to update {} of {} systems",
-            number_of_systems_with_missing_waypoint_infos,
-            status.stats.systems,
-        );
-
-        collect_waypoints_for_systems(
-            &authenticated_client,
-            &systems_with_waypoint_details_to_be_loaded,
-            &headquarters_system_symbol,
-            &pool,
-        )
-        .await?;
-    } else {
-        event!(
-                        Level::INFO,
-                        "No need to collect waypoints for systems - all {} systems have detailed waypoint infos",
-                        number_systems_in_db
-                    );
-    }
+    load_home_system_and_waypoints_if_necessary(
+        &authenticated_client,
+        &pool,
+        &headquarters_system_symbol,
+    )
+    .await?;
 
     // let marketplaces_of_system = db::select_waypoints_of_system_with_trait(
     //     &pool,
@@ -245,6 +202,25 @@ pub async fn run_agent(
 
     let _ = tokio::spawn(ship_loop(command_ship, args, ship_updated_tx));
 
+    // everything has to be cloned to give ownership to the spawned task
+    let _ = tokio::spawn({
+        let client_clone = client.clone();
+        let pool_clone = pool.clone();
+        let hq_system_clone = headquarters_system_symbol.clone();
+        let status_clone = status.clone();
+
+        async move {
+            if let Err(e) = load_systems_and_waypoints_if_necessary(
+                status_clone,
+                &*client_clone,
+                &pool_clone,
+                &hq_system_clone,
+            ).await {
+                eprintln!("Error loading systems: {}", e);
+            }
+        }
+    });
+
     let _ = tokio::spawn(listen_to_ship_changes_and_persist(
         ship_updated_rx,
         pool.clone(),
@@ -252,6 +228,97 @@ pub async fn run_agent(
 
     //let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
     //dbg!(my_ships);
+    Ok(())
+}
+
+async fn load_home_system_and_waypoints_if_necessary(
+    client: &StClient,
+    pool: &Pool<Postgres>,
+    headquarters_system_symbol: &SystemSymbol,
+) -> Result<()> {
+    let maybe_home_system = db::select_system(pool, headquarters_system_symbol).await?;
+
+    let (needs_load_system, needs_load_waypoints) = match maybe_home_system {
+        None => (true, true),
+        Some(home_system) => {
+            let waypoints_of_home_system =
+                db::select_waypoints_of_system(pool, headquarters_system_symbol).await?;
+            (
+                false,
+                home_system.waypoints.len() > waypoints_of_home_system.len(),
+            )
+        }
+    };
+
+    let now = Utc::now();
+
+    if needs_load_system {
+        let system = client.get_system(headquarters_system_symbol).await?;
+        let _ = db::upsert_systems_page(pool, vec![system], now).await?;
+    }
+
+    if needs_load_waypoints {
+        let _ =
+            collect_waypoints_of_system(client, pool, headquarters_system_symbol.clone()).await?;
+    }
+    Ok(())
+}
+
+async fn load_systems_and_waypoints_if_necessary(
+    status: StStatusResponse,
+    authenticated_client: &dyn StClientTrait,
+    pool: &Pool<Postgres>,
+    headquarters_system_symbol: &SystemSymbol,
+) -> Result<()> {
+    let number_systems_in_db = db::select_count_of_systems(&pool).await?;
+
+    let need_collect_systems = status.stats.systems as i64 != number_systems_in_db;
+
+    if need_collect_systems {
+        event!(
+            Level::INFO,
+            "Not all {} systems are in database. Currently stored: {}",
+            status.stats.systems,
+            number_systems_in_db,
+        );
+
+        collect_all_systems(authenticated_client, &pool).await?;
+    } else {
+        event!(
+            Level::INFO,
+            "No need to collect systems - all {} systems are already in db",
+            number_systems_in_db
+        );
+    }
+
+    let systems_with_waypoint_details_to_be_loaded: Vec<DbSystemCoordinateData> =
+        db::select_systems_with_waypoint_details_to_be_loaded(&pool).await?;
+
+    let number_of_systems_with_missing_waypoint_infos =
+        systems_with_waypoint_details_to_be_loaded.len();
+    let need_collect_waypoints_of_systems = number_of_systems_with_missing_waypoint_infos > 0;
+    if need_collect_waypoints_of_systems {
+        event!(
+            Level::INFO,
+            "Not all waypoints are stored in database. Need to update {} of {} systems",
+            number_of_systems_with_missing_waypoint_infos,
+            status.stats.systems,
+        );
+
+        collect_waypoints_for_systems(
+            authenticated_client,
+            &systems_with_waypoint_details_to_be_loaded,
+            &headquarters_system_symbol,
+            &pool,
+        )
+        .await?;
+    } else {
+        event!(
+                        Level::INFO,
+                        "No need to collect waypoints for systems - all {} systems have detailed waypoint infos",
+                        number_systems_in_db
+                    );
+    }
     Ok(())
 }
 
@@ -334,7 +401,7 @@ pub async fn ship_loop(
     Ok(())
 }
 
-async fn collect_all_systems(client: &StClient, pool: &Pool<Postgres>) -> Result<()> {
+async fn collect_all_systems(client: &dyn StClientTrait, pool: &Pool<Postgres>) -> Result<()> {
     let (tx, rx) = mpsc::channel(100); // Buffer up to 100 pages
 
     let producer = fetch_all_pages_into_queue(
@@ -366,7 +433,7 @@ async fn collect_marketplaces(
 }
 
 async fn collect_waypoints_for_systems(
-    client: &StClient,
+    client: &dyn StClientTrait,
     systems: &[DbSystemCoordinateData],
     home_system: &SystemSymbol,
     pool: &Pool<Postgres>,
@@ -422,7 +489,7 @@ async fn collect_waypoints_for_systems(
 }
 
 async fn collect_waypoints_of_system(
-    client: &StClient,
+    client: &dyn StClientTrait,
     pool: &Pool<Postgres>,
     system_symbol: SystemSymbol,
 ) -> Result<()> {

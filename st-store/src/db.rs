@@ -305,14 +305,14 @@ pub async fn upsert_systems_from_receiver(
 
 pub async fn upsert_systems_page(
     pool: &Pool<Postgres>,
-    waypoints: Vec<SystemsPageData>,
+    systems: Vec<SystemsPageData>,
     now: DateTime<Utc>,
 ) -> Result<()> {
-    let db_entries: Vec<DbSystemEntry> = waypoints
+    let db_entries: Vec<DbSystemEntry> = systems
         .iter()
-        .map(|wp| DbSystemEntry {
-            system_symbol: wp.symbol.0.clone(),
-            entry: Json(wp.clone()),
+        .map(|system| DbSystemEntry {
+            system_symbol: system.symbol.0.clone(),
+            entry: Json(system.clone()),
             created_at: now,
             updated_at: now,
         })
@@ -566,6 +566,37 @@ where system_symbol = $1
     .await?;
 
     Ok(maybe_system)
+}
+
+pub async fn select_system(
+    pool: &Pool<Postgres>,
+    system_symbol: &SystemSymbol,
+) -> Result<Option<SystemsPageData>> {
+    /*
+    #[derive(Serialize, Clone, Debug, Deserialize)]
+    pub struct DbSystemEntry {
+        system_symbol: String,
+        pub entry: Json<SystemsPageData>,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+    }
+         */
+    let maybe_system: Option<DbSystemEntry> = sqlx::query_as!(
+        DbSystemEntry,
+        r#"
+select system_symbol
+     , entry as "entry: Json<SystemsPageData>"
+     , created_at
+     , updated_at
+    from systems s
+where system_symbol = $1
+"#,
+        system_symbol.0
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(maybe_system.map(|db_system| db_system.entry.0))
 }
 
 pub(crate) async fn select_jump_gate(

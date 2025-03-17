@@ -79,6 +79,7 @@ impl StClientTrait for StClient {
             .json()
             .await?)
     }
+
     async fn get_construction_site(
         &self,
         waypoint_symbol: &WaypointSymbol,
@@ -95,6 +96,7 @@ impl StClientTrait for StClient {
         let construction_site_info = resp?.json().await?;
         Ok(construction_site_info)
     }
+
     async fn dock_ship(&self, ship_symbol: ShipSymbol) -> Result<DockShipResponse> {
         Self::make_api_call(
             self.client.post(
@@ -107,6 +109,7 @@ impl StClientTrait for StClient {
         )
         .await
     }
+
     async fn set_flight_mode(
         &self,
         ship_symbol: ShipSymbol,
@@ -242,6 +245,16 @@ impl StClientTrait for StClient {
 
         Self::make_api_call(request).await
     }
+
+    async fn get_system(&self, system_symbol: &SystemSymbol) -> Result<SystemsPageData> {
+        let request = self.client.get(format!(
+            "https://api.spacetraders.io/v2/systems/{}",
+            system_symbol.0
+        ));
+
+        Self::make_api_call(request).await
+    }
+
     async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> Result<GetMarketResponse> {
         let request = self.client.get(format!(
             "https://api.spacetraders.io/v2/systems/{}/waypoints/{}/market",
@@ -362,6 +375,8 @@ pub trait StClientTrait: Send + Sync + Debug {
         &self,
         pagination_input: PaginationInput,
     ) -> Result<PaginatedResponse<SystemsPageData>>;
+
+    async fn get_system(&self, system_symbol: &SystemSymbol) -> Result<SystemsPageData>;
 
     async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> Result<GetMarketResponse>;
 
