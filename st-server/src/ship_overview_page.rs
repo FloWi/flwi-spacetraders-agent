@@ -1,12 +1,12 @@
+use crate::format_duration;
 use chrono::{DateTime, Utc};
 use itertools::*;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use leptos_use::{use_interval, UseIntervalReturn};
+use phosphor_leptos::{Icon, CLOCK, GAS_PUMP, PACKAGE, TRUCK};
 use serde::{Deserialize, Serialize};
 use st_domain::{NavStatus, Ship};
-use phosphor_leptos::{Icon, TRUCK, GAS_PUMP, PACKAGE, CLOCK};
-use crate::format_duration;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
@@ -46,13 +46,11 @@ async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOvervie
 
 #[component]
 pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
-
     let is_traveling = match ship.nav.status {
-        NavStatus::InTransit => { true }
-        NavStatus::InOrbit => { false}
-        NavStatus::Docked => { false}
+        NavStatus::InTransit => true,
+        NavStatus::InOrbit => false,
+        NavStatus::Docked => false,
     };
-
 
     let fuel_str = format!("{} / {}", ship.fuel.current, ship.fuel.capacity,);
     let cargo_str = format!("{} / {}", ship.cargo.units, ship.cargo.capacity,);
@@ -77,7 +75,6 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
             arrival_time - now
         })
     };
-
 
     view! {
         <div class="p-3 border-4 border-blue-900 text-slate-400">

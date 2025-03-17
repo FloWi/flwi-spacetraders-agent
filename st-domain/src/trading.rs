@@ -1,9 +1,9 @@
 use crate::{MarketTradeGood, TradeGoodType, TradingOpportunity, Waypoint, WaypointSymbol};
 use itertools::Itertools;
-pub fn find_trading_opportunities(market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
-                                  waypoints: &[Waypoint],
+pub fn find_trading_opportunities(
+    market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
+    waypoints: &[Waypoint],
 ) -> Vec<TradingOpportunity> {
-
     let denormalized_trade_goods_with_wp_symbols = market_data
         .iter()
         .flat_map(|(wp_symbol, market_trade_goods)| {
@@ -51,5 +51,4 @@ pub fn find_trading_opportunities(market_data: &[(WaypointSymbol, Vec<MarketTrad
         .collect_vec();
 
     trades_by_profit
-
 }

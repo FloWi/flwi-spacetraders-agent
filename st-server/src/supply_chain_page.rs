@@ -1,12 +1,16 @@
+use crate::tailwind::TailwindClassesPreset;
+use crate::trading_opportunity_table::TradingOpportunityRow;
 use itertools::Itertools;
 use leptos::attr::rows;
 use leptos::prelude::*;
 use leptos_meta::Title;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
-use st_domain::{find_complete_supply_chain, trade_map, ActivityLevel, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, SupplyLevel, TradeGoodSymbol, TradeGoodType, TradingOpportunity, WaypointSymbol};
-use crate::tailwind::TailwindClassesPreset;
-use crate::trading_opportunity_table::TradingOpportunityRow;
+use st_domain::{
+    find_complete_supply_chain, trade_map, ActivityLevel, GetConstructionResponse, MarketTradeGood,
+    MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, SupplyLevel, TradeGoodSymbol,
+    TradeGoodType, TradingOpportunity, WaypointSymbol,
+};
 
 // Server function uses conversion
 #[server]
@@ -90,7 +94,12 @@ async fn get_supply_chain_data() -> Result<
         &maybe_construction_site,
     );
 
-    Ok((supply_chain, relevant_market_data, maybe_construction_site, materialized_supply_chain))
+    Ok((
+        supply_chain,
+        relevant_market_data,
+        maybe_construction_site,
+        materialized_supply_chain,
+    ))
 }
 
 #[component]
@@ -226,5 +235,3 @@ fn render_mermaid_chains(
         </div>
     }
 }
-
-

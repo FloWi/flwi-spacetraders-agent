@@ -3,15 +3,18 @@ use crate::{DbMarketEntry, DbModelManager, DbShipEntry};
 use anyhow::*;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
-use sqlx::{Pool, Postgres};
 use sqlx::types::Json;
+use sqlx::{Pool, Postgres};
 use st_domain::{MarketData, Ship, StStatusResponse};
 
 pub struct MarketBmc;
 
 impl MarketBmc {
-    pub async fn get_latest_market_data_for_system(ctx: &Ctx, mm: &DbModelManager, system_symbol: String) -> Result<Vec<MarketData>> {
-
+    pub async fn get_latest_market_data_for_system(
+        ctx: &Ctx,
+        mm: &DbModelManager,
+        system_symbol: String,
+    ) -> Result<Vec<MarketData>> {
         let waypoint_symbol_pattern = format!("{}%", system_symbol);
 
         let market_entriy: Vec<DbMarketEntry> = sqlx::query_as!(
@@ -29,7 +32,6 @@ ORDER BY waypoint_symbol, created_at DESC
             waypoint_symbol_pattern
         )
         .fetch_all(mm.pool())
-
         .await?;
 
         let market_data = market_entriy.into_iter().map(|me| me.entry.0).collect_vec();

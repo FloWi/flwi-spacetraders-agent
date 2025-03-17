@@ -18,7 +18,6 @@ pub fn hydrate() {
     leptos::mount::hydrate_body(App);
 }
 
-
 fn format_duration(duration: &Duration) -> String {
     // Get total seconds
     let total_seconds = duration.num_seconds();

@@ -26,7 +26,7 @@ pub struct SupplyChainNode {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MaterializedSupplyChain {
     pub explanation: String,
-    pub trading_opportunities: Vec<TradingOpportunity>
+    pub trading_opportunities: Vec<TradingOpportunity>,
 }
 
 pub fn find_complete_supply_chain(
@@ -139,15 +139,13 @@ pub fn materialize_supply_chain(
         })
         .join("\n");
 
-
-
     MaterializedSupplyChain {
         explanation: format!(
             r#"Completion Overview:
 {completion_explanation}
 "#,
         ),
-        trading_opportunities: crate::trading::find_trading_opportunities(&market_data, &waypoints)
+        trading_opportunities: crate::trading::find_trading_opportunities(&market_data, &waypoints),
     }
 }
 

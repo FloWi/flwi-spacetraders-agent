@@ -3,15 +3,18 @@ use crate::{DbConstructionSiteEntry, DbMarketEntry, DbModelManager, DbShipEntry}
 use anyhow::*;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
-use sqlx::{Pool, Postgres};
 use sqlx::types::Json;
+use sqlx::{Pool, Postgres};
 use st_domain::{GetConstructionResponse, MarketData, Ship, StStatusResponse, SystemSymbol};
 
 pub struct ConstructionBmc;
 
 impl ConstructionBmc {
-    pub async fn get_construction_site_for_system(ctx: &Ctx, mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Option<GetConstructionResponse>> {
-
+    pub async fn get_construction_site_for_system(
+        ctx: &Ctx,
+        mm: &DbModelManager,
+        system_symbol: SystemSymbol,
+    ) -> Result<Option<GetConstructionResponse>> {
         let waypoint_symbol_pattern = format!("{}%", system_symbol.0);
 
         let maybe_construction_entry: Option<DbConstructionSiteEntry> = sqlx::query_as!(
@@ -27,10 +30,9 @@ SELECT waypoint_symbol
         "#,
             waypoint_symbol_pattern
         )
-            .fetch_optional(mm.pool())
+        .fetch_optional(mm.pool())
+        .await?;
 
-            .await?;
-
-        Ok(maybe_construction_entry.map(|db_entry|db_entry.entry.0))
+        Ok(maybe_construction_entry.map(|db_entry| db_entry.entry.0))
     }
 }

@@ -7,7 +7,7 @@ use st_domain::StStatusResponse;
 pub struct DbOverview {
     num_systems: i64,
     num_waypoints: i64,
-    status: StStatusResponse
+    status: StStatusResponse,
 }
 
 #[server]
@@ -33,13 +33,12 @@ async fn get_db_overview() -> Result<DbOverview, ServerFnError> {
     Ok(DbOverview {
         num_systems,
         num_waypoints,
-        status
+        status,
     })
 }
 
 #[component]
 pub fn DbOverviewPage() -> impl IntoView {
-
     view! {
         <Await future=get_db_overview() let:data>
             {match data {

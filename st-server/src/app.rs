@@ -1,4 +1,5 @@
 use crate::db_overview_page::*;
+use crate::ship_overview_page::ShipOverviewPage;
 use crate::supply_chain_page::*;
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
@@ -6,7 +7,6 @@ use leptos_router::{
     components::{Route, Router, Routes},
     StaticSegment,
 };
-use crate::ship_overview_page::ShipOverviewPage;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {

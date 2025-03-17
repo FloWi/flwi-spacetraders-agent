@@ -1,3 +1,4 @@
+use crate::ship::ShipOperations;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,6 @@ use strum_macros::Display;
 use tokio::sync::mpsc::Sender;
 use tokio::time::sleep;
 use tracing::{event, Level};
-use crate::ship::ShipOperations;
 // inspired by @chamlis design from spacetraders discord
 
 #[derive(Debug, Clone, Serialize, Eq, PartialEq)]
@@ -319,7 +319,7 @@ pub trait Actionable: Serialize + Clone + Send + Sync {
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
         duration: Duration,
-        state_changed_tx: &Sender<Self::ActionState>
+        state_changed_tx: &Sender<Self::ActionState>,
     ) -> Result<Response, Self::ActionError>;
 }
 
@@ -337,7 +337,7 @@ where
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
         sleep_duration: Duration,
-        state_changed_tx: &Sender<Self::ActionState>
+        state_changed_tx: &Sender<Self::ActionState>,
     ) -> Result<Response, Self::ActionError> {
         let hash = self.calculate_hash();
 
@@ -363,7 +363,7 @@ where
             }
             Behavior::Select(behaviors, _) => {
                 for b in behaviors {
-                    let result = b.run(args, state, sleep_duration,&state_changed_tx).await;
+                    let result = b.run(args, state, sleep_duration, &state_changed_tx).await;
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(r) => return Ok(r),
@@ -390,12 +390,16 @@ where
             Behavior::While {
                 condition, action, ..
             } => loop {
-                let condition_result = condition.run(args, state, sleep_duration, &state_changed_tx).await;
+                let condition_result = condition
+                    .run(args, state, sleep_duration, &state_changed_tx)
+                    .await;
 
                 match condition_result {
                     Err(_) => return Ok(Response::Success),
                     Ok(_) => {
-                        let action_result = action.run(args, state, sleep_duration, state_changed_tx).await;
+                        let action_result = action
+                            .run(args, state, sleep_duration, state_changed_tx)
+                            .await;
                         match action_result {
                             Err(err) => {
                                 return Err(Self::ActionError::from(anyhow!(
@@ -414,8 +418,12 @@ where
         };
         match &result {
             Ok(o) => {
-                event!(Level::INFO,
-                    message = format!("Finished action - trying to send msg to state_changed_tx. Capacity: {}", state_changed_tx.capacity())
+                event!(
+                    Level::INFO,
+                    message = format!(
+                        "Finished action - trying to send msg to state_changed_tx. Capacity: {}",
+                        state_changed_tx.capacity()
+                    )
                 );
 
                 state_changed_tx.send(state.clone()).await.expect("send");
@@ -474,7 +482,7 @@ mod tests {
             args: &Self::ActionArgs,
             state: &mut Self::ActionState,
             duration: Duration,
-            state_changed_tx: &Sender<Self::ActionState>
+            state_changed_tx: &Sender<Self::ActionState>,
         ) -> Result<Response, Self::ActionError> {
             match self {
                 MyAction::Increase => {
@@ -509,7 +517,6 @@ mod tests {
 
         let mut my_state = MyState(0);
         let (tx, mut sender) = mpsc::channel(32);
-
 
         bt.run(&(), &mut my_state, Duration::from_millis(1), &sender)
             .await
@@ -582,7 +589,9 @@ mod tests {
         let mut my_state = MyState(42);
         let (tx, mut sender) = mpsc::channel(32);
 
-        let result = bt.run(&(), &mut my_state, Duration::from_millis(1), &sender).await;
+        let result = bt
+            .run(&(), &mut my_state, Duration::from_millis(1), &sender)
+            .await;
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(42));
         result.is_ok();

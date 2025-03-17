@@ -20,4 +20,3 @@ pub async fn read_supply_chain() -> Result<SupplyChain> {
         relations: trade_relations,
     })
 }
-

@@ -6,7 +6,11 @@ use serde::{Deserialize, Serialize};
 use st_domain::{ActivityLevel, SupplyLevel, TradeGoodType, TradingOpportunity, WaypointSymbol};
 
 #[derive(Serialize, Deserialize, Clone, Debug, TableRow)]
-#[table(impl_vec_data_provider, sortable, classes_provider = "TailwindClassesPreset")]
+#[table(
+    impl_vec_data_provider,
+    sortable,
+    classes_provider = "TailwindClassesPreset"
+)]
 pub struct TradingOpportunityRow {
     // Purchase location info
     #[table(renderer = "WaypointSymbolCellRenderer")]
@@ -36,7 +40,6 @@ pub struct TradingOpportunityRow {
     // Sell location info
     #[table(renderer = "WaypointSymbolCellRenderer")]
     pub sell_waypoint_symbol: WaypointSymbol,
-
 
     #[table(renderer = "TradeGoodTypeCellRenderer")]
     pub sell_trade_good_type: TradeGoodType,
@@ -84,8 +87,7 @@ fn WaypointSymbolCellRenderer(
     value: Signal<WaypointSymbol>,
     row: RwSignal<TradingOpportunityRow>,
     index: usize,
-) -> impl IntoView
-{
+) -> impl IntoView {
     view! { <td class=class>{move || value.get_untracked().0}</td> }
 }
 
@@ -96,8 +98,7 @@ fn TradeGoodTypeCellRenderer(
     value: Signal<TradeGoodType>,
     row: RwSignal<TradingOpportunityRow>,
     index: usize,
-) -> impl IntoView
-{
+) -> impl IntoView {
     view! { <td class=class>{move || format!("{:?}", value.get_untracked())}</td> }
 }
 
@@ -108,16 +109,13 @@ fn SupplyLevelCellRenderer(
     value: Signal<SupplyLevel>,
     row: RwSignal<TradingOpportunityRow>,
     index: usize,
-) -> impl IntoView
-{
-    let supply_class = move || {
-        match value.get_untracked() {
-            SupplyLevel::Scarce => "text-red-600 font-bold",
-            SupplyLevel::Limited => "text-orange-500",
-            SupplyLevel::Moderate => "text-blue-500",
-            SupplyLevel::Abundant => "text-green-500",
-            _ => ""
-        }
+) -> impl IntoView {
+    let supply_class = move || match value.get_untracked() {
+        SupplyLevel::Scarce => "text-red-600 font-bold",
+        SupplyLevel::Limited => "text-orange-500",
+        SupplyLevel::Moderate => "text-blue-500",
+        SupplyLevel::Abundant => "text-green-500",
+        _ => "",
     };
 
     view! {
@@ -134,23 +132,18 @@ fn ActivityLevelCellRenderer(
     value: Signal<Option<ActivityLevel>>,
     row: RwSignal<TradingOpportunityRow>,
     index: usize,
-) -> impl IntoView
-{
-    let activity_text = move || {
-        match value.get_untracked() {
-            Some(activity) => format!("{:?}", activity),
-            None => "N/A".to_string()
-        }
+) -> impl IntoView {
+    let activity_text = move || match value.get_untracked() {
+        Some(activity) => format!("{:?}", activity),
+        None => "N/A".to_string(),
     };
 
-    let activity_class = move || {
-        match value.get_untracked() {
-            Some(ActivityLevel::Strong) => "text-green-600 font-bold",
-            Some(ActivityLevel::Growing) => "text-green-500",
-            Some(ActivityLevel::Weak) => "text-red-500",
-            Some(ActivityLevel::Restricted) => "text-red-600 font-bold",
-            _ => ""
-        }
+    let activity_class = move || match value.get_untracked() {
+        Some(ActivityLevel::Strong) => "text-green-600 font-bold",
+        Some(ActivityLevel::Growing) => "text-green-500",
+        Some(ActivityLevel::Weak) => "text-red-500",
+        Some(ActivityLevel::Restricted) => "text-red-600 font-bold",
+        _ => "",
     };
 
     view! {
@@ -167,8 +160,7 @@ fn ProfitCellRenderer(
     value: Signal<u64>,
     row: RwSignal<TradingOpportunityRow>,
     index: usize,
-) -> impl IntoView
-{
+) -> impl IntoView {
     let profit_class = move || {
         let profit = value.get_untracked();
         if profit > 10000 {
@@ -196,8 +188,7 @@ fn PriceCellRenderer(
     value: Signal<i32>,
     row: RwSignal<TradingOpportunityRow>,
     index: usize,
-) -> impl IntoView
-{
+) -> impl IntoView {
     view! { <td class=class>{move || format!("{} cr", value.get_untracked())}</td> }
 }
 
@@ -208,7 +199,6 @@ fn TradeVolumeCellRenderer(
     value: Signal<i32>,
     row: RwSignal<TradingOpportunityRow>,
     index: usize,
-) -> impl IntoView
-{
+) -> impl IntoView {
     view! { <td class=class>{move || format!("{} units", value.get_untracked())}</td> }
 }
