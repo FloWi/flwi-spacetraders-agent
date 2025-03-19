@@ -39,6 +39,8 @@ pub async fn run_agent(
     let my_agent = authenticated_client.get_agent().await?;
     dbg!(my_agent.clone());
 
+    let model_manager = DbModelManager::new(pool.clone());
+
     let headquarters_waypoint_symbol = WaypointSymbol(my_agent.data.headquarters.clone());
     let headquarters_system_symbol = headquarters_waypoint_symbol.system_symbol();
 
@@ -109,7 +111,7 @@ pub async fn run_agent(
 
     let client: Arc<dyn StClientTrait> = Arc::new(authenticated_client);
 
-    let fleets = create_or_load_fleets(&*client, &pool, &headquarters_system_symbol, &waypoint_entries_of_home_system).await?;
+    let fleets = create_or_load_fleets(Arc::clone(&client), model_manager, &headquarters_system_symbol, &waypoint_entries_of_home_system).await?;
 
     let mut my_ships: Vec<_> = ships
         .iter()
@@ -149,54 +151,55 @@ pub async fn run_agent(
     )
     .unwrap_or(Vec::new());
 
-    let mut route_debugging_list: Vec<JsonValue> = Vec::new();
+    // let mut route_debugging_list: Vec<JsonValue> = Vec::new();
 
-    exploration_route
-        .iter()
-        .tuple_windows()
-        .for_each(|(from, to)| {
-            let mut debug_info: HashMap<&str, JsonValue> = HashMap::new();
-            debug_info.insert("from", json!(from.symbol));
-            debug_info.insert("to", json!(to.symbol));
+    // exploration_route
+    //     .iter()
+    //     .tuple_windows()
+    //     .for_each(|(from, to)| {
+    //         let mut debug_info: HashMap<&str, JsonValue> = HashMap::new();
+    //         debug_info.insert("from", json!(from.symbol));
+    //         debug_info.insert("to", json!(to.symbol));
+    //
+    //         if let Some(travel_instructions) = pathfinder::compute_path(
+    //             from.symbol.clone(),
+    //             to.symbol.clone(),
+    //             waypoint_entries_of_home_system.clone(),
+    //             marketplace_entries
+    //                 .iter()
+    //                 .map(|db| db.entry.0.clone())
+    //                 .collect(),
+    //             command_ship.ship.engine.speed as u32,
+    //             command_ship.ship.fuel.current as u32,
+    //             command_ship.ship.fuel.capacity as u32,
+    //         ) {
+    //             debug_info.insert("actions", json!(&travel_instructions));
+    //
+    //             println!("Path found from {} to {}", from.symbol.0, to.symbol.0);
+    //
+    //             let (final_location, total_time) =
+    //                 travel_instructions.last().unwrap().waypoint_and_time();
+    //             assert_eq!(final_location, &to.symbol);
+    //         } else {
+    //             println!("No path found from {} to {}", from.symbol.0, to.symbol.0);
+    //         };
+    //         route_debugging_list.push(json!(debug_info));
+    //     });
+    //
+    // let stripped_down_route: Vec<SerializableCoordinate<WaypointSymbol>> = exploration_route
+    //     .clone()
+    //     .into_iter()
+    //     .map(|wp| wp.to_serializable())
+    //     .collect();
+    //
+    // let json_route = serde_json::to_string(&stripped_down_route)?;
+    // println!("Explorer Route: \n{}", json_route);
+    // println!(
+    //     "Detailed Routes with actions: \n{}",
+    //     serde_json::to_string(&route_debugging_list)?
+    // );
 
-            if let Some(travel_instructions) = pathfinder::compute_path(
-                from.symbol.clone(),
-                to.symbol.clone(),
-                waypoint_entries_of_home_system.clone(),
-                marketplace_entries
-                    .iter()
-                    .map(|db| db.entry.0.clone())
-                    .collect(),
-                command_ship.ship.engine.speed as u32,
-                command_ship.ship.fuel.current as u32,
-                command_ship.ship.fuel.capacity as u32,
-            ) {
-                debug_info.insert("actions", json!(&travel_instructions));
-
-                println!("Path found from {} to {}", from.symbol.0, to.symbol.0);
-
-                let (final_location, total_time) =
-                    travel_instructions.last().unwrap().waypoint_and_time();
-                assert_eq!(final_location, &to.symbol);
-            } else {
-                println!("No path found from {} to {}", from.symbol.0, to.symbol.0);
-            };
-            route_debugging_list.push(json!(debug_info));
-        });
-
-    let stripped_down_route: Vec<SerializableCoordinate<WaypointSymbol>> = exploration_route
-        .clone()
-        .into_iter()
-        .map(|wp| wp.to_serializable())
-        .collect();
-
-    let json_route = serde_json::to_string(&stripped_down_route)?;
-    println!("Explorer Route: \n{}", json_route);
-    println!(
-        "Detailed Routes with actions: \n{}",
-        serde_json::to_string(&route_debugging_list)?
-    );
-    command_ship.set_explore_locations(exploration_route);
+    // command_ship.set_explore_locations(exploration_route);
 
     let args = BehaviorArgs {
         blackboard: Arc::new(DbBlackboard { db: pool.clone() }),
@@ -270,16 +273,16 @@ async fn load_home_system_and_waypoints_if_necessary(
 }
 
 async fn create_or_load_fleets(
-    client: &dyn StClientTrait,
-    pool: &Pool<Postgres>,
+    client: Arc<dyn StClientTrait>,
+    model_manager: DbModelManager,
     home_system_symbol: &SystemSymbol,
     waypoints_of_home_system: &[Waypoint],
 ) -> Result<Vec<Fleet>> {
-    let ships: Vec<Ship> = load_or_collect_ships(client, &pool).await?;
+    let ships: Vec<Ship> = load_or_collect_ships(&*client, model_manager.pool()).await?;
     let db_fleets: Vec<Fleet> = Vec::new();
 
     if db_fleets.is_empty() {
-        let fleets = crate::fleet::compute_initial_fleet(ships, home_system_symbol, waypoints_of_home_system)?;
+        let fleets = crate::fleet::compute_initial_fleet(ships, home_system_symbol, waypoints_of_home_system, model_manager, Arc::clone(&client)).await?;
         // persist fleet config
         Ok(fleets)
     } else {

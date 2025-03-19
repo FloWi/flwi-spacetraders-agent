@@ -9,6 +9,7 @@ use st_domain::{
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug)]
 pub struct ShipOperations {
@@ -68,10 +69,8 @@ impl ShipOperations {
         self.current_navigation_destination = self.explore_location_queue.pop_front();
     }
 
-    pub fn set_explore_locations(&mut self, p0: Vec<Waypoint>) {
-        let mapped = p0.iter().map(|wp| wp.symbol.clone());
-        let collected = mapped.collect_vec();
-        let deque = VecDeque::from(collected);
+    pub fn set_explore_locations(&mut self, waypoint_symbols: Vec<WaypointSymbol>) {
+        let deque = VecDeque::from(waypoint_symbols);
         self.explore_location_queue = deque;
     }
 

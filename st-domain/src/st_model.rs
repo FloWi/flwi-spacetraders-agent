@@ -36,10 +36,10 @@ pub type GetShipyardResponse = Data<Shipyard>;
 #[serde(rename_all = "camelCase")]
 pub struct Shipyard {
     pub symbol: WaypointSymbol,
-    pub(crate) ship_types: Vec<ShipTypeEntry>,
-    pub(crate) transactions: Vec<ShipTransaction>,
-    pub(crate) ships: Vec<ShipyardShip>,
-    pub(crate) modifications_fee: i32,
+    pub ship_types: Vec<ShipTypeEntry>,
+    pub transactions: Vec<ShipTransaction>,
+    pub ships: Vec<ShipyardShip>,
+    pub modifications_fee: i32,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]

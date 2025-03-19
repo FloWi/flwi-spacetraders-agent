@@ -255,6 +255,12 @@ pub struct DbShipyardData {
     pub updated_at: DateTime<Utc>,
 }
 
+impl DbShipyardData {
+    pub fn has_detailed_price_information(&self) -> bool {
+        !self.entry.0.ships.is_empty()
+    }
+}
+
 #[derive(Serialize, Clone, Debug, Deserialize)]
 pub struct DbShipEntry {
     pub ship_symbol: String,

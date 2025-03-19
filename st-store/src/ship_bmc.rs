@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use sqlx::types::Json;
 use sqlx::{Pool, Postgres};
-use st_domain::{Ship, StStatusResponse};
+use st_domain::{Ship, ShipSymbol, StStatusResponse};
 
 pub struct ShipBmc;
 
@@ -35,5 +35,24 @@ select ship_symbol
         let ships = ship_entries.into_iter().map(|se| se.entry.0).collect_vec();
 
         Ok(ships)
+    }
+
+    pub async fn get_ship(ctx: &Ctx, mm: &DbModelManager, ship_symbol: ShipSymbol) -> Result<Ship> {
+        let ship_entry: DbShipEntry = sqlx::query_as!(
+            DbShipEntry,
+            r#"
+select ship_symbol
+     , entry as "entry: Json<Ship>"
+     , created_at
+     , updated_at
+  from ships
+ where ships.ship_symbol = $1
+        "#,
+            ship_symbol.0
+        )
+        .fetch_one(mm.pool())
+        .await?;
+
+        Ok(ship_entry.entry.0)
     }
 }
