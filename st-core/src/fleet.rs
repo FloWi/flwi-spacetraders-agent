@@ -72,9 +72,58 @@ impl SystemSpawningFleet {
                     Receiver<ActionEvent>,
                 ) = mpsc::channel::<ActionEvent>(32);
 
+                // Spawn a separate task to process the action completion events
+                // Then in your task:
+                tokio::spawn(async move {
+                    while let Some(event) = ship_action_completed_rx.recv().await {
+                        match event {
+                            // Use the actual variant names from your enum definition
+                            ActionEvent::ShipActionCompleted(result) => {
+                                match result {
+                                    Ok(action) => {
+                                        log!(
+                            Level::Info,
+                            "ShipAction completed successfully: {}",
+                            action
+                        );
+                                    }
+                                    Err(e) => {
+                                        log!(
+                            Level::Warn,
+                            "ShipAction failed: {}",
+                            e
+                        );
+                                    }
+                                }
+                            }
+                            ActionEvent::BehaviorCompleted(result) => {
+                                match result {
+                                    Ok(behavior) => {
+                                        log!(
+                            Level::Info,
+                            "Behavior completed successfully: {}",
+                            behavior
+                        );
+                                    }
+                                    Err(e) => {
+                                        log!(
+                            Level::Warn,
+                            "Behavior failed: {}",
+                            e
+                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    log!(
+        Level::Info,
+        "ship_action_completed_rx closed, stopping event logging"
+    );
+                });;
 
                 let _ = tokio::spawn(ship_loop(command_ship, args, ship_updated_tx, ship_action_completed_tx));
-
             }
             maybe_task => {
                 log!(Level::Warn, "Not implemented yet. {maybe_task:?}");
@@ -84,7 +133,6 @@ impl SystemSpawningFleet {
         Ok(())
     }
 }
-
 impl SystemSpawningFleet {
 
     pub async fn compute_initial_exploration_ship_task(
