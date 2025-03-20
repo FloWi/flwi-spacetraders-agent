@@ -1,15 +1,12 @@
-use crate::tailwind::TailwindClassesPreset;
 use crate::trading_opportunity_table::TradingOpportunityRow;
 use itertools::Itertools;
-use leptos::attr::rows;
 use leptos::prelude::*;
 use leptos_meta::Title;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    find_complete_supply_chain, trade_map, ActivityLevel, GetConstructionResponse, MarketTradeGood,
-    MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, SupplyLevel, TradeGoodSymbol,
-    TradeGoodType, TradingOpportunity, WaypointSymbol,
+    find_complete_supply_chain, trade_map, GetConstructionResponse, MarketTradeGood,
+    MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol,
 };
 
 // Server function uses conversion
@@ -200,10 +197,8 @@ fn render_mermaid_chains(
 ) -> impl IntoView {
     let trade_map = trade_map(&supply_chain);
 
-    let complete_chain = find_complete_supply_chain(
-        goods_of_interest.into_iter().cloned().collect_vec(),
-        &trade_map,
-    );
+    let complete_chain =
+        find_complete_supply_chain(goods_of_interest.iter().cloned().collect_vec(), &trade_map);
 
     view! {
         <div class="flex flex-col gap-4">
@@ -216,7 +211,7 @@ fn render_mermaid_chains(
                 }
             }
             {goods_of_interest
-                .into_iter()
+                .iter()
                 .cloned()
                 .map(|trade_good| {
                     let chain = find_complete_supply_chain(

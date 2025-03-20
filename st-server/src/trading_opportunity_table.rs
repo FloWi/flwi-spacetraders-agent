@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos::prelude::{Get, RwSignal, Signal};
+use leptos::prelude::{RwSignal, Signal};
 use leptos::{component, IntoView};
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
