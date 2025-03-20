@@ -1,3 +1,4 @@
+use std::any::Any;
 use crate::ship::ShipOperations;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -11,6 +12,8 @@ use strum_macros::Display;
 use tokio::sync::mpsc::Sender;
 use tokio::time::sleep;
 use tracing::{event, Level};
+use st_domain::ShipTaskMessage;
+use crate::behavior_tree::ship_behaviors::ShipAction;
 // inspired by @chamlis design from spacetraders discord
 
 #[derive(Debug, Clone, Serialize, Eq, PartialEq)]
@@ -251,43 +254,6 @@ impl<A: Display + Hash> Behavior<A> {
     }
 }
 
-// Detailed display with nesting
-// impl<A: Display> Display for Behavior<A> {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             Behavior::Action(a) => write!(f, "Behaviornew_action({})", a),
-//             Behavior::Invert(b) => write!(f, "Invert({})", b),
-//             Behavior::Select(behaviors) => {
-//                 write!(f, "Select(")?;
-//                 for (i, behavior) in behaviors.iter().enumerate() {
-//                     if i > 0 {
-//                         write!(f, ", ")?;
-//                     }
-//                     write!(f, "{}", behavior)?;
-//                 }
-//                 write!(f, ")")
-//             }
-//             Behavior::Sequence(behaviors) => {
-//                 write!(f, "Sequence(")?;
-//                 for (i, behavior) in behaviors.iter().enumerate() {
-//                     if i > 0 {
-//                         write!(f, ", ")?;
-//                     }
-//                     write!(f, "{}", behavior)?;
-//                 }
-//                 write!(f, ")")
-//             }
-//             Behavior::While { condition, action } => {
-//                 write!(
-//                     f,
-//                     "While {{ condition: {}, action: {} }}",
-//                     condition, action
-//                 )
-//             }
-//         }
-//     }
-// }
-
 impl<A: Display> Display for Behavior<A> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -308,6 +274,13 @@ pub enum Response {
     Running,
 }
 
+// Create a common message enum that both ShipAction and Behavior<ShipAction> can use
+#[derive(Debug)]
+pub enum ActionEvent {
+    ShipActionCompleted(Result<ShipAction, anyhow::Error>),
+    BehaviorCompleted(Result<Behavior<ShipAction>, anyhow::Error>),
+}
+
 #[async_trait]
 pub trait Actionable: Serialize + Clone + Send + Sync {
     type ActionError: From<anyhow::Error> + Send + Sync + Display;
@@ -320,13 +293,15 @@ pub trait Actionable: Serialize + Clone + Send + Sync {
         state: &mut Self::ActionState,
         duration: Duration,
         state_changed_tx: &Sender<Self::ActionState>,
+        // Use Option to allow ignoring the sender when needed
+        action_completed_tx: &Sender<ActionEvent>,
     ) -> Result<Response, Self::ActionError>;
 }
 
 #[async_trait]
 impl<A> Actionable for Behavior<A>
 where
-    A: Actionable + Serialize + Display + Hash + PartialEq,
+    A: Actionable + Serialize + Display + Hash + PartialEq + 'static,
 {
     type ActionError = <A as Actionable>::ActionError;
     type ActionArgs = <A as Actionable>::ActionArgs;
@@ -338,6 +313,7 @@ where
         state: &mut Self::ActionState,
         sleep_duration: Duration,
         state_changed_tx: &Sender<Self::ActionState>,
+        action_completed_tx: &Sender<ActionEvent>,
     ) -> Result<Response, Self::ActionError> {
         let hash = self.calculate_hash();
 
@@ -350,9 +326,9 @@ where
         );
 
         let result = match self {
-            Behavior::Action(a, _) => a.run(args, state, sleep_duration, &state_changed_tx).await,
+            Behavior::Action(a, _) => a.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await,
             Behavior::Invert(b, _) => {
-                let result = b.run(args, state, sleep_duration, state_changed_tx).await;
+                let result = b.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await;
                 match result {
                     Ok(r) => match r {
                         Response::Success => Err(Self::ActionError::from(anyhow!("Inverted Ok"))),
@@ -363,7 +339,7 @@ where
             }
             Behavior::Select(behaviors, _) => {
                 for b in behaviors {
-                    let result = b.run(args, state, sleep_duration, &state_changed_tx).await;
+                    let result = b.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await;
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(r) => return Ok(r),
@@ -376,7 +352,7 @@ where
             // Behavior::While { .. } => {}
             Behavior::Sequence(behaviors, _) => {
                 for b in behaviors {
-                    let result = b.run(args, state, sleep_duration, &state_changed_tx).await;
+                    let result = b.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await;
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(_) => continue,
@@ -391,14 +367,14 @@ where
                 condition, action, ..
             } => loop {
                 let condition_result = condition
-                    .run(args, state, sleep_duration, &state_changed_tx)
+                    .run(args, state, sleep_duration, &state_changed_tx, action_completed_tx)
                     .await;
 
                 match condition_result {
                     Err(_) => return Ok(Response::Success),
                     Ok(_) => {
                         let action_result = action
-                            .run(args, state, sleep_duration, state_changed_tx)
+                            .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
                             .await;
                         match action_result {
                             Err(err) => {
@@ -453,7 +429,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Actionable, Behavior, Response};
+    use super::{ActionEvent, Actionable, Behavior, Response};
     use crate::behavior_tree::behavior_tree::Response::Running;
     use anyhow::anyhow;
     use async_trait::async_trait;
@@ -483,6 +459,7 @@ mod tests {
             state: &mut Self::ActionState,
             duration: Duration,
             state_changed_tx: &Sender<Self::ActionState>,
+            action_completed_tx: &Sender<ActionEvent>,
         ) -> Result<Response, Self::ActionError> {
             match self {
                 MyAction::Increase => {
@@ -517,8 +494,9 @@ mod tests {
 
         let mut my_state = MyState(0);
         let (tx, mut sender) = mpsc::channel(32);
+        let (tx2, mut sender2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender)
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2)
             .await
             .unwrap();
         println!("{:?}", my_state);
@@ -534,8 +512,9 @@ mod tests {
 
         let mut my_state = MyState(0);
         let (tx, mut sender) = mpsc::channel(32);
+        let (tx2, mut sender2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender)
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2)
             .await
             .unwrap();
         println!("{:?}", my_state);
@@ -552,9 +531,11 @@ mod tests {
 
         let mut my_state = MyState(0);
         let (tx, mut sender) = mpsc::channel(32);
+        let (tx2, mut sender2) = mpsc::channel(32);
+
 
         let result = bt
-            .run(&(), &mut my_state, Duration::from_millis(1), &sender)
+            .run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2)
             .await
             .unwrap();
         println!("{:?}", my_state);
@@ -571,8 +552,9 @@ mod tests {
 
         let mut my_state = MyState(0);
         let (tx, mut sender) = mpsc::channel(32);
+        let (tx2, mut sender2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender)
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2)
             .await
             .unwrap();
         println!("{:?}", my_state);
@@ -588,9 +570,10 @@ mod tests {
 
         let mut my_state = MyState(42);
         let (tx, mut sender) = mpsc::channel(32);
+        let (tx2, mut sender2) = mpsc::channel(32);
 
         let result = bt
-            .run(&(), &mut my_state, Duration::from_millis(1), &sender)
+            .run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2)
             .await;
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(42));

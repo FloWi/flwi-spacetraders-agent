@@ -1,5 +1,9 @@
 use crate::behavior_tree::behavior_tree::Actionable;
-use st_store::{db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, select_waypoints_of_system, upsert_systems_from_receiver, upsert_waypoints_from_receiver, DbModelManager, DbSystemCoordinateData, DbWaypointEntry};
+use st_store::{
+    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system,
+    select_waypoints_of_system, upsert_systems_from_receiver, upsert_waypoints_from_receiver,
+    DbModelManager, DbSystemCoordinateData, DbWaypointEntry,
+};
 
 use anyhow::Result;
 use chrono::{Local, Utc};
@@ -20,15 +24,22 @@ use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
 use crate::configuration::AgentConfiguration;
 use crate::exploration::exploration::generate_exploration_route;
+use crate::fleet::Fleet;
+use crate::fleet_admiral::FleetAdmiral;
 use crate::format_time_delta_hh_mm_ss;
-use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_marketplaces_to_collect_remotely, find_shipyards_to_collect_remotely};
+use crate::marketplaces::marketplaces::{
+    find_marketplaces_for_exploration, find_marketplaces_to_collect_remotely,
+    find_shipyards_to_collect_remotely,
+};
 use crate::pagination::{fetch_all_pages, fetch_all_pages_into_queue, PaginationInput};
 use crate::pathfinder::pathfinder;
 use crate::reqwest_helpers::create_client;
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
-use st_domain::{FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship, ShipSymbol, StStatusResponse, SystemSymbol, Waypoint, WaypointSymbol, WaypointType};
-use crate::fleet::Fleet;
+use st_domain::{
+    FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship,
+    ShipSymbol, StStatusResponse, SystemSymbol, Waypoint, WaypointSymbol, WaypointType,
+};
 
 pub async fn run_agent(
     cfg: AgentConfiguration,
@@ -46,8 +57,7 @@ pub async fn run_agent(
 
     let now = Local::now().to_utc();
 
-    let ships = collect_all_ships(&authenticated_client).await?;
-    let _ = db::upsert_ships(&pool, &ships, now).await?;
+    //let _ = db::upsert_ships(&pool, &ships, now).await?;
 
     load_home_system_and_waypoints_if_necessary(
         &authenticated_client,
@@ -102,28 +112,9 @@ pub async fn run_agent(
     )
     .await?;
 
-    let _ = collect_shipyards(
-        &authenticated_client,
-        &shipyards_to_collect_remotely,
-        &pool,
-    )
-    .await?;
+    let _ = collect_shipyards(&authenticated_client, &shipyards_to_collect_remotely, &pool).await?;
 
     let client: Arc<dyn StClientTrait> = Arc::new(authenticated_client);
-
-    let fleets = create_or_load_fleets(Arc::clone(&client), model_manager, &headquarters_system_symbol, &waypoint_entries_of_home_system).await?;
-
-    let mut my_ships: Vec<_> = ships
-        .iter()
-        .map(|s| ShipOperations::new(s.clone(), Arc::clone(&client)))
-        .collect();
-
-    let command_ship_name = ShipSymbol(cfg.spacetraders_agent_symbol + "-1");
-
-    let marketplace_entries =
-        select_latest_marketplace_entry_of_system(&pool, &headquarters_system_symbol).await?;
-
-    let marketplaces_to_explore = find_marketplaces_for_exploration(marketplace_entries.clone());
 
     let jump_gate_wp_of_home_system = waypoint_entries_of_home_system
         .iter()
@@ -136,79 +127,28 @@ pub async fn run_agent(
 
     let _ = db::upsert_construction_site(&pool, construction_site, now).await?;
 
-    let command_ship_index = my_ships
-        .iter()
-        .position(|s| s.symbol == command_ship_name)
-        .unwrap();
-
-    let mut command_ship = my_ships.remove(command_ship_index);
-    let current_location = command_ship.nav.waypoint_symbol.clone();
-
-    let exploration_route = generate_exploration_route(
-        &marketplaces_to_explore,
-        &waypoint_entries_of_home_system,
-        &current_location,
-    )
-    .unwrap_or(Vec::new());
-
-    // let mut route_debugging_list: Vec<JsonValue> = Vec::new();
-
-    // exploration_route
-    //     .iter()
-    //     .tuple_windows()
-    //     .for_each(|(from, to)| {
-    //         let mut debug_info: HashMap<&str, JsonValue> = HashMap::new();
-    //         debug_info.insert("from", json!(from.symbol));
-    //         debug_info.insert("to", json!(to.symbol));
-    //
-    //         if let Some(travel_instructions) = pathfinder::compute_path(
-    //             from.symbol.clone(),
-    //             to.symbol.clone(),
-    //             waypoint_entries_of_home_system.clone(),
-    //             marketplace_entries
-    //                 .iter()
-    //                 .map(|db| db.entry.0.clone())
-    //                 .collect(),
-    //             command_ship.ship.engine.speed as u32,
-    //             command_ship.ship.fuel.current as u32,
-    //             command_ship.ship.fuel.capacity as u32,
-    //         ) {
-    //             debug_info.insert("actions", json!(&travel_instructions));
-    //
-    //             println!("Path found from {} to {}", from.symbol.0, to.symbol.0);
-    //
-    //             let (final_location, total_time) =
-    //                 travel_instructions.last().unwrap().waypoint_and_time();
-    //             assert_eq!(final_location, &to.symbol);
-    //         } else {
-    //             println!("No path found from {} to {}", from.symbol.0, to.symbol.0);
-    //         };
-    //         route_debugging_list.push(json!(debug_info));
-    //     });
-    //
-    // let stripped_down_route: Vec<SerializableCoordinate<WaypointSymbol>> = exploration_route
-    //     .clone()
-    //     .into_iter()
-    //     .map(|wp| wp.to_serializable())
-    //     .collect();
-    //
-    // let json_route = serde_json::to_string(&stripped_down_route)?;
-    // println!("Explorer Route: \n{}", json_route);
-    // println!(
-    //     "Detailed Routes with actions: \n{}",
-    //     serde_json::to_string(&route_debugging_list)?
-    // );
-
-    // command_ship.set_explore_locations(exploration_route);
-
-    let args = BehaviorArgs {
-        blackboard: Arc::new(DbBlackboard { db: pool.clone() }),
-    };
-
     let (ship_updated_tx, mut ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) =
         mpsc::channel::<ShipOperations>(32);
 
-    let _ = tokio::spawn(ship_loop(command_ship, args, ship_updated_tx));
+    // everything has to be cloned to give ownership to the spawned task
+    let _ = tokio::spawn({
+        let client_clone = client.clone();
+        let hq_system_clone = headquarters_system_symbol.clone();
+        let waypoint_entries_of_home_system_clone = waypoint_entries_of_home_system.clone();
+        let ship_updated_tx_clone = ship_updated_tx.clone();
+
+        async move {
+            if let Err(e) = FleetAdmiral::start_fleets(
+                Arc::clone(&client_clone),
+                model_manager,
+                &hq_system_clone,
+                &waypoint_entries_of_home_system_clone,
+                ship_updated_tx_clone,
+            ).await {
+                eprintln!("Error on FleetAdmiral::start_fleets: {}", e);
+            }
+        }
+    });
 
     // everything has to be cloned to give ownership to the spawned task
     let _ = tokio::spawn({
@@ -223,7 +163,9 @@ pub async fn run_agent(
                 &*client_clone,
                 &pool_clone,
                 &hq_system_clone,
-            ).await {
+            )
+            .await
+            {
                 eprintln!("Error loading systems: {}", e);
             }
         }
@@ -270,41 +212,6 @@ async fn load_home_system_and_waypoints_if_necessary(
             collect_waypoints_of_system(client, pool, headquarters_system_symbol.clone()).await?;
     }
     Ok(())
-}
-
-async fn create_or_load_fleets(
-    client: Arc<dyn StClientTrait>,
-    model_manager: DbModelManager,
-    home_system_symbol: &SystemSymbol,
-    waypoints_of_home_system: &[Waypoint],
-) -> Result<Vec<Fleet>> {
-    let ships: Vec<Ship> = load_or_collect_ships(&*client, model_manager.pool()).await?;
-    let db_fleets: Vec<Fleet> = Vec::new();
-
-    if db_fleets.is_empty() {
-        let fleets = crate::fleet::compute_initial_fleet(ships, home_system_symbol, waypoints_of_home_system, model_manager, Arc::clone(&client)).await?;
-        // persist fleet config
-        Ok(fleets)
-    } else {
-        Ok(db_fleets)
-    }
-
-}
-
-
-async fn load_or_collect_ships(
-    client: &dyn StClientTrait,
-    pool: &Pool<Postgres>,
-) -> Result<Vec<Ship>> {
-    let ships_from_db: Vec<Ship> = db::select_ships(&pool).await?;
-
-    if ships_from_db.is_empty() {
-        let ships = collect_all_ships(client).await?;
-        Ok(ships)
-    } else {
-        Ok(ships_from_db)
-    }
-
 }
 
 async fn load_systems_and_waypoints_if_necessary(
@@ -390,56 +297,6 @@ pub async fn listen_to_ship_changes_and_persist(
 
         old_ship_state = Some(updated_ship.clone());
     }
-
-    Ok(())
-}
-
-pub async fn ship_loop(
-    mut ship: ShipOperations,
-    args: BehaviorArgs,
-    ship_updated_tx: Sender<ShipOperations>,
-) -> Result<()> {
-    let behaviors = ship_navigation_behaviors();
-    let ship_behavior = behaviors.explorer_behavior;
-
-    println!(
-        "Running behavior tree. \n<mermaid>\n{}\n</mermaid>",
-        ship_behavior.to_mermaid()
-    );
-
-    let mut tick: usize = 0;
-    let span = span!(
-        Level::INFO,
-        "ship_loop",
-        tick,
-        ship = format!("{}", ship.symbol.0),
-    );
-    tick += 1;
-
-    let _enter = span.enter();
-
-    let result = ship_behavior
-        .run(&args, &mut ship, Duration::from_secs(1), &ship_updated_tx)
-        .await;
-
-    match &result {
-        Ok(o) => {
-            event!(
-                name: "Ship Tick done ",
-                Level::INFO,
-                result = %o,
-            );
-        }
-        Err(e) => {
-            event!(
-                name: "Ship Tick done with Error",
-                Level::INFO,
-                result = %e,
-            );
-        }
-    }
-
-    event!(Level::INFO, "Ship Loop done",);
 
     Ok(())
 }
@@ -564,10 +421,4 @@ async fn collect_waypoints_of_system(
 
     tokio::try_join!(producer, upsert_waypoints_from_receiver(pool, rx))?;
     Ok(())
-}
-
-async fn collect_all_ships(client: &dyn StClientTrait) -> Result<Vec<Ship>> {
-    let ships: Vec<Ship> = fetch_all_pages(|p| client.list_ships(p)).await?;
-
-    Ok(ships)
 }

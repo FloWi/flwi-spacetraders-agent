@@ -16,6 +16,7 @@ pub mod exploration;
 pub mod marketplaces;
 pub mod pathfinder;
 mod fleet;
+mod fleet_admiral;
 
 pub use app_state::*;
 

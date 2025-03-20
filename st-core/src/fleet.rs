@@ -4,37 +4,29 @@ use crate::marketplaces::marketplaces::{
 };
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Error, Result};
 use itertools::Itertools;
 use log::{log, Level};
 use serde::{Deserialize, Serialize};
-use st_domain::{
-    Ship, ShipRegistrationRole, ShipSymbol, ShipType, SystemSymbol, TradeGoodSymbol, Waypoint,
-    WaypointSymbol, WaypointTraitSymbol,
-};
+use st_domain::{FleetUpdateMessage, Ship, ShipRegistrationRole, ShipRole, ShipSymbol, ShipTaskMessage, ShipType, SystemSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol, WaypointTraitSymbol};
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, Ctx,
     DbModelManager, DbWaypointEntry, MarketBmc, ShipBmc, SystemBmc,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use crate::agent::ship_loop;
+use tracing::{event, span};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use std::time::Duration;
 use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
+use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
+use crate::behavior_tree::ship_behaviors::{ship_navigation_behaviors, Behaviors, ShipAction};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FleetId(u32);
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum ShipRole {
-    MarketObserver,
-    ShipPurchaser,
-    Miner,
-    MiningHauler,
-    Trader,
-}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SystemSpawningFleet {
@@ -45,12 +37,18 @@ pub struct SystemSpawningFleet {
     spawn_ship_symbol: ShipSymbol,
     #[serde(skip)]
     ship_operations: HashMap<ShipSymbol, ShipOperations>,
+    completed_exploration_tasks: HashSet<WaypointSymbol>,
     budget: u64,
 }
 
 impl SystemSpawningFleet {
-    pub async fn run_fleet(&mut self, mm: &DbModelManager) -> Result<()> {
-        let task = Self::compute_initial_exploration_ship_task(&self, &mm).await?;
+    pub async fn run(&mut self, db_model_manager: DbModelManager, ship_updated_tx: Sender<ShipOperations>, fleet_updated_tx: Sender<FleetUpdateMessage>) -> Result<()> {
+        log!(
+            Level::Info,
+            "Running SystemSpawningFleet",
+        );
+
+        let task = Self::compute_initial_exploration_ship_task(&self, &db_model_manager).await?;
 
         log!(
             Level::Info,
@@ -66,13 +64,16 @@ impl SystemSpawningFleet {
                 command_ship.set_explore_locations(waypoint_symbols);
 
                 let args = BehaviorArgs {
-                    blackboard: Arc::new(DbBlackboard { db: mm.pool().clone() }),
+                    blackboard: Arc::new(DbBlackboard { model_manager: db_model_manager }),
                 };
 
-                let (ship_updated_tx, mut ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) =
-                    mpsc::channel::<ShipOperations>(32);
+                let (ship_action_completed_tx, mut ship_action_completed_rx): (
+                    Sender<ActionEvent>,
+                    Receiver<ActionEvent>,
+                ) = mpsc::channel::<ActionEvent>(32);
 
-                let _ = tokio::spawn(ship_loop(command_ship, args, ship_updated_tx));
+
+                let _ = tokio::spawn(ship_loop(command_ship, args, ship_updated_tx, ship_action_completed_tx));
 
             }
             maybe_task => {
@@ -80,9 +81,11 @@ impl SystemSpawningFleet {
             }
         }
 
-
         Ok(())
     }
+}
+
+impl SystemSpawningFleet {
 
     pub async fn compute_initial_exploration_ship_task(
         &self,
@@ -194,6 +197,16 @@ pub struct MarketObservationFleet {
     budget: u64,
 }
 
+impl MarketObservationFleet {
+    pub async fn run(&self) -> Result<()> {
+        log!(
+            Level::Info,
+            "Running MarketObservationFleet",
+        );
+        Ok(())
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MiningFleet {
     id: FleetId,
@@ -206,10 +219,20 @@ pub struct MiningFleet {
     budget: u64,
 }
 
+impl MiningFleet {
+    pub async fn run(&self) -> Result<()> {
+        log!(
+            Level::Info,
+            "Running MiningFleet",
+        );
+        Ok(())
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Fleet {
-    MarketObservation(MarketObservationFleet),
     SystemSpawning(SystemSpawningFleet),
+    MarketObservation(MarketObservationFleet),
     Mining(MiningFleet),
 }
 
@@ -249,7 +272,6 @@ pub(crate) async fn compute_initial_fleet(
     ships: Vec<Ship>,
     home_system_symbol: &SystemSymbol,
     waypoints_of_home_system: &[Waypoint],
-    model_manager: DbModelManager,
     client: Arc<dyn StClientTrait>,
 ) -> Result<Vec<Fleet>> {
     assert_eq!(ships.len(), 2, "Expecting two ships to start");
@@ -320,6 +342,7 @@ pub(crate) async fn compute_initial_fleet(
 
         spawn_ship_symbol: command_ship.symbol.clone(),
         ship_operations: HashMap::from([(command_ship.symbol.clone(), command_ship_op)]),
+        completed_exploration_tasks: HashSet::new(),
         budget: 0,
     };
 
@@ -354,5 +377,59 @@ pub(crate) async fn compute_initial_fleet(
         serde_json::to_string_pretty(&fleets)?
     );
 
-    Ok(Vec::new())
+    Ok(fleets)
+}
+
+pub async fn ship_loop(
+    mut ship: ShipOperations,
+    args: BehaviorArgs,
+    ship_updated_tx: Sender<ShipOperations>,
+    ship_action_completed_tx: Sender<ActionEvent>,
+) -> Result<()> {
+    use tracing::Level;
+
+    let behaviors = ship_navigation_behaviors();
+    let ship_behavior: Behavior<ShipAction> = behaviors.explorer_behavior;
+
+
+    println!(
+        "Running behavior tree. \n<mermaid>\n{}\n</mermaid>",
+        ship_behavior.to_mermaid()
+    );
+
+    let mut tick: usize = 0;
+    let span = span!(
+        Level::INFO,
+        "ship_loop",
+        tick,
+        ship = format!("{}", ship.symbol.0),
+    );
+    tick += 1;
+
+    let _enter = span.enter();
+
+    let result: std::result::Result<Response, Error> = ship_behavior
+        .run(&args, &mut ship, Duration::from_secs(1), &ship_updated_tx.clone(), &ship_action_completed_tx.clone())
+        .await;
+
+    match &result {
+        Ok(o) => {
+            event!(
+                name: "Ship Tick done ",
+                Level::INFO,
+                result = %o,
+            );
+        }
+        Err(e) => {
+            event!(
+                name: "Ship Tick done with Error",
+                Level::INFO,
+                result = %e,
+            );
+        }
+    }
+
+    event!(Level::INFO, "Ship Loop done",);
+
+    Ok(())
 }

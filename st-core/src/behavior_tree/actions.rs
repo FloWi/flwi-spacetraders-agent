@@ -1,13 +1,14 @@
 use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps, ExplorationTask};
 use crate::behavior_tree::behavior_tree::Response::Success;
-use crate::behavior_tree::behavior_tree::{Actionable, Response};
+use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
-use anyhow::anyhow;
+use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use chrono::{DateTime, Local, Utc};
 use core::time::Duration;
+use std::thread::AccessError;
 use st_domain::{Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType};
 use tokio::sync::mpsc::Sender;
 
@@ -23,8 +24,9 @@ impl Actionable for ShipAction {
         state: &mut Self::ActionState,
         _: Duration,
         state_changed_tx: &Sender<Self::ActionState>,
+        action_completed_tx: &Sender<ActionEvent>,
     ) -> Result<Response, Self::ActionError> {
-        match self {
+        let result = match self {
             ShipAction::HasTravelActionEntry => {
                 let no_action_left = state.travel_action_queue.is_empty();
                 if no_action_left {
@@ -380,7 +382,18 @@ impl Actionable for ShipAction {
                 }
                 Ok(Success)
             }
-        }
+        };
+
+        match result {
+            Ok(_res) => {
+                action_completed_tx.send(ActionEvent::ShipActionCompleted(Ok(self.clone()))).await?;
+            }
+            Err(err) => {
+                action_completed_tx.send(anyhow::bail!("Action failed {}", err)).await?;
+            }
+        };
+
+        result
     }
 }
 

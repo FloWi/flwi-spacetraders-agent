@@ -7,10 +7,7 @@ use sqlx::{Pool, Postgres};
 use st_domain::{
     JumpGate, MarketData, Shipyard, Waypoint, WaypointSymbol, WaypointTraitSymbol, WaypointType,
 };
-use st_store::{
-    insert_jump_gates, insert_market_data, insert_shipyards,
-    select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints,
-};
+use st_store::{insert_jump_gates, insert_market_data, insert_shipyards, select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints, DbModelManager};
 use std::sync::Arc;
 use strum_macros::Display;
 
@@ -41,7 +38,7 @@ pub struct BehaviorArgs {
 
 #[derive(Debug, Clone)]
 pub struct DbBlackboard {
-    pub db: Pool<Postgres>,
+    pub model_manager: DbModelManager,
 }
 
 // Implement Deref for BehaviorArgs to allow transparent access to BlackboardOps methods
@@ -70,12 +67,12 @@ impl BlackboardOps for DbBlackboard {
         );
 
         let waypoints_of_system: Vec<Waypoint> =
-            select_waypoints_of_system(&self.db, &from.system_symbol())
+            select_waypoints_of_system(&self.model_manager.pool(), &from.system_symbol())
                 .await?
                 ;
 
         let market_entries_of_system: Vec<MarketData> =
-            select_latest_marketplace_entry_of_system(&self.db, &from.system_symbol())
+            select_latest_marketplace_entry_of_system(&self.model_manager.pool(), &from.system_symbol())
                 .await?
                 .into_iter()
                 .map(|db_wp| db_wp.entry.0.clone())
@@ -99,7 +96,7 @@ impl BlackboardOps for DbBlackboard {
         current_location: WaypointSymbol,
     ) -> Result<Vec<ExplorationTask>> {
         let waypoints =
-            select_waypoints_of_system(&self.db, &current_location.system_symbol()).await?;
+            select_waypoints_of_system(&self.model_manager.pool(), &current_location.system_symbol()).await?;
 
         //let maybe_jump_gate: Option<DbJumpGateData> = db::select_jump_gate(&self.db, &current_location).await?;
 
@@ -144,19 +141,19 @@ impl BlackboardOps for DbBlackboard {
     }
     async fn insert_waypoint(&self, waypoint: &Waypoint) -> Result<()> {
         let now = Local::now().to_utc();
-        upsert_waypoints(&self.db, vec![waypoint.clone()], now).await
+        upsert_waypoints(&self.model_manager.pool(), vec![waypoint.clone()], now).await
     }
     async fn insert_market(&self, market_data: MarketData) -> Result<()> {
         let now = Local::now().to_utc();
-        insert_market_data(&self.db, vec![market_data], now).await
+        insert_market_data(&self.model_manager.pool(), vec![market_data], now).await
     }
     async fn insert_jump_gate(&self, jump_gate: JumpGate) -> Result<()> {
         let now = Local::now().to_utc();
-        insert_jump_gates(&self.db, vec![jump_gate], now).await
+        insert_jump_gates(&self.model_manager.pool(), vec![jump_gate], now).await
     }
     async fn insert_shipyard(&self, shipyard: Shipyard) -> Result<()> {
         let now = Local::now().to_utc();
-        insert_shipyards(&self.db, vec![shipyard], now).await
+        insert_shipyards(&self.model_manager.pool(), vec![shipyard], now).await
     }
 }
 
