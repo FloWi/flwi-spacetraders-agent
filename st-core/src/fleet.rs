@@ -69,7 +69,27 @@ impl SystemSpawningFleet {
                     let command_ship_symbol = &fleet_guard.spawn_ship_symbol.clone();
                     let mut command_ship = fleet_guard.ship_operations.get_mut(command_ship_symbol).unwrap().clone();
 
-                    command_ship.set_explore_locations(waypoint_symbols);
+                    command_ship.set_explore_locations(waypoint_symbols.clone());
+
+                    //some waypoints might have already been explored. We put them in the HashSet for bookkeeping.
+                    let already_explored_shipyards = fleet_guard
+                        .shipyard_waypoints_of_interest
+                        .iter()
+                        .cloned()
+                        .filter(|wp_of_interest| waypoint_symbols.contains(&wp_of_interest).not())
+                        .collect_vec();
+
+                    let already_explored_marketplaces = fleet_guard
+                        .marketplace_waypoints_of_interest
+                        .iter()
+                        .cloned()
+                        .filter(|wp_of_interest| waypoint_symbols.contains(&wp_of_interest).not())
+                        .collect_vec();
+
+                    //mark them as completed
+                    for already_explored_wp in already_explored_marketplaces.into_iter().chain(already_explored_shipyards.into_iter()) {
+                        fleet_guard.completed_exploration_tasks.insert(already_explored_wp.clone());
+                    }
 
                     // Create channels
                     let (ship_action_completed_tx, ship_action_completed_rx) = mpsc::channel(32);
