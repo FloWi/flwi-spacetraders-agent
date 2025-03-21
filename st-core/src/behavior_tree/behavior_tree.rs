@@ -234,7 +234,7 @@ pub enum Response {
 // Create a common message enum that both ShipAction and Behavior<ShipAction> can use
 #[derive(Debug)]
 pub enum ActionEvent {
-    ShipActionCompleted(Result<ShipAction, anyhow::Error>),
+    ShipActionCompleted(Result<(ShipOperations, ShipAction), anyhow::Error>),
     BehaviorCompleted(Result<Behavior<ShipAction>, anyhow::Error>),
 }
 
@@ -334,7 +334,7 @@ where
         match &result {
             Ok(o) => {
                 event!(
-                    Level::INFO,
+                    Level::DEBUG,
                     message = format!(
                         "Finished action - trying to send msg to state_changed_tx. Capacity: {}",
                         state_changed_tx.capacity()
@@ -344,7 +344,7 @@ where
                 state_changed_tx.send(state.clone()).await.expect("send");
 
                 event!(
-                    Level::INFO,
+                    Level::DEBUG,
                     message = "Finished action and msg sent.",
                     index = self.index(),
                     actionable = actionable_label,
@@ -353,7 +353,7 @@ where
             }
             Err(e) => {
                 event!(
-                    Level::INFO,
+                    Level::WARN,
                     message = "Finished action with Error",
                     index = self.index(),
                     actionable = actionable_label,

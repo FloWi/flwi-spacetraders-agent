@@ -80,7 +80,7 @@ impl SystemSpawningFleet {
                 // Pass a clone of the fleet Arc for the task
                 let fleet_for_listener = Arc::clone(&fleet);
                 tokio::spawn(async move {
-                    Self::listen_to_ship_action_messages(ship_action_completed_rx, fleet_for_listener).await;
+                    Self::consume_ship_action_messages(ship_action_completed_rx, fleet_for_listener).await;
                 });
 
                 let args = BehaviorArgs {
@@ -99,31 +99,35 @@ impl SystemSpawningFleet {
         Ok(())
     }
 
-    async fn listen_to_ship_action_messages(mut ship_action_completed_rx: Receiver<ActionEvent>, fleet: Arc<Mutex<SystemSpawningFleet>>) {
+    async fn consume_ship_action_messages(mut ship_action_completed_rx: Receiver<ActionEvent>, fleet: Arc<Mutex<SystemSpawningFleet>>) {
         while let Some(event) = ship_action_completed_rx.recv().await {
             match event {
-                // Use the actual variant names from your enum definition
                 ActionEvent::ShipActionCompleted(result) => match result {
-                    Ok(action) => {
+                    Ok((ship_op, action)) => {
                         log!(Level::Info, "ShipAction completed successfully: {}", action);
+                        // Update the ship operations in the fleet with the latest version
+                        {
+                            let mut fleet_guard = fleet.lock().await;
+                            // Store the updated ship operations in the map
+                            fleet_guard.ship_operations.insert(ship_op.symbol.clone(), ship_op.clone());
+                        }
+
                         match action {
                             ShipAction::CollectWaypointInfos => {
                                 // Lock the fleet to update it
                                 let mut fleet_guard = fleet.lock().await;
-                                let current_location = fleet_guard.ship_operations.get(&fleet_guard.spawn_ship_symbol).map(|ship| ship.current_location());
+                                let current_location = ship_op.current_location();
 
-                                if let Some(location) = current_location {
-                                    fleet_guard.completed_exploration_tasks.insert(location.clone());
-                                    log!(
+                                fleet_guard.completed_exploration_tasks.insert(current_location.clone());
+                                log!(
                                         Level::Info,
                                         "CollectWaypointInfos: {} of {} exploration_tasks complete for SystemSpawningFleet. Current location: {:?}\nCompleted tasks: {:?}\nAll Tasks: {:?}",
                                         fleet_guard.completed_exploration_tasks.len(),
                                         fleet_guard.all_exploration_tasks().len(),
-                                        location,
+                                        current_location,
                                         fleet_guard.completed_exploration_tasks,
                                         fleet_guard.all_exploration_tasks()
                                     );
-                                }
                             }
                             _ => {}
                         }
@@ -144,6 +148,7 @@ impl SystemSpawningFleet {
         }
     }
 }
+
 impl SystemSpawningFleet {
     pub async fn compute_initial_exploration_ship_task(&self, mm: &DbModelManager) -> Result<Option<ShipTask>> {
         let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &self.system_symbol).await?;

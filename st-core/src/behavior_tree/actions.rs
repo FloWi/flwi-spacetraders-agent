@@ -195,8 +195,9 @@ impl Actionable for ShipAction {
                 if let Some(action) = &state.current_travel_action() {
                     match action {
                         TravelAction::Navigate { mode, .. } => {
-                            let new_nav = state.set_flight_mode(mode).await?;
-                            state.set_nav(new_nav);
+                            let response = state.set_flight_mode(mode).await?;
+                            state.set_nav(response.nav);
+                            state.set_fuel(response.fuel);
                             Ok(Success)
                         }
                         TravelAction::Refuel { .. } => Err(anyhow!("Failed - no travel mode on refuel action")),
@@ -338,7 +339,7 @@ impl Actionable for ShipAction {
 
         match result {
             Ok(_res) => {
-                action_completed_tx.send(ActionEvent::ShipActionCompleted(Ok(self.clone()))).await?;
+                action_completed_tx.send(ActionEvent::ShipActionCompleted(Ok((state.clone(), self.clone())))).await?;
             }
             Err(err) => {
                 action_completed_tx.send(anyhow::bail!("Action failed {}", err)).await?;
@@ -593,7 +594,7 @@ mod tests {
 
             async fn dock_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<DockShipResponse> {}
 
-            async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> anyhow::Result<PatchShipNavResponse> {}
+            async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> anyhow::Result<NavigateShipResponse> {}
 
             async fn navigate(&self, ship_symbol: ShipSymbol, to: &WaypointSymbol) -> anyhow::Result<NavigateShipResponse> {}
 
