@@ -121,12 +121,12 @@ impl SystemSpawningFleet {
                                 fleet_guard.completed_exploration_tasks.insert(current_location.clone());
                                 log!(
                                         Level::Info,
-                                        "CollectWaypointInfos: {} of {} exploration_tasks complete for SystemSpawningFleet. Current location: {:?}\nCompleted tasks: {:?}\nAll Tasks: {:?}",
+                                        "CollectWaypointInfos: {} of {} exploration_tasks complete for SystemSpawningFleet. Current location: {:?}\nCompleted tasks: {:?}\nQueue: {:?}",
                                         fleet_guard.completed_exploration_tasks.len(),
                                         fleet_guard.all_exploration_tasks().len(),
                                         current_location,
                                         fleet_guard.completed_exploration_tasks,
-                                        fleet_guard.all_exploration_tasks()
+                                        ship_op.explore_location_queue
                                     );
                             }
                             _ => {}

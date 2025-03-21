@@ -164,7 +164,7 @@ impl Problem {
             let is_same_location = current_waypoint.x == waypoint.x && current_waypoint.y == waypoint.y;
             let is_better_location = !current_waypoint.is_refueling_station && waypoint.is_refueling_station;
             let can_improve_condition = if is_same_location {
-                is_better_location
+                is_better_location || waypoint_idx == self.goal_idx
             } else {
                 true
             };

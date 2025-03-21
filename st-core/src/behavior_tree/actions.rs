@@ -290,9 +290,17 @@ impl Actionable for ShipAction {
                 let from = state.nav.waypoint_symbol.clone();
                 let to = state.current_navigation_destination.clone().unwrap();
                 let ship = state.get_ship();
-                let path: Vec<TravelAction> =
-                    args.compute_path(from, to, ship.engine.speed as u32, ship.fuel.current as u32, ship.fuel.capacity as u32).await?;
+                let path: Vec<TravelAction> = args
+                    .compute_path(
+                        from.clone(),
+                        to.clone(),
+                        ship.engine.speed as u32,
+                        ship.fuel.current as u32,
+                        ship.fuel.capacity as u32,
+                    )
+                    .await?;
 
+                println!("successfully computed route from {:?} to {:?}: {:?}", from, to, &path);
                 state.set_route(path);
                 Ok(Success)
             }
