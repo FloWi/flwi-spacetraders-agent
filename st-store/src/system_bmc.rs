@@ -7,11 +7,7 @@ use st_domain::{SystemSymbol, Waypoint};
 pub struct SystemBmc;
 
 impl SystemBmc {
-    pub async fn get_waypoints_of_system(
-        ctx: &Ctx,
-        mm: &DbModelManager,
-        system_symbol: &SystemSymbol,
-    ) -> Result<Vec<Waypoint>> {
+    pub async fn get_waypoints_of_system(ctx: &Ctx, mm: &DbModelManager, system_symbol: &SystemSymbol) -> Result<Vec<Waypoint>> {
         db::select_waypoints_of_system(mm.pool(), system_symbol).await
     }
 }

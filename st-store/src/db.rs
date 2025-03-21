@@ -12,9 +12,8 @@ use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
 use st_domain::{
-    distance_to, Data, GetConstructionResponse, JumpGate, MarketData, RegistrationResponse, Ship,
-    Shipyard, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
-    WaypointTraitSymbol,
+    distance_to, Data, GetConstructionResponse, JumpGate, MarketData, RegistrationResponse, Ship, Shipyard, StStatusResponse, SystemSymbol, SystemsPageData,
+    Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
 #[derive(Clone)]
@@ -26,34 +25,21 @@ impl PgConnectionString {
     }
 }
 
-pub async fn get_pg_connection_pool(
-    connection_string: PgConnectionString,
-) -> Result<Pool<Postgres>> {
+pub async fn get_pg_connection_pool(connection_string: PgConnectionString) -> Result<Pool<Postgres>> {
     let database_url = connection_string.0.clone();
 
-    let database_connection_options: PgConnectOptions = database_url
-        .parse::<PgConnectOptions>()?
-        .log_slow_statements(LevelFilter::Warn, Duration::from_secs(60));
+    let database_connection_options: PgConnectOptions =
+        database_url.parse::<PgConnectOptions>()?.log_slow_statements(LevelFilter::Warn, Duration::from_secs(60));
 
-    let pg_connection_pool: Pool<Postgres> = PgPoolOptions::new()
-        .max_connections(5)
-        .connect_with(database_connection_options)
-        .await?;
+    let pg_connection_pool: Pool<Postgres> = PgPoolOptions::new().max_connections(5).connect_with(database_connection_options).await?;
 
     Ok(pg_connection_pool)
 }
 
-pub async fn prepare_database_schema(
-    api_status: &StStatusResponse,
-    connection_string: PgConnectionString,
-) -> Result<Pool<Postgres>> {
+pub async fn prepare_database_schema(api_status: &StStatusResponse, connection_string: PgConnectionString) -> Result<Pool<Postgres>> {
     event!(Level::INFO, "Got status: {:?}", api_status);
 
-    event!(
-        Level::INFO,
-        "Postgres connection string: '{:?}'",
-        connection_string.0
-    );
+    event!(Level::INFO, "Postgres connection string: '{:?}'", connection_string.0);
 
     let pg_connection_pool = get_pg_connection_pool(connection_string.clone()).await?;
 
@@ -61,11 +47,7 @@ pub async fn prepare_database_schema(
 
     match load_status(&pg_connection_pool).await? {
         None => {
-            event!(
-                Level::INFO,
-                "No entry for reset {} in db found.",
-                api_status.reset_date
-            );
+            event!(Level::INFO, "No entry for reset {} in db found.", api_status.reset_date);
             insert_status(
                 &pg_connection_pool,
                 DbStatus {
@@ -79,20 +61,16 @@ pub async fn prepare_database_schema(
         }
         Some(db_status) => {
             if db_status.reset_date == api_status.reset_date {
-                event!(
-                    Level::INFO,
-                    "Current schema matches the reset-date {}.",
-                    db_status.reset_date
-                );
+                event!(Level::INFO, "Current schema matches the reset-date {}.", db_status.reset_date);
                 Ok(pg_connection_pool)
             } else {
-                let archive_schema_name =
-                    connection_string.get_schema_name_for_reset_date(db_status.reset_date.clone());
+                let archive_schema_name = connection_string.get_schema_name_for_reset_date(db_status.reset_date.clone());
                 event!(
                     Level::INFO,
                     "Current schema public is for reset '{}', but the api is for reset '{}'. Archiving public schema to {}",
                     db_status.reset_date,
-                    api_status.reset_date, archive_schema_name
+                    api_status.reset_date,
+                    archive_schema_name
                 );
                 rename_schema(&pg_connection_pool, "public", archive_schema_name).await?;
                 create_schema(&pg_connection_pool, "public").await?;
@@ -112,27 +90,16 @@ async fn perform_migration(pg_connection_pool: &Pool<Postgres>) -> Result<()> {
     Ok(())
 }
 
-async fn rename_schema(
-    pg_connection_pool: &Pool<Postgres>,
-    from_schema_name: &str,
-    to_schema_name: String,
-) -> Result<()> {
+async fn rename_schema(pg_connection_pool: &Pool<Postgres>, from_schema_name: &str, to_schema_name: String) -> Result<()> {
     // Rename the current public schema
-    sqlx::query(&format!(
-        "ALTER SCHEMA {} RENAME TO {}",
-        from_schema_name, to_schema_name
-    ))
-    .execute(pg_connection_pool)
-    .await?;
+    sqlx::query(&format!("ALTER SCHEMA {} RENAME TO {}", from_schema_name, to_schema_name)).execute(pg_connection_pool).await?;
 
     Ok(())
 }
 
 async fn create_schema(pg_connection_pool: &Pool<Postgres>, schema_name: &str) -> Result<()> {
     // Rename the current public schema
-    sqlx::query(&format!("CREATE SCHEMA {}", schema_name))
-        .execute(pg_connection_pool)
-        .await?;
+    sqlx::query(&format!("CREATE SCHEMA {}", schema_name)).execute(pg_connection_pool).await?;
 
     Ok(())
 }
@@ -195,10 +162,7 @@ select token
     Ok(maybe_result)
 }
 
-pub async fn save_registration(
-    pool: &Pool<Postgres>,
-    api_registration_response: Data<RegistrationResponse>,
-) -> Result<()> {
+pub async fn save_registration(pool: &Pool<Postgres>, api_registration_response: Data<RegistrationResponse>) -> Result<()> {
     sqlx::query!(
         r#"
 insert into registration (token, entry)
@@ -290,31 +254,21 @@ impl DbSystemCoordinateData {
     }
 }
 
-pub async fn upsert_waypoints_from_receiver(
-    pool: &Pool<Postgres>,
-    mut rx: tokio::sync::mpsc::Receiver<(Vec<Waypoint>, DateTime<Utc>)>,
-) -> Result<()> {
+pub async fn upsert_waypoints_from_receiver(pool: &Pool<Postgres>, mut rx: tokio::sync::mpsc::Receiver<(Vec<Waypoint>, DateTime<Utc>)>) -> Result<()> {
     while let Some((entries, now)) = rx.recv().await {
         upsert_waypoints(pool, entries, now).await?;
     }
     Ok(())
 }
 
-pub async fn upsert_systems_from_receiver(
-    pool: &Pool<Postgres>,
-    mut rx: tokio::sync::mpsc::Receiver<(Vec<SystemsPageData>, DateTime<Utc>)>,
-) -> Result<()> {
+pub async fn upsert_systems_from_receiver(pool: &Pool<Postgres>, mut rx: tokio::sync::mpsc::Receiver<(Vec<SystemsPageData>, DateTime<Utc>)>) -> Result<()> {
     while let Some((entries, now)) = rx.recv().await {
         upsert_systems_page(pool, entries, now).await?;
     }
     Ok(())
 }
 
-pub async fn upsert_systems_page(
-    pool: &Pool<Postgres>,
-    systems: Vec<SystemsPageData>,
-    now: DateTime<Utc>,
-) -> Result<()> {
+pub async fn upsert_systems_page(pool: &Pool<Postgres>, systems: Vec<SystemsPageData>, now: DateTime<Utc>) -> Result<()> {
     let db_entries: Vec<DbSystemEntry> = systems
         .iter()
         .map(|system| DbSystemEntry {
@@ -343,11 +297,7 @@ on conflict (system_symbol) do UPDATE set entry = excluded.entry, updated_at = e
     Ok(())
 }
 
-pub async fn upsert_waypoints(
-    pool: &Pool<Postgres>,
-    waypoints: Vec<Waypoint>,
-    now: DateTime<Utc>,
-) -> Result<()> {
+pub async fn upsert_waypoints(pool: &Pool<Postgres>, waypoints: Vec<Waypoint>, now: DateTime<Utc>) -> Result<()> {
     let db_entries: Vec<DbWaypointEntry> = waypoints
         .iter()
         .map(|wp| DbWaypointEntry {
@@ -400,11 +350,7 @@ on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at =
     }
 }
 
-pub async fn insert_market_data(
-    pool: &Pool<Postgres>,
-    market_entries: Vec<MarketData>,
-    now: DateTime<Utc>,
-) -> Result<()> {
+pub async fn insert_market_data(pool: &Pool<Postgres>, market_entries: Vec<MarketData>, now: DateTime<Utc>) -> Result<()> {
     let db_entries: Vec<DbMarketEntry> = market_entries
         .iter()
         .map(|me| DbMarketEntry {
@@ -451,10 +397,7 @@ from jsonb_populate_recordset(NULL::markets, $1)
     }
 }
 
-pub async fn select_waypoints_of_system(
-    pool: &Pool<Postgres>,
-    system_symbol: &SystemSymbol,
-) -> Result<Vec<Waypoint>> {
+pub async fn select_waypoints_of_system(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Vec<Waypoint>> {
     let waypoint_entries: Vec<DbWaypointEntry> = sqlx::query_as!(
         DbWaypointEntry,
         r#"
@@ -474,9 +417,7 @@ where system_symbol = $1
     Ok(waypoint_entries.iter().map(|db_waypoint_entry| db_waypoint_entry.entry.0.clone()).collect_vec())
 }
 
-pub async fn select_ships(
-    pool: &Pool<Postgres>,
-) -> Result<Vec<Ship>> {
+pub async fn select_ships(pool: &Pool<Postgres>) -> Result<Vec<Ship>> {
     let ship_entries: Vec<DbShipEntry> = sqlx::query_as!(
         DbShipEntry,
         r#"
@@ -515,10 +456,7 @@ pub async fn select_waypoints_of_system_with_trait(
     Ok(waypoint_symbols.into_iter().map(WaypointSymbol).collect())
 }
 
-pub async fn select_latest_marketplace_entry_of_system(
-    pool: &Pool<Postgres>,
-    system_symbol: &SystemSymbol,
-) -> Result<Vec<DbMarketEntry>> {
+pub async fn select_latest_marketplace_entry_of_system(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Vec<DbMarketEntry>> {
     let market_data_entries: Vec<DbMarketEntry> = sqlx::query_as!(
         DbMarketEntry,
         r#"
@@ -544,10 +482,7 @@ where system_symbol = $1
 
     Ok(market_data_entries)
 }
-pub async fn select_latest_shipyard_entry_of_system(
-    pool: &Pool<Postgres>,
-    system_symbol: &SystemSymbol,
-) -> Result<Vec<DbShipyardData>> {
+pub async fn select_latest_shipyard_entry_of_system(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Vec<DbShipyardData>> {
     let db_entries: Vec<DbShipyardData> = sqlx::query_as!(
         DbShipyardData,
         r#"
@@ -567,9 +502,7 @@ where system_symbol = $1
     Ok(db_entries)
 }
 
-pub async fn select_systems_with_waypoint_details_to_be_loaded(
-    pool: &Pool<Postgres>,
-) -> Result<Vec<DbSystemCoordinateData>> {
+pub async fn select_systems_with_waypoint_details_to_be_loaded(pool: &Pool<Postgres>) -> Result<Vec<DbSystemCoordinateData>> {
     let entries: Vec<DbSystemCoordinateData> = sqlx::query_as!(
         DbSystemCoordinateData,
         r#"
@@ -595,10 +528,7 @@ where num_waypoints_in_system_json > 0
     Ok(entries)
 }
 
-pub async fn select_system_with_coordinate(
-    pool: &Pool<Postgres>,
-    system_symbol: &SystemSymbol,
-) -> Result<Option<DbSystemCoordinateData>> {
+pub async fn select_system_with_coordinate(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Option<DbSystemCoordinateData>> {
     let maybe_system: Option<DbSystemCoordinateData> = sqlx::query_as!(
         DbSystemCoordinateData,
         r#"
@@ -616,10 +546,7 @@ where system_symbol = $1
     Ok(maybe_system)
 }
 
-pub async fn select_system(
-    pool: &Pool<Postgres>,
-    system_symbol: &SystemSymbol,
-) -> Result<Option<SystemsPageData>> {
+pub async fn select_system(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Option<SystemsPageData>> {
     /*
     #[derive(Serialize, Clone, Debug, Deserialize)]
     pub struct DbSystemEntry {
@@ -647,10 +574,7 @@ where system_symbol = $1
     Ok(maybe_system.map(|db_system| db_system.entry.0))
 }
 
-pub(crate) async fn select_jump_gate(
-    pool: &Pool<Postgres>,
-    waypoint_symbol: &WaypointSymbol,
-) -> Result<Option<DbJumpGateData>> {
+pub(crate) async fn select_jump_gate(pool: &Pool<Postgres>, waypoint_symbol: &WaypointSymbol) -> Result<Option<DbJumpGateData>> {
     let maybe_jump_gate_data: Option<DbJumpGateData> = sqlx::query_as!(
         DbJumpGateData,
         r#"
@@ -670,11 +594,7 @@ where system_symbol = $1
     Ok(maybe_jump_gate_data)
 }
 
-pub async fn insert_jump_gates(
-    pool: &Pool<Postgres>,
-    jump_gates: Vec<JumpGate>,
-    now: DateTime<Utc>,
-) -> Result<()> {
+pub async fn insert_jump_gates(pool: &Pool<Postgres>, jump_gates: Vec<JumpGate>, now: DateTime<Utc>) -> Result<()> {
     let db_entries: Vec<DbJumpGateData> = jump_gates
         .iter()
         .map(|j| DbJumpGateData {
@@ -699,17 +619,13 @@ on conflict (system_symbol, waypoint_symbol) do UPDATE set entry = excluded.entr
             now,
             now,
         )
-            .execute(pool)
-            .await?;
+        .execute(pool)
+        .await?;
     }
     Ok(())
 }
 
-pub async fn insert_shipyards(
-    pool: &Pool<Postgres>,
-    shipyards: Vec<Shipyard>,
-    now: DateTime<Utc>,
-) -> Result<()> {
+pub async fn insert_shipyards(pool: &Pool<Postgres>, shipyards: Vec<Shipyard>, now: DateTime<Utc>) -> Result<()> {
     let db_entries: Vec<DbShipyardData> = shipyards
         .iter()
         .map(|j| DbShipyardData {
@@ -734,8 +650,8 @@ on conflict (system_symbol, waypoint_symbol) do UPDATE set entry = excluded.entr
             now,
             now,
         )
-            .execute(pool)
-            .await?;
+        .execute(pool)
+        .await?;
     }
     Ok(())
 }
@@ -753,11 +669,7 @@ from systems s
     Ok(count.unwrap_or(0))
 }
 
-pub async fn upsert_ships(
-    pool: &Pool<Postgres>,
-    ships: &Vec<Ship>,
-    now: DateTime<Utc>,
-) -> Result<()> {
+pub async fn upsert_ships(pool: &Pool<Postgres>, ships: &Vec<Ship>, now: DateTime<Utc>) -> Result<()> {
     let db_entries: Vec<DbShipEntry> = ships
         .iter()
         .map(|ship| DbShipEntry {
@@ -808,11 +720,7 @@ on conflict (ship_symbol) do UPDATE set entry = excluded.entry, updated_at = exc
     }
 }
 
-pub async fn upsert_construction_site(
-    pool: &Pool<Postgres>,
-    construction: GetConstructionResponse,
-    now: DateTime<Utc>,
-) -> Result<()> {
+pub async fn upsert_construction_site(pool: &Pool<Postgres>, construction: GetConstructionResponse, now: DateTime<Utc>) -> Result<()> {
     let db_entry: DbConstructionSiteEntry = DbConstructionSiteEntry {
         waypoint_symbol: construction.data.symbol.clone(),
         entry: Json(construction.clone()),

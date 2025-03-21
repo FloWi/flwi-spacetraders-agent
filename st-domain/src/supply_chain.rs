@@ -1,7 +1,4 @@
-use crate::{
-    ConstructionMaterial, GetConstructionResponse, MarketTradeGood, TradeGoodSymbol, TradeGoodType,
-    Waypoint, WaypointSymbol,
-};
+use crate::{ConstructionMaterial, GetConstructionResponse, MarketTradeGood, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -29,10 +26,7 @@ pub struct MaterializedSupplyChain {
     pub trading_opportunities: Vec<TradingOpportunity>,
 }
 
-pub fn find_complete_supply_chain(
-    products: Vec<TradeGoodSymbol>,
-    trade_relations: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>,
-) -> Vec<SupplyChainNode> {
+pub fn find_complete_supply_chain(products: Vec<TradeGoodSymbol>, trade_relations: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>) -> Vec<SupplyChainNode> {
     fn recursive_search(
         product: &TradeGoodSymbol,
         trade_relations: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>,
@@ -120,22 +114,14 @@ pub fn materialize_supply_chain(
         None => {
             vec![]
         }
-        Some(construction_site) => construction_site
-            .data
-            .materials
-            .iter()
-            .filter(|cm| cm.fulfilled < cm.required)
-            .collect_vec(),
+        Some(construction_site) => construction_site.data.materials.iter().filter(|cm| cm.fulfilled < cm.required).collect_vec(),
     };
 
     let completion_explanation = missing_construction_materials
         .iter()
         .map(|cm| {
             let percent_done = cm.fulfilled as f64 / cm.required as f64 * 100.0;
-            format!(
-                "{}: {:} of {:} delivered ({:.1}%)",
-                cm.trade_symbol, cm.fulfilled, cm.required, percent_done
-            )
+            format!("{}: {:} of {:} delivered ({:.1}%)", cm.trade_symbol, cm.fulfilled, cm.required, percent_done)
         })
         .join("\n");
 

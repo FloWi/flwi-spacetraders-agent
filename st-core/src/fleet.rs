@@ -2,9 +2,7 @@ use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
 use crate::behavior_tree::ship_behaviors::{ship_navigation_behaviors, Behaviors, ShipAction};
 use crate::exploration::exploration::generate_exploration_route;
-use crate::marketplaces::marketplaces::{
-    filter_waypoints_with_trait, find_marketplaces_for_exploration, find_shipyards_for_exploration,
-};
+use crate::marketplaces::marketplaces::{filter_waypoints_with_trait, find_marketplaces_for_exploration, find_shipyards_for_exploration};
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
 use anyhow::{anyhow, Error, Result};
@@ -12,12 +10,11 @@ use itertools::Itertools;
 use log::{log, Level};
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    FleetUpdateMessage, Ship, ShipRegistrationRole, ShipRole, ShipSymbol, ShipTaskMessage,
-    ShipType, SystemSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    FleetUpdateMessage, Ship, ShipRegistrationRole, ShipRole, ShipSymbol, ShipTaskMessage, ShipType, SystemSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol,
+    WaypointTraitSymbol,
 };
 use st_store::{
-    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, Ctx,
-    DbModelManager, DbWaypointEntry, MarketBmc, ShipBmc, SystemBmc,
+    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, Ctx, DbModelManager, DbWaypointEntry, MarketBmc, ShipBmc, SystemBmc,
 };
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -46,12 +43,7 @@ pub struct SystemSpawningFleet {
 
 impl SystemSpawningFleet {
     pub fn all_exploration_tasks(&self) -> Vec<WaypointSymbol> {
-        self.marketplace_waypoints_of_interest
-            .iter()
-            .chain(self.shipyard_waypoints_of_interest.iter())
-            .unique()
-            .cloned()
-            .collect_vec()
+        self.marketplace_waypoints_of_interest.iter().chain(self.shipyard_waypoints_of_interest.iter()).unique().cloned().collect_vec()
     }
 
     pub async fn run(
@@ -64,32 +56,17 @@ impl SystemSpawningFleet {
 
         let task = {
             let fleet_guard = fleet.lock().await;
-            fleet_guard
-                .compute_initial_exploration_ship_task(&db_model_manager)
-                .await?
+            fleet_guard.compute_initial_exploration_ship_task(&db_model_manager).await?
         };
 
-        log!(
-            Level::Info,
-            "Computed this task for the command ship: {}",
-            serde_json::to_string_pretty(&task)?
-        );
+        log!(Level::Info, "Computed this task for the command ship: {}", serde_json::to_string_pretty(&task)?);
 
         match task {
             Some(ShipTask::ObserveAllWaypointsOnce { waypoint_symbols }) => {
-                let (
-                    ship_updated_tx,
-                    ship_action_completed_tx,
-                    ship_action_completed_rx,
-                    command_ship,
-                ) = {
+                let (ship_updated_tx, ship_action_completed_tx, ship_action_completed_rx, command_ship) = {
                     let mut fleet_guard = fleet.lock().await;
                     // Get necessary values while locked
-                    let command_ship = fleet_guard
-                        .ship_operations
-                        .get(&fleet_guard.spawn_ship_symbol)
-                        .unwrap()
-                        .clone();
+                    let command_ship = fleet_guard.ship_operations.get(&fleet_guard.spawn_ship_symbol).unwrap().clone();
 
                     let mut command_ship_with_explore = command_ship.clone();
                     command_ship_with_explore.set_explore_locations(waypoint_symbols);
@@ -98,22 +75,13 @@ impl SystemSpawningFleet {
                     let (ship_updated_tx, _) = mpsc::channel(32);
                     let (ship_action_completed_tx, ship_action_completed_rx) = mpsc::channel(32);
 
-                    (
-                        ship_updated_tx,
-                        ship_action_completed_tx,
-                        ship_action_completed_rx,
-                        command_ship_with_explore,
-                    )
+                    (ship_updated_tx, ship_action_completed_tx, ship_action_completed_rx, command_ship_with_explore)
                 }; // Lock is released here
 
                 // Pass a clone of the fleet Arc for the task
                 let fleet_for_listener = Arc::clone(&fleet);
                 tokio::spawn(async move {
-                    Self::listen_to_ship_action_messages(
-                        ship_action_completed_rx,
-                        fleet_for_listener,
-                    )
-                    .await;
+                    Self::listen_to_ship_action_messages(ship_action_completed_rx, fleet_for_listener).await;
                 });
 
                 let args = BehaviorArgs {
@@ -122,12 +90,7 @@ impl SystemSpawningFleet {
                     }),
                 };
                 // Another clone for the ship loop
-                let _ = tokio::spawn(ship_loop(
-                    command_ship,
-                    args,
-                    ship_updated_tx,
-                    ship_action_completed_tx,
-                ));
+                let _ = tokio::spawn(ship_loop(command_ship, args, ship_updated_tx, ship_action_completed_tx));
             }
             maybe_task => {
                 log!(Level::Warn, "Not implemented yet. {maybe_task:?}");
@@ -137,10 +100,7 @@ impl SystemSpawningFleet {
         Ok(())
     }
 
-    async fn listen_to_ship_action_messages(
-        mut ship_action_completed_rx: Receiver<ActionEvent>,
-        fleet: Arc<Mutex<SystemSpawningFleet>>,
-    ) {
+    async fn listen_to_ship_action_messages(mut ship_action_completed_rx: Receiver<ActionEvent>, fleet: Arc<Mutex<SystemSpawningFleet>>) {
         while let Some(event) = ship_action_completed_rx.recv().await {
             match event {
                 // Use the actual variant names from your enum definition
@@ -151,19 +111,16 @@ impl SystemSpawningFleet {
                             ShipAction::CollectWaypointInfos => {
                                 // Lock the fleet to update it
                                 let mut fleet_guard = fleet.lock().await;
-                                let current_location = fleet_guard
-                                    .ship_operations
-                                    .get(&fleet_guard.spawn_ship_symbol)
-                                    .map(|ship| ship.current_location());
+                                let current_location = fleet_guard.ship_operations.get(&fleet_guard.spawn_ship_symbol).map(|ship| ship.current_location());
 
                                 if let Some(location) = current_location {
                                     fleet_guard.completed_exploration_tasks.insert(location);
                                     log!(
-            Level::Info,
-            "{} of {} exploration_tasks complete for SystemSpawningFleet",
+                                        Level::Info,
+                                        "{} of {} exploration_tasks complete for SystemSpawningFleet",
                                         fleet_guard.completed_exploration_tasks.len(),
                                         fleet_guard.all_exploration_tasks().len(),
-        );
+                                    );
                                 }
                             }
                             _ => {}
@@ -175,11 +132,7 @@ impl SystemSpawningFleet {
                 },
                 ActionEvent::BehaviorCompleted(result) => match result {
                     Ok(behavior) => {
-                        log!(
-                            Level::Debug,
-                            "Behavior completed successfully: {}",
-                            behavior
-                        );
+                        log!(Level::Debug, "Behavior completed successfully: {}", behavior);
                     }
                     Err(e) => {
                         log!(Level::Warn, "Behavior failed: {}", e);
@@ -190,77 +143,42 @@ impl SystemSpawningFleet {
     }
 }
 impl SystemSpawningFleet {
-    pub async fn compute_initial_exploration_ship_task(
-        &self,
-        mm: &DbModelManager,
-    ) -> Result<Option<ShipTask>> {
-        let waypoints_of_system =
-            SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &self.system_symbol).await?;
+    pub async fn compute_initial_exploration_ship_task(&self, mm: &DbModelManager) -> Result<Option<ShipTask>> {
+        let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &self.system_symbol).await?;
 
-        let marketplace_entries =
-            select_latest_marketplace_entry_of_system(mm.pool(), &self.system_symbol).await?;
+        let marketplace_entries = select_latest_marketplace_entry_of_system(mm.pool(), &self.system_symbol).await?;
 
-        let marketplaces_to_explore =
-            find_marketplaces_for_exploration(marketplace_entries.clone());
+        let marketplaces_to_explore = find_marketplaces_for_exploration(marketplace_entries.clone());
 
-        let shipyard_entries =
-            select_latest_shipyard_entry_of_system(mm.pool(), &self.system_symbol).await?;
+        let shipyard_entries = select_latest_shipyard_entry_of_system(mm.pool(), &self.system_symbol).await?;
 
         let shipyards_to_explore = find_shipyards_for_exploration(shipyard_entries.clone());
 
         log!(Level::Debug, "waypoints_of_system: {waypoints_of_system:?}");
         log!(Level::Debug, "marketplace_entries: {marketplace_entries:?}");
-        log!(
-            Level::Debug,
-            "marketplaces_to_explore: {marketplaces_to_explore:?}"
-        );
+        log!(Level::Debug, "marketplaces_to_explore: {marketplaces_to_explore:?}");
 
         log!(Level::Debug, "shipyard_entries: {shipyard_entries:?}");
-        log!(
-            Level::Debug,
-            "shipyards_to_explore: {shipyards_to_explore:?}"
-        );
+        log!(Level::Debug, "shipyards_to_explore: {shipyards_to_explore:?}");
 
         let relevant_exploration_targets = marketplaces_to_explore
             .into_iter()
             .chain(shipyards_to_explore.into_iter())
-            .filter(|wp_symbol| {
-                self.marketplace_waypoints_of_interest.contains(wp_symbol)
-                    || self.shipyard_waypoints_of_interest.contains(wp_symbol)
-            })
+            .filter(|wp_symbol| self.marketplace_waypoints_of_interest.contains(wp_symbol) || self.shipyard_waypoints_of_interest.contains(wp_symbol))
             .unique()
             .collect_vec();
 
-        log!(
-            Level::Info,
-            "relevant_exploration_targets: {relevant_exploration_targets:?}"
-        );
+        log!(Level::Info, "relevant_exploration_targets: {relevant_exploration_targets:?}");
 
-        let current_location = self
-            .ship_operations
-            .get(&self.spawn_ship_symbol)
-            .unwrap()
-            .nav
-            .waypoint_symbol
-            .clone();
+        let current_location = self.ship_operations.get(&self.spawn_ship_symbol).unwrap().nav.waypoint_symbol.clone();
 
-        let exploration_route = generate_exploration_route(
-            &relevant_exploration_targets,
-            &waypoints_of_system,
-            &current_location,
-        );
+        let exploration_route = generate_exploration_route(&relevant_exploration_targets, &waypoints_of_system, &current_location);
 
-        let exploration_route_symbols = exploration_route
-            .unwrap_or_default()
-            .into_iter()
-            .map(|wp| wp.symbol)
-            .collect_vec();
+        let exploration_route_symbols = exploration_route.unwrap_or_default().into_iter().map(|wp| wp.symbol).collect_vec();
 
-        Ok(exploration_route_symbols.is_empty().not().then_some(
-            ShipTask::ObserveAllWaypointsOnce {
-                waypoint_symbols: exploration_route_symbols,
-            },
-        ))
+        Ok(exploration_route_symbols.is_empty().not().then_some(ShipTask::ObserveAllWaypointsOnce {
+            waypoint_symbols: exploration_route_symbols,
+        }))
     }
 
     fn compute_shopping_list() {
@@ -378,56 +296,24 @@ pub(crate) async fn compute_initial_fleet(
     }
 
     let marketplace_waypoints =
-        filter_waypoints_with_trait(waypoints_of_home_system, WaypointTraitSymbol::MARKETPLACE)
-            .map(|wp| wp.symbol.clone())
-            .collect_vec();
-    let shipyard_waypoints =
-        filter_waypoints_with_trait(waypoints_of_home_system, WaypointTraitSymbol::SHIPYARD)
-            .map(|wp| wp.symbol.clone())
-            .collect_vec();
+        filter_waypoints_with_trait(waypoints_of_home_system, WaypointTraitSymbol::MARKETPLACE).map(|wp| wp.symbol.clone()).collect_vec();
+    let shipyard_waypoints = filter_waypoints_with_trait(waypoints_of_home_system, WaypointTraitSymbol::SHIPYARD).map(|wp| wp.symbol.clone()).collect_vec();
 
-    let command_ship = ships
-        .iter()
-        .find(|ship| ship.registration.role == ShipRegistrationRole::Command)
-        .unwrap()
-        .clone();
+    let command_ship = ships.iter().find(|ship| ship.registration.role == ShipRegistrationRole::Command).unwrap().clone();
 
-    let probe_ship = ships
-        .iter()
-        .find(|ship| ship.registration.role == ShipRegistrationRole::Satellite)
-        .unwrap();
+    let probe_ship = ships.iter().find(|ship| ship.registration.role == ShipRegistrationRole::Satellite).unwrap();
 
     // iirc the probe gets spawned at a shipyard
     // make sure, this is the case and expect it
-    let probe_at_shipyard_location = shipyard_waypoints
-        .iter()
-        .find(|wps| **wps == probe_ship.nav.waypoint_symbol)
-        .cloned()
-        .expect("expecting probe to be spawned at shipyard");
+    let probe_at_shipyard_location =
+        shipyard_waypoints.iter().find(|wps| **wps == probe_ship.nav.waypoint_symbol).cloned().expect("expecting probe to be spawned at shipyard");
 
-    let unexplored_shipyards = shipyard_waypoints
-        .iter()
-        .filter(|wp| **wp != probe_at_shipyard_location)
-        .cloned()
-        .collect_vec();
+    let unexplored_shipyards = shipyard_waypoints.iter().filter(|wp| **wp != probe_at_shipyard_location).cloned().collect_vec();
 
-    log!(
-        Level::Info,
-        "found {} ships: {}",
-        &ships.len(),
-        serde_json::to_string_pretty(&ships)?
-    );
+    log!(Level::Info, "found {} ships: {}", &ships.len(), serde_json::to_string_pretty(&ships)?);
 
-    log!(
-        Level::Info,
-        "command_ship: {}",
-        serde_json::to_string_pretty(&command_ship)?
-    );
-    log!(
-        Level::Info,
-        "probe_ship: {}",
-        serde_json::to_string_pretty(&probe_ship)?
-    );
+    log!(Level::Info, "command_ship: {}", serde_json::to_string_pretty(&command_ship)?);
+    log!(Level::Info, "probe_ship: {}", serde_json::to_string_pretty(&probe_ship)?);
 
     let command_ship_op = ShipOperations::new(command_ship.clone(), Arc::clone(&client));
 
@@ -452,14 +338,8 @@ pub(crate) async fn compute_initial_fleet(
         system_symbol: home_system_symbol.clone(),
         marketplace_waypoints_of_interest: marketplace_waypoints.clone(),
         shipyard_waypoints_of_interest: shipyard_waypoints.clone(),
-        ship_assignment: HashMap::from([(
-            probe_ship.symbol.clone(),
-            probe_at_shipyard_location.clone(),
-        )]),
-        ship_role_assignment: HashMap::from([(
-            command_ship.symbol.clone(),
-            vec![ShipRole::MarketObserver, ShipRole::ShipPurchaser],
-        )]),
+        ship_assignment: HashMap::from([(probe_ship.symbol.clone(), probe_at_shipyard_location.clone())]),
+        ship_role_assignment: HashMap::from([(command_ship.symbol.clone(), vec![ShipRole::MarketObserver, ShipRole::ShipPurchaser])]),
         budget: 0,
     };
 
@@ -468,11 +348,7 @@ pub(crate) async fn compute_initial_fleet(
         Fleet::MarketObservation(market_observation_fleet),
     ];
 
-    log!(
-        Level::Info,
-        "Created these fleets: {}",
-        serde_json::to_string_pretty(&fleets)?
-    );
+    log!(Level::Info, "Created these fleets: {}", serde_json::to_string_pretty(&fleets)?);
 
     Ok(fleets)
 }
@@ -488,18 +364,10 @@ pub async fn ship_loop(
     let behaviors = ship_navigation_behaviors();
     let ship_behavior: Behavior<ShipAction> = behaviors.explorer_behavior;
 
-    println!(
-        "Running behavior tree. \n<mermaid>\n{}\n</mermaid>",
-        ship_behavior.to_mermaid()
-    );
+    println!("Running behavior tree. \n<mermaid>\n{}\n</mermaid>", ship_behavior.to_mermaid());
 
     let mut tick: usize = 0;
-    let span = span!(
-        Level::INFO,
-        "ship_loop",
-        tick,
-        ship = format!("{}", ship.symbol.0),
-    );
+    let span = span!(Level::INFO, "ship_loop", tick, ship = format!("{}", ship.symbol.0),);
     tick += 1;
 
     let _enter = span.enter();

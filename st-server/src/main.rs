@@ -25,10 +25,7 @@ async fn main() {
         spacetraders_account_token,
     } = AppConfig::from_env().expect("cfg");
 
-    tracing_subscriber::registry()
-        .with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE))
-        .with(EnvFilter::from_default_env())
-        .init();
+    tracing_subscriber::registry().with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE)).with(EnvFilter::from_default_env()).init();
 
     let cfg: AgentConfiguration = AgentConfiguration {
         database_url,
@@ -41,9 +38,7 @@ async fn main() {
     // Create the agent manager and get the reset channel
     let (mut agent_manager, _reset_tx) = AgentManager::new(cfg.clone());
 
-    let pool = db::get_pg_connection_pool(cfg.pg_connection_string())
-        .await
-        .expect("should be able to get pool");
+    let pool = db::get_pg_connection_pool(cfg.pg_connection_string()).await.expect("should be able to get pool");
 
     let model_manager = DbModelManager::new(pool);
 
@@ -55,15 +50,10 @@ async fn main() {
     let routes = generate_route_list(App);
 
     let app = Router::new()
-        .leptos_routes_with_context(
-            &leptos_options,
-            routes,
-            move || provide_context(app_state.clone()),
-            {
-                let leptos_options = leptos_options.clone();
-                move || shell(leptos_options.clone())
-            },
-        )
+        .leptos_routes_with_context(&leptos_options, routes, move || provide_context(app_state.clone()), {
+            let leptos_options = leptos_options.clone();
+            move || shell(leptos_options.clone())
+        })
         .fallback(leptos_axum::file_and_error_handler(shell))
         .with_state(leptos_options);
 
@@ -79,9 +69,7 @@ async fn main() {
         }
     });
 
-    axum::serve(listener, app.into_make_service())
-        .await
-        .unwrap();
+    axum::serve(listener, app.into_make_service()).await.unwrap();
 }
 
 #[cfg(not(feature = "ssr"))]

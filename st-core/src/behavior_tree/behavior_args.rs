@@ -4,10 +4,11 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::Local;
 use sqlx::{Pool, Postgres};
-use st_domain::{
-    JumpGate, MarketData, Shipyard, Waypoint, WaypointSymbol, WaypointTraitSymbol, WaypointType,
+use st_domain::{JumpGate, MarketData, Shipyard, Waypoint, WaypointSymbol, WaypointTraitSymbol, WaypointType};
+use st_store::{
+    insert_jump_gates, insert_market_data, insert_shipyards, select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints,
+    DbModelManager,
 };
-use st_store::{insert_jump_gates, insert_market_data, insert_shipyards, select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints, DbModelManager};
 use std::sync::Arc;
 use strum_macros::Display;
 
@@ -21,10 +22,7 @@ pub trait BlackboardOps: Send + Sync {
         current_fuel: u32,
         fuel_capacity: u32,
     ) -> Result<Vec<TravelAction>>;
-    async fn get_exploration_tasks_for_current_waypoint(
-        &self,
-        current_location: WaypointSymbol,
-    ) -> Result<Vec<ExplorationTask>>;
+    async fn get_exploration_tasks_for_current_waypoint(&self, current_location: WaypointSymbol) -> Result<Vec<ExplorationTask>>;
     async fn insert_waypoint(&self, waypoint: &Waypoint) -> Result<()>;
     async fn insert_market(&self, market_data: MarketData) -> Result<()>;
     async fn insert_jump_gate(&self, jump_gate: JumpGate) -> Result<()>;
@@ -60,23 +58,15 @@ impl BlackboardOps for DbBlackboard {
         current_fuel: u32,
         fuel_capacity: u32,
     ) -> Result<Vec<TravelAction>> {
-        assert_eq!(
-            from.system_symbol(),
-            to.system_symbol(),
-            "Pathfinder currently only works in same system"
-        );
+        assert_eq!(from.system_symbol(), to.system_symbol(), "Pathfinder currently only works in same system");
 
-        let waypoints_of_system: Vec<Waypoint> =
-            select_waypoints_of_system(&self.model_manager.pool(), &from.system_symbol())
-                .await?
-                ;
+        let waypoints_of_system: Vec<Waypoint> = select_waypoints_of_system(&self.model_manager.pool(), &from.system_symbol()).await?;
 
-        let market_entries_of_system: Vec<MarketData> =
-            select_latest_marketplace_entry_of_system(&self.model_manager.pool(), &from.system_symbol())
-                .await?
-                .into_iter()
-                .map(|db_wp| db_wp.entry.0.clone())
-                .collect();
+        let market_entries_of_system: Vec<MarketData> = select_latest_marketplace_entry_of_system(&self.model_manager.pool(), &from.system_symbol())
+            .await?
+            .into_iter()
+            .map(|db_wp| db_wp.entry.0.clone())
+            .collect();
 
         match pathfinder::compute_path(
             from,
@@ -91,43 +81,22 @@ impl BlackboardOps for DbBlackboard {
             None => Err(anyhow!("No path found")),
         }
     }
-    async fn get_exploration_tasks_for_current_waypoint(
-        &self,
-        current_location: WaypointSymbol,
-    ) -> Result<Vec<ExplorationTask>> {
-        let waypoints =
-            select_waypoints_of_system(&self.model_manager.pool(), &current_location.system_symbol()).await?;
+    async fn get_exploration_tasks_for_current_waypoint(&self, current_location: WaypointSymbol) -> Result<Vec<ExplorationTask>> {
+        let waypoints = select_waypoints_of_system(&self.model_manager.pool(), &current_location.system_symbol()).await?;
 
         //let maybe_jump_gate: Option<DbJumpGateData> = db::select_jump_gate(&self.db, &current_location).await?;
 
-        match waypoints
-            .iter()
-            .find(|wp| wp.symbol == current_location)
-        {
+        match waypoints.iter().find(|wp| wp.symbol == current_location) {
             None => Err(anyhow::anyhow!("can't find waypoint in db")),
             Some(wp) => {
                 let mut tasks = Vec::new();
-                if wp
-                    .traits
-                    .iter()
-                    .any(|t| t.symbol == WaypointTraitSymbol::UNCHARTED)
-                {
+                if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::UNCHARTED) {
                     tasks.push(ExplorationTask::CreateChart);
                 }
-                if wp
-
-                    .traits
-                    .iter()
-                    .any(|t| t.symbol == WaypointTraitSymbol::SHIPYARD)
-                {
+                if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::SHIPYARD) {
                     tasks.push(ExplorationTask::GetShipyard);
                 }
-                if wp
-
-                    .traits
-                    .iter()
-                    .any(|t| t.symbol == WaypointTraitSymbol::MARKETPLACE)
-                {
+                if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::MARKETPLACE) {
                     tasks.push(ExplorationTask::GetMarket);
                 }
                 if wp.r#type == WaypointType::JUMP_GATE {

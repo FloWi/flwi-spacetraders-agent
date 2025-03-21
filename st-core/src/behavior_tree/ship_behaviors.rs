@@ -49,31 +49,13 @@ pub struct Behaviors {
 impl Behaviors {
     pub fn to_labelled_sub_behaviors(&self) -> HashMap<String, Behavior<ShipAction>> {
         let mut all: [(String, Behavior<ShipAction>); 7] = [
-            (
-                "travel_behavior".to_string(),
-                self.navigate_to_destination.clone(),
-            ),
-            (
-                "adjust_flight_mode_if_necessary".to_string(),
-                self.adjust_flight_mode_if_necessary.clone(),
-            ),
-            (
-                "orbit_if_necessary".to_string(),
-                self.orbit_if_necessary.clone(),
-            ),
-            (
-                "wait_for_arrival_bt".to_string(),
-                self.wait_for_arrival_bt.clone(),
-            ),
-            (
-                "dock_if_necessary".to_string(),
-                self.dock_if_necessary.clone(),
-            ),
+            ("travel_behavior".to_string(), self.navigate_to_destination.clone()),
+            ("adjust_flight_mode_if_necessary".to_string(), self.adjust_flight_mode_if_necessary.clone()),
+            ("orbit_if_necessary".to_string(), self.orbit_if_necessary.clone()),
+            ("wait_for_arrival_bt".to_string(), self.wait_for_arrival_bt.clone()),
+            ("dock_if_necessary".to_string(), self.dock_if_necessary.clone()),
             ("refuel_behavior".to_string(), self.refuel_behavior.clone()),
-            (
-                "travel_action_behavior".to_string(),
-                self.travel_action_behavior.clone(),
-            ),
+            ("travel_action_behavior".to_string(), self.travel_action_behavior.clone()),
         ];
 
         for (_, b) in all.iter_mut() {
@@ -146,10 +128,7 @@ pub fn ship_navigation_behaviors() -> Behaviors {
         ]),
     ]);
 
-    let mut travel_action_behavior = Behavior::new_select(vec![
-        execute_navigate_travel_action,
-        execute_refuel_travel_action.clone(),
-    ]);
+    let mut travel_action_behavior = Behavior::new_select(vec![execute_navigate_travel_action, execute_refuel_travel_action.clone()]);
 
     let while_condition_travel_action = Behavior::new_sequence(vec![
         wait_for_arrival_bt.clone(),
@@ -235,14 +214,8 @@ mod tests {
         let repeated_action = Behavior::new_action("Repeated Action".to_string());
         let mut tree = Behavior::new_select(vec![
             repeated_action.clone(),
-            Behavior::new_sequence(vec![
-                repeated_action.clone(),
-                Behavior::new_action("Unique Action".to_string()),
-            ]),
-            Behavior::new_while(
-                repeated_action,
-                Behavior::new_action("While Action".to_string()),
-            ),
+            Behavior::new_sequence(vec![repeated_action.clone(), Behavior::new_action("Unique Action".to_string())]),
+            Behavior::new_while(repeated_action, Behavior::new_action("While Action".to_string())),
         ]);
 
         // Update indices
@@ -263,10 +236,7 @@ mod tests {
 
         ship_behavior.update_indices();
 
-        let markdown_document = Behavior::generate_markdown_with_details_without_repeat(
-            ship_behavior,
-            behaviors.to_labelled_sub_behaviors(),
-        );
+        let markdown_document = Behavior::generate_markdown_with_details_without_repeat(ship_behavior, behaviors.to_labelled_sub_behaviors());
         println!("{}", markdown_document);
     }
 }

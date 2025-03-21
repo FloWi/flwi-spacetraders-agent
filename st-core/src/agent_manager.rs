@@ -63,11 +63,7 @@ impl AgentManager {
 
             // Wait for a reset signal
             if let Some(signal) = self.reset_rx.recv().await {
-                event!(
-                    Level::INFO,
-                    "Reset signal received: {:?}, restarting agent",
-                    signal
-                );
+                event!(Level::INFO, "Reset signal received: {:?}, restarting agent", signal);
 
                 // Signal the current agent to shut down
                 let _ = shutdown_tx.send(true);
@@ -92,10 +88,7 @@ impl AgentManager {
         Ok(())
     }
 
-    async fn initialize_and_start_agent(
-        &mut self,
-        shutdown_rx: watch::Receiver<bool>,
-    ) -> Result<JoinHandle<()>> {
+    async fn initialize_and_start_agent(&mut self, shutdown_rx: watch::Receiver<bool>) -> Result<JoinHandle<()>> {
         // Create a reset channel for this specific agent instance
         let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
 
@@ -108,15 +101,12 @@ impl AgentManager {
 
         // Initialize or get database pool
         if self.pool.is_none() {
-            self.pool =
-                Some(db::prepare_database_schema(&status, self.cfg.pg_connection_string()).await?);
+            self.pool = Some(db::prepare_database_schema(&status, self.cfg.pg_connection_string()).await?);
         }
         let pool = self.pool.clone().unwrap();
 
         // Get the authenticated client
-        let authenticated_client = self
-            .get_authenticated_client(pool.clone(), client_with_account_token)
-            .await?;
+        let authenticated_client = self.get_authenticated_client(pool.clone(), client_with_account_token).await?;
 
         // Clone configuration for the new agent
         let cfg = self.cfg.clone();
@@ -160,35 +150,22 @@ impl AgentManager {
         Ok(handle)
     }
 
-    async fn get_authenticated_client(
-        &self,
-        pool: Pool<Postgres>,
-        client_with_account_token: StClient,
-    ) -> Result<StClient> {
+    async fn get_authenticated_client(&self, pool: Pool<Postgres>, client_with_account_token: StClient) -> Result<StClient> {
         event!(Level::INFO, "Trying to load registration from database");
 
         let maybe_existing_registration = db::load_registration(&pool).await?;
 
         match maybe_existing_registration {
             Some(db_entry) => {
-                event!(
-                    Level::INFO,
-                    "Found registration infos in database. Creating authenticated client",
-                );
+                event!(Level::INFO, "Found registration infos in database. Creating authenticated client",);
 
                 // Create a reset channel for this specific client
                 let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
 
-                Ok(StClient::new(create_client(
-                    Some(db_entry.token),
-                    Some(agent_reset_tx),
-                )))
+                Ok(StClient::new(create_client(Some(db_entry.token), Some(agent_reset_tx))))
             }
             None => {
-                event!(
-                    Level::INFO,
-                    "No registration infos found in database. Registering new agent",
-                );
+                event!(Level::INFO, "No registration infos found in database. Registering new agent",);
 
                 let registration_response = client_with_account_token
                     .register(RegistrationRequest {
@@ -199,21 +176,14 @@ impl AgentManager {
                     .await
                     .expect("Error during registration");
 
-                event!(
-                    Level::INFO,
-                    "Registration complete: {:?}",
-                    registration_response
-                );
+                event!(Level::INFO, "Registration complete: {:?}", registration_response);
 
                 let _ = db::save_registration(&pool, registration_response.clone()).await;
 
                 // Create a reset channel for this specific client
                 let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
 
-                Ok(StClient::new(create_client(
-                    Some(registration_response.data.token),
-                    Some(agent_reset_tx),
-                )))
+                Ok(StClient::new(create_client(Some(registration_response.data.token), Some(agent_reset_tx))))
             }
         }
     }

@@ -45,34 +45,20 @@ where
     let mut total_number_of_pages = 1;
 
     async move {
-        event!(
-            Level::TRACE,
-            "Start downloading all pages of type {}",
-            output_parameter_type_name
-        );
+        event!(Level::TRACE, "Start downloading all pages of type {}", output_parameter_type_name);
 
         while current_input.page <= total_number_of_pages {
             let response = fetch_page(current_input.clone()).await?;
-            total_number_of_pages =
-                (response.meta.total as f32 / response.meta.limit as f32).ceil() as u32;
+            total_number_of_pages = (response.meta.total as f32 / response.meta.limit as f32).ceil() as u32;
 
-            event!(
-                Level::TRACE,
-                "Downloaded page {} of {}",
-                current_input.page,
-                total_number_of_pages
-            );
+            event!(Level::TRACE, "Downloaded page {} of {}", current_input.page, total_number_of_pages);
 
             all_data.extend(response.data);
 
             current_input.page += 1;
         }
 
-        event!(
-            Level::TRACE,
-            "Done downloading all {} pages",
-            total_number_of_pages
-        );
+        event!(Level::TRACE, "Done downloading all {} pages", total_number_of_pages);
         Ok(all_data)
     }
     .instrument(span)
@@ -96,46 +82,27 @@ where
     let mut total_number_of_pages = 1;
 
     async {
-        event!(
-            Level::TRACE,
-            "Start downloading all pages of type {}",
-            output_parameter_type_name
-        );
+        event!(Level::TRACE, "Start downloading all pages of type {}", output_parameter_type_name);
 
         while current_input.page <= total_number_of_pages {
             let now = Local::now().to_utc();
             let response = fetch_page(current_input.clone()).await?;
-            total_number_of_pages =
-                (response.meta.total as f32 / response.meta.limit as f32).ceil() as u32;
+            total_number_of_pages = (response.meta.total as f32 / response.meta.limit as f32).ceil() as u32;
 
-            event!(
-                Level::TRACE,
-                "Downloaded page {} of {}",
-                current_input.page,
-                total_number_of_pages
-            );
+            event!(Level::TRACE, "Downloaded page {} of {}", current_input.page, total_number_of_pages);
 
-            tx.send((response.data, now))
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to send data: {}", e))?;
+            tx.send((response.data, now)).await.map_err(|e| anyhow::anyhow!("Failed to send data: {}", e))?;
             current_input.page += 1;
         }
 
-        event!(
-            Level::TRACE,
-            "Done downloading all {} pages",
-            total_number_of_pages
-        );
+        event!(Level::TRACE, "Done downloading all {} pages", total_number_of_pages);
         Ok(())
     }
     .instrument(span)
     .await
 }
 
-pub async fn collect_results<T, U, F, Fut>(
-    collection: impl IntoIterator<Item = T>,
-    f: F,
-) -> Result<Vec<U>>
+pub async fn collect_results<T, U, F, Fut>(collection: impl IntoIterator<Item = T>, f: F) -> Result<Vec<U>>
 where
     F: Fn(T) -> Fut + Clone, // Add Clone bound here
     Fut: Future<Output = Result<U>>,
@@ -157,18 +124,16 @@ where
             input_parameter_type_name,
             output_parameter_type_name
         );
-        let results = future::try_join_all(collection.into_iter().enumerate().map(
-            move |(index, item)| {
-                // Use move here
-                let f = f.clone(); // Clone f for each iteration
-                async move {
-                    trace!("Processing item {} of {} {:?}", index + 1, total, item);
-                    let result = f(item).await;
-                    trace!("Finished processing item {} of {}", index + 1, total);
-                    result
-                }
-            },
-        ))
+        let results = future::try_join_all(collection.into_iter().enumerate().map(move |(index, item)| {
+            // Use move here
+            let f = f.clone(); // Clone f for each iteration
+            async move {
+                trace!("Processing item {} of {} {:?}", index + 1, total, item);
+                let result = f(item).await;
+                trace!("Finished processing item {} of {}", index + 1, total);
+                result
+            }
+        }))
         .await?;
 
         trace!(

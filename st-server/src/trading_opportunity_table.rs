@@ -6,11 +6,7 @@ use serde::{Deserialize, Serialize};
 use st_domain::{ActivityLevel, SupplyLevel, TradeGoodType, TradingOpportunity, WaypointSymbol};
 
 #[derive(Serialize, Deserialize, Clone, Debug, TableRow)]
-#[table(
-    impl_vec_data_provider,
-    sortable,
-    classes_provider = "TailwindClassesPreset"
-)]
+#[table(impl_vec_data_provider, sortable, classes_provider = "TailwindClassesPreset")]
 pub struct TradingOpportunityRow {
     // Purchase location info
     #[table(renderer = "WaypointSymbolCellRenderer")]
@@ -82,34 +78,19 @@ impl From<TradingOpportunity> for TradingOpportunityRow {
 
 // WaypointSymbolCellRenderer (you already had this one)
 #[component]
-fn WaypointSymbolCellRenderer(
-    class: String,
-    value: Signal<WaypointSymbol>,
-    row: RwSignal<TradingOpportunityRow>,
-    index: usize,
-) -> impl IntoView {
+fn WaypointSymbolCellRenderer(class: String, value: Signal<WaypointSymbol>, row: RwSignal<TradingOpportunityRow>, index: usize) -> impl IntoView {
     view! { <td class=class>{move || value.get_untracked().0}</td> }
 }
 
 // TradeGoodTypeCellRenderer
 #[component]
-fn TradeGoodTypeCellRenderer(
-    class: String,
-    value: Signal<TradeGoodType>,
-    row: RwSignal<TradingOpportunityRow>,
-    index: usize,
-) -> impl IntoView {
+fn TradeGoodTypeCellRenderer(class: String, value: Signal<TradeGoodType>, row: RwSignal<TradingOpportunityRow>, index: usize) -> impl IntoView {
     view! { <td class=class>{move || format!("{:?}", value.get_untracked())}</td> }
 }
 
 // SupplyLevelCellRenderer
 #[component]
-fn SupplyLevelCellRenderer(
-    class: String,
-    value: Signal<SupplyLevel>,
-    row: RwSignal<TradingOpportunityRow>,
-    index: usize,
-) -> impl IntoView {
+fn SupplyLevelCellRenderer(class: String, value: Signal<SupplyLevel>, row: RwSignal<TradingOpportunityRow>, index: usize) -> impl IntoView {
     let supply_class = move || match value.get_untracked() {
         SupplyLevel::Scarce => "text-red-600 font-bold",
         SupplyLevel::Limited => "text-orange-500",
@@ -127,12 +108,7 @@ fn SupplyLevelCellRenderer(
 
 // ActivityLevelCellRenderer
 #[component]
-fn ActivityLevelCellRenderer(
-    class: String,
-    value: Signal<Option<ActivityLevel>>,
-    row: RwSignal<TradingOpportunityRow>,
-    index: usize,
-) -> impl IntoView {
+fn ActivityLevelCellRenderer(class: String, value: Signal<Option<ActivityLevel>>, row: RwSignal<TradingOpportunityRow>, index: usize) -> impl IntoView {
     let activity_text = move || match value.get_untracked() {
         Some(activity) => format!("{:?}", activity),
         None => "N/A".to_string(),
@@ -155,12 +131,7 @@ fn ActivityLevelCellRenderer(
 
 // ProfitCellRenderer
 #[component]
-fn ProfitCellRenderer(
-    class: String,
-    value: Signal<u64>,
-    row: RwSignal<TradingOpportunityRow>,
-    index: usize,
-) -> impl IntoView {
+fn ProfitCellRenderer(class: String, value: Signal<u64>, row: RwSignal<TradingOpportunityRow>, index: usize) -> impl IntoView {
     let profit_class = move || {
         let profit = value.get_untracked();
         if profit > 10000 {
@@ -183,22 +154,12 @@ fn ProfitCellRenderer(
 
 // PriceCellRenderer (for purchase_price and sell_price)
 #[component]
-fn PriceCellRenderer(
-    class: String,
-    value: Signal<i32>,
-    row: RwSignal<TradingOpportunityRow>,
-    index: usize,
-) -> impl IntoView {
+fn PriceCellRenderer(class: String, value: Signal<i32>, row: RwSignal<TradingOpportunityRow>, index: usize) -> impl IntoView {
     view! { <td class=class>{move || format!("{} cr", value.get_untracked())}</td> }
 }
 
 // TradeVolumeCellRenderer
 #[component]
-fn TradeVolumeCellRenderer(
-    class: String,
-    value: Signal<i32>,
-    row: RwSignal<TradingOpportunityRow>,
-    index: usize,
-) -> impl IntoView {
+fn TradeVolumeCellRenderer(class: String, value: Signal<i32>, row: RwSignal<TradingOpportunityRow>, index: usize) -> impl IntoView {
     view! { <td class=class>{move || format!("{} units", value.get_untracked())}</td> }
 }

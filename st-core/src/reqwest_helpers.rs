@@ -11,18 +11,13 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc::Sender;
 
-pub fn create_client(
-    maybe_bearer_token: Option<String>,
-    reset_tx: Option<Sender<ResetSignal>>,
-) -> ClientWithMiddleware {
+pub fn create_client(maybe_bearer_token: Option<String>, reset_tx: Option<Sender<ResetSignal>>) -> ClientWithMiddleware {
     let reqwest_client = Client::builder().build().unwrap();
 
     let limiter = RateLimiter::direct(Quota::per_second(std::num::NonZeroU32::new(2u32).unwrap()));
     let arc_limiter = Arc::new(limiter);
 
-    let rate_limiting_middleware = RateLimitingMiddleware {
-        limiter: arc_limiter,
-    };
+    let rate_limiting_middleware = RateLimitingMiddleware { limiter: arc_limiter };
 
     let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
 
@@ -39,9 +34,7 @@ pub fn create_client(
 
     match maybe_bearer_token {
         None => client_builder.build(),
-        Some(token) => client_builder
-            .with(AuthenticatedHeaderMiddleware::new(token))
-            .build(),
+        Some(token) => client_builder.with(AuthenticatedHeaderMiddleware::new(token)).build(),
     }
 }
 #[derive(Debug, Clone)]
@@ -57,20 +50,13 @@ pub struct ResetDetectionMiddleware {
 
 impl ResetDetectionMiddleware {
     pub fn new(reset_tx: Sender<ResetSignal>) -> Self {
-        Self {
-            reset_tx: Arc::new(reset_tx),
-        }
+        Self { reset_tx: Arc::new(reset_tx) }
     }
 }
 
 #[async_trait::async_trait]
 impl Middleware for ResetDetectionMiddleware {
-    async fn handle(
-        &self,
-        req: Request,
-        extensions: &mut Extensions,
-        next: Next<'_>,
-    ) -> reqwest_middleware::Result<Response> {
+    async fn handle(&self, req: Request, extensions: &mut Extensions, next: Next<'_>) -> reqwest_middleware::Result<Response> {
         // Let the request go through
         let response = next.run(req, extensions).await;
 
@@ -111,16 +97,8 @@ impl AuthenticatedHeaderMiddleware {
 
 #[async_trait::async_trait]
 impl Middleware for AuthenticatedHeaderMiddleware {
-    async fn handle(
-        &self,
-        mut req: Request,
-        extensions: &mut Extensions,
-        next: Next<'_>,
-    ) -> reqwest_middleware::Result<reqwest::Response> {
-        req.headers_mut().insert(
-            reqwest::header::AUTHORIZATION,
-            format!("Bearer {}", self.bearer_token).parse().unwrap(),
-        );
+    async fn handle(&self, mut req: Request, extensions: &mut Extensions, next: Next<'_>) -> reqwest_middleware::Result<reqwest::Response> {
+        req.headers_mut().insert(reqwest::header::AUTHORIZATION, format!("Bearer {}", self.bearer_token).parse().unwrap());
 
         next.run(req, extensions).await
     }
@@ -132,12 +110,7 @@ struct RateLimitingMiddleware {
 
 #[async_trait::async_trait]
 impl Middleware for RateLimitingMiddleware {
-    async fn handle(
-        &self,
-        req: Request,
-        extensions: &mut Extensions,
-        next: Next<'_>,
-    ) -> reqwest_middleware::Result<reqwest::Response> {
+    async fn handle(&self, req: Request, extensions: &mut Extensions, next: Next<'_>) -> reqwest_middleware::Result<reqwest::Response> {
         // println!("checking rate_limiting availability");
         self.limiter.until_ready().await;
         // println!("rate_limit check ok");
@@ -168,12 +141,7 @@ impl EmptyPostMiddleware {
 
 #[async_trait::async_trait]
 impl Middleware for EmptyPostMiddleware {
-    async fn handle(
-        &self,
-        mut req: Request,
-        extensions: &mut Extensions,
-        next: Next<'_>,
-    ) -> reqwest_middleware::Result<reqwest::Response> {
+    async fn handle(&self, mut req: Request, extensions: &mut Extensions, next: Next<'_>) -> reqwest_middleware::Result<reqwest::Response> {
         if req.method() == http::Method::POST && req.body().is_none() {
             let headers = req.headers_mut();
             headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -188,12 +156,7 @@ pub struct ErrorLoggingMiddleware;
 
 #[async_trait::async_trait]
 impl Middleware for ErrorLoggingMiddleware {
-    async fn handle(
-        &self,
-        req: Request,
-        extensions: &mut Extensions,
-        next: Next<'_>,
-    ) -> reqwest_middleware::Result<Response> {
+    async fn handle(&self, req: Request, extensions: &mut Extensions, next: Next<'_>) -> reqwest_middleware::Result<Response> {
         let start = Instant::now();
         let method = req.method().clone();
         let url = req.url().clone();
@@ -204,25 +167,13 @@ impl Middleware for ErrorLoggingMiddleware {
 
         match &result {
             Ok(resp) if !resp.status().is_success() => {
-                error!(
-                    "Request failed: {} {} - Status: {}, Duration: {:?}",
-                    method,
-                    url,
-                    resp.status(),
-                    duration
-                );
+                error!("Request failed: {} {} - Status: {}, Duration: {:?}", method, url, resp.status(), duration);
             }
             Err(e) => {
-                error!(
-                    "Request error: {} {} - Error: {}, Duration: {:?}",
-                    method, url, e, duration
-                );
+                error!("Request error: {} {} - Error: {}, Duration: {:?}", method, url, e, duration);
             }
             _ => {
-                debug!(
-                    "Request succeeded: {} {} - Duration: {:?}",
-                    method, url, duration
-                );
+                debug!("Request succeeded: {} {} - Duration: {:?}", method, url, duration);
             }
         }
 

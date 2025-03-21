@@ -10,11 +10,7 @@ use st_domain::{Ship, ShipSymbol, StStatusResponse};
 pub struct ShipBmc;
 
 impl ShipBmc {
-    pub async fn get_ships(
-        ctx: &Ctx,
-        mm: &DbModelManager,
-        timestamp_filter_gte: Option<DateTime<Utc>>,
-    ) -> Result<Vec<Ship>> {
+    pub async fn get_ships(ctx: &Ctx, mm: &DbModelManager, timestamp_filter_gte: Option<DateTime<Utc>>) -> Result<Vec<Ship>> {
         let fallback = DateTime::<Utc>::from_timestamp(0, 0).unwrap();
 
         let ship_entries: Vec<DbShipEntry> = sqlx::query_as!(

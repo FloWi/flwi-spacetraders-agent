@@ -16,7 +16,5 @@ pub async fn read_supply_chain() -> Result<SupplyChain> {
     // Parse the JSON data
     let trade_relations: Vec<TradeRelation> = serde_json::from_str(&json_data)?;
 
-    Ok(SupplyChain {
-        relations: trade_relations,
-    })
+    Ok(SupplyChain { relations: trade_relations })
 }

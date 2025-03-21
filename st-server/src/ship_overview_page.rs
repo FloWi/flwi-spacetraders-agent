@@ -29,14 +29,10 @@ async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOvervie
 
     let filter_timestamp_gte = match get_ships_mode {
         GetShipsMode::AllShips => None,
-        GetShipsMode::OnlyChangesSince {
-            filter_timestamp_gte,
-        } => Some(filter_timestamp_gte),
+        GetShipsMode::OnlyChangesSince { filter_timestamp_gte } => Some(filter_timestamp_gte),
     };
 
-    let ships = ShipBmc::get_ships(&Ctx::Anonymous, &mm, filter_timestamp_gte)
-        .await
-        .expect("get_ships");
+    let ships = ShipBmc::get_ships(&Ctx::Anonymous, &mm, filter_timestamp_gte).await.expect("get_ships");
 
     Ok(ShipsOverview {
         ships,
@@ -128,10 +124,7 @@ pub fn ShipOverviewPage() -> impl IntoView {
         resume,
     } = use_interval(5000);
 
-    let ships_resource = Resource::new(
-        move || counter.get(),
-        |count| get_ships_overview(GetShipsMode::AllShips),
-    );
+    let ships_resource = Resource::new(move || counter.get(), |count| get_ships_overview(GetShipsMode::AllShips));
 
     view! {
         <div class="bg-blue-950 text-white flex flex-col min-h-screen">

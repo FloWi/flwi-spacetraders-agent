@@ -5,8 +5,8 @@ use leptos_meta::Title;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    find_complete_supply_chain, trade_map, GetConstructionResponse, MarketTradeGood,
-    MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol,
+    find_complete_supply_chain, trade_map, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt,
+    TradeGoodSymbol, WaypointSymbol,
 };
 
 // Server function uses conversion
@@ -25,15 +25,7 @@ pub struct RelevantMarketData {
 }
 
 #[server]
-async fn get_supply_chain_data() -> Result<
-    (
-        SupplyChain,
-        Vec<RelevantMarketData>,
-        Option<GetConstructionResponse>,
-        MaterializedSupplyChain,
-    ),
-    ServerFnError,
-> {
+async fn get_supply_chain_data() -> Result<(SupplyChain, Vec<RelevantMarketData>, Option<GetConstructionResponse>, MaterializedSupplyChain), ServerFnError> {
     use st_core;
 
     let supply_chain = st_core::supply_chain::read_supply_chain().await.unwrap();
@@ -43,18 +35,10 @@ async fn get_supply_chain_data() -> Result<
     let state = expect_context::<crate::app::AppState>();
     let mm = state.db_model_manager;
 
-    let agent = AgentBmc::get_initial_agent(&Ctx::Anonymous, &mm)
-        .await
-        .expect("get_initial_agent");
+    let agent = AgentBmc::get_initial_agent(&Ctx::Anonymous, &mm).await.expect("get_initial_agent");
     let headquarters_waypoint = WaypointSymbol(agent.headquarters);
 
-    let market_data = MarketBmc::get_latest_market_data_for_system(
-        &Ctx::Anonymous,
-        &mm,
-        headquarters_waypoint.system_symbol().0,
-    )
-    .await
-    .expect("status");
+    let market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol().0).await.expect("status");
 
     let relevant_market_data: Vec<RelevantMarketData> = market_data
         .iter()
@@ -64,39 +48,19 @@ async fn get_supply_chain_data() -> Result<
         })
         .collect_vec();
 
-    let maybe_construction_site = ConstructionBmc::get_construction_site_for_system(
-        &Ctx::Anonymous,
-        &mm,
-        headquarters_waypoint.system_symbol(),
-    )
-    .await
-    .expect("construction_site");
+    let maybe_construction_site =
+        ConstructionBmc::get_construction_site_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol()).await.expect("construction_site");
 
-    let waypoints_of_system = SystemBmc::get_waypoints_of_system(
-        &Ctx::Anonymous,
-        &mm,
-        &headquarters_waypoint.system_symbol(),
-    )
-    .await
-    .expect("waypoints");
+    let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, &mm, &headquarters_waypoint.system_symbol()).await.expect("waypoints");
 
     let materialized_supply_chain = st_domain::supply_chain::materialize_supply_chain(
         &supply_chain,
-        &relevant_market_data
-            .iter()
-            .cloned()
-            .map(|relevant_md| (relevant_md.waypoint_symbol, relevant_md.trade_goods))
-            .collect_vec(),
+        &relevant_market_data.iter().cloned().map(|relevant_md| (relevant_md.waypoint_symbol, relevant_md.trade_goods)).collect_vec(),
         &waypoints_of_system,
         &maybe_construction_site,
     );
 
-    Ok((
-        supply_chain,
-        relevant_market_data,
-        maybe_construction_site,
-        materialized_supply_chain,
-    ))
+    Ok((supply_chain, relevant_market_data, maybe_construction_site, materialized_supply_chain))
 }
 
 #[component]
@@ -191,14 +155,10 @@ pub fn SupplyChainPage() -> impl IntoView {
     }
 }
 
-fn render_mermaid_chains(
-    supply_chain: SupplyChain,
-    goods_of_interest: &[TradeGoodSymbol],
-) -> impl IntoView {
+fn render_mermaid_chains(supply_chain: SupplyChain, goods_of_interest: &[TradeGoodSymbol]) -> impl IntoView {
     let trade_map = trade_map(&supply_chain);
 
-    let complete_chain =
-        find_complete_supply_chain(goods_of_interest.iter().cloned().collect_vec(), &trade_map);
+    let complete_chain = find_complete_supply_chain(goods_of_interest.iter().cloned().collect_vec(), &trade_map);
 
     view! {
         <div class="flex flex-col gap-4">

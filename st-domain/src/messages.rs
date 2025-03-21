@@ -1,10 +1,8 @@
-use serde::{Deserialize, Serialize};
 use crate::WaypointSymbol;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum FleetUpdateMessage {
-
-}
+pub enum FleetUpdateMessage {}
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum ShipTaskMessage {

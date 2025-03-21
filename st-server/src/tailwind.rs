@@ -11,8 +11,7 @@ impl TableClassesProvider for TailwindClassesPreset {
     fn thead_row(&self, template_classes: &str) -> String {
         format!(
             "{} {}",
-            "text-xs text-gray-700 uppercase bg-gray-200 dark:bg-gray-700 dark:text-gray-300",
-            template_classes
+            "text-xs text-gray-700 uppercase bg-gray-200 dark:bg-gray-700 dark:text-gray-300", template_classes
         )
     }
 
@@ -22,10 +21,7 @@ impl TableClassesProvider for TailwindClassesPreset {
             _ => "text-black dark:text-white",
         };
 
-        format!(
-            "cursor-pointer px-5 py-2 {} {}",
-            sort_class, template_classes
-        )
+        format!("cursor-pointer px-5 py-2 {} {}", sort_class, template_classes)
     }
 
     fn thead_cell_inner(&self) -> String {
@@ -45,10 +41,7 @@ impl TableClassesProvider for TailwindClassesPreset {
             "bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
         };
 
-        format!(
-            "{} {} {}",
-            "border-b dark:border-gray-700", bg_color, template_classes
-        )
+        format!("{} {} {}", "border-b dark:border-gray-700", bg_color, template_classes)
     }
 
     fn loading_cell(&self, _row_index: usize, _col_index: usize, prop_class: &str) -> String {

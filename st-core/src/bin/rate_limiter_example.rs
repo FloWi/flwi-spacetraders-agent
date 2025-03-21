@@ -43,17 +43,13 @@ impl Ord for PrioritizedTask {
 }
 
 struct PriorityRateLimiter {
-    rate_limiters:
-        HashMap<String, Arc<RateLimiter<String, DefaultKeyedStateStore<String>, DefaultClock>>>,
+    rate_limiters: HashMap<String, Arc<RateLimiter<String, DefaultKeyedStateStore<String>, DefaultClock>>>,
     priority_queue: Arc<Mutex<BinaryHeap<PrioritizedTask>>>,
 }
 
 impl PriorityRateLimiter {
     fn new(rate_limits: HashMap<String, Quota>) -> Self {
-        let rate_limiters = rate_limits
-            .into_iter()
-            .map(|(key, quota)| (key, Arc::new(RateLimiter::keyed(quota))))
-            .collect();
+        let rate_limiters = rate_limits.into_iter().map(|(key, quota)| (key, Arc::new(RateLimiter::keyed(quota)))).collect();
 
         PriorityRateLimiter {
             rate_limiters,
@@ -78,9 +74,7 @@ impl PriorityRateLimiter {
 
         // Wait for rate limiter
         if let Some(rate_limiter) = self.rate_limiters.get(rate_limiter_key) {
-            rate_limiter
-                .until_key_ready(&rate_limiter_key.to_string())
-                .await;
+            rate_limiter.until_key_ready(&rate_limiter_key.to_string()).await;
         }
     }
 
@@ -119,19 +113,12 @@ impl PriorityRateLimitMiddleware {
 
 #[async_trait]
 impl Middleware for PriorityRateLimitMiddleware {
-    async fn handle(
-        &self,
-        req: Request,
-        extensions: &mut Extensions,
-        next: Next<'_>,
-    ) -> MiddlewareResult<Response> {
+    async fn handle(&self, req: Request, extensions: &mut Extensions, next: Next<'_>) -> MiddlewareResult<Response> {
         let priority = extensions.get::<i32>().cloned().unwrap_or(10); // Default to low priority
         let rate_limiter_key = req.url().host_str().unwrap_or("default").to_string();
         let method = req.method().to_string();
 
-        self.limiter
-            .wait_for_turn(priority, &rate_limiter_key)
-            .await;
+        self.limiter.wait_for_turn(priority, &rate_limiter_key).await;
 
         let start_time = Instant::now();
 
@@ -140,24 +127,14 @@ impl Middleware for PriorityRateLimitMiddleware {
         let duration = start_time.elapsed();
 
         // Record metrics
-        let url = result
-            .as_ref()
-            .map(|r| r.url().to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
+        let url = result.as_ref().map(|r| r.url().to_string()).unwrap_or_else(|_| "unknown".to_string());
 
-        let status = result
-            .as_ref()
-            .map(|r| r.status().as_u16().to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
+        let status = result.as_ref().map(|r| r.status().as_u16().to_string()).unwrap_or_else(|_| "unknown".to_string());
 
         counter!("requests_total", "url" => url.clone(), "method" => method.clone(), "status" => status.clone()).increment(1);
 
         let histogram = histogram!("request_duration_milliseconds", "url" => url.clone(), "method" => method, "status" => status);
-        describe_histogram!(
-            "request_duration_milliseconds",
-            Unit::Milliseconds,
-            "Request duration in milliseconds"
-        );
+        describe_histogram!("request_duration_milliseconds", Unit::Milliseconds, "Request duration in milliseconds");
         histogram.record(duration.as_millis() as f64);
 
         result
@@ -169,22 +146,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize metrics
     let socket: SocketAddr = "127.0.0.1:9000".parse().expect("Invalid address");
     let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
-    builder
-        .with_http_listener(socket)
-        .install()
-        .expect("Failed to install Prometheus recorder");
+    builder.with_http_listener(socket).install().expect("Failed to install Prometheus recorder");
 
     let mut rate_limits = HashMap::new();
-    rate_limits.insert(
-        "api.spacetraders.io".to_string(),
-        Quota::per_second(NonZeroU32::new(2).unwrap()),
-    );
+    rate_limits.insert("api.spacetraders.io".to_string(), Quota::per_second(NonZeroU32::new(2).unwrap()));
 
     let middleware = PriorityRateLimitMiddleware::new(rate_limits);
 
-    let client = reqwest_middleware::ClientBuilder::new(Client::new())
-        .with(middleware.clone())
-        .build();
+    let client = reqwest_middleware::ClientBuilder::new(Client::new()).with(middleware.clone()).build();
 
     // Example usage
     let start_time = Instant::now();
@@ -197,10 +166,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut extensions = Extensions::new();
                 extensions.insert(priority);
                 let request_start = Instant::now();
-                let response = client
-                    .get("https://api.spacetraders.io/v2/agents")
-                    .send()
-                    .await;
+                let response = client.get("https://api.spacetraders.io/v2/agents").send().await;
                 let request_duration = request_start.elapsed();
                 let elapsed = start_time.elapsed();
                 println!(
@@ -208,10 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     i,
                     priority,
                     elapsed,
-                    response
-                        .as_ref()
-                        .map(|r| r.status())
-                        .map_err(|e| e.to_string())
+                    response.as_ref().map(|r| r.status()).map_err(|e| e.to_string())
                 );
                 println!("Response time: {:?}", request_duration);
             })
@@ -229,13 +192,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 extensions.insert(priority);
                 let request_start = Instant::now();
                 //   --url  \
-                let response = client
-                    .get(format!(
-                        "https://api.spacetraders.io/v2/systems/X1-BM40/waypoints/{}/market",
-                        wp
-                    ))
-                    .send()
-                    .await;
+                let response = client.get(format!("https://api.spacetraders.io/v2/systems/X1-BM40/waypoints/{}/market", wp)).send().await;
                 let request_duration = request_start.elapsed();
                 let elapsed = start_time.elapsed();
                 println!(
@@ -243,10 +200,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     i,
                     priority,
                     elapsed,
-                    response
-                        .as_ref()
-                        .map(|r| r.status())
-                        .map_err(|e| e.to_string())
+                    response.as_ref().map(|r| r.status()).map_err(|e| e.to_string())
                 );
                 println!("Response time: {:?}", request_duration);
             })

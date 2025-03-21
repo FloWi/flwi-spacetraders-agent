@@ -10,11 +10,7 @@ use st_domain::{GetConstructionResponse, MarketData, Ship, StStatusResponse, Sys
 pub struct ConstructionBmc;
 
 impl ConstructionBmc {
-    pub async fn get_construction_site_for_system(
-        ctx: &Ctx,
-        mm: &DbModelManager,
-        system_symbol: SystemSymbol,
-    ) -> Result<Option<GetConstructionResponse>> {
+    pub async fn get_construction_site_for_system(ctx: &Ctx, mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Option<GetConstructionResponse>> {
         let waypoint_symbol_pattern = format!("{}%", system_symbol.0);
 
         let maybe_construction_entry: Option<DbConstructionSiteEntry> = sqlx::query_as!(

@@ -11,41 +11,22 @@ where
     })
 }
 
-pub fn generate_exploration_route<T, U>(
-    waypoint_symbols: &[U],
-    all_waypoints_system: &[T],
-    current_location: &U,
-) -> Option<Vec<T>>
+pub fn generate_exploration_route<T, U>(waypoint_symbols: &[U], all_waypoints_system: &[T], current_location: &U) -> Option<Vec<T>>
 where
     T: LabelledCoordinate<U> + Clone + Eq,
     U: PartialEq + Eq + std::hash::Hash + std::clone::Clone,
 {
-    let relevant_waypoints: Vec<T> = waypoint_symbols
-        .iter()
-        .filter_map(|wps| {
-            all_waypoints_system
-                .iter()
-                .find(|wp| wp.label() == wps)
-                .cloned()
-        })
-        .collect();
+    let relevant_waypoints: Vec<T> = waypoint_symbols.iter().filter_map(|wps| all_waypoints_system.iter().find(|wp| wp.label() == wps).cloned()).collect();
 
-    let current_waypoint = all_waypoints_system
-        .iter()
-        .find(|wp| wp.label() == current_location)?;
+    let current_waypoint = all_waypoints_system.iter().find(|wp| wp.label() == current_location)?;
 
     let starting_location = relevant_waypoints
         .iter()
         .find(|&wp| wp.label() == current_waypoint.label())
-        .or_else(|| {
-            relevant_waypoints
-                .iter()
-                .min_by_key(|&wp| wp.distance_to(current_waypoint))
-        })
+        .or_else(|| relevant_waypoints.iter().min_by_key(|&wp| wp.distance_to(current_waypoint)))
         .or_else(|| relevant_waypoints.first())?;
 
-    let starting_node_first = rotate_to_entry_point(&relevant_waypoints, starting_location)
-        .unwrap_or_else(|| all_waypoints_system.to_vec());
+    let starting_node_first = rotate_to_entry_point(&relevant_waypoints, starting_location).unwrap_or_else(|| all_waypoints_system.to_vec());
 
     let result = two_opt_tsp(&starting_node_first);
     Some(result)
@@ -74,20 +55,8 @@ where
     let mut unvisited: Vec<usize> = (1..n).collect();
     while let Some(&current) = tour.last() {
         if let Some((idx, _)) = unvisited.iter().enumerate().min_by(|&(_, &a), &(_, &b)| {
-            let cost_a = graph
-                .edge_weight(
-                    graph
-                        .find_edge(node_indices[current], node_indices[a])
-                        .unwrap(),
-                )
-                .unwrap();
-            let cost_b = graph
-                .edge_weight(
-                    graph
-                        .find_edge(node_indices[current], node_indices[b])
-                        .unwrap(),
-                )
-                .unwrap();
+            let cost_a = graph.edge_weight(graph.find_edge(node_indices[current], node_indices[a]).unwrap()).unwrap();
+            let cost_b = graph.edge_weight(graph.find_edge(node_indices[current], node_indices[b]).unwrap()).unwrap();
             cost_a.partial_cmp(cost_b).unwrap()
         }) {
             tour.push(unvisited.remove(idx));
@@ -108,19 +77,11 @@ where
                     let c = tour[j];
                     let d = tour[(j + 1) % n];
 
-                    let current_cost = graph
-                        .edge_weight(graph.find_edge(node_indices[a], node_indices[b]).unwrap())
-                        .unwrap()
-                        + graph
-                            .edge_weight(graph.find_edge(node_indices[c], node_indices[d]).unwrap())
-                            .unwrap();
+                    let current_cost = graph.edge_weight(graph.find_edge(node_indices[a], node_indices[b]).unwrap()).unwrap()
+                        + graph.edge_weight(graph.find_edge(node_indices[c], node_indices[d]).unwrap()).unwrap();
 
-                    let new_cost = graph
-                        .edge_weight(graph.find_edge(node_indices[a], node_indices[c]).unwrap())
-                        .unwrap()
-                        + graph
-                            .edge_weight(graph.find_edge(node_indices[b], node_indices[d]).unwrap())
-                            .unwrap();
+                    let new_cost = graph.edge_weight(graph.find_edge(node_indices[a], node_indices[c]).unwrap()).unwrap()
+                        + graph.edge_weight(graph.find_edge(node_indices[b], node_indices[d]).unwrap()).unwrap();
 
                     if new_cost < current_cost {
                         tour[i + 1..=j].reverse();

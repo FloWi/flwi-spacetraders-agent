@@ -1,8 +1,7 @@
 use crate::behavior_tree::behavior_tree::Actionable;
 use st_store::{
-    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system,
-    select_waypoints_of_system, upsert_systems_from_receiver, upsert_waypoints_from_receiver,
-    DbModelManager, DbSystemCoordinateData, DbWaypointEntry,
+    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, select_waypoints_of_system, upsert_systems_from_receiver,
+    upsert_waypoints_from_receiver, DbModelManager, DbSystemCoordinateData, DbWaypointEntry,
 };
 
 use anyhow::Result;
@@ -27,26 +26,18 @@ use crate::exploration::exploration::generate_exploration_route;
 use crate::fleet::Fleet;
 use crate::fleet_admiral::FleetAdmiral;
 use crate::format_time_delta_hh_mm_ss;
-use crate::marketplaces::marketplaces::{
-    find_marketplaces_for_exploration, find_marketplaces_to_collect_remotely,
-    find_shipyards_to_collect_remotely,
-};
+use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_marketplaces_to_collect_remotely, find_shipyards_to_collect_remotely};
 use crate::pagination::{fetch_all_pages, fetch_all_pages_into_queue, PaginationInput};
 use crate::pathfinder::pathfinder;
 use crate::reqwest_helpers::create_client;
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
 use st_domain::{
-    FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship,
-    ShipSymbol, StStatusResponse, SystemSymbol, Waypoint, WaypointSymbol, WaypointType,
+    FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship, ShipSymbol, StStatusResponse, SystemSymbol, Waypoint, WaypointSymbol,
+    WaypointType,
 };
 
-pub async fn run_agent(
-    cfg: AgentConfiguration,
-    status: StStatusResponse,
-    authenticated_client: StClient,
-    pool: Pool<Postgres>,
-) -> Result<()> {
+pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authenticated_client: StClient, pool: Pool<Postgres>) -> Result<()> {
     let my_agent = authenticated_client.get_agent().await?;
     dbg!(my_agent.clone());
 
@@ -59,12 +50,7 @@ pub async fn run_agent(
 
     //let _ = db::upsert_ships(&pool, &ships, now).await?;
 
-    load_home_system_and_waypoints_if_necessary(
-        &authenticated_client,
-        &pool,
-        &headquarters_system_symbol,
-    )
-    .await?;
+    load_home_system_and_waypoints_if_necessary(&authenticated_client, &pool, &headquarters_system_symbol).await?;
 
     // let marketplaces_of_system = db::select_waypoints_of_system_with_trait(
     //     &pool,
@@ -86,49 +72,30 @@ pub async fn run_agent(
     //
     // let _ = insert_market_data(&pool, market_data.clone(), now).await;
 
-    let marketplace_entries =
-        select_latest_marketplace_entry_of_system(&pool, &headquarters_system_symbol).await?;
+    let marketplace_entries = select_latest_marketplace_entry_of_system(&pool, &headquarters_system_symbol).await?;
 
-    let shipyard_entries =
-        select_latest_shipyard_entry_of_system(&pool, &headquarters_system_symbol).await?;
+    let shipyard_entries = select_latest_shipyard_entry_of_system(&pool, &headquarters_system_symbol).await?;
 
-    let waypoint_entries_of_home_system =
-        select_waypoints_of_system(&pool, &headquarters_system_symbol).await?;
+    let waypoint_entries_of_home_system = select_waypoints_of_system(&pool, &headquarters_system_symbol).await?;
 
-    let marketplaces_to_collect_remotely = find_marketplaces_to_collect_remotely(
-        marketplace_entries.clone(),
-        &waypoint_entries_of_home_system,
-    );
+    let marketplaces_to_collect_remotely = find_marketplaces_to_collect_remotely(marketplace_entries.clone(), &waypoint_entries_of_home_system);
 
-    let shipyards_to_collect_remotely = find_shipyards_to_collect_remotely(
-        shipyard_entries.clone(),
-        &waypoint_entries_of_home_system,
-    );
+    let shipyards_to_collect_remotely = find_shipyards_to_collect_remotely(shipyard_entries.clone(), &waypoint_entries_of_home_system);
 
-    let _ = collect_marketplaces(
-        &authenticated_client,
-        &marketplaces_to_collect_remotely,
-        &pool,
-    )
-    .await?;
+    let _ = collect_marketplaces(&authenticated_client, &marketplaces_to_collect_remotely, &pool).await?;
 
     let _ = collect_shipyards(&authenticated_client, &shipyards_to_collect_remotely, &pool).await?;
 
     let client: Arc<dyn StClientTrait> = Arc::new(authenticated_client);
 
-    let jump_gate_wp_of_home_system = waypoint_entries_of_home_system
-        .iter()
-        .find(|wp| wp.r#type == WaypointType::JUMP_GATE)
-        .expect("home system should have a jump-gate");
+    let jump_gate_wp_of_home_system =
+        waypoint_entries_of_home_system.iter().find(|wp| wp.r#type == WaypointType::JUMP_GATE).expect("home system should have a jump-gate");
 
-    let construction_site = client
-        .get_construction_site(&jump_gate_wp_of_home_system.symbol)
-        .await?;
+    let construction_site = client.get_construction_site(&jump_gate_wp_of_home_system.symbol).await?;
 
     let _ = db::upsert_construction_site(&pool, construction_site, now).await?;
 
-    let (ship_updated_tx, mut ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) =
-        mpsc::channel::<ShipOperations>(32);
+    let (ship_updated_tx, mut ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = mpsc::channel::<ShipOperations>(32);
 
     // everything has to be cloned to give ownership to the spawned task
     let _ = tokio::spawn({
@@ -144,7 +111,9 @@ pub async fn run_agent(
                 &hq_system_clone,
                 &waypoint_entries_of_home_system_clone,
                 ship_updated_tx_clone,
-            ).await {
+            )
+            .await
+            {
                 eprintln!("Error on FleetAdmiral::start_fleets: {}", e);
             }
         }
@@ -158,45 +127,27 @@ pub async fn run_agent(
         let status_clone = status.clone();
 
         async move {
-            if let Err(e) = load_systems_and_waypoints_if_necessary(
-                status_clone,
-                &*client_clone,
-                &pool_clone,
-                &hq_system_clone,
-            )
-            .await
-            {
+            if let Err(e) = load_systems_and_waypoints_if_necessary(status_clone, &*client_clone, &pool_clone, &hq_system_clone).await {
                 eprintln!("Error loading systems: {}", e);
             }
         }
     });
 
-    let _ = tokio::spawn(listen_to_ship_changes_and_persist(
-        ship_updated_rx,
-        pool.clone(),
-    ));
+    let _ = tokio::spawn(listen_to_ship_changes_and_persist(ship_updated_rx, pool.clone()));
 
     //let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
     //dbg!(my_ships);
     Ok(())
 }
 
-async fn load_home_system_and_waypoints_if_necessary(
-    client: &StClient,
-    pool: &Pool<Postgres>,
-    headquarters_system_symbol: &SystemSymbol,
-) -> Result<()> {
+async fn load_home_system_and_waypoints_if_necessary(client: &StClient, pool: &Pool<Postgres>, headquarters_system_symbol: &SystemSymbol) -> Result<()> {
     let maybe_home_system = db::select_system(pool, headquarters_system_symbol).await?;
 
     let (needs_load_system, needs_load_waypoints) = match maybe_home_system {
         None => (true, true),
         Some(home_system) => {
-            let waypoints_of_home_system =
-                db::select_waypoints_of_system(pool, headquarters_system_symbol).await?;
-            (
-                false,
-                home_system.waypoints.len() > waypoints_of_home_system.len(),
-            )
+            let waypoints_of_home_system = db::select_waypoints_of_system(pool, headquarters_system_symbol).await?;
+            (false, home_system.waypoints.len() > waypoints_of_home_system.len())
         }
     };
 
@@ -208,8 +159,7 @@ async fn load_home_system_and_waypoints_if_necessary(
     }
 
     if needs_load_waypoints {
-        let _ =
-            collect_waypoints_of_system(client, pool, headquarters_system_symbol.clone()).await?;
+        let _ = collect_waypoints_of_system(client, pool, headquarters_system_symbol.clone()).await?;
     }
     Ok(())
 }
@@ -241,11 +191,9 @@ async fn load_systems_and_waypoints_if_necessary(
         );
     }
 
-    let systems_with_waypoint_details_to_be_loaded: Vec<DbSystemCoordinateData> =
-        db::select_systems_with_waypoint_details_to_be_loaded(&pool).await?;
+    let systems_with_waypoint_details_to_be_loaded: Vec<DbSystemCoordinateData> = db::select_systems_with_waypoint_details_to_be_loaded(&pool).await?;
 
-    let number_of_systems_with_missing_waypoint_infos =
-        systems_with_waypoint_details_to_be_loaded.len();
+    let number_of_systems_with_missing_waypoint_infos = systems_with_waypoint_details_to_be_loaded.len();
     let need_collect_waypoints_of_systems = number_of_systems_with_missing_waypoint_infos > 0;
     if need_collect_waypoints_of_systems {
         event!(
@@ -264,34 +212,26 @@ async fn load_systems_and_waypoints_if_necessary(
         .await?;
     } else {
         event!(
-                        Level::INFO,
-                        "No need to collect waypoints for systems - all {} systems have detailed waypoint infos",
-                        number_systems_in_db
-                    );
+            Level::INFO,
+            "No need to collect waypoints for systems - all {} systems have detailed waypoint infos",
+            number_systems_in_db
+        );
     }
     Ok(())
 }
 
-pub async fn listen_to_ship_changes_and_persist(
-    mut ship_updated_rx: Receiver<ShipOperations>,
-    pool: Pool<Postgres>,
-) -> Result<()> {
+pub async fn listen_to_ship_changes_and_persist(mut ship_updated_rx: Receiver<ShipOperations>, pool: Pool<Postgres>) -> Result<()> {
     let mut old_ship_state: Option<ShipOperations> = None;
 
     while let Some(updated_ship) = ship_updated_rx.recv().await {
         match old_ship_state {
             Some(old_ship_ops) if old_ship_ops.ship == updated_ship.ship => {
                 // no need to update
-                event!(
-                    Level::INFO,
-                    "No need to update ship {}. No change detected",
-                    updated_ship.symbol.0
-                );
+                event!(Level::INFO, "No need to update ship {}. No change detected", updated_ship.symbol.0);
             }
             _ => {
                 event!(Level::INFO, "Ship {} updated", updated_ship.symbol.0);
-                let _ =
-                    db::upsert_ships(&pool, &vec![updated_ship.ship.clone()], Utc::now()).await?;
+                let _ = db::upsert_ships(&pool, &vec![updated_ship.ship.clone()], Utc::now()).await?;
             }
         }
 
@@ -304,21 +244,13 @@ pub async fn listen_to_ship_changes_and_persist(
 async fn collect_all_systems(client: &dyn StClientTrait, pool: &Pool<Postgres>) -> Result<()> {
     let (tx, rx) = mpsc::channel(100); // Buffer up to 100 pages
 
-    let producer = fetch_all_pages_into_queue(
-        |page| client.list_systems_page(page),
-        PaginationInput { page: 1, limit: 20 },
-        tx,
-    );
+    let producer = fetch_all_pages_into_queue(|page| client.list_systems_page(page), PaginationInput { page: 1, limit: 20 }, tx);
 
     tokio::try_join!(producer, upsert_systems_from_receiver(pool, rx))?;
     Ok(())
 }
 
-async fn collect_marketplaces(
-    client: &StClient,
-    marketplace_waypoint_symbols: &[WaypointSymbol],
-    pool: &Pool<Postgres>,
-) -> Result<()> {
+async fn collect_marketplaces(client: &StClient, marketplace_waypoint_symbols: &[WaypointSymbol], pool: &Pool<Postgres>) -> Result<()> {
     event!(
         Level::INFO,
         "Collecting marketplace infos (remotely) for {} waypoint_symbols",
@@ -332,11 +264,7 @@ async fn collect_marketplaces(
     Ok(())
 }
 
-async fn collect_shipyards(
-    client: &StClient,
-    shipyard_waypoint_symbols: &[WaypointSymbol],
-    pool: &Pool<Postgres>,
-) -> Result<()> {
+async fn collect_shipyards(client: &StClient, shipyard_waypoint_symbols: &[WaypointSymbol], pool: &Pool<Postgres>) -> Result<()> {
     event!(
         Level::INFO,
         "Collecting shipyard infos (remotely) for {} waypoint_symbols",
@@ -356,9 +284,7 @@ async fn collect_waypoints_for_systems(
     home_system: &SystemSymbol,
     pool: &Pool<Postgres>,
 ) -> Result<()> {
-    let home_system = db::select_system_with_coordinate(pool, home_system)
-        .await?
-        .unwrap();
+    let home_system = db::select_system_with_coordinate(pool, home_system).await?.unwrap();
 
     // sort systems by the distance from our system
     event!(
@@ -378,8 +304,7 @@ async fn collect_waypoints_for_systems(
         let duration = now - start_timestamp;
         let download_speed = idx as f32 / duration.num_seconds() as f32; // systems per second
         let number_elements_left = systems.len() - idx;
-        let estimated_rest_duration =
-            chrono::Duration::seconds((number_elements_left as f32 / download_speed) as i64);
+        let estimated_rest_duration = chrono::Duration::seconds((number_elements_left as f32 / download_speed) as i64);
 
         let estimated_finish_ts = now + estimated_rest_duration;
 
@@ -399,18 +324,13 @@ async fn collect_waypoints_for_systems(
             download_speed_info
         );
 
-        collect_waypoints_of_system(client, pool, SystemSymbol(system.system_symbol.clone()))
-            .await?
+        collect_waypoints_of_system(client, pool, SystemSymbol(system.system_symbol.clone())).await?
     }
 
     Ok(())
 }
 
-async fn collect_waypoints_of_system(
-    client: &dyn StClientTrait,
-    pool: &Pool<Postgres>,
-    system_symbol: SystemSymbol,
-) -> Result<()> {
+async fn collect_waypoints_of_system(client: &dyn StClientTrait, pool: &Pool<Postgres>, system_symbol: SystemSymbol) -> Result<()> {
     let (tx, rx) = mpsc::channel(100); // Buffer up to 100 pages
 
     let producer = fetch_all_pages_into_queue(

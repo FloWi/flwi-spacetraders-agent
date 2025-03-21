@@ -2,14 +2,13 @@ use crate::pathfinder::pathfinder::TravelAction;
 use crate::st_client::StClientTrait;
 use anyhow::*;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use st_domain::{
-    CreateChartBody, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse,
-    RefuelShipResponse, Ship, Shipyard, Waypoint, WaypointSymbol,
+    CreateChartBody, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse, RefuelShipResponse, Ship, Shipyard, Waypoint, WaypointSymbol,
 };
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug)]
 pub struct ShipOperations {
@@ -87,28 +86,19 @@ impl ShipOperations {
     }
 
     pub(crate) async fn get_market(&self) -> Result<MarketData> {
-        let response = self
-            .client
-            .get_marketplace(self.nav.waypoint_symbol.clone())
-            .await?;
+        let response = self.client.get_marketplace(self.nav.waypoint_symbol.clone()).await?;
         println!("{:?}", response);
         Ok(response.data)
     }
 
     pub(crate) async fn get_jump_gate(&self) -> Result<JumpGate> {
-        let response = self
-            .client
-            .get_jump_gate(self.nav.waypoint_symbol.clone())
-            .await?;
+        let response = self.client.get_jump_gate(self.nav.waypoint_symbol.clone()).await?;
         println!("{:?}", response);
         Ok(response.data)
     }
 
     pub(crate) async fn get_shipyard(&self) -> Result<Shipyard> {
-        let response = self
-            .client
-            .get_shipyard(self.nav.waypoint_symbol.clone())
-            .await?;
+        let response = self.client.get_shipyard(self.nav.waypoint_symbol.clone()).await?;
         println!("{:?}", response);
         Ok(response.data)
     }
@@ -120,10 +110,7 @@ impl ShipOperations {
     }
 
     pub(crate) async fn set_flight_mode(&self, mode: &FlightMode) -> Result<Nav> {
-        let response = self
-            .client
-            .set_flight_mode(self.ship.symbol.clone(), mode)
-            .await?;
+        let response = self.client.set_flight_mode(self.ship.symbol.clone(), mode).await?;
         println!("{:?}", response);
         Ok(response.data)
     }
@@ -143,10 +130,7 @@ impl ShipOperations {
     pub(crate) async fn refuel(&self, from_cargo: bool) -> Result<RefuelShipResponse> {
         let amount = self.fuel.capacity - self.fuel.current;
 
-        let response = self
-            .client
-            .refuel(self.ship.symbol.clone(), amount as u32, from_cargo)
-            .await?;
+        let response = self.client.refuel(self.ship.symbol.clone(), amount as u32, from_cargo).await?;
         println!("{:?}", response);
         Ok(response)
     }

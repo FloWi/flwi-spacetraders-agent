@@ -8,13 +8,7 @@ use st_domain::{MarketData, Waypoint, WaypointSymbol};
 use strum_macros::Display;
 
 pub fn all_trade_goods(market_data: &MarketData) -> Vec<TradeGoodSymbol> {
-    market_data
-        .imports
-        .iter()
-        .chain(market_data.exports.iter())
-        .chain(market_data.exchange.iter())
-        .map(|tg| tg.symbol.clone())
-        .collect()
+    market_data.imports.iter().chain(market_data.exports.iter()).chain(market_data.exchange.iter()).map(|tg| tg.symbol.clone()).collect()
 }
 
 pub fn compute_path(
@@ -29,9 +23,8 @@ pub fn compute_path(
     let waypoints: Vec<PathfindingWaypoint> = waypoints_of_system
         .iter()
         .map(|wps| {
-            let is_refueling_station = market_entries_of_system.iter().any(|me| {
-                me.symbol == wps.symbol && all_trade_goods(me).contains(&TradeGoodSymbol::FUEL)
-            });
+            let is_refueling_station =
+                market_entries_of_system.iter().any(|me| me.symbol == wps.symbol && all_trade_goods(me).contains(&TradeGoodSymbol::FUEL));
 
             PathfindingWaypoint {
                 label: wps.symbol.clone(),
@@ -165,19 +158,11 @@ impl Problem {
 
         let current_waypoint = state.waypoint(waypoints);
 
-        for (waypoint_idx, distance) in self
-            .distance_map
-            .get(state.waypoint_idx)
-            .unwrap()
-            .iter()
-            .enumerate()
-        {
+        for (waypoint_idx, distance) in self.distance_map.get(state.waypoint_idx).unwrap().iter().enumerate() {
             let waypoint = self.waypoints.get(waypoint_idx).unwrap();
             // We have waypoints at the same location. If they don't give us an advantage, we skip them
-            let is_same_location =
-                current_waypoint.x == waypoint.x && current_waypoint.y == waypoint.y;
-            let is_better_location =
-                !current_waypoint.is_refueling_station && waypoint.is_refueling_station;
+            let is_same_location = current_waypoint.x == waypoint.x && current_waypoint.y == waypoint.y;
+            let is_better_location = !current_waypoint.is_refueling_station && waypoint.is_refueling_station;
             let can_improve_condition = if is_same_location {
                 is_better_location
             } else {
@@ -220,12 +205,7 @@ impl Problem {
     }
 
     fn heuristic(&self, state: &State) -> u32 {
-        let distance = self
-            .distance_map
-            .get(state.waypoint_idx)
-            .unwrap()
-            .get(self.goal_idx)
-            .unwrap();
+        let distance = self.distance_map.get(state.waypoint_idx).unwrap().get(self.goal_idx).unwrap();
         calculate_time(&FlightMode::Burn, *distance, self.engine_speed)
 
         // *self.heuristic_values.get(state.waypoint_idx).unwrap()
@@ -233,62 +213,52 @@ impl Problem {
 }
 
 fn compute_travel_actions(problem: &Problem, path: &Vec<State>) -> Vec<TravelAction> {
-    path.iter()
-        .tuple_windows()
-        .enumerate()
-        .fold(Vec::new(), |acc, (idx, (from, to))| {
-            let from_waypoint = from.waypoint(&problem.waypoints);
-            let to_waypoint = to.waypoint(&problem.waypoints);
-            let current_time = acc
-                .last()
-                .map_or(0, |action: &TravelAction| action.total_time());
+    path.iter().tuple_windows().enumerate().fold(Vec::new(), |acc, (idx, (from, to))| {
+        let from_waypoint = from.waypoint(&problem.waypoints);
+        let to_waypoint = to.waypoint(&problem.waypoints);
+        let current_time = acc.last().map_or(0, |action: &TravelAction| action.total_time());
 
-            let mut new_actions = Vec::new();
+        let mut new_actions = Vec::new();
 
-            // Initial refuel action if starting at a refueling station
-            if idx == 0 && from_waypoint.is_refueling_station {
-                new_actions.push(TravelAction::Refuel {
-                    at: from_waypoint.label.clone(),
-                    total_time: current_time + problem.refuel_time,
-                });
-            }
-
-            // Navigation action
-            let distance = from_waypoint.distance_to(to_waypoint);
-            let fuel_consumed = if from_waypoint.is_refueling_station {
-                problem.fuel_capacity - to.fuel
-            } else {
-                from.fuel - to.fuel
-            };
-            let mode = determine_travel_mode(problem, fuel_consumed, distance);
-            let travel_time = calculate_time(&mode, distance, problem.engine_speed);
-
-            new_actions.push(TravelAction::Navigate {
-                from: from_waypoint.label.clone(),
-                to: to_waypoint.label.clone(),
-                distance,
-                travel_time,
-                fuel_consumption: fuel_consumed,
-                mode,
-                total_time: new_actions
-                    .last()
-                    .map_or(current_time + travel_time, |action: &TravelAction| {
-                        action.total_time() + travel_time
-                    }),
+        // Initial refuel action if starting at a refueling station
+        if idx == 0 && from_waypoint.is_refueling_station {
+            new_actions.push(TravelAction::Refuel {
+                at: from_waypoint.label.clone(),
+                total_time: current_time + problem.refuel_time,
             });
+        }
 
-            // Refuel action if ending at a refueling station
-            if to_waypoint.is_refueling_station {
-                new_actions.push(TravelAction::Refuel {
-                    at: to_waypoint.label.clone(),
-                    total_time: new_actions.last().map_or(
-                        current_time + problem.refuel_time,
-                        |action: &TravelAction| action.total_time() + problem.refuel_time,
-                    ),
-                });
-            }
+        // Navigation action
+        let distance = from_waypoint.distance_to(to_waypoint);
+        let fuel_consumed = if from_waypoint.is_refueling_station {
+            problem.fuel_capacity - to.fuel
+        } else {
+            from.fuel - to.fuel
+        };
+        let mode = determine_travel_mode(problem, fuel_consumed, distance);
+        let travel_time = calculate_time(&mode, distance, problem.engine_speed);
 
-            // Combine the accumulated actions with the new actions
-            acc.into_iter().chain(new_actions).collect()
-        })
+        new_actions.push(TravelAction::Navigate {
+            from: from_waypoint.label.clone(),
+            to: to_waypoint.label.clone(),
+            distance,
+            travel_time,
+            fuel_consumption: fuel_consumed,
+            mode,
+            total_time: new_actions.last().map_or(current_time + travel_time, |action: &TravelAction| action.total_time() + travel_time),
+        });
+
+        // Refuel action if ending at a refueling station
+        if to_waypoint.is_refueling_station {
+            new_actions.push(TravelAction::Refuel {
+                at: to_waypoint.label.clone(),
+                total_time: new_actions.last().map_or(current_time + problem.refuel_time, |action: &TravelAction| {
+                    action.total_time() + problem.refuel_time
+                }),
+            });
+        }
+
+        // Combine the accumulated actions with the new actions
+        acc.into_iter().chain(new_actions).collect()
+    })
 }

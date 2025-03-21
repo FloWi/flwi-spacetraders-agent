@@ -1,8 +1,10 @@
-use std::any::Any;
+use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::ship::ShipOperations;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use st_domain::ShipTaskMessage;
+use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::fmt::{Display, Formatter};
@@ -12,8 +14,6 @@ use strum_macros::Display;
 use tokio::sync::mpsc::Sender;
 use tokio::time::sleep;
 use tracing::{event, Level};
-use st_domain::ShipTaskMessage;
-use crate::behavior_tree::ship_behaviors::ShipAction;
 // inspired by @chamlis design from spacetraders discord
 
 #[derive(Debug, Clone, Serialize, Eq, PartialEq)]
@@ -51,9 +51,7 @@ impl<A: Display + Hash> Hash for Behavior<A> {
                     child.hash(state);
                 }
             }
-            Behavior::While {
-                condition, action, ..
-            } => {
+            Behavior::While { condition, action, .. } => {
                 condition.hash(state);
                 action.hash(state);
             }
@@ -124,11 +122,7 @@ impl<A: Display + Hash> Behavior<A> {
                     child.update_indices_recursive(next_index);
                 }
             }
-            Behavior::While {
-                condition,
-                action,
-                index,
-            } => {
+            Behavior::While { condition, action, index } => {
                 *index = Some(current_index);
                 condition.update_indices_recursive(next_index);
                 action.update_indices_recursive(next_index);
@@ -136,10 +130,7 @@ impl<A: Display + Hash> Behavior<A> {
         }
     }
 
-    pub fn generate_markdown_with_details_without_repeat(
-        behavior: Behavior<A>,
-        labelled_sub_behaviors: HashMap<String, Behavior<A>>,
-    ) -> String {
+    pub fn generate_markdown_with_details_without_repeat(behavior: Behavior<A>, labelled_sub_behaviors: HashMap<String, Behavior<A>>) -> String {
         let hash_to_label_map: HashMap<u64, String> = labelled_sub_behaviors
             .iter()
             .map(|(label, behavior)| {
@@ -180,25 +171,14 @@ impl<A: Display + Hash> Behavior<A> {
 
         let mut output = String::new();
         // quite ugly, but couldn't find proper workaround to print this string `%%{init: {"flowchart": {"htmlLabels": false}} }%%`
-        writeln!(
-            output,
-            r##"%%{{init: {{"#flowchart": {{"htmlLabels": false}}}} }}%%"##
-        )
-        .unwrap();
+        writeln!(output, r##"%%{{init: {{"#flowchart": {{"htmlLabels": false}}}} }}%%"##).unwrap();
         writeln!(output, "\ngraph LR").unwrap();
         self.build_mermaid(&mut output, None, labelled_sub_graphs);
         output
     }
 
-    fn build_mermaid(
-        &self,
-        output: &mut String,
-        parent: Option<usize>,
-        labelled_sub_graphs: &HashMap<u64, String>,
-    ) {
-        let current_index = self
-            .index()
-            .expect("Index should be set before generating Mermaid diagram");
+    fn build_mermaid(&self, output: &mut String, parent: Option<usize>, labelled_sub_graphs: &HashMap<u64, String>) {
+        let current_index = self.index().expect("Index should be set before generating Mermaid diagram");
 
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
@@ -209,44 +189,23 @@ impl<A: Display + Hash> Behavior<A> {
         //     .map(|str| str.to_string())
         //     .unwrap_or(format!("{}", self));
 
-        let node_content = format!(
-            "`{}\nIndex: {}\nHash: {:016x}`",
-            self,
-            self.index().unwrap(),
-            hash
-        );
+        let node_content = format!("`{}\nIndex: {}\nHash: {:016x}`", self, self.index().unwrap(), hash);
 
-        writeln!(
-            output,
-            "    node{index}[\"{content}\"]",
-            index = current_index,
-            content = node_content
-        )
-        .unwrap();
+        writeln!(output, "    node{index}[\"{content}\"]", index = current_index, content = node_content).unwrap();
 
         if let Some(parent_index) = parent {
-            writeln!(
-                output,
-                "    node{parent} --> node{child}",
-                parent = parent_index,
-                child = current_index
-            )
-            .unwrap();
+            writeln!(output, "    node{parent} --> node{child}", parent = parent_index, child = current_index).unwrap();
         }
 
         match self {
             Behavior::Action(_, _) => {}
-            Behavior::Invert(child, _) => {
-                child.build_mermaid(output, Some(current_index), labelled_sub_graphs)
-            }
+            Behavior::Invert(child, _) => child.build_mermaid(output, Some(current_index), labelled_sub_graphs),
             Behavior::Select(children, _) | Behavior::Sequence(children, _) => {
                 for child in children {
                     child.build_mermaid(output, Some(current_index), labelled_sub_graphs);
                 }
             }
-            Behavior::While {
-                condition, action, ..
-            } => {
+            Behavior::While { condition, action, .. } => {
                 condition.build_mermaid(output, Some(current_index), labelled_sub_graphs);
                 action.build_mermaid(output, Some(current_index), labelled_sub_graphs);
             }
@@ -266,9 +225,7 @@ impl<A: Display> Display for Behavior<A> {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Display,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Display)]
 pub enum Response {
     Success,
     Running,
@@ -318,12 +275,7 @@ where
         let hash = self.calculate_hash();
 
         let actionable_label = format!("{} ({:x})", &self, hash);
-        event!(
-            Level::INFO,
-            message = "Starting run",
-            index = self.index(),
-            actionable = actionable_label,
-        );
+        event!(Level::INFO, message = "Starting run", index = self.index(), actionable = actionable_label,);
 
         let result = match self {
             Behavior::Action(a, _) => a.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await,
@@ -356,33 +308,20 @@ where
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(_) => continue,
-                        Err(_) => {
-                            return Err(Self::ActionError::from(anyhow!("one behavior failed")))
-                        }
+                        Err(_) => return Err(Self::ActionError::from(anyhow!("one behavior failed"))),
                     }
                 }
                 Ok(Response::Success)
             }
-            Behavior::While {
-                condition, action, ..
-            } => loop {
-                let condition_result = condition
-                    .run(args, state, sleep_duration, &state_changed_tx, action_completed_tx)
-                    .await;
+            Behavior::While { condition, action, .. } => loop {
+                let condition_result = condition.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await;
 
                 match condition_result {
                     Err(_) => return Ok(Response::Success),
                     Ok(_) => {
-                        let action_result = action
-                            .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
-                            .await;
+                        let action_result = action.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await;
                         match action_result {
-                            Err(err) => {
-                                return Err(Self::ActionError::from(anyhow!(
-                                    "action failed: {}",
-                                    err
-                                )))
-                            }
+                            Err(err) => return Err(Self::ActionError::from(anyhow!("action failed: {}", err))),
                             Ok(Response::Running | Response::Success) => {
                                 sleep(sleep_duration).await;
                                 continue;
@@ -496,9 +435,7 @@ mod tests {
         let (tx, mut sender) = mpsc::channel(32);
         let (tx2, mut sender2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2)
-            .await
-            .unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2).await.unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(1));
     }
@@ -514,9 +451,7 @@ mod tests {
         let (tx, mut sender) = mpsc::channel(32);
         let (tx2, mut sender2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2)
-            .await
-            .unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2).await.unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(0));
     }
@@ -533,11 +468,7 @@ mod tests {
         let (tx, mut sender) = mpsc::channel(32);
         let (tx2, mut sender2) = mpsc::channel(32);
 
-
-        let result = bt
-            .run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2)
-            .await
-            .unwrap();
+        let result = bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2).await.unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(1));
         assert_eq!(result, Running)
@@ -545,36 +476,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_while() {
-        let bt: Behavior<MyAction> = Behavior::new_while(
-            Behavior::new_action(MyAction::IsLowerThan2),
-            Behavior::new_action(MyAction::Increase),
-        );
+        let bt: Behavior<MyAction> = Behavior::new_while(Behavior::new_action(MyAction::IsLowerThan2), Behavior::new_action(MyAction::Increase));
 
         let mut my_state = MyState(0);
         let (tx, mut sender) = mpsc::channel(32);
         let (tx2, mut sender2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2)
-            .await
-            .unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2).await.unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(2));
     }
 
     #[tokio::test]
     async fn test_while_terminating_immediately() {
-        let bt: Behavior<MyAction> = Behavior::new_while(
-            Behavior::new_action(MyAction::IsLowerThan2),
-            Behavior::new_action(MyAction::Increase),
-        );
+        let bt: Behavior<MyAction> = Behavior::new_while(Behavior::new_action(MyAction::IsLowerThan2), Behavior::new_action(MyAction::Increase));
 
         let mut my_state = MyState(42);
         let (tx, mut sender) = mpsc::channel(32);
         let (tx2, mut sender2) = mpsc::channel(32);
 
-        let result = bt
-            .run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2)
-            .await;
+        let result = bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2).await;
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(42));
         result.is_ok();
@@ -583,10 +504,7 @@ mod tests {
     #[tokio::test]
     async fn test_equality() {
         // can use this test later for finding reused blocks that I want to not expand in my renders of the whole tree.
-        let mut bt: Behavior<MyAction> = Behavior::new_while(
-            Behavior::new_action(MyAction::IsLowerThan2),
-            Behavior::new_action(MyAction::Increase),
-        );
+        let mut bt: Behavior<MyAction> = Behavior::new_while(Behavior::new_action(MyAction::IsLowerThan2), Behavior::new_action(MyAction::Increase));
 
         bt.update_indices();
 
@@ -596,12 +514,8 @@ mod tests {
     #[tokio::test]
     async fn test_hashing() {
         // can use this test later for finding reused blocks that I want to not expand in my renders of the whole tree.
-        let reusing_node = Behavior::new_while(
-            Behavior::new_action(MyAction::IsLowerThan2),
-            Behavior::new_action(MyAction::Increase),
-        );
-        let mut bt: Behavior<MyAction> =
-            Behavior::new_sequence(vec![reusing_node.clone(), reusing_node.clone()]);
+        let reusing_node = Behavior::new_while(Behavior::new_action(MyAction::IsLowerThan2), Behavior::new_action(MyAction::Increase));
+        let mut bt: Behavior<MyAction> = Behavior::new_sequence(vec![reusing_node.clone(), reusing_node.clone()]);
 
         bt.update_indices();
 

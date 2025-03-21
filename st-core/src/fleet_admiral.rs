@@ -9,8 +9,8 @@ use sqlx::{Pool, Postgres};
 use st_domain::{FleetUpdateMessage, Ship, SystemSymbol, Waypoint};
 use st_store::{db, DbModelManager};
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::{mpsc, Mutex};
 
 pub struct FleetAdmiral {
     fleets: Vec<Fleet>,
@@ -27,10 +27,7 @@ impl FleetAdmiral {
         waypoints_of_home_system: &[Waypoint],
         ship_updated_tx: Sender<ShipOperations>,
     ) -> Result<()> {
-        let (fleet_updated_tx, mut fleet_updated_rx): (
-            Sender<FleetUpdateMessage>,
-            Receiver<FleetUpdateMessage>,
-        ) = mpsc::channel::<FleetUpdateMessage>(32);
+        let (fleet_updated_tx, mut fleet_updated_rx): (Sender<FleetUpdateMessage>, Receiver<FleetUpdateMessage>) = mpsc::channel::<FleetUpdateMessage>(32);
 
         let fleets = Self::create_or_load_fleets(
             Arc::clone(&client),
@@ -41,11 +38,7 @@ impl FleetAdmiral {
         )
         .await?;
 
-        log!(
-            Level::Info,
-            "FleetAdmiral: starting {} fleets",
-            fleets.len()
-        );
+        log!(Level::Info, "FleetAdmiral: starting {} fleets", fleets.len());
 
         let fleet_admiral = Self {
             fleets,
@@ -70,13 +63,7 @@ impl FleetAdmiral {
         if db_fleets.is_empty() {
             log!(Level::Info, "db_fleets is empty. Computing fleets",);
 
-            let fleets = crate::fleet::compute_initial_fleet(
-                ships,
-                home_system_symbol,
-                waypoints_of_home_system,
-                Arc::clone(&client),
-            )
-            .await?;
+            let fleets = crate::fleet::compute_initial_fleet(ships, home_system_symbol, waypoints_of_home_system, Arc::clone(&client)).await?;
             log!(Level::Info, "computed {} fleets.", fleets.len());
 
             // persist fleet config
@@ -86,10 +73,7 @@ impl FleetAdmiral {
         }
     }
 
-    async fn load_or_collect_ships(
-        client: &dyn StClientTrait,
-        pool: &Pool<Postgres>,
-    ) -> Result<Vec<Ship>> {
+    async fn load_or_collect_ships(client: &dyn StClientTrait, pool: &Pool<Postgres>) -> Result<Vec<Ship>> {
         let ships_from_db: Vec<Ship> = db::select_ships(&pool).await?;
 
         if ships_from_db.is_empty() {
@@ -123,17 +107,12 @@ impl FleetAdmiral {
                             let fleet_updated_tx = self.fleet_updated_tx.clone();
 
                             async move {
-                                SystemSpawningFleet::run(Arc::new(Mutex::new(system_spawning_fleet)), db_model_manager, ship_updated_tx, fleet_updated_tx)
-                                    .await
+                                SystemSpawningFleet::run(Arc::new(Mutex::new(system_spawning_fleet)), db_model_manager, ship_updated_tx, fleet_updated_tx).await
                             }
                         })
                     }
-                    Fleet::MarketObservation(market_observation_fleet) => {
-                        tokio::spawn(async move { market_observation_fleet.run().await })
-                    }
-                    Fleet::Mining(mining_fleet) => {
-                        tokio::spawn(async move { mining_fleet.run().await })
-                    }
+                    Fleet::MarketObservation(market_observation_fleet) => tokio::spawn(async move { market_observation_fleet.run().await }),
+                    Fleet::Mining(mining_fleet) => tokio::spawn(async move { mining_fleet.run().await }),
                 }
             })
             .collect::<Vec<_>>();

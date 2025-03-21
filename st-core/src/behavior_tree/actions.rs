@@ -8,8 +8,12 @@ use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use chrono::{DateTime, Local, Utc};
 use core::time::Duration;
+use st_domain::{
+    Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor,
+    RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, Transaction,
+    TransactionType, Waypoint, WaypointSymbol, WaypointType,
+};
 use std::thread::AccessError;
-use st_domain::{Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType};
 use tokio::sync::mpsc::Sender;
 
 #[async_trait]
@@ -103,75 +107,49 @@ impl Actionable for ShipAction {
                             if current_mode == mode {
                                 Ok(Success)
                             } else {
-                                Err(anyhow!(
-                                    "Failed - current mode {} != wanted mode {}",
-                                    current_mode,
-                                    mode
-                                ))
+                                Err(anyhow!("Failed - current mode {} != wanted mode {}", current_mode, mode))
                             }
                         }
-                        TravelAction::Refuel { .. } => {
-                            Err(anyhow!("Failed - no travel mode on refuel action"))
-                        }
+                        TravelAction::Refuel { .. } => Err(anyhow!("Failed - no travel mode on refuel action")),
                     }
                 } else {
                     Err(anyhow!("Failed - no current action"))
                 }
             }
-            ShipAction::MarkTravelActionAsCompleteIfPossible => {
-                match &state.current_travel_action() {
-                    None => Ok(Success),
-                    Some(action) => {
-                        let is_done = match action {
-                            TravelAction::Navigate { to, .. } => {
-                                state.nav.waypoint_symbol == *to
-                                    && state.nav.status != NavStatus::InTransit
-                            }
-                            TravelAction::Refuel { at, .. } => {
-                                state.nav.waypoint_symbol == *at
-                                    && state.nav.status != NavStatus::InTransit
-                                    && state.fuel.current == state.fuel.capacity
-                            }
-                        };
-
-                        if is_done {
-                            state.pop_travel_action();
+            ShipAction::MarkTravelActionAsCompleteIfPossible => match &state.current_travel_action() {
+                None => Ok(Success),
+                Some(action) => {
+                    let is_done = match action {
+                        TravelAction::Navigate { to, .. } => state.nav.waypoint_symbol == *to && state.nav.status != NavStatus::InTransit,
+                        TravelAction::Refuel { at, .. } => {
+                            state.nav.waypoint_symbol == *at && state.nav.status != NavStatus::InTransit && state.fuel.current == state.fuel.capacity
                         }
-                        Ok(Success)
+                    };
+
+                    if is_done {
+                        state.pop_travel_action();
                     }
+                    Ok(Success)
                 }
-            }
+            },
             ShipAction::CanSkipRefueling => match &state.current_travel_action() {
-                None => Err(anyhow!(
-                    "Called CanSkipRefueling, but current action is None",
-                )),
-                Some(TravelAction::Navigate { .. }) => Err(anyhow!(
-                    "Called CanSkipRefueling, but current action is Navigate",
-                )),
+                None => Err(anyhow!("Called CanSkipRefueling, but current action is None",)),
+                Some(TravelAction::Navigate { .. }) => Err(anyhow!("Called CanSkipRefueling, but current action is Navigate",)),
                 Some(TravelAction::Refuel { at, .. }) => {
                     // we can skip refueling, if
                     // - queued_action #1 is: go_to_waypoint X
                     // - queued_action #2 is: refuel_at_waypoint X
                     // - we have enough fuel to reach X in desired flight mode without refueling
-                    let maybe_navigate_action: Option<&TravelAction> =
-                        state.travel_action_queue.front();
-                    let maybe_refuel_action: Option<&TravelAction> =
-                        state.travel_action_queue.get(1);
+                    let maybe_navigate_action: Option<&TravelAction> = state.travel_action_queue.front();
+                    let maybe_refuel_action: Option<&TravelAction> = state.travel_action_queue.get(1);
 
-                    if let Some((
-                        TravelAction::Navigate {
-                            fuel_consumption, ..
-                        },
-                        TravelAction::Refuel { .. },
-                    )) = maybe_navigate_action.zip(maybe_refuel_action)
+                    if let Some((TravelAction::Navigate { fuel_consumption, .. }, TravelAction::Refuel { .. })) = maybe_navigate_action.zip(maybe_refuel_action)
                     {
                         let has_enough_fuel = state.fuel.current >= (*fuel_consumption as i32);
                         if has_enough_fuel {
                             Ok(Success)
                         } else {
-                            Err(anyhow!(
-                                "Called CanSkipRefueling, but not enough fuel to reach destination",
-                            ))
+                            Err(anyhow!("Called CanSkipRefueling, but not enough fuel to reach destination",))
                         }
                     } else {
                         Err(anyhow!(
@@ -221,9 +199,7 @@ impl Actionable for ShipAction {
                             state.set_nav(new_nav);
                             Ok(Success)
                         }
-                        TravelAction::Refuel { .. } => {
-                            Err(anyhow!("Failed - no travel mode on refuel action"))
-                        }
+                        TravelAction::Refuel { .. } => Err(anyhow!("Failed - no travel mode on refuel action")),
                     }
                 } else {
                     Err(anyhow!("Failed - no current action"))
@@ -238,9 +214,7 @@ impl Actionable for ShipAction {
                             state.set_fuel(nav_response.fuel.clone());
                             Ok(Success)
                         }
-                        TravelAction::Refuel { .. } => Err(anyhow!(
-                            "Failed - can't navigate - current action is refuel action"
-                        )),
+                        TravelAction::Refuel { .. } => Err(anyhow!("Failed - can't navigate - current action is refuel action")),
                     }
                 } else {
                     Err(anyhow!("Failed - no current action"))
@@ -268,10 +242,7 @@ impl Actionable for ShipAction {
                 Ok(Success)
             }
             ShipAction::PrintDestination => {
-                println!(
-                    "current_navigation_destination: {:?}",
-                    state.current_navigation_destination
-                );
+                println!("current_navigation_destination: {:?}", state.current_navigation_destination);
                 Ok(Success)
             }
 
@@ -300,35 +271,26 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::HasRouteToDestination => {
-                if let Some((current_destination, last_travel_action)) = state
-                    .current_navigation_destination
-                    .clone()
-                    .zip(state.last_travel_action())
-                {
+                if let Some((current_destination, last_travel_action)) = state.current_navigation_destination.clone().zip(state.last_travel_action()) {
                     if current_destination == *last_travel_action.waypoint_and_time().0 {
                         Ok(Success)
                     } else {
-                        Err(anyhow!("Last entry of travel_actions {:?} doesn't match the current destination {:?}", last_travel_action, current_destination))
+                        Err(anyhow!(
+                            "Last entry of travel_actions {:?} doesn't match the current destination {:?}",
+                            last_travel_action,
+                            current_destination
+                        ))
                     }
                 } else {
-                    Err(anyhow!(
-                        "No active navigation_destination or no last_travel_action"
-                    ))
+                    Err(anyhow!("No active navigation_destination or no last_travel_action"))
                 }
             }
             ShipAction::ComputePathToDestination => {
                 let from = state.nav.waypoint_symbol.clone();
                 let to = state.current_navigation_destination.clone().unwrap();
                 let ship = state.get_ship();
-                let path: Vec<TravelAction> = args
-                    .compute_path(
-                        from,
-                        to,
-                        ship.engine.speed as u32,
-                        ship.fuel.current as u32,
-                        ship.fuel.capacity as u32,
-                    )
-                    .await?;
+                let path: Vec<TravelAction> =
+                    args.compute_path(from, to, ship.engine.speed as u32, ship.fuel.current as u32, ship.fuel.capacity as u32).await?;
 
                 state.set_route(path);
                 Ok(Success)
@@ -342,30 +304,20 @@ impl Actionable for ShipAction {
                 let is_uncharted = exploration_tasks.contains(&ExplorationTask::CreateChart);
                 if is_uncharted {
                     let charted_waypoint = state.chart_waypoint().await?;
-                    args.insert_waypoint(&charted_waypoint.waypoint)
-                        .await
-                        .map_err(|_| anyhow!("inserting waypoint failed"))?;
+                    args.insert_waypoint(&charted_waypoint.waypoint).await.map_err(|_| anyhow!("inserting waypoint failed"))?;
                 }
 
                 let exploration_tasks = if is_uncharted {
-                    args.get_exploration_tasks_for_current_waypoint(
-                        state.nav.waypoint_symbol.clone(),
-                    )
-                    .await?
+                    args.get_exploration_tasks_for_current_waypoint(state.nav.waypoint_symbol.clone()).await?
                 } else {
                     exploration_tasks
                 };
 
-                println!(
-                    "CollectWaypointInfos - exploration_tasks: {:?}",
-                    exploration_tasks
-                );
+                println!("CollectWaypointInfos - exploration_tasks: {:?}", exploration_tasks);
 
                 for task in exploration_tasks {
                     match task {
-                        ExplorationTask::CreateChart => {
-                            return Err(anyhow!("Waypoint should have been charted by now"))
-                        }
+                        ExplorationTask::CreateChart => return Err(anyhow!("Waypoint should have been charted by now")),
                         ExplorationTask::GetMarket => {
                             let market = state.get_market().await?;
                             args.insert_market(market).await?;
@@ -463,12 +415,7 @@ impl TestObjects {
         }
     }
 
-    pub fn create_nav(
-        mode: FlightMode,
-        nav_status: NavStatus,
-        origin_waypoint_symbol: &WaypointSymbol,
-        destination_waypoint_symbol: &WaypointSymbol,
-    ) -> Nav {
+    pub fn create_nav(mode: FlightMode, nav_status: NavStatus, origin_waypoint_symbol: &WaypointSymbol, destination_waypoint_symbol: &WaypointSymbol) -> Nav {
         Nav {
             system_symbol: destination_waypoint_symbol.system_symbol(),
             waypoint_symbol: destination_waypoint_symbol.clone(),
@@ -600,11 +547,9 @@ mod tests {
     use mockall::predicate::*;
 
     use st_domain::{
-        AgentInfoResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode,
-        GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse,
-        JumpGate, ListAgentsResponse, MarketData, NavAndFuelResponse, NavOnlyResponse, NavStatus,
-        NavigateShipResponse, OrbitShipResponse, PatchShipNavResponse, RefuelShipResponse,
-        RegistrationRequest, RegistrationResponse, Ship, ShipSymbol, Shipyard, StStatusResponse,
+        AgentInfoResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse, GetJumpGateResponse,
+        GetMarketResponse, GetShipyardResponse, JumpGate, ListAgentsResponse, MarketData, NavAndFuelResponse, NavOnlyResponse, NavStatus, NavigateShipResponse,
+        OrbitShipResponse, PatchShipNavResponse, RefuelShipResponse, RegistrationRequest, RegistrationResponse, Ship, ShipSymbol, Shipyard, StStatusResponse,
         SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
     };
 
@@ -683,21 +628,18 @@ mod tests {
     async fn test_experiment_with_mockall() {
         let mut mock_client = MockStClient::new();
 
-        mock_client
-            .expect_dock_ship()
-            .with(eq(ShipSymbol("FLWI-1".to_string())))
-            .return_once(move |_| {
-                Ok(DockShipResponse {
-                    data: NavOnlyResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Drift,
-                            NavStatus::InTransit,
-                            &WaypointSymbol("X1-FOO-BAR".to_string()),
-                            &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        ),
-                    },
-                })
-            });
+        mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).return_once(move |_| {
+            Ok(DockShipResponse {
+                data: NavOnlyResponse {
+                    nav: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::InTransit,
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
+                },
+            })
+        });
 
         let ship = TestObjects::test_ship(500);
 
@@ -714,21 +656,18 @@ mod tests {
             blackboard: Arc::new(MockTestBlackboard::new()),
         };
 
-        let mocked_client = mock_client
-            .expect_dock_ship()
-            .with(eq(ShipSymbol("FLWI-1".to_string())))
-            .returning(move |_| {
-                Ok(DockShipResponse {
-                    data: NavOnlyResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Drift,
-                            NavStatus::InTransit,
-                            &WaypointSymbol("X1-FOO-BAR".to_string()),
-                            &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        ),
-                    },
-                })
-            });
+        let mocked_client = mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).returning(move |_| {
+            Ok(DockShipResponse {
+                data: NavOnlyResponse {
+                    nav: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::InTransit,
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
+                },
+            })
+        });
 
         // if ship is docked
 
@@ -741,9 +680,7 @@ mod tests {
         mocked_client.never();
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
-        let result = ship_behavior
-            .run(&args, &mut ship_ops, Duration::from_millis(1))
-            .await;
+        let result = ship_behavior.run(&args, &mut ship_ops, Duration::from_millis(1)).await;
         assert!(result.is_ok());
     }
 
@@ -755,21 +692,18 @@ mod tests {
             blackboard: Arc::new(MockTestBlackboard::new()),
         };
 
-        let mocked_client = mock_client
-            .expect_dock_ship()
-            .with(eq(ShipSymbol("FLWI-1".to_string())))
-            .returning(move |_| {
-                Ok(DockShipResponse {
-                    data: NavOnlyResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Drift,
-                            NavStatus::InTransit,
-                            &WaypointSymbol("X1-FOO-BAR".to_string()),
-                            &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        ),
-                    },
-                })
-            });
+        let mocked_client = mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).returning(move |_| {
+            Ok(DockShipResponse {
+                data: NavOnlyResponse {
+                    nav: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::InTransit,
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
+                },
+            })
+        });
 
         // if ship is docked
 
@@ -782,10 +716,7 @@ mod tests {
         mocked_client.times(1);
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
-        let result = ship_behavior
-            .run(&args, &mut ship_ops, Duration::from_millis(1))
-            .await
-            .unwrap();
+        let result = ship_behavior.run(&args, &mut ship_ops, Duration::from_millis(1)).await.unwrap();
         assert_eq!(result, Response::Success);
     }
 
@@ -840,31 +771,15 @@ mod tests {
 
         mock_test_blackboard
             .expect_compute_path()
-            .with(
-                eq((*waypoint_bar).clone()),
-                eq((*waypoint_a1).clone()),
-                eq(30),
-                eq(current_fuel),
-                eq(600),
-            )
+            .with(eq((*waypoint_bar).clone()), eq((*waypoint_a1).clone()), eq(30), eq(current_fuel), eq(600))
             .returning(move |_, _, _, _, _| Ok(first_hop_actions.clone()));
 
         mock_test_blackboard
             .expect_compute_path()
-            .with(
-                eq((*waypoint_a1).clone()),
-                eq((*waypoint_a2).clone()),
-                eq(30),
-                eq(300),
-                eq(600),
-            )
+            .with(eq((*waypoint_a1).clone()), eq((*waypoint_a2).clone()), eq(30), eq(300), eq(600))
             .returning(move |_, _, _, _, _| Ok(second_hop_actions.clone()));
 
-        mock_test_blackboard
-            .expect_insert_market()
-            .with(mockall::predicate::always())
-            .times(2)
-            .returning(|_| Ok(()));
+        mock_test_blackboard.expect_insert_market().with(mockall::predicate::always()).times(2).returning(|_| Ok(()));
 
         let waypoint_a1_clone = Arc::clone(&waypoint_a1);
         let waypoint_a2_clone = Arc::clone(&waypoint_a2);
@@ -872,25 +787,13 @@ mod tests {
 
         mock_client
             .expect_navigate()
-            .withf(|ship_symbol, to| {
-                ship_symbol == &ShipSymbol("FLWI-1".to_string()) && to.0.contains("X1-FOO-A")
-            })
+            .withf(|ship_symbol, to| ship_symbol == &ShipSymbol("FLWI-1".to_string()) && to.0.contains("X1-FOO-A"))
             .times(2)
             .returning(move |_, to| {
                 let return_nav = if to.0.ends_with("A1") {
-                    TestObjects::create_nav(
-                        FlightMode::Burn,
-                        NavStatus::InTransit,
-                        &waypoint_bar_clone,
-                        &waypoint_a1_clone,
-                    )
+                    TestObjects::create_nav(FlightMode::Burn, NavStatus::InTransit, &waypoint_bar_clone, &waypoint_a1_clone)
                 } else {
-                    TestObjects::create_nav(
-                        FlightMode::Burn,
-                        NavStatus::InTransit,
-                        &waypoint_a1_clone,
-                        &waypoint_a2_clone,
-                    )
+                    TestObjects::create_nav(FlightMode::Burn, NavStatus::InTransit, &waypoint_a1_clone, &waypoint_a2_clone)
                 };
                 Ok(NavigateShipResponse {
                     data: NavAndFuelResponse {
@@ -901,36 +804,23 @@ mod tests {
             });
 
         let waypoint_bar_clone = Arc::clone(&waypoint_bar);
-        mock_client
-            .expect_set_flight_mode()
-            .with(eq(ShipSymbol("FLWI-1".to_string())), eq(FlightMode::Burn))
-            .times(1)
-            .returning(move |_, _| {
-                Ok(PatchShipNavResponse {
-                    data: TestObjects::create_nav(
-                        FlightMode::Burn,
-                        NavStatus::InTransit,
-                        &waypoint_bar_clone,
-                        &waypoint_bar_clone,
-                    ),
-                })
-            });
+        mock_client.expect_set_flight_mode().with(eq(ShipSymbol("FLWI-1".to_string())), eq(FlightMode::Burn)).times(1).returning(move |_, _| {
+            Ok(PatchShipNavResponse {
+                data: TestObjects::create_nav(FlightMode::Burn, NavStatus::InTransit, &waypoint_bar_clone, &waypoint_bar_clone),
+            })
+        });
 
         let waypoint_a1_clone = Arc::clone(&waypoint_a1);
         let waypoint_a2_clone = Arc::clone(&waypoint_a2);
-        mock_client
-            .expect_get_marketplace()
-            .withf(|wp| wp.0.contains("X1-FOO-A"))
-            .times(2)
-            .returning(move |wp| {
-                let market_data = if wp.0.ends_with("A1") {
-                    TestObjects::create_market_data(&waypoint_a1_clone)
-                } else {
-                    TestObjects::create_market_data(&waypoint_a2_clone)
-                };
+        mock_client.expect_get_marketplace().withf(|wp| wp.0.contains("X1-FOO-A")).times(2).returning(move |wp| {
+            let market_data = if wp.0.ends_with("A1") {
+                TestObjects::create_market_data(&waypoint_a1_clone)
+            } else {
+                TestObjects::create_market_data(&waypoint_a2_clone)
+            };
 
-                Ok(GetMarketResponse { data: market_data })
-            });
+            Ok(GetMarketResponse { data: market_data })
+        });
 
         let behaviors = ship_navigation_behaviors();
         let mut ship_behavior = behaviors.explorer_behavior;
@@ -944,10 +834,7 @@ mod tests {
         };
 
         ship_ops.set_explore_locations(explorer_waypoints);
-        let result = ship_behavior
-            .run(&args, &mut ship_ops, Duration::from_millis(1))
-            .await
-            .unwrap();
+        let result = ship_behavior.run(&args, &mut ship_ops, Duration::from_millis(1)).await.unwrap();
 
         assert_eq!(result, Response::Success);
         assert_eq!(ship_ops.nav.waypoint_symbol, *waypoint_a2);
@@ -986,14 +873,8 @@ mod tests {
             )
             .returning(move |_, _, _, _, _| Ok(first_hop_actions.clone()));
 
-        mock_client
-            .expect_navigate()
-            .with(
-                eq(ShipSymbol("FLWI-1".to_string())),
-                eq(WaypointSymbol("X1-FOO-A1".to_string())),
-            )
-            .times(1)
-            .returning(move |_, _| {
+        mock_client.expect_navigate().with(eq(ShipSymbol("FLWI-1".to_string())), eq(WaypointSymbol("X1-FOO-A1".to_string()))).times(1).returning(
+            move |_, _| {
                 Ok(NavigateShipResponse {
                     data: NavAndFuelResponse {
                         nav: TestObjects::create_nav(
@@ -1005,22 +886,19 @@ mod tests {
                         fuel: TestObjects::create_fuel(500, 200),
                     },
                 })
-            });
+            },
+        );
 
-        mock_client
-            .expect_set_flight_mode()
-            .with(eq(ShipSymbol("FLWI-1".to_string())), eq(FlightMode::Burn))
-            .times(1)
-            .returning(move |_, _| {
-                Ok(PatchShipNavResponse {
-                    data: TestObjects::create_nav(
-                        FlightMode::Burn,
-                        NavStatus::InTransit,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
-                })
-            });
+        mock_client.expect_set_flight_mode().with(eq(ShipSymbol("FLWI-1".to_string())), eq(FlightMode::Burn)).times(1).returning(move |_, _| {
+            Ok(PatchShipNavResponse {
+                data: TestObjects::create_nav(
+                    FlightMode::Burn,
+                    NavStatus::InTransit,
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                ),
+            })
+        });
 
         let behaviors = ship_navigation_behaviors();
         let mut ship_behavior = behaviors.navigate_to_destination;
@@ -1035,15 +913,9 @@ mod tests {
         };
 
         ship_ops.set_destination(WaypointSymbol("X1-FOO-A1".to_string()));
-        let result = ship_behavior
-            .run(&args, &mut ship_ops, Duration::from_millis(1))
-            .await
-            .unwrap();
+        let result = ship_behavior.run(&args, &mut ship_ops, Duration::from_millis(1)).await.unwrap();
         assert_eq!(result, Response::Success);
-        assert_eq!(
-            ship_ops.nav.waypoint_symbol,
-            WaypointSymbol("X1-FOO-A1".to_string())
-        );
+        assert_eq!(ship_ops.nav.waypoint_symbol, WaypointSymbol("X1-FOO-A1".to_string()));
         assert_eq!(ship_ops.nav.status, NavStatus::InOrbit);
         assert_eq!(ship_ops.travel_action_queue.len(), 0);
         assert_eq!(ship_ops.current_navigation_destination, None);
@@ -1083,98 +955,72 @@ mod tests {
         let mut seq = mockall::Sequence::new();
 
         // 1st waypoint: Dock for refueling
-        mock_client
-            .expect_dock_ship()
-            .with(eq(ShipSymbol("FLWI-1".to_string())))
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_| {
-                Ok(DockShipResponse {
-                    data: NavOnlyResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Drift,
-                            NavStatus::Docked,
-                            &WaypointSymbol("X1-FOO-BAR".to_string()),
-                            &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        ),
-                    },
-                })
-            });
+        mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).once().in_sequence(&mut seq).returning(move |_| {
+            Ok(DockShipResponse {
+                data: NavOnlyResponse {
+                    nav: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::Docked,
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
+                },
+            })
+        });
 
         // 1st waypoint: Orbit after refueling
-        mock_client
-            .expect_orbit_ship()
-            .with(eq(ShipSymbol("FLWI-1".to_string())))
-            .once()
-            .in_sequence(&mut seq)
-            .return_once(move |_| {
-                Ok(OrbitShipResponse {
-                    data: NavOnlyResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Drift,
-                            NavStatus::InOrbit,
-                            &WaypointSymbol("X1-FOO-BAR".to_string()),
-                            &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        ),
-                    },
-                })
-            });
+        mock_client.expect_orbit_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).once().in_sequence(&mut seq).return_once(move |_| {
+            Ok(OrbitShipResponse {
+                data: NavOnlyResponse {
+                    nav: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::InOrbit,
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
+                },
+            })
+        });
 
         // 2nd waypoint: Dock for refueling
-        mock_client
-            .expect_dock_ship()
-            .with(eq(ShipSymbol("FLWI-1".to_string())))
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_| {
-                Ok(DockShipResponse {
-                    data: NavOnlyResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Burn,
-                            NavStatus::Docked,
-                            &WaypointSymbol("X1-FOO-A1".to_string()),
-                            &WaypointSymbol("X1-FOO-A1".to_string()),
-                        ),
-                    },
-                })
-            });
+        mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).once().in_sequence(&mut seq).returning(move |_| {
+            Ok(DockShipResponse {
+                data: NavOnlyResponse {
+                    nav: TestObjects::create_nav(
+                        FlightMode::Burn,
+                        NavStatus::Docked,
+                        &WaypointSymbol("X1-FOO-A1".to_string()),
+                        &WaypointSymbol("X1-FOO-A1".to_string()),
+                    ),
+                },
+            })
+        });
 
         // 2nd waypoint: Orbit after refueling
-        mock_client
-            .expect_orbit_ship()
-            .with(eq(ShipSymbol("FLWI-1".to_string())))
-            .once()
-            .in_sequence(&mut seq)
-            .return_once(move |_| {
-                Ok(OrbitShipResponse {
-                    data: NavOnlyResponse {
-                        nav: TestObjects::create_nav(
-                            FlightMode::Burn,
-                            NavStatus::InOrbit,
-                            &WaypointSymbol("X1-FOO-A1".to_string()),
-                            &WaypointSymbol("X1-FOO-A1".to_string()),
-                        ),
-                    },
-                })
-            });
+        mock_client.expect_orbit_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).once().in_sequence(&mut seq).return_once(move |_| {
+            Ok(OrbitShipResponse {
+                data: NavOnlyResponse {
+                    nav: TestObjects::create_nav(
+                        FlightMode::Burn,
+                        NavStatus::InOrbit,
+                        &WaypointSymbol("X1-FOO-A1".to_string()),
+                        &WaypointSymbol("X1-FOO-A1".to_string()),
+                    ),
+                },
+            })
+        });
 
-        mock_client
-            .expect_refuel()
-            .with(eq(ShipSymbol("FLWI-1".to_string())), eq(500), eq(false))
-            .returning(move |_, _, _| {
-                Ok(RefuelShipResponse {
-                    data: TestObjects::create_refuel_ship_response_body(500),
-                })
-            });
+        mock_client.expect_refuel().with(eq(ShipSymbol("FLWI-1".to_string())), eq(500), eq(false)).returning(move |_, _, _| {
+            Ok(RefuelShipResponse {
+                data: TestObjects::create_refuel_ship_response_body(500),
+            })
+        });
 
-        mock_client
-            .expect_refuel()
-            .with(eq(ShipSymbol("FLWI-1".to_string())), eq(200), eq(false))
-            .returning(move |_, _, _| {
-                Ok(RefuelShipResponse {
-                    data: TestObjects::create_refuel_ship_response_body(200),
-                })
-            });
+        mock_client.expect_refuel().with(eq(ShipSymbol("FLWI-1".to_string())), eq(200), eq(false)).returning(move |_, _, _| {
+            Ok(RefuelShipResponse {
+                data: TestObjects::create_refuel_ship_response_body(200),
+            })
+        });
 
         mock_test_blackboard
             .expect_compute_path()
@@ -1187,14 +1033,8 @@ mod tests {
             )
             .returning(move |_, _, _, _, _| Ok(first_hop_actions.clone()));
 
-        mock_client
-            .expect_navigate()
-            .with(
-                eq(ShipSymbol("FLWI-1".to_string())),
-                eq(WaypointSymbol("X1-FOO-A1".to_string())),
-            )
-            .times(1)
-            .returning(move |_, _| {
+        mock_client.expect_navigate().with(eq(ShipSymbol("FLWI-1".to_string())), eq(WaypointSymbol("X1-FOO-A1".to_string()))).times(1).returning(
+            move |_, _| {
                 Ok(NavigateShipResponse {
                     data: NavAndFuelResponse {
                         nav: TestObjects::create_nav(
@@ -1206,22 +1046,19 @@ mod tests {
                         fuel: TestObjects::create_fuel(600, 200),
                     },
                 })
-            });
+            },
+        );
 
-        mock_client
-            .expect_set_flight_mode()
-            .with(eq(ShipSymbol("FLWI-1".to_string())), eq(FlightMode::Burn))
-            .times(1)
-            .returning(move |_, _| {
-                Ok(PatchShipNavResponse {
-                    data: TestObjects::create_nav(
-                        FlightMode::Burn,
-                        NavStatus::InTransit,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
-                })
-            });
+        mock_client.expect_set_flight_mode().with(eq(ShipSymbol("FLWI-1".to_string())), eq(FlightMode::Burn)).times(1).returning(move |_, _| {
+            Ok(PatchShipNavResponse {
+                data: TestObjects::create_nav(
+                    FlightMode::Burn,
+                    NavStatus::InTransit,
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                ),
+            })
+        });
 
         let behaviors = ship_navigation_behaviors();
         let mut ship_behavior = behaviors.navigate_to_destination;
@@ -1236,15 +1073,9 @@ mod tests {
         };
 
         ship_ops.set_destination(WaypointSymbol("X1-FOO-A1".to_string()));
-        let result = ship_behavior
-            .run(&args, &mut ship_ops, Duration::from_millis(1))
-            .await
-            .unwrap();
+        let result = ship_behavior.run(&args, &mut ship_ops, Duration::from_millis(1)).await.unwrap();
         assert_eq!(result, Response::Success);
-        assert_eq!(
-            ship_ops.nav.waypoint_symbol,
-            WaypointSymbol("X1-FOO-A1".to_string())
-        );
+        assert_eq!(ship_ops.nav.waypoint_symbol, WaypointSymbol("X1-FOO-A1".to_string()));
         assert_eq!(ship_ops.nav.status, NavStatus::InOrbit);
         assert_eq!(ship_ops.travel_action_queue.len(), 0);
         assert_eq!(ship_ops.current_navigation_destination, None);
