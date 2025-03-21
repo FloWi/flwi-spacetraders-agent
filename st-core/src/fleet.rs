@@ -39,6 +39,7 @@ pub struct SystemSpawningFleet {
     ship_operations: HashMap<ShipSymbol, ShipOperations>,
     completed_exploration_tasks: HashSet<WaypointSymbol>,
     budget: u64,
+    current_task: Option<ShipTask>,
 }
 
 impl SystemSpawningFleet {
@@ -55,8 +56,10 @@ impl SystemSpawningFleet {
         log!(Level::Info, "Running SystemSpawningFleet",);
 
         let task = {
-            let fleet_guard = fleet.lock().await;
-            fleet_guard.compute_initial_exploration_ship_task(&db_model_manager).await?
+            let mut fleet_guard = fleet.lock().await;
+            let task = fleet_guard.compute_initial_exploration_ship_task(&db_model_manager).await?;
+            fleet_guard.current_task = task.clone();
+            task
         };
 
         log!(Level::Info, "Computed this task for the command ship: {}", serde_json::to_string_pretty(&task)?);
@@ -170,6 +173,7 @@ impl SystemSpawningFleet {
 }
 
 impl SystemSpawningFleet {
+
     pub async fn compute_initial_exploration_ship_task(&self, mm: &DbModelManager) -> Result<Option<ShipTask>> {
         let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &self.system_symbol).await?;
 
@@ -353,6 +357,7 @@ pub(crate) async fn compute_initial_fleet(
         spawn_ship_symbol: command_ship.symbol.clone(),
         ship_operations: HashMap::from([(command_ship.symbol.clone(), command_ship_op)]),
         completed_exploration_tasks: HashSet::new(),
+        current_task: None,
         budget: 0,
     };
 
