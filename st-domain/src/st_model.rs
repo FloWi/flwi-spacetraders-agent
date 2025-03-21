@@ -699,7 +699,9 @@ pub struct PatchShipNavRequest {
     pub flight_mode: FlightMode,
 }
 
-pub type PatchShipNavResponse = Data<Nav>;
+pub type PatchShipNavResponse = Data<NavOnlyResponse>;
+
+pub type SetFlightModeResponse = Data<NavAndFuelResponse>;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]

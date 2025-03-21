@@ -109,7 +109,7 @@ impl ShipOperations {
         Ok(response.data)
     }
 
-    pub(crate) async fn set_flight_mode(&self, mode: &FlightMode) -> Result<Nav> {
+    pub(crate) async fn set_flight_mode(&self, mode: &FlightMode) -> Result<NavAndFuelResponse> {
         let response = self.client.set_flight_mode(self.ship.symbol.clone(), mode).await?;
         println!("{:?}", response);
         Ok(response.data)

@@ -6,9 +6,9 @@ use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
 use st_domain::{
     extract_system_symbol, AgentInfoResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse,
-    GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, ListAgentsResponse, NavigateShipRequest, NavigateShipResponse, OrbitShipResponse,
-    PatchShipNavRequest, PatchShipNavResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest, RegistrationResponse, Ship, ShipSymbol,
-    StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
+    GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, ListAgentsResponse, NavAndFuelResponse, NavigateShipRequest, NavigateShipResponse,
+    OrbitShipResponse, PatchShipNavRequest, PatchShipNavResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest, RegistrationResponse,
+    SetFlightModeResponse, Ship, ShipSymbol, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
 };
 use std::fmt::Debug;
 
@@ -67,7 +67,7 @@ impl StClientTrait for StClient {
         Self::make_api_call(self.client.post(format!("https://api.spacetraders.io/v2/my/ships/{}/dock", ship_symbol.0).to_string())).await
     }
 
-    async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> Result<PatchShipNavResponse> {
+    async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> Result<SetFlightModeResponse> {
         Self::make_api_call(
             /*
             https://api.spacetraders.io/v2/my/ships/{shipSymbol}/nav
@@ -206,7 +206,7 @@ pub trait StClientTrait: Send + Sync + Debug {
 
     async fn dock_ship(&self, ship_symbol: ShipSymbol) -> Result<DockShipResponse>;
 
-    async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> Result<PatchShipNavResponse>;
+    async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> Result<SetFlightModeResponse>;
 
     async fn navigate(&self, ship_symbol: ShipSymbol, to: &WaypointSymbol) -> Result<NavigateShipResponse>;
 
