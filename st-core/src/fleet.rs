@@ -63,19 +63,18 @@ impl SystemSpawningFleet {
 
         match task {
             Some(ShipTask::ObserveAllWaypointsOnce { waypoint_symbols }) => {
-                let (ship_updated_tx, ship_action_completed_tx, ship_action_completed_rx, command_ship) = {
+                let (ship_action_completed_tx, ship_action_completed_rx, command_ship) = {
                     let mut fleet_guard = fleet.lock().await;
                     // Get necessary values while locked
-                    let command_ship = fleet_guard.ship_operations.get(&fleet_guard.spawn_ship_symbol).unwrap().clone();
+                    let command_ship_symbol = &fleet_guard.spawn_ship_symbol.clone();
+                    let mut command_ship = fleet_guard.ship_operations.get_mut(command_ship_symbol).unwrap().clone();
 
-                    let mut command_ship_with_explore = command_ship.clone();
-                    command_ship_with_explore.set_explore_locations(waypoint_symbols);
+                    command_ship.set_explore_locations(waypoint_symbols);
 
                     // Create channels
-                    let (ship_updated_tx, _) = mpsc::channel(32);
                     let (ship_action_completed_tx, ship_action_completed_rx) = mpsc::channel(32);
 
-                    (ship_updated_tx, ship_action_completed_tx, ship_action_completed_rx, command_ship_with_explore)
+                    (ship_action_completed_tx, ship_action_completed_rx, command_ship)
                 }; // Lock is released here
 
                 // Pass a clone of the fleet Arc for the task
@@ -114,12 +113,15 @@ impl SystemSpawningFleet {
                                 let current_location = fleet_guard.ship_operations.get(&fleet_guard.spawn_ship_symbol).map(|ship| ship.current_location());
 
                                 if let Some(location) = current_location {
-                                    fleet_guard.completed_exploration_tasks.insert(location);
+                                    fleet_guard.completed_exploration_tasks.insert(location.clone());
                                     log!(
                                         Level::Info,
-                                        "{} of {} exploration_tasks complete for SystemSpawningFleet",
+                                        "CollectWaypointInfos: {} of {} exploration_tasks complete for SystemSpawningFleet. Current location: {:?}\nCompleted tasks: {:?}\nAll Tasks: {:?}",
                                         fleet_guard.completed_exploration_tasks.len(),
                                         fleet_guard.all_exploration_tasks().len(),
+                                        location,
+                                        fleet_guard.completed_exploration_tasks,
+                                        fleet_guard.all_exploration_tasks()
                                     );
                                 }
                             }
