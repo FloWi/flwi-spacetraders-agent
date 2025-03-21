@@ -8,8 +8,6 @@ async fn main() {
     use leptos_axum::LeptosRoutes;
     use st_core::agent_manager::AgentManager;
     use st_core::configuration::AgentConfiguration;
-    use st_core::reqwest_helpers::create_client;
-    use st_core::st_client::{StClient, StClientTrait};
     use st_server::app::{shell, App};
     use st_server::cli_args::AppConfig;
     use st_store::{db, DbModelManager};

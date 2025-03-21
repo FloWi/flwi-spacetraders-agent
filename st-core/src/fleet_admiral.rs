@@ -1,4 +1,4 @@
-use crate::fleet::{Fleet};
+use crate::fleet::{Fleet, SystemSpawningFleet};
 use crate::pagination::fetch_all_pages;
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
@@ -9,7 +9,7 @@ use sqlx::{Pool, Postgres};
 use st_domain::{FleetUpdateMessage, Ship, SystemSymbol, Waypoint};
 use st_store::{db, DbModelManager};
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 pub struct FleetAdmiral {
@@ -123,8 +123,7 @@ impl FleetAdmiral {
                             let fleet_updated_tx = self.fleet_updated_tx.clone();
 
                             async move {
-                                system_spawning_fleet
-                                    .run(db_model_manager, ship_updated_tx, fleet_updated_tx)
+                                SystemSpawningFleet::run(Arc::new(Mutex::new(system_spawning_fleet)), db_model_manager, ship_updated_tx, fleet_updated_tx)
                                     .await
                             }
                         })

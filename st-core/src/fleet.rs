@@ -1,3 +1,6 @@
+use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
+use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
+use crate::behavior_tree::ship_behaviors::{ship_navigation_behaviors, Behaviors, ShipAction};
 use crate::exploration::exploration::generate_exploration_route;
 use crate::marketplaces::marketplaces::{
     filter_waypoints_with_trait, find_marketplaces_for_exploration, find_shipyards_for_exploration,
@@ -8,7 +11,10 @@ use anyhow::{anyhow, Error, Result};
 use itertools::Itertools;
 use log::{log, Level};
 use serde::{Deserialize, Serialize};
-use st_domain::{FleetUpdateMessage, Ship, ShipRegistrationRole, ShipRole, ShipSymbol, ShipTaskMessage, ShipType, SystemSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol, WaypointTraitSymbol};
+use st_domain::{
+    FleetUpdateMessage, Ship, ShipRegistrationRole, ShipRole, ShipSymbol, ShipTaskMessage,
+    ShipType, SystemSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+};
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, Ctx,
     DbModelManager, DbWaypointEntry, MarketBmc, ShipBmc, SystemBmc,
@@ -16,14 +22,11 @@ use st_store::{
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::{mpsc, Mutex};
 use tracing::{event, span};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use std::time::Duration;
-use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
-use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
-use crate::behavior_tree::ship_behaviors::{ship_navigation_behaviors, Behaviors, ShipAction};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FleetId(u32);
@@ -42,13 +45,29 @@ pub struct SystemSpawningFleet {
 }
 
 impl SystemSpawningFleet {
-    pub async fn run(&mut self, db_model_manager: DbModelManager, ship_updated_tx: Sender<ShipOperations>, fleet_updated_tx: Sender<FleetUpdateMessage>) -> Result<()> {
-        log!(
-            Level::Info,
-            "Running SystemSpawningFleet",
-        );
+    pub fn all_exploration_tasks(&self) -> Vec<WaypointSymbol> {
+        self.marketplace_waypoints_of_interest
+            .iter()
+            .chain(self.shipyard_waypoints_of_interest.iter())
+            .unique()
+            .cloned()
+            .collect_vec()
+    }
 
-        let task = Self::compute_initial_exploration_ship_task(&self, &db_model_manager).await?;
+    pub async fn run(
+        fleet: Arc<Mutex<SystemSpawningFleet>>,
+        db_model_manager: DbModelManager,
+        ship_updated_tx: Sender<ShipOperations>,
+        fleet_updated_tx: Sender<FleetUpdateMessage>,
+    ) -> Result<()> {
+        log!(Level::Info, "Running SystemSpawningFleet",);
+
+        let task = {
+            let fleet_guard = fleet.lock().await;
+            fleet_guard
+                .compute_initial_exploration_ship_task(&db_model_manager)
+                .await?
+        };
 
         log!(
             Level::Info,
@@ -57,73 +76,58 @@ impl SystemSpawningFleet {
         );
 
         match task {
-            Some(ShipTask::ObserveAllWaypointsOnce {
-                     waypoint_symbols
-                 }) => {
-                let mut command_ship = self.ship_operations.get(&self.spawn_ship_symbol).unwrap().clone();
-                command_ship.set_explore_locations(waypoint_symbols);
+            Some(ShipTask::ObserveAllWaypointsOnce { waypoint_symbols }) => {
+                let (
+                    ship_updated_tx,
+                    ship_action_completed_tx,
+                    ship_action_completed_rx,
+                    command_ship,
+                ) = {
+                    let mut fleet_guard = fleet.lock().await;
+                    // Get necessary values while locked
+                    let command_ship = fleet_guard
+                        .ship_operations
+                        .get(&fleet_guard.spawn_ship_symbol)
+                        .unwrap()
+                        .clone();
+
+                    let mut command_ship_with_explore = command_ship.clone();
+                    command_ship_with_explore.set_explore_locations(waypoint_symbols);
+
+                    // Create channels
+                    let (ship_updated_tx, _) = mpsc::channel(32);
+                    let (ship_action_completed_tx, ship_action_completed_rx) = mpsc::channel(32);
+
+                    (
+                        ship_updated_tx,
+                        ship_action_completed_tx,
+                        ship_action_completed_rx,
+                        command_ship_with_explore,
+                    )
+                }; // Lock is released here
+
+                // Pass a clone of the fleet Arc for the task
+                let fleet_for_listener = Arc::clone(&fleet);
+                tokio::spawn(async move {
+                    Self::listen_to_ship_action_messages(
+                        ship_action_completed_rx,
+                        fleet_for_listener,
+                    )
+                    .await;
+                });
 
                 let args = BehaviorArgs {
-                    blackboard: Arc::new(DbBlackboard { model_manager: db_model_manager }),
+                    blackboard: Arc::new(DbBlackboard {
+                        model_manager: db_model_manager,
+                    }),
                 };
-
-                let (ship_action_completed_tx, mut ship_action_completed_rx): (
-                    Sender<ActionEvent>,
-                    Receiver<ActionEvent>,
-                ) = mpsc::channel::<ActionEvent>(32);
-
-                // Spawn a separate task to process the action completion events
-                // Then in your task:
-                tokio::spawn(async move {
-                    while let Some(event) = ship_action_completed_rx.recv().await {
-                        match event {
-                            // Use the actual variant names from your enum definition
-                            ActionEvent::ShipActionCompleted(result) => {
-                                match result {
-                                    Ok(action) => {
-                                        log!(
-                            Level::Info,
-                            "ShipAction completed successfully: {}",
-                            action
-                        );
-                                    }
-                                    Err(e) => {
-                                        log!(
-                            Level::Warn,
-                            "ShipAction failed: {}",
-                            e
-                        );
-                                    }
-                                }
-                            }
-                            ActionEvent::BehaviorCompleted(result) => {
-                                match result {
-                                    Ok(behavior) => {
-                                        log!(
-                            Level::Info,
-                            "Behavior completed successfully: {}",
-                            behavior
-                        );
-                                    }
-                                    Err(e) => {
-                                        log!(
-                            Level::Warn,
-                            "Behavior failed: {}",
-                            e
-                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    log!(
-        Level::Info,
-        "ship_action_completed_rx closed, stopping event logging"
-    );
-                });;
-
-                let _ = tokio::spawn(ship_loop(command_ship, args, ship_updated_tx, ship_action_completed_tx));
+                // Another clone for the ship loop
+                let _ = tokio::spawn(ship_loop(
+                    command_ship,
+                    args,
+                    ship_updated_tx,
+                    ship_action_completed_tx,
+                ));
             }
             maybe_task => {
                 log!(Level::Warn, "Not implemented yet. {maybe_task:?}");
@@ -132,9 +136,60 @@ impl SystemSpawningFleet {
 
         Ok(())
     }
+
+    async fn listen_to_ship_action_messages(
+        mut ship_action_completed_rx: Receiver<ActionEvent>,
+        fleet: Arc<Mutex<SystemSpawningFleet>>,
+    ) {
+        while let Some(event) = ship_action_completed_rx.recv().await {
+            match event {
+                // Use the actual variant names from your enum definition
+                ActionEvent::ShipActionCompleted(result) => match result {
+                    Ok(action) => {
+                        log!(Level::Info, "ShipAction completed successfully: {}", action);
+                        match action {
+                            ShipAction::CollectWaypointInfos => {
+                                // Lock the fleet to update it
+                                let mut fleet_guard = fleet.lock().await;
+                                let current_location = fleet_guard
+                                    .ship_operations
+                                    .get(&fleet_guard.spawn_ship_symbol)
+                                    .map(|ship| ship.current_location());
+
+                                if let Some(location) = current_location {
+                                    fleet_guard.completed_exploration_tasks.insert(location);
+                                    log!(
+            Level::Info,
+            "{} of {} exploration_tasks complete for SystemSpawningFleet",
+                                        fleet_guard.completed_exploration_tasks.len(),
+                                        fleet_guard.all_exploration_tasks().len(),
+        );
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    Err(e) => {
+                        log!(Level::Warn, "ShipAction failed: {}", e);
+                    }
+                },
+                ActionEvent::BehaviorCompleted(result) => match result {
+                    Ok(behavior) => {
+                        log!(
+                            Level::Debug,
+                            "Behavior completed successfully: {}",
+                            behavior
+                        );
+                    }
+                    Err(e) => {
+                        log!(Level::Warn, "Behavior failed: {}", e);
+                    }
+                },
+            }
+        }
+    }
 }
 impl SystemSpawningFleet {
-
     pub async fn compute_initial_exploration_ship_task(
         &self,
         mm: &DbModelManager,
@@ -247,10 +302,7 @@ pub struct MarketObservationFleet {
 
 impl MarketObservationFleet {
     pub async fn run(&self) -> Result<()> {
-        log!(
-            Level::Info,
-            "Running MarketObservationFleet",
-        );
+        log!(Level::Info, "Running MarketObservationFleet",);
         Ok(())
     }
 }
@@ -269,10 +321,7 @@ pub struct MiningFleet {
 
 impl MiningFleet {
     pub async fn run(&self) -> Result<()> {
-        log!(
-            Level::Info,
-            "Running MiningFleet",
-        );
+        log!(Level::Info, "Running MiningFleet",);
         Ok(())
     }
 }
@@ -439,7 +488,6 @@ pub async fn ship_loop(
     let behaviors = ship_navigation_behaviors();
     let ship_behavior: Behavior<ShipAction> = behaviors.explorer_behavior;
 
-
     println!(
         "Running behavior tree. \n<mermaid>\n{}\n</mermaid>",
         ship_behavior.to_mermaid()
@@ -457,7 +505,13 @@ pub async fn ship_loop(
     let _enter = span.enter();
 
     let result: std::result::Result<Response, Error> = ship_behavior
-        .run(&args, &mut ship, Duration::from_secs(1), &ship_updated_tx.clone(), &ship_action_completed_tx.clone())
+        .run(
+            &args,
+            &mut ship,
+            Duration::from_secs(1),
+            &ship_updated_tx.clone(),
+            &ship_action_completed_tx.clone(),
+        )
         .await;
 
     match &result {

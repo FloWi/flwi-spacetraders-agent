@@ -20,6 +20,12 @@ pub struct ShipOperations {
     pub explore_location_queue: VecDeque<WaypointSymbol>,
 }
 
+impl ShipOperations {
+    pub(crate) fn current_location(&self) -> WaypointSymbol {
+        self.ship.nav.waypoint_symbol.clone()
+    }
+}
+
 impl PartialEq for ShipOperations {
     fn eq(&self, other: &Self) -> bool {
         self.ship.eq(&other.ship)
