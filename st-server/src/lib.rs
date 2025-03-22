@@ -2,6 +2,7 @@ use chrono::Duration;
 
 pub mod app;
 pub mod db_overview_page;
+pub mod fleet_overview_page;
 pub mod supply_chain_page;
 
 #[cfg(feature = "ssr")]

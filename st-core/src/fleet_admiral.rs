@@ -63,7 +63,7 @@ impl FleetAdmiral {
         if db_fleets.is_empty() {
             log!(Level::Info, "db_fleets is empty. Computing fleets",);
 
-            let fleets = crate::fleet::compute_initial_fleet(ships, home_system_symbol, waypoints_of_home_system, Arc::clone(&client)).await?;
+            let fleets = crate::fleet::compute_initial_fleets(ships, home_system_symbol, waypoints_of_home_system, Arc::clone(&client)).await?;
             log!(Level::Info, "computed {} fleets.", fleets.len());
 
             // persist fleet config
@@ -113,6 +113,10 @@ impl FleetAdmiral {
                     }
                     Fleet::MarketObservation(market_observation_fleet) => tokio::spawn(async move { market_observation_fleet.run().await }),
                     Fleet::Mining(mining_fleet) => tokio::spawn(async move { mining_fleet.run().await }),
+                    fleet => tokio::spawn(async move {
+                        println!("Fleet {fleet:?} not implemented yet");
+                        Ok(())
+                    }),
                 }
             })
             .collect::<Vec<_>>();
@@ -124,3 +128,5 @@ impl FleetAdmiral {
         }
     }
 }
+
+pub fn compute_fleets_for_starter_system() {}

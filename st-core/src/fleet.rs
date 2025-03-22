@@ -10,11 +10,12 @@ use itertools::Itertools;
 use log::{log, Level};
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    FleetUpdateMessage, Ship, ShipRegistrationRole, ShipRole, ShipSymbol, ShipTaskMessage, ShipType, SystemSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol,
-    WaypointTraitSymbol,
+    FleetDecisionFacts, FleetUpdateMessage, GetConstructionResponse, GetConstructionResponseData, MaterializedSupplyChain, Ship, ShipRegistrationRole,
+    ShipRole, ShipSymbol, ShipTaskMessage, ShipType, SystemSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 use st_store::{
-    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, Ctx, DbModelManager, DbWaypointEntry, MarketBmc, ShipBmc, SystemBmc,
+    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, ConstructionBmc, Ctx, DbJumpGateData, DbModelManager,
+    DbWaypointEntry, MarketBmc, ShipBmc, SystemBmc,
 };
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -173,7 +174,6 @@ impl SystemSpawningFleet {
 }
 
 impl SystemSpawningFleet {
-
     pub async fn compute_initial_exploration_ship_task(&self, mm: &DbModelManager) -> Result<Option<ShipTask>> {
         let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &self.system_symbol).await?;
 
@@ -264,8 +264,32 @@ pub struct MiningFleet {
     materials: Vec<TradeGoodSymbol>,
     mining_ships: Vec<ShipSymbol>,
     mining_haulers: Vec<ShipSymbol>,
-    delivery_locations: HashMap<WaypointSymbol, Vec<TradeGoodSymbol>>,
+    delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
     budget: u64,
+    desired_ship_roles: HashMap<ShipRole, u16>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SiphoningFleet {
+    id: FleetId,
+    system_symbol: SystemSymbol,
+    siphoning_waypoint: WaypointSymbol,
+    materials: Vec<TradeGoodSymbol>,
+    mining_ships: Vec<ShipSymbol>,
+    mining_haulers: Vec<ShipSymbol>,
+    delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+    budget: u64,
+    desired_ship_roles: HashMap<ShipRole, u16>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TradingFleet {
+    id: FleetId,
+    system_symbol: SystemSymbol,
+    materials: Vec<TradeGoodSymbol>,
+    trading_ships: Vec<ShipSymbol>,
+    budget: u64,
+    desired_ship_roles: HashMap<ShipRole, u16>,
 }
 
 impl MiningFleet {
@@ -276,17 +300,93 @@ impl MiningFleet {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum FleetType {
+    SystemSpawning,
+    MarketObservation,
+    Mining,
+    Siphon,
+    Trade,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Fleet {
     SystemSpawning(SystemSpawningFleet),
     MarketObservation(MarketObservationFleet),
     Mining(MiningFleet),
+    Siphon(SiphoningFleet),
+    Trade(TradingFleet),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum FleetTasks {
-    CollectMarketInfosOnce { system_symbol: SystemSymbol },
+pub enum FleetTask {
+    CollectMarketInfosOnce { system_symbol: SystemSymbol }, // will be done by SystemSpawningFleet
+    ObserveAllWaypointsOfSystemWithProbes { system_symbol: SystemSymbol }, // will be done by MarketObservationFleet
+    ConstructJumpGate { system_symbol: SystemSymbol },      // will be done by TradingFleet
+    TradeProfitably { system_symbol: SystemSymbol },
+    MineOres { system_symbol: SystemSymbol },
+    SiphonGases { system_symbol: SystemSymbol },
+}
 
-    ObserveAllWaypointsOfSystemWithProbes { system_symbol: SystemSymbol },
+pub fn compute_fleet_tasks(system_symbol: SystemSymbol, completed_tasks: Vec<FleetTask>) -> Vec<FleetTask> {
+    use FleetTask::*;
+    let all_fleet_tasks = vec![
+        CollectMarketInfosOnce {
+            system_symbol: system_symbol.clone(),
+        },
+        ObserveAllWaypointsOfSystemWithProbes {
+            system_symbol: system_symbol.clone(),
+        },
+        ConstructJumpGate {
+            system_symbol: system_symbol.clone(),
+        },
+        TradeProfitably {
+            system_symbol: system_symbol.clone(),
+        },
+        MineOres {
+            system_symbol: system_symbol.clone(),
+        },
+        SiphonGases {
+            system_symbol: system_symbol.clone(),
+        },
+    ];
+
+    todo!()
+}
+
+pub async fn collect_fleet_decision_facts(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<FleetDecisionFacts> {
+    let ships = ShipBmc::get_ships(&Ctx::Anonymous, mm, None).await?;
+    let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &system_symbol).await?;
+
+    let marketplaces_of_interest = select_latest_marketplace_entry_of_system(mm.pool(), &system_symbol).await?;
+    let marketplace_symbols_of_interest = marketplaces_of_interest.iter().map(|db_entry| WaypointSymbol(db_entry.waypoint_symbol.clone())).collect_vec();
+    let marketplaces_to_explore = find_marketplaces_for_exploration(marketplaces_of_interest.clone());
+
+    let shipyards_of_interest = select_latest_shipyard_entry_of_system(mm.pool(), &system_symbol).await?;
+    let shipyard_symbols_of_interest = shipyards_of_interest.iter().map(|db_entry| WaypointSymbol(db_entry.waypoint_symbol.clone())).collect_vec();
+    let shipyards_to_explore = find_shipyards_for_exploration(shipyards_of_interest.clone());
+
+    let maybe_construction_site: Option<GetConstructionResponse> =
+        ConstructionBmc::get_construction_site_for_system(&Ctx::Anonymous, mm, system_symbol).await?;
+
+    Ok(FleetDecisionFacts {
+        marketplaces_of_interest: marketplace_symbols_of_interest.clone(),
+        marketplaces_with_up_to_date_infos: diff_waypoint_symbols(&marketplace_symbols_of_interest, &marketplaces_to_explore),
+        shipyards_of_interest: shipyard_symbols_of_interest.clone(),
+        shipyards_with_up_to_date_infos: diff_waypoint_symbols(&shipyard_symbols_of_interest, &shipyards_to_explore),
+        construction_site: maybe_construction_site.map(|resp| resp.data),
+        ships,
+        materialized_supply_chain: None,
+    })
+}
+
+pub fn diff_waypoint_symbols(waypoints_of_interest: &[WaypointSymbol], waypoints_to_explore: &[WaypointSymbol]) -> Vec<WaypointSymbol> {
+    let set2: HashSet<_> = waypoints_to_explore.iter().collect();
+
+    waypoints_of_interest.iter().filter(|item| !set2.contains(item)).cloned().collect()
+}
+
+pub fn is_fleet_task_done(fleet_task: FleetTask, fleet_decision_facts: FleetDecisionFacts) -> bool {
+    todo!()
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -294,7 +394,7 @@ pub enum ShipTask {
     PurchaseShip {
         r#type: ShipType,
         max_amount: u32,
-        system_symbol: SystemSymbol,
+        waypoint_symbol: WaypointSymbol,
     },
 
     ObserveWaypointDetails {
@@ -304,17 +404,34 @@ pub enum ShipTask {
     ObserveAllWaypointsOnce {
         waypoint_symbols: Vec<WaypointSymbol>,
     },
+
+    MineMaterialsAtWaypoint {
+        mining_waypoint: WaypointSymbol,
+    },
+
+    DeliverMaterials {
+        delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+    },
+
+    SurveyAsteroid {
+        waypoint_symbol: WaypointSymbol,
+    },
 }
 
 /*
-
 - Game starts with two ships - command ship and one probe
 - we first need some data for markets and shipyards in order to earn money for more ships
 - we assign the command ship to the SystemSpawningFleet and give it the relevant waypoints
 - we assign the probe to the MarketObservationFleet. It should already be placed at the shipyard, so we can assign this waypoint already
+- we create an empty Mining Fleet
+- we create an empty Siphoning Fleet
+- we create an empty Trading/Construction Fleet
 
  */
-pub(crate) async fn compute_initial_fleet(
+
+pub fn fleet_foo() {}
+
+pub(crate) async fn compute_initial_fleets(
     ships: Vec<Ship>,
     home_system_symbol: &SystemSymbol,
     waypoints_of_home_system: &[Waypoint],

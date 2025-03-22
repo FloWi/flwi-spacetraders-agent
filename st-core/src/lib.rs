@@ -13,7 +13,7 @@ pub mod agent_manager;
 pub mod app_state;
 pub mod behavior_tree;
 pub mod exploration;
-mod fleet;
+pub mod fleet;
 mod fleet_admiral;
 pub mod marketplaces;
 pub mod pathfinder;
