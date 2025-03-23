@@ -1,4 +1,4 @@
-use crate::{GetConstructionResponseData, MaterializedSupplyChain, Ship, WaypointSymbol};
+use crate::{GetConstructionResponseData, MaterializedSupplyChain, Ship, SystemSymbol, WaypointSymbol};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -32,4 +32,14 @@ pub struct FleetDecisionFacts {
     pub construction_site: Option<GetConstructionResponseData>,
     pub ships: Vec<Ship>,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum FleetTask {
+    CollectMarketInfosOnce { system_symbol: SystemSymbol }, // will be done by SystemSpawningFleet
+    ObserveAllWaypointsOfSystemWithProbes { system_symbol: SystemSymbol }, // will be done by MarketObservationFleet
+    ConstructJumpGate { system_symbol: SystemSymbol },      // will be done by TradingFleet
+    TradeProfitably { system_symbol: SystemSymbol },
+    MineOres { system_symbol: SystemSymbol },
+    SiphonGases { system_symbol: SystemSymbol },
 }

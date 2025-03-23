@@ -10,14 +10,15 @@ use itertools::Itertools;
 use log::{log, Level};
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    FleetDecisionFacts, FleetUpdateMessage, GetConstructionResponse, GetConstructionResponseData, MaterializedSupplyChain, Ship, ShipRegistrationRole,
-    ShipRole, ShipSymbol, ShipTaskMessage, ShipType, SystemSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    FleetDecisionFacts, FleetTask, FleetUpdateMessage, GetConstructionResponse, GetConstructionResponseData, MaterializedSupplyChain, Ship,
+    ShipRegistrationRole, ShipRole, ShipSymbol, ShipTaskMessage, ShipType, SystemSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, ConstructionBmc, Ctx, DbJumpGateData, DbModelManager,
     DbWaypointEntry, MarketBmc, ShipBmc, SystemBmc,
 };
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::ops::Not;
 use std::sync::Arc;
 use std::time::Duration;
@@ -317,40 +318,63 @@ pub enum Fleet {
     Trade(TradingFleet),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum FleetTask {
-    CollectMarketInfosOnce { system_symbol: SystemSymbol }, // will be done by SystemSpawningFleet
-    ObserveAllWaypointsOfSystemWithProbes { system_symbol: SystemSymbol }, // will be done by MarketObservationFleet
-    ConstructJumpGate { system_symbol: SystemSymbol },      // will be done by TradingFleet
-    TradeProfitably { system_symbol: SystemSymbol },
-    MineOres { system_symbol: SystemSymbol },
-    SiphonGases { system_symbol: SystemSymbol },
-}
-
-pub fn compute_fleet_tasks(system_symbol: SystemSymbol, completed_tasks: Vec<FleetTask>) -> Vec<FleetTask> {
+pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: FleetDecisionFacts) -> Vec<FleetTask> {
     use FleetTask::*;
-    let all_fleet_tasks = vec![
-        CollectMarketInfosOnce {
-            system_symbol: system_symbol.clone(),
-        },
-        ObserveAllWaypointsOfSystemWithProbes {
-            system_symbol: system_symbol.clone(),
-        },
-        ConstructJumpGate {
-            system_symbol: system_symbol.clone(),
-        },
-        TradeProfitably {
-            system_symbol: system_symbol.clone(),
-        },
-        MineOres {
-            system_symbol: system_symbol.clone(),
-        },
-        SiphonGases {
-            system_symbol: system_symbol.clone(),
-        },
-    ];
 
-    todo!()
+    // three phases
+    // 1. gather initial infos about system
+    // 2. construct jump gate
+    //    - trade profitably and deliver construction material with hauler fleet
+    //    - mine ores with mining fleet
+    //    - siphon gases with siphoning fleet
+    // 3. trade profitably
+    //    - trade profitably with hauler fleet
+    //    - prob. stop mining and siphoning
+
+    let is_jump_gate_done = fleet_decision_facts.construction_site.map(|cs| cs.is_complete).unwrap_or(false);
+    let is_shipyard_exploration_complete = are_vecs_equal_ignoring_order(
+        &fleet_decision_facts.shipyards_of_interest,
+        &fleet_decision_facts.shipyards_with_up_to_date_infos,
+    );
+    let is_marketplace_exploration_complete = are_vecs_equal_ignoring_order(
+        &fleet_decision_facts.marketplaces_of_interest,
+        &fleet_decision_facts.marketplaces_with_up_to_date_infos,
+    );
+    let has_collected_all_waypoint_details_once = is_shipyard_exploration_complete && is_marketplace_exploration_complete;
+
+    let tasks = if !has_collected_all_waypoint_details_once {
+        vec![CollectMarketInfosOnce {
+            system_symbol: system_symbol.clone(),
+        }]
+    } else if !is_jump_gate_done {
+        vec![
+            ConstructJumpGate {
+                system_symbol: system_symbol.clone(),
+            },
+            ObserveAllWaypointsOfSystemWithProbes {
+                system_symbol: system_symbol.clone(),
+            },
+            MineOres {
+                system_symbol: system_symbol.clone(),
+            },
+            SiphonGases {
+                system_symbol: system_symbol.clone(),
+            },
+        ]
+    } else if is_jump_gate_done {
+        vec![
+            TradeProfitably {
+                system_symbol: system_symbol.clone(),
+            },
+            ObserveAllWaypointsOfSystemWithProbes {
+                system_symbol: system_symbol.clone(),
+            },
+        ]
+    } else {
+        unimplemented!("this shouldn't happen - think harder")
+    };
+
+    tasks
 }
 
 pub async fn collect_fleet_decision_facts(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<FleetDecisionFacts> {
@@ -385,8 +409,17 @@ pub fn diff_waypoint_symbols(waypoints_of_interest: &[WaypointSymbol], waypoints
     waypoints_of_interest.iter().filter(|item| !set2.contains(item)).cloned().collect()
 }
 
-pub fn is_fleet_task_done(fleet_task: FleetTask, fleet_decision_facts: FleetDecisionFacts) -> bool {
-    todo!()
+pub fn are_vecs_equal_ignoring_order<T: Eq + Hash>(vec1: &[T], vec2: &[T]) -> bool {
+    // Quick check - if lengths differ, they can't be equal
+    if vec1.len() != vec2.len() {
+        return false;
+    }
+
+    // Convert to HashSets and compare
+    let set1: HashSet<_> = vec1.iter().collect();
+    let set2: HashSet<_> = vec2.iter().collect();
+
+    set1 == set2
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
