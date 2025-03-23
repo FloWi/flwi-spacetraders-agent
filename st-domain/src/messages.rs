@@ -1,5 +1,6 @@
-use crate::{GetConstructionResponseData, MaterializedSupplyChain, Ship, SystemSymbol, WaypointSymbol};
+use crate::{GetConstructionResponseData, MaterializedSupplyChain, Ship, ShipType, SystemSymbol, TradeGoodSymbol, WaypointSymbol};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum FleetUpdateMessage {}
@@ -42,4 +43,90 @@ pub enum FleetTask {
     TradeProfitably { system_symbol: SystemSymbol },
     MineOres { system_symbol: SystemSymbol },
     SiphonGases { system_symbol: SystemSymbol },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum ShipTask {
+    PurchaseShip {
+        r#type: ShipType,
+        max_amount: u32,
+        waypoint_symbol: WaypointSymbol,
+    },
+
+    ObserveWaypointDetails {
+        waypoint_symbol: WaypointSymbol,
+    },
+
+    ObserveAllWaypointsOnce {
+        waypoint_symbols: Vec<WaypointSymbol>,
+    },
+
+    MineMaterialsAtWaypoint {
+        mining_waypoint: WaypointSymbol,
+    },
+
+    DeliverMaterials {
+        delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+    },
+
+    SurveyAsteroid {
+        waypoint_symbol: WaypointSymbol,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SystemSpawningFleetConfig {
+    pub system_symbol: SystemSymbol,
+    pub marketplace_waypoints_of_interest: Vec<WaypointSymbol>,
+    pub shipyard_waypoints_of_interest: Vec<WaypointSymbol>,
+    pub desired_fleet_config: Vec<(ShipType, u32)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MarketObservationFleetConfig {
+    pub system_symbol: SystemSymbol,
+    pub marketplace_waypoints_of_interest: Vec<WaypointSymbol>,
+    pub shipyard_waypoints_of_interest: Vec<WaypointSymbol>,
+    pub desired_fleet_config: Vec<(ShipType, u32)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TradingFleetConfig {
+    pub system_symbol: SystemSymbol,
+    pub materialized_supply_chain: Option<MaterializedSupplyChain>,
+    pub desired_fleet_config: Vec<(ShipType, u32)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ConstructJumpGateFleetConfig {
+    pub system_symbol: SystemSymbol,
+    pub jump_gate_waypoint: WaypointSymbol,
+    pub materialized_supply_chain: Option<MaterializedSupplyChain>,
+    pub desired_fleet_config: Vec<(ShipType, u32)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MiningFleetConfig {
+    pub system_symbol: SystemSymbol,
+    pub mining_waypoint: WaypointSymbol,
+    pub materialized_supply_chain: Option<MaterializedSupplyChain>,
+    pub desired_fleet_config: Vec<(ShipType, u32)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SiphoningFleetConfig {
+    pub system_symbol: SystemSymbol,
+    pub siphoning_waypoint: WaypointSymbol,
+    pub materialized_supply_chain: Option<MaterializedSupplyChain>,
+    pub desired_fleet_config: Vec<(ShipType, u32)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum FleetConfig {
+    SystemSpawningCfg(SystemSpawningFleetConfig),
+    MarketObservationCfg(MarketObservationFleetConfig),
+    TradingCfg(TradingFleetConfig),
+    ConstructJumpGateCfg(ConstructJumpGateFleetConfig),
+    MiningCfg(MiningFleetConfig),
+    SiphoningCfg(SiphoningFleetConfig),
 }

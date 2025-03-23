@@ -6,7 +6,7 @@ use leptos::{component, view, IntoView};
 use leptos_use::{use_interval, UseIntervalReturn};
 use phosphor_leptos::{Icon, CLOCK, GAS_PUMP, PACKAGE, TRUCK};
 use serde::{Deserialize, Serialize};
-use st_domain::{FleetDecisionFacts, FleetTask, NavStatus, Ship, WaypointSymbol};
+use st_domain::{FleetConfig, FleetDecisionFacts, FleetTask, NavStatus, Ship, WaypointSymbol};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
@@ -21,9 +21,8 @@ pub enum GetShipsMode {
 }
 
 #[server]
-async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, Vec<FleetTask>), ServerFnError> {
-    use st_core::fleet::collect_fleet_decision_facts;
-    use st_core::fleet::compute_fleet_tasks;
+async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, Vec<FleetTask>, Vec<FleetConfig>), ServerFnError> {
+    use st_core::fleet::{collect_fleet_decision_facts, compute_fleet_configs, compute_fleet_tasks};
     use st_store::AgentBmc;
     use st_store::Ctx;
 
@@ -35,8 +34,9 @@ async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, Vec<FleetTask
 
     let decision_facts = collect_fleet_decision_facts(&mm, home_system_symbol.clone()).await.expect("collect_fleet_decision_facts");
     let fleet_tasks = compute_fleet_tasks(home_system_symbol, decision_facts.clone());
+    let fleet_configs = compute_fleet_configs(&fleet_tasks, &decision_facts);
 
-    Ok((decision_facts, fleet_tasks))
+    Ok((decision_facts, fleet_tasks, fleet_configs))
 }
 
 #[component]
@@ -58,10 +58,11 @@ pub fn FleetOverviewPage() -> impl IntoView {
                 <Transition>
                     {move || {
                         match fleet_decision_facts_resource.get() {
-                            Some(Ok((fleet_decision_facts, fleet_tasks))) => {
+                            Some(Ok((fleet_decision_facts, fleet_tasks, fleet_configs))) => {
 
                                 view! {
                                     <div class="flex flex-col gap-4 p-4">
+                                    <div class="flex flex-row gap-4 p-4">
                                         <div class="flex flex-col gap-2">
 
                                             <h2 class="font-bold text-xl">"Fleet Tasks"</h2>
@@ -69,6 +70,15 @@ pub fn FleetOverviewPage() -> impl IntoView {
                                                 {serde_json::to_string_pretty(&fleet_tasks)
                                                     .unwrap_or("---".to_string())}
                                             </pre>
+                                        </div>
+                                    <div class="flex flex-col gap-2">
+
+                                            <h2 class="font-bold text-xl">"Fleet Configs"</h2>
+                                            <pre>
+                                                {serde_json::to_string_pretty(&fleet_configs)
+                                                    .unwrap_or("---".to_string())}
+                                            </pre>
+                                        </div>
                                         </div>
                                         <div class="flex flex-row gap-4 p-4">
                                             <div class="flex flex-col gap-2">

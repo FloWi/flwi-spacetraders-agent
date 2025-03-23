@@ -10,8 +10,10 @@ use itertools::Itertools;
 use log::{log, Level};
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    FleetDecisionFacts, FleetTask, FleetUpdateMessage, GetConstructionResponse, GetConstructionResponseData, MaterializedSupplyChain, Ship,
-    ShipRegistrationRole, ShipRole, ShipSymbol, ShipTaskMessage, ShipType, SystemSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    ConstructJumpGateFleetConfig, FleetConfig, FleetDecisionFacts, FleetTask, FleetUpdateMessage, GetConstructionResponse, GetConstructionResponseData,
+    MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, Ship, ShipRegistrationRole, ShipRole, ShipSymbol, ShipTask, ShipTaskMessage,
+    ShipType, SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradingFleetConfig, Waypoint, WaypointSymbol,
+    WaypointTraitSymbol,
 };
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, ConstructionBmc, Ctx, DbJumpGateData, DbModelManager,
@@ -33,20 +35,24 @@ pub struct FleetId(u32);
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SystemSpawningFleet {
     id: FleetId,
-    system_symbol: SystemSymbol,
-    marketplace_waypoints_of_interest: Vec<WaypointSymbol>,
-    shipyard_waypoints_of_interest: Vec<WaypointSymbol>,
-    spawn_ship_symbol: ShipSymbol,
+    system_spawning_fleet_config: SystemSpawningFleetConfig,
     #[serde(skip)]
     ship_operations: HashMap<ShipSymbol, ShipOperations>,
     completed_exploration_tasks: HashSet<WaypointSymbol>,
     budget: u64,
     current_task: Option<ShipTask>,
+    spawn_ship_symbol: ShipSymbol,
 }
 
 impl SystemSpawningFleet {
     pub fn all_exploration_tasks(&self) -> Vec<WaypointSymbol> {
-        self.marketplace_waypoints_of_interest.iter().chain(self.shipyard_waypoints_of_interest.iter()).unique().cloned().collect_vec()
+        self.system_spawning_fleet_config
+            .marketplace_waypoints_of_interest
+            .iter()
+            .chain(self.system_spawning_fleet_config.shipyard_waypoints_of_interest.iter())
+            .unique()
+            .cloned()
+            .collect_vec()
     }
 
     pub async fn run(
@@ -78,6 +84,7 @@ impl SystemSpawningFleet {
 
                     //some waypoints might have already been explored. We put them in the HashSet for bookkeeping.
                     let already_explored_shipyards = fleet_guard
+                        .system_spawning_fleet_config
                         .shipyard_waypoints_of_interest
                         .iter()
                         .cloned()
@@ -85,6 +92,7 @@ impl SystemSpawningFleet {
                         .collect_vec();
 
                     let already_explored_marketplaces = fleet_guard
+                        .system_spawning_fleet_config
                         .marketplace_waypoints_of_interest
                         .iter()
                         .cloned()
@@ -176,13 +184,13 @@ impl SystemSpawningFleet {
 
 impl SystemSpawningFleet {
     pub async fn compute_initial_exploration_ship_task(&self, mm: &DbModelManager) -> Result<Option<ShipTask>> {
-        let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &self.system_symbol).await?;
+        let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &self.system_spawning_fleet_config.system_symbol).await?;
 
-        let marketplace_entries = select_latest_marketplace_entry_of_system(mm.pool(), &self.system_symbol).await?;
+        let marketplace_entries = select_latest_marketplace_entry_of_system(mm.pool(), &self.system_spawning_fleet_config.system_symbol).await?;
 
         let marketplaces_to_explore = find_marketplaces_for_exploration(marketplace_entries.clone());
 
-        let shipyard_entries = select_latest_shipyard_entry_of_system(mm.pool(), &self.system_symbol).await?;
+        let shipyard_entries = select_latest_shipyard_entry_of_system(mm.pool(), &self.system_spawning_fleet_config.system_symbol).await?;
 
         let shipyards_to_explore = find_shipyards_for_exploration(shipyard_entries.clone());
 
@@ -196,7 +204,10 @@ impl SystemSpawningFleet {
         let relevant_exploration_targets = marketplaces_to_explore
             .into_iter()
             .chain(shipyards_to_explore.into_iter())
-            .filter(|wp_symbol| self.marketplace_waypoints_of_interest.contains(wp_symbol) || self.shipyard_waypoints_of_interest.contains(wp_symbol))
+            .filter(|wp_symbol| {
+                self.system_spawning_fleet_config.marketplace_waypoints_of_interest.contains(wp_symbol)
+                    || self.system_spawning_fleet_config.shipyard_waypoints_of_interest.contains(wp_symbol)
+            })
             .unique()
             .collect_vec();
 
@@ -242,9 +253,7 @@ impl SystemSpawningFleet {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MarketObservationFleet {
     id: FleetId,
-    system_symbol: SystemSymbol,
-    marketplace_waypoints_of_interest: Vec<WaypointSymbol>,
-    shipyard_waypoints_of_interest: Vec<WaypointSymbol>,
+    market_observation_fleet_config: MarketObservationFleetConfig,
     ship_assignment: HashMap<ShipSymbol, WaypointSymbol>,
     ship_role_assignment: HashMap<ShipSymbol, Vec<ShipRole>>,
     budget: u64,
@@ -293,6 +302,16 @@ pub struct TradingFleet {
     desired_ship_roles: HashMap<ShipRole, u16>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ConstructionFleet {
+    id: FleetId,
+    system_symbol: SystemSymbol,
+    materials: Vec<TradeGoodSymbol>,
+    trading_ships: Vec<ShipSymbol>,
+    budget: u64,
+    desired_ship_roles: HashMap<ShipRole, u16>,
+}
+
 impl MiningFleet {
     pub async fn run(&self) -> Result<()> {
         log!(Level::Info, "Running MiningFleet",);
@@ -316,6 +335,7 @@ pub enum Fleet {
     Mining(MiningFleet),
     Siphon(SiphoningFleet),
     Trade(TradingFleet),
+    ConstructJumpGate(ConstructionFleet),
 }
 
 pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: FleetDecisionFacts) -> Vec<FleetTask> {
@@ -343,9 +363,14 @@ pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: Fl
     let has_collected_all_waypoint_details_once = is_shipyard_exploration_complete && is_marketplace_exploration_complete;
 
     let tasks = if !has_collected_all_waypoint_details_once {
-        vec![CollectMarketInfosOnce {
-            system_symbol: system_symbol.clone(),
-        }]
+        vec![
+            CollectMarketInfosOnce {
+                system_symbol: system_symbol.clone(),
+            },
+            ObserveAllWaypointsOfSystemWithProbes {
+                system_symbol: system_symbol.clone(),
+            },
+        ]
     } else if !is_jump_gate_done {
         vec![
             ConstructJumpGate {
@@ -375,6 +400,56 @@ pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: Fl
     };
 
     tasks
+}
+
+pub fn compute_fleet_configs(tasks: &[FleetTask], fleet_decision_facts: &FleetDecisionFacts) -> Vec<FleetConfig> {
+    let all_waypoints_of_interest =
+        fleet_decision_facts.marketplaces_of_interest.iter().chain(fleet_decision_facts.shipyards_of_interest.iter()).unique().collect_vec();
+
+    tasks
+        .into_iter()
+        .filter_map(|t| match t {
+            FleetTask::CollectMarketInfosOnce { system_symbol } => Some(FleetConfig::SystemSpawningCfg(SystemSpawningFleetConfig {
+                system_symbol: system_symbol.clone(),
+                marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
+                shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
+                desired_fleet_config: vec![(ShipType::SHIP_COMMAND_FRIGATE, 1)],
+            })),
+            FleetTask::ObserveAllWaypointsOfSystemWithProbes { system_symbol } => Some(FleetConfig::MarketObservationCfg(MarketObservationFleetConfig {
+                system_symbol: system_symbol.clone(),
+                marketplace_waypoints_of_interest: vec![],
+                shipyard_waypoints_of_interest: vec![],
+                desired_fleet_config: vec![(ShipType::SHIP_PROBE, all_waypoints_of_interest.len() as u32)],
+            })),
+            FleetTask::ConstructJumpGate { system_symbol } => Some(FleetConfig::ConstructJumpGateCfg(ConstructJumpGateFleetConfig {
+                system_symbol: system_symbol.clone(),
+                jump_gate_waypoint: WaypointSymbol(fleet_decision_facts.construction_site.clone().expect("construction_site").symbol),
+                materialized_supply_chain: None,
+                desired_fleet_config: vec![(ShipType::SHIP_COMMAND_FRIGATE, 1), (ShipType::SHIP_LIGHT_HAULER, 4)],
+            })),
+            FleetTask::TradeProfitably { system_symbol } => Some(FleetConfig::TradingCfg(TradingFleetConfig {
+                system_symbol: system_symbol.clone(),
+                materialized_supply_chain: None,
+                desired_fleet_config: vec![(ShipType::SHIP_COMMAND_FRIGATE, 1), (ShipType::SHIP_LIGHT_HAULER, 4)],
+            })),
+            FleetTask::MineOres { system_symbol } => Some(FleetConfig::MiningCfg(MiningFleetConfig {
+                system_symbol: system_symbol.clone(),
+                mining_waypoint: WaypointSymbol("TODO add engineered asteroid".to_string()),
+                materialized_supply_chain: None,
+                desired_fleet_config: vec![
+                    (ShipType::SHIP_MINING_DRONE, 7),
+                    (ShipType::SHIP_SURVEYOR, 2),
+                    (ShipType::SHIP_LIGHT_HAULER, 2),
+                ],
+            })),
+            FleetTask::SiphonGases { system_symbol } => Some(FleetConfig::SiphoningCfg(SiphoningFleetConfig {
+                system_symbol: system_symbol.clone(),
+                siphoning_waypoint: WaypointSymbol("TODO add gas giant".to_string()),
+                materialized_supply_chain: None,
+                desired_fleet_config: vec![(ShipType::SHIP_SIPHON_DRONE, 5)],
+            })),
+        })
+        .collect_vec()
 }
 
 pub async fn collect_fleet_decision_facts(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<FleetDecisionFacts> {
@@ -422,48 +497,6 @@ pub fn are_vecs_equal_ignoring_order<T: Eq + Hash>(vec1: &[T], vec2: &[T]) -> bo
     set1 == set2
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum ShipTask {
-    PurchaseShip {
-        r#type: ShipType,
-        max_amount: u32,
-        waypoint_symbol: WaypointSymbol,
-    },
-
-    ObserveWaypointDetails {
-        waypoint_symbol: WaypointSymbol,
-    },
-
-    ObserveAllWaypointsOnce {
-        waypoint_symbols: Vec<WaypointSymbol>,
-    },
-
-    MineMaterialsAtWaypoint {
-        mining_waypoint: WaypointSymbol,
-    },
-
-    DeliverMaterials {
-        delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
-    },
-
-    SurveyAsteroid {
-        waypoint_symbol: WaypointSymbol,
-    },
-}
-
-/*
-- Game starts with two ships - command ship and one probe
-- we first need some data for markets and shipyards in order to earn money for more ships
-- we assign the command ship to the SystemSpawningFleet and give it the relevant waypoints
-- we assign the probe to the MarketObservationFleet. It should already be placed at the shipyard, so we can assign this waypoint already
-- we create an empty Mining Fleet
-- we create an empty Siphoning Fleet
-- we create an empty Trading/Construction Fleet
-
- */
-
-pub fn fleet_foo() {}
-
 pub(crate) async fn compute_initial_fleets(
     ships: Vec<Ship>,
     home_system_symbol: &SystemSymbol,
@@ -499,11 +532,14 @@ pub(crate) async fn compute_initial_fleets(
     let command_ship_op = ShipOperations::new(command_ship.clone(), Arc::clone(&client));
 
     let system_spawning_fleet = SystemSpawningFleet {
-        id: FleetId(1),
-        system_symbol: home_system_symbol.clone(),
-        marketplace_waypoints_of_interest: marketplace_waypoints.clone(),
-        shipyard_waypoints_of_interest: unexplored_shipyards.clone(),
+        system_spawning_fleet_config: SystemSpawningFleetConfig {
+            system_symbol: home_system_symbol.clone(),
+            marketplace_waypoints_of_interest: marketplace_waypoints.clone(),
+            shipyard_waypoints_of_interest: unexplored_shipyards.clone(),
+            desired_fleet_config: vec![(ShipType::SHIP_COMMAND_FRIGATE, 1)],
+        },
 
+        id: FleetId(1),
         spawn_ship_symbol: command_ship.symbol.clone(),
         ship_operations: HashMap::from([(command_ship.symbol.clone(), command_ship_op)]),
         completed_exploration_tasks: HashSet::new(),
@@ -515,11 +551,16 @@ pub(crate) async fn compute_initial_fleets(
     //     .compute_ship_task(&model_manager)
     //     .await?;
 
+    let all_waypoints_of_interest = marketplace_waypoints.iter().chain(shipyard_waypoints.iter()).unique().collect_vec();
+
     let market_observation_fleet = MarketObservationFleet {
         id: FleetId(2),
-        system_symbol: home_system_symbol.clone(),
-        marketplace_waypoints_of_interest: marketplace_waypoints.clone(),
-        shipyard_waypoints_of_interest: shipyard_waypoints.clone(),
+        market_observation_fleet_config: MarketObservationFleetConfig {
+            system_symbol: home_system_symbol.clone(),
+            marketplace_waypoints_of_interest: marketplace_waypoints.clone(),
+            shipyard_waypoints_of_interest: shipyard_waypoints.clone(),
+            desired_fleet_config: vec![(ShipType::SHIP_PROBE, all_waypoints_of_interest.len() as u32)],
+        },
         ship_assignment: HashMap::from([(probe_ship.symbol.clone(), probe_at_shipyard_location.clone())]),
         ship_role_assignment: HashMap::from([(command_ship.symbol.clone(), vec![ShipRole::MarketObserver, ShipRole::ShipPurchaser])]),
         budget: 0,
