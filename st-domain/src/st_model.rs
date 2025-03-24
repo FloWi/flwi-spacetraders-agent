@@ -101,6 +101,28 @@ pub enum ShipType {
     SHIP_ORE_HOUND,
     SHIP_REFINING_FREIGHTER,
     SHIP_SURVEYOR,
+    SHIP_BULK_FREIGHTER,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Display)]
+#[allow(non_camel_case_types)]
+pub enum ShipFrameSymbol {
+    FRAME_PROBE,
+    FRAME_DRONE,
+    FRAME_INTERCEPTOR,
+    FRAME_RACER,
+    FRAME_FIGHTER,
+    FRAME_FRIGATE,
+    FRAME_SHUTTLE,
+    FRAME_EXPLORER,
+    FRAME_MINER,
+    FRAME_LIGHT_FREIGHTER,
+    FRAME_HEAVY_FREIGHTER,
+    FRAME_TRANSPORT,
+    FRAME_DESTROYER,
+    FRAME_CRUISER,
+    FRAME_CARRIER,
+    FRAME_BULK_FREIGHTER,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Display)]
@@ -786,7 +808,7 @@ pub struct ShipyardShipCrew {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct Frame {
-    pub symbol: String,
+    pub symbol: ShipFrameSymbol,
     pub name: String,
     pub description: String,
     pub condition: OrderedFloat<f32>,

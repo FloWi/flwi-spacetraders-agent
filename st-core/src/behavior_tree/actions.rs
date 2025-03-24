@@ -8,11 +8,7 @@ use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use chrono::{DateTime, Local, Utc};
 use core::time::Duration;
-use st_domain::{
-    Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor,
-    RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, Transaction,
-    TransactionType, Waypoint, WaypointSymbol, WaypointType,
-};
+use st_domain::{Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType};
 use std::thread::AccessError;
 use tokio::sync::mpsc::Sender;
 
@@ -474,7 +470,7 @@ impl TestObjects {
                 wages: 0,
             },
             frame: Frame {
-                symbol: "".to_string(),
+                symbol: ShipFrameSymbol::FRAME_DRONE,
                 name: "".to_string(),
                 description: "".to_string(),
                 condition: 0.0.into(),
