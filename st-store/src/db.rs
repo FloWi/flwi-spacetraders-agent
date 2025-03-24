@@ -221,7 +221,7 @@ pub struct DbShipyardData {
 
 impl DbShipyardData {
     pub fn has_detailed_price_information(&self) -> bool {
-        !self.entry.0.ships.is_empty()
+        !self.entry.0.ships.is_none()
     }
 }
 

@@ -93,7 +93,7 @@ impl AgentManager {
         let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
 
         // Create the initial client (without token) with reset detection
-        let client_with_account_token = create_client(None, Some(agent_reset_tx.clone()));
+        let client_with_account_token = create_client(Some(self.cfg.spacetraders_account_token.clone()), Some(agent_reset_tx.clone()));
         let client_with_account_token = StClient::new(client_with_account_token);
 
         // Get the status (this will verify the API is responding)

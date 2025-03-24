@@ -3,6 +3,7 @@ use crate::pagination::fetch_all_pages;
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
 use anyhow::*;
+use chrono::Utc;
 use futures::future::join_all;
 use log::{log, Level};
 use sqlx::{Pool, Postgres};
@@ -78,6 +79,7 @@ impl FleetAdmiral {
 
         if ships_from_db.is_empty() {
             let ships = Self::collect_all_ships(client).await?;
+            db::upsert_ships(&pool, &ships, Utc::now()).await?;
             Ok(ships)
         } else {
             Ok(ships_from_db)

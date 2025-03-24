@@ -1,15 +1,17 @@
 use crate::pagination::{PaginatedResponse, PaginationInput};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use log::{log, Level};
 use reqwest_middleware::ClientWithMiddleware;
 use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
 use st_domain::{
     extract_system_symbol, AgentInfoResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse,
-    GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, ListAgentsResponse, NavAndFuelResponse, NavigateShipRequest, NavigateShipResponse,
-    OrbitShipResponse, PatchShipNavRequest, PatchShipNavResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest, RegistrationResponse,
-    SetFlightModeResponse, Ship, ShipSymbol, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
+    GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSystemResponse, ListAgentsResponse, NavAndFuelResponse, NavigateShipRequest,
+    NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PatchShipNavResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest,
+    RegistrationResponse, SetFlightModeResponse, Ship, ShipSymbol, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
 };
+use std::any::type_name;
 use std::fmt::Debug;
 
 #[derive(Debug, Clone)]
@@ -32,7 +34,14 @@ impl StClient {
             anyhow::bail!("API request failed. Status: {}, Body: {}", status, body);
         }
 
-        serde_json::from_str(&body).map_err(|e| anyhow::anyhow!("Error decoding response: '{:?}'. Response body was: '{}'", e, body))
+        serde_json::from_str(&body).map_err(|e| {
+            anyhow::anyhow!(
+                "Error decoding response for type {}: '{:?}'. Response body was: '{}'",
+                type_name::<T>(),
+                e,
+                body
+            )
+        })
     }
 }
 
@@ -137,10 +146,13 @@ impl StClientTrait for StClient {
         Self::make_api_call(request).await
     }
 
-    async fn get_system(&self, system_symbol: &SystemSymbol) -> Result<SystemsPageData> {
+    async fn get_system(&self, system_symbol: &SystemSymbol) -> Result<GetSystemResponse> {
+        log!(Level::Info, "Trying to load system {system_symbol:?}");
         let request = self.client.get(format!("https://api.spacetraders.io/v2/systems/{}", system_symbol.0));
 
-        Self::make_api_call(request).await
+        let result = Self::make_api_call(request).await?;
+        log!(Level::Info, "Done loading system {system_symbol:?}");
+        Ok(result)
     }
 
     async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> Result<GetMarketResponse> {
@@ -220,7 +232,7 @@ pub trait StClientTrait: Send + Sync + Debug {
 
     async fn list_systems_page(&self, pagination_input: PaginationInput) -> Result<PaginatedResponse<SystemsPageData>>;
 
-    async fn get_system(&self, system_symbol: &SystemSymbol) -> Result<SystemsPageData>;
+    async fn get_system(&self, system_symbol: &SystemSymbol) -> Result<GetSystemResponse>;
 
     async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> Result<GetMarketResponse>;
 

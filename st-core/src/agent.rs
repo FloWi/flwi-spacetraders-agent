@@ -154,7 +154,7 @@ async fn load_home_system_and_waypoints_if_necessary(client: &StClient, pool: &P
     let now = Utc::now();
 
     if needs_load_system {
-        let system = client.get_system(headquarters_system_symbol).await?;
+        let system = client.get_system(headquarters_system_symbol).await?.data;
         let _ = db::upsert_systems_page(pool, vec![system], now).await?;
     }
 

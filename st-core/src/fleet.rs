@@ -417,8 +417,8 @@ pub fn compute_fleet_configs(tasks: &[FleetTask], fleet_decision_facts: &FleetDe
             })),
             FleetTask::ObserveAllWaypointsOfSystemWithProbes { system_symbol } => Some(FleetConfig::MarketObservationCfg(MarketObservationFleetConfig {
                 system_symbol: system_symbol.clone(),
-                marketplace_waypoints_of_interest: vec![],
-                shipyard_waypoints_of_interest: vec![],
+                marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
+                shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
                 desired_fleet_config: vec![(ShipType::SHIP_PROBE, all_waypoints_of_interest.len() as u32)],
             })),
             FleetTask::ConstructJumpGate { system_symbol } => Some(FleetConfig::ConstructJumpGateCfg(ConstructJumpGateFleetConfig {

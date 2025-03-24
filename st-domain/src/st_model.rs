@@ -37,8 +37,8 @@ pub type GetShipyardResponse = Data<Shipyard>;
 pub struct Shipyard {
     pub symbol: WaypointSymbol,
     pub ship_types: Vec<ShipTypeEntry>,
-    pub transactions: Vec<ShipTransaction>,
-    pub ships: Vec<ShipyardShip>,
+    pub transactions: Option<Vec<ShipTransaction>>,
+    pub ships: Option<Vec<ShipyardShip>>,
     pub modifications_fee: i32,
 }
 
@@ -392,6 +392,12 @@ pub fn extract_system_symbol(waypoint_symbol: &WaypointSymbol) -> SystemSymbol {
 #[serde(rename_all = "camelCase")]
 pub struct GetMarketResponse {
     pub data: MarketData,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSystemResponse {
+    pub data: SystemsPageData,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
