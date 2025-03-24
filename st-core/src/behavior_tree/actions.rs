@@ -8,7 +8,11 @@ use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use chrono::{DateTime, Local, Utc};
 use core::time::Duration;
-use st_domain::{Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType};
+use st_domain::{
+    Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor,
+    RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol,
+    Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
+};
 use std::thread::AccessError;
 use tokio::sync::mpsc::Sender;
 
@@ -541,7 +545,7 @@ mod tests {
     use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps, ExplorationTask};
     use crate::behavior_tree::behavior_tree::Actionable;
     use crate::behavior_tree::behavior_tree::Response;
-    use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
+    use crate::behavior_tree::ship_behaviors::ship_behaviors;
     use crate::pagination::{PaginatedResponse, PaginationInput};
     use crate::pathfinder::pathfinder::TravelAction;
     use crate::ship::ShipOperations;
@@ -679,7 +683,7 @@ mod tests {
         let mut ship = TestObjects::test_ship(500);
         ship.nav.status = NavStatus::Docked;
 
-        let behaviors = ship_navigation_behaviors();
+        let behaviors = ship_behaviors();
         let ship_behavior = behaviors.dock_if_necessary;
 
         mocked_client.never();
@@ -715,7 +719,7 @@ mod tests {
         let mut ship = TestObjects::test_ship(500);
         ship.nav.status = NavStatus::InOrbit;
 
-        let behaviors = ship_navigation_behaviors();
+        let behaviors = ship_behaviors();
         let ship_behavior = behaviors.dock_if_necessary;
 
         mocked_client.times(1);
@@ -827,7 +831,7 @@ mod tests {
             Ok(GetMarketResponse { data: market_data })
         });
 
-        let behaviors = ship_navigation_behaviors();
+        let behaviors = ship_behaviors();
         let mut ship_behavior = behaviors.explorer_behavior;
         ship_behavior.update_indices();
 
@@ -905,7 +909,7 @@ mod tests {
             })
         });
 
-        let behaviors = ship_navigation_behaviors();
+        let behaviors = ship_behaviors();
         let mut ship_behavior = behaviors.navigate_to_destination;
 
         ship_behavior.update_indices();
@@ -1065,7 +1069,7 @@ mod tests {
             })
         });
 
-        let behaviors = ship_navigation_behaviors();
+        let behaviors = ship_behaviors();
         let mut ship_behavior = behaviors.navigate_to_destination;
 
         ship_behavior.update_indices();

@@ -1,12 +1,14 @@
 use chrono::Duration;
 
 pub mod app;
+pub mod behavior_tree_page;
 pub mod db_overview_page;
 pub mod fleet_overview_page;
 pub mod supply_chain_page;
 
 #[cfg(feature = "ssr")]
 pub mod cli_args;
+pub mod components;
 pub mod ship_overview_page;
 pub mod tailwind;
 mod trading_opportunity_table;

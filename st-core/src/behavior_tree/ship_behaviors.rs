@@ -66,7 +66,7 @@ impl Behaviors {
     }
 }
 
-pub fn ship_navigation_behaviors() -> Behaviors {
+pub fn ship_behaviors() -> Behaviors {
     /*
     /// Runs behaviors one by one until all succeeded.
     ///
@@ -197,11 +197,11 @@ pub fn ship_navigation_behaviors() -> Behaviors {
 #[cfg(test)]
 mod tests {
     use crate::behavior_tree::behavior_tree::Behavior;
-    use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
+    use crate::behavior_tree::ship_behaviors::ship_behaviors;
 
     #[tokio::test]
     async fn generate_mermaid_chart() {
-        let behaviors = ship_navigation_behaviors();
+        let behaviors = ship_behaviors();
 
         let mut behavior = behaviors.explorer_behavior;
         behavior.update_indices();
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn generate_markdown() {
-        let behaviors = &ship_navigation_behaviors();
+        let behaviors = &ship_behaviors();
         let mut ship_behavior = behaviors.navigate_to_destination.clone();
 
         ship_behavior.update_indices();

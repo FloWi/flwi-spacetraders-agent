@@ -20,7 +20,7 @@ use tracing::{event, span, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
-use crate::behavior_tree::ship_behaviors::ship_navigation_behaviors;
+use crate::behavior_tree::ship_behaviors::ship_behaviors;
 use crate::configuration::AgentConfiguration;
 use crate::exploration::exploration::generate_exploration_route;
 use crate::fleet::Fleet;

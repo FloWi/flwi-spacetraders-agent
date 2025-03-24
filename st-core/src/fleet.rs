@@ -1,6 +1,6 @@
 use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
-use crate::behavior_tree::ship_behaviors::{ship_navigation_behaviors, Behaviors, ShipAction};
+use crate::behavior_tree::ship_behaviors::{ship_behaviors, Behaviors, ShipAction};
 use crate::exploration::exploration::generate_exploration_route;
 use crate::marketplaces::marketplaces::{filter_waypoints_with_trait, find_marketplaces_for_exploration, find_shipyards_for_exploration};
 use crate::ship::ShipOperations;
@@ -584,7 +584,7 @@ pub async fn ship_loop(
 ) -> Result<()> {
     use tracing::Level;
 
-    let behaviors = ship_navigation_behaviors();
+    let behaviors = ship_behaviors();
     let ship_behavior: Behavior<ShipAction> = behaviors.explorer_behavior;
 
     println!("Running behavior tree. \n<mermaid>\n{}\n</mermaid>", ship_behavior.to_mermaid());

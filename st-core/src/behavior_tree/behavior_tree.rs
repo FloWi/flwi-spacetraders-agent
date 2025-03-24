@@ -171,7 +171,7 @@ impl<A: Display + Hash> Behavior<A> {
 
         let mut output = String::new();
         // quite ugly, but couldn't find proper workaround to print this string `%%{init: {"flowchart": {"htmlLabels": false}} }%%`
-        writeln!(output, r##"%%{{init: {{"#flowchart": {{"htmlLabels": false}}}} }}%%"##).unwrap();
+        //writeln!(output, r##"%%{{init: {{"#flowchart": {{"htmlLabels": false}}}} }}%%"##).unwrap();
         writeln!(output, "\ngraph LR").unwrap();
         self.build_mermaid(&mut output, None, labelled_sub_graphs);
         output
