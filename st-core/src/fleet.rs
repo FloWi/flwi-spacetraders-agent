@@ -11,8 +11,8 @@ use log::{log, Level};
 use serde::{Deserialize, Serialize};
 use st_domain::{
     ConstructJumpGateFleetConfig, FleetConfig, FleetDecisionFacts, FleetTask, FleetUpdateMessage, GetConstructionResponse, GetConstructionResponseData,
-    MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, Ship, ShipRegistrationRole, ShipRole, ShipSymbol, ShipTask, ShipTaskMessage,
-    ShipType, SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradingFleetConfig, Waypoint, WaypointSymbol,
+    MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipRole, ShipSymbol, ShipTask,
+    ShipTaskMessage, ShipType, SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradingFleetConfig, Waypoint, WaypointSymbol,
     WaypointTraitSymbol,
 };
 use st_store::{
@@ -255,7 +255,6 @@ pub struct MarketObservationFleet {
     id: FleetId,
     market_observation_fleet_config: MarketObservationFleetConfig,
     ship_assignment: HashMap<ShipSymbol, WaypointSymbol>,
-    ship_role_assignment: HashMap<ShipSymbol, Vec<ShipRole>>,
     budget: u64,
 }
 
@@ -497,11 +496,12 @@ pub fn are_vecs_equal_ignoring_order<T: Eq + Hash>(vec1: &[T], vec2: &[T]) -> bo
     set1 == set2
 }
 
-pub(crate) async fn compute_initial_fleets(
+pub(crate) async fn compute_fleets(
     ships: Vec<Ship>,
     home_system_symbol: &SystemSymbol,
     waypoints_of_home_system: &[Waypoint],
     client: Arc<dyn StClientTrait>,
+    model_manager: DbModelManager,
 ) -> Result<Vec<Fleet>> {
     assert_eq!(ships.len(), 2, "Expecting two ships to start");
 
@@ -509,71 +509,102 @@ pub(crate) async fn compute_initial_fleets(
         return anyhow::bail!("Expected 2 ships, but found {}", ships.len());
     }
 
-    let marketplace_waypoints =
-        filter_waypoints_with_trait(waypoints_of_home_system, WaypointTraitSymbol::MARKETPLACE).map(|wp| wp.symbol.clone()).collect_vec();
-    let shipyard_waypoints = filter_waypoints_with_trait(waypoints_of_home_system, WaypointTraitSymbol::SHIPYARD).map(|wp| wp.symbol.clone()).collect_vec();
+    let decision_facts = collect_fleet_decision_facts(&model_manager, home_system_symbol.clone()).await?;
+    let fleet_tasks = compute_fleet_tasks(home_system_symbol.clone(), decision_facts.clone());
+    let fleet_configs = compute_fleet_configs(&fleet_tasks, &decision_facts);
 
-    let command_ship = ships.iter().find(|ship| ship.registration.role == ShipRegistrationRole::Command).unwrap().clone();
-
-    let probe_ship = ships.iter().find(|ship| ship.registration.role == ShipRegistrationRole::Satellite).unwrap();
-
-    // iirc the probe gets spawned at a shipyard
-    // make sure, this is the case and expect it
-    let probe_at_shipyard_location =
-        shipyard_waypoints.iter().find(|wps| **wps == probe_ship.nav.waypoint_symbol).cloned().expect("expecting probe to be spawned at shipyard");
-
-    let unexplored_shipyards = shipyard_waypoints.iter().filter(|wp| **wp != probe_at_shipyard_location).cloned().collect_vec();
-
-    log!(Level::Info, "found {} ships: {}", &ships.len(), serde_json::to_string_pretty(&ships)?);
-
-    log!(Level::Info, "command_ship: {}", serde_json::to_string_pretty(&command_ship)?);
-    log!(Level::Info, "probe_ship: {}", serde_json::to_string_pretty(&probe_ship)?);
-
-    let command_ship_op = ShipOperations::new(command_ship.clone(), Arc::clone(&client));
-
-    let system_spawning_fleet = SystemSpawningFleet {
-        system_spawning_fleet_config: SystemSpawningFleetConfig {
-            system_symbol: home_system_symbol.clone(),
-            marketplace_waypoints_of_interest: marketplace_waypoints.clone(),
-            shipyard_waypoints_of_interest: unexplored_shipyards.clone(),
-            desired_fleet_config: vec![(ShipType::SHIP_COMMAND_FRIGATE, 1)],
-        },
-
-        id: FleetId(1),
-        spawn_ship_symbol: command_ship.symbol.clone(),
-        ship_operations: HashMap::from([(command_ship.symbol.clone(), command_ship_op)]),
-        completed_exploration_tasks: HashSet::new(),
-        current_task: None,
-        budget: 0,
-    };
-
-    // let command_ship_tasks: ShipTask = system_spawning_fleet
-    //     .compute_ship_task(&model_manager)
-    //     .await?;
-
-    let all_waypoints_of_interest = marketplace_waypoints.iter().chain(shipyard_waypoints.iter()).unique().collect_vec();
-
-    let market_observation_fleet = MarketObservationFleet {
-        id: FleetId(2),
-        market_observation_fleet_config: MarketObservationFleetConfig {
-            system_symbol: home_system_symbol.clone(),
-            marketplace_waypoints_of_interest: marketplace_waypoints.clone(),
-            shipyard_waypoints_of_interest: shipyard_waypoints.clone(),
-            desired_fleet_config: vec![(ShipType::SHIP_PROBE, all_waypoints_of_interest.len() as u32)],
-        },
-        ship_assignment: HashMap::from([(probe_ship.symbol.clone(), probe_at_shipyard_location.clone())]),
-        ship_role_assignment: HashMap::from([(command_ship.symbol.clone(), vec![ShipRole::MarketObserver, ShipRole::ShipPurchaser])]),
-        budget: 0,
-    };
-
-    let fleets = vec![
-        Fleet::SystemSpawning(system_spawning_fleet),
-        Fleet::MarketObservation(market_observation_fleet),
-    ];
-
-    log!(Level::Info, "Created these fleets: {}", serde_json::to_string_pretty(&fleets)?);
+    let fleets = create_fleets_from_configs(ships, fleet_configs, Arc::clone(&client), &decision_facts);
 
     Ok(fleets)
+}
+
+fn role_to_ship_type_mapping() -> HashMap<ShipFrameSymbol, ShipType> {
+    HashMap::from([
+        (ShipFrameSymbol::FRAME_FRIGATE, ShipType::SHIP_COMMAND_FRIGATE),
+        (ShipFrameSymbol::FRAME_PROBE, ShipType::SHIP_PROBE),
+    ])
+}
+
+fn create_fleets_from_configs(
+    ships: Vec<Ship>,
+    configs: Vec<FleetConfig>,
+    client: Arc<dyn StClientTrait>,
+    fleet_decision_facts: &FleetDecisionFacts,
+) -> Vec<Fleet> {
+    let mut available_ships: HashMap<ShipSymbol, Ship> = ships.iter().map(|s| (s.symbol.clone(), s.clone())).collect();
+
+    configs
+        .iter()
+        .enumerate()
+        .filter_map(|(id, cfg)| match cfg {
+            FleetConfig::SystemSpawningCfg(cfg) => {
+                let ship_ops = assign_matching_ships(&cfg.desired_fleet_config, &mut available_ships, Arc::clone(&client));
+                let first_ship_symbol = ship_ops.iter().get(0..1).collect_vec().first().expect("only one ship").1.ship.symbol.clone();
+
+                assert_eq!(ship_ops.len(), 1, "Expected only one ship that's been assigned");
+                Some(Fleet::SystemSpawning(SystemSpawningFleet {
+                    id: FleetId(id as u32),
+                    system_spawning_fleet_config: cfg.clone(),
+                    ship_operations: ship_ops,
+                    completed_exploration_tasks: Default::default(),
+                    budget: 0,
+                    current_task: None,
+                    spawn_ship_symbol: first_ship_symbol,
+                }))
+            }
+            FleetConfig::MarketObservationCfg(cfg) => {
+                let ship_ops = assign_matching_ships(&cfg.desired_fleet_config, &mut available_ships, Arc::clone(&client));
+                let first_ship = ship_ops.iter().get(0..1).collect_vec().first().expect("only one ship").1.ship.clone();
+                assert_eq!(first_ship.frame.symbol, ShipFrameSymbol::FRAME_PROBE, "Expecting a drone");
+                let probe_location = first_ship.nav.waypoint_symbol;
+                let is_at_shipyard = fleet_decision_facts.shipyards_of_interest.contains(&probe_location);
+                assert!(is_at_shipyard, "Expected probe to be located at shipyard");
+
+                assert_eq!(ship_ops.len(), 1, "Expected only one ship that's been assigned");
+                Some(Fleet::MarketObservation(MarketObservationFleet {
+                    id: FleetId(id as u32),
+                    market_observation_fleet_config: cfg.clone(),
+                    ship_assignment: HashMap::from([(first_ship.symbol.clone(), probe_location)]),
+                    budget: 0,
+                }))
+            }
+            FleetConfig::TradingCfg(_) => None,
+            FleetConfig::ConstructJumpGateCfg(_) => None,
+            FleetConfig::MiningCfg(_) => None,
+            FleetConfig::SiphoningCfg(_) => None,
+        })
+        .collect_vec()
+}
+
+fn assign_matching_ships(
+    desired_fleet_config: &[(ShipType, u32)],
+    available_ships: &mut HashMap<ShipSymbol, Ship>,
+    client: Arc<dyn StClientTrait>,
+) -> HashMap<ShipSymbol, ShipOperations> {
+    let mapping: HashMap<ShipFrameSymbol, ShipType> = role_to_ship_type_mapping();
+
+    let mut assigned_ships: Vec<Ship> = vec![];
+
+    for (ship_type, amount) in desired_fleet_config.iter() {
+        let assignable_ships = available_ships
+            .iter()
+            .filter_map(|(_, s)| {
+                let current_ship_type = mapping.get(&s.frame.symbol).expect("role_to_ship_type_mapping");
+                (current_ship_type == ship_type).then_some((s.symbol.clone(), current_ship_type.clone(), s.clone()))
+            })
+            .take(*amount as usize)
+            .collect_vec();
+
+        for (assigned_symbol, _, ship) in assignable_ships {
+            assigned_ships.push(ship);
+            available_ships.remove(&assigned_symbol);
+        }
+    }
+    let first_ship = assigned_ships.first().unwrap().symbol.clone();
+    let ship_ops: HashMap<ShipSymbol, ShipOperations> =
+        assigned_ships.into_iter().map(|ship| (ship.symbol.clone(), ShipOperations::new(ship.clone(), Arc::clone(&client)))).collect();
+
+    ship_ops
 }
 
 pub async fn ship_loop(

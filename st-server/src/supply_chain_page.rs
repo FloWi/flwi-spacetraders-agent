@@ -64,6 +64,7 @@ pub fn SupplyChainPage() -> impl IntoView {
         TradeGoodSymbol::ADVANCED_CIRCUITRY,
         TradeGoodSymbol::FAB_MATS,
         TradeGoodSymbol::SHIP_PLATING,
+        //TradeGoodSymbol::SHIP_PARTS,
         TradeGoodSymbol::MICROPROCESSORS,
         TradeGoodSymbol::CLOTHING,
     ];

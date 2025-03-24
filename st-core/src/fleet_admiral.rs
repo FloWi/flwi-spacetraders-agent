@@ -64,7 +64,7 @@ impl FleetAdmiral {
         if db_fleets.is_empty() {
             log!(Level::Info, "db_fleets is empty. Computing fleets",);
 
-            let fleets = crate::fleet::compute_initial_fleets(ships, home_system_symbol, waypoints_of_home_system, Arc::clone(&client)).await?;
+            let fleets = crate::fleet::compute_fleets(ships, home_system_symbol, waypoints_of_home_system, Arc::clone(&client), model_manager).await?;
             log!(Level::Info, "computed {} fleets.", fleets.len());
 
             // persist fleet config
