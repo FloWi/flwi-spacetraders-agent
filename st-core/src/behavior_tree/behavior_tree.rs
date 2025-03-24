@@ -131,16 +131,7 @@ impl<A: Display + Hash> Behavior<A> {
     }
 
     pub fn generate_markdown_with_details_without_repeat(behavior: Behavior<A>, labelled_sub_behaviors: HashMap<String, Behavior<A>>) -> String {
-        let hash_to_label_map: HashMap<u64, String> = labelled_sub_behaviors
-            .iter()
-            .map(|(label, behavior)| {
-                let mut hasher = DefaultHasher::new();
-                behavior.hash(&mut hasher);
-                let hash = hasher.finish();
-
-                (hash, label.to_string())
-            })
-            .collect();
+        let hash_to_label_map: HashMap<u64, String> = compute_sub_behavior_hashes(&labelled_sub_behaviors);
 
         let mut markdown = "".to_string();
 
@@ -166,7 +157,7 @@ impl<A: Display + Hash> Behavior<A> {
         self.to_mermaid_without_repeats(&HashMap::new())
     }
 
-    fn to_mermaid_without_repeats(&self, labelled_sub_graphs: &HashMap<u64, String>) -> String {
+    pub fn to_mermaid_without_repeats(&self, labelled_sub_graphs: &HashMap<u64, String>) -> String {
         // labelled sub-graphs don't really work. Need to think about it a bit more. Leaving this in for now.
 
         let mut output = String::new();
@@ -522,4 +513,17 @@ mod tests {
         let mermaid_string = bt.to_mermaid();
         println!("mermaid graph\n{}", mermaid_string)
     }
+}
+
+pub fn compute_sub_behavior_hashes<A: Display + Hash>(labelled_sub_behaviors: &HashMap<String, Behavior<A>>) -> HashMap<u64, String> {
+    labelled_sub_behaviors
+        .iter()
+        .map(|(label, behavior)| {
+            let mut hasher = DefaultHasher::new();
+            behavior.hash(&mut hasher);
+            let hash = hasher.finish();
+
+            (hash, label.to_string())
+        })
+        .collect()
 }
