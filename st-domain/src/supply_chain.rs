@@ -1,4 +1,4 @@
-use crate::{ConstructionMaterial, GetConstructionResponse, MarketTradeGood, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol};
+use crate::{ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, MarketTradeGood, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -12,6 +12,15 @@ pub struct TradeRelation {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SupplyChain {
     pub relations: Vec<TradeRelation>,
+}
+
+// Function to convert from server format to your model
+impl From<GetSupplyChainResponse> for SupplyChain {
+    fn from(response: GetSupplyChainResponse) -> Self {
+        let relations = response.data.export_to_import_map.into_iter().map(|(export, imports)| TradeRelation { export, imports }).collect();
+
+        SupplyChain { relations }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

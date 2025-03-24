@@ -12,8 +12,8 @@ use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
 use st_domain::{
-    distance_to, Data, GetConstructionResponse, JumpGate, MarketData, RegistrationResponse, Ship, Shipyard, StStatusResponse, SystemSymbol, SystemsPageData,
-    Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    distance_to, Data, GetConstructionResponse, JumpGate, MarketData, RegistrationResponse, Ship, Shipyard, StStatusResponse, SupplyChain, SystemSymbol,
+    SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
 #[derive(Clone)]
@@ -239,6 +239,12 @@ pub struct DbConstructionSiteEntry {
     pub entry: Json<GetConstructionResponse>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbSupplyChainEntry {
+    pub entry: Json<SupplyChain>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Serialize, Clone, Debug, Deserialize)]
@@ -743,4 +749,40 @@ on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at =
     .await?;
 
     Ok(())
+}
+
+pub async fn insert_supply_chain(pool: &Pool<Postgres>, supply_chain: SupplyChain, now: DateTime<Utc>) -> Result<()> {
+    let db_entry: DbSupplyChainEntry = DbSupplyChainEntry {
+        entry: Json(supply_chain.clone()),
+        created_at: now,
+    };
+
+    sqlx::query!(
+        r#"
+insert into supply_chain(entry, created_at)
+values ($1, $2)
+        "#,
+        db_entry.entry as _,
+        now,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn load_supply_chain(pool: &Pool<Postgres>) -> Result<Option<SupplyChain>> {
+    let maybe_supply_chain: Option<DbSupplyChainEntry> = sqlx::query_as!(
+        DbSupplyChainEntry,
+        r#"
+select entry as "entry: Json<SupplyChain>"
+     , created_at
+    from supply_chain s
+
+"#,
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(maybe_supply_chain.map(|db_entry| db_entry.entry.0))
 }

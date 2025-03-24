@@ -33,8 +33,8 @@ use crate::reqwest_helpers::create_client;
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
 use st_domain::{
-    FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship, ShipSymbol, StStatusResponse, SystemSymbol, Waypoint, WaypointSymbol,
-    WaypointType,
+    FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship, ShipSymbol, StStatusResponse, SupplyChain, SystemSymbol, Waypoint,
+    WaypointSymbol, WaypointType,
 };
 
 pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authenticated_client: StClient, pool: Pool<Postgres>) -> Result<()> {
@@ -94,6 +94,14 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
     let construction_site = client.get_construction_site(&jump_gate_wp_of_home_system.symbol).await?;
 
     let _ = db::upsert_construction_site(&pool, construction_site, now).await?;
+
+    let _ = match db::load_supply_chain(&pool).await? {
+        None => {
+            let supply_chain: SupplyChain = client.get_supply_chain().await?.into();
+            let _ = db::insert_supply_chain(&pool, supply_chain, Utc::now()).await?;
+        }
+        Some(_) => {}
+    };
 
     let (ship_updated_tx, mut ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = mpsc::channel::<ShipOperations>(32);
 

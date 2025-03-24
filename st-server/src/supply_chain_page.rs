@@ -9,15 +9,6 @@ use st_domain::{
     TradeGoodSymbol, WaypointSymbol,
 };
 
-// Server function uses conversion
-#[server]
-async fn get_supply_chain() -> Result<SupplyChain, ServerFnError> {
-    use st_core;
-    let supply_chain = st_core::supply_chain::read_supply_chain().await.unwrap();
-
-    Ok(supply_chain)
-}
-
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RelevantMarketData {
     pub waypoint_symbol: WaypointSymbol,
@@ -27,13 +18,14 @@ pub struct RelevantMarketData {
 #[server]
 async fn get_supply_chain_data() -> Result<(SupplyChain, Vec<RelevantMarketData>, Option<GetConstructionResponse>, MaterializedSupplyChain), ServerFnError> {
     use st_core;
+    use st_store::db;
 
-    let supply_chain = st_core::supply_chain::read_supply_chain().await.unwrap();
-
-    use st_store::{AgentBmc, ConstructionBmc, Ctx, MarketBmc, StatusBmc, SystemBmc};
+    use st_store::{AgentBmc, ConstructionBmc, Ctx, MarketBmc, SystemBmc};
 
     let state = expect_context::<crate::app::AppState>();
     let mm = state.db_model_manager;
+
+    let supply_chain = db::load_supply_chain(mm.pool()).await.unwrap().unwrap();
 
     let agent = AgentBmc::get_initial_agent(&Ctx::Anonymous, &mm).await.expect("get_initial_agent");
     let headquarters_waypoint = WaypointSymbol(agent.headquarters);

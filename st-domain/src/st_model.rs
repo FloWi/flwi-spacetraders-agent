@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::hash::Hash;
 use strum_macros::Display;
 
@@ -891,6 +892,18 @@ pub struct FuelConsumed {
     pub timestamp: DateTime<Utc>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SupplyChainMap {
+    pub export_to_import_map: HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSupplyChainResponse {
+    pub(crate) data: SupplyChainMap,
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[allow(non_camel_case_types)]
 pub enum WaypointType {
@@ -909,6 +922,7 @@ pub enum WaypointType {
     ARTIFICIAL_GRAVITY_WELL,
     FUEL_STATION,
 }
+
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Display)]
 #[allow(non_camel_case_types)]
 pub enum TradeGoodSymbol {
@@ -1055,4 +1069,5 @@ pub enum TradeGoodSymbol {
     SHIP_ORE_HOUND,
     SHIP_REFINING_FREIGHTER,
     SHIP_SURVEYOR,
+    SHIP_BULK_FREIGHTER,
 }

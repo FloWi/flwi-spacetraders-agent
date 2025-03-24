@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nselect system_symbol\n     , waypoint_symbol\n     , entry as \"entry: Json<Shipyard>\"\n     , created_at\n     , updated_at\nfrom shipyards\nwhere system_symbol = $1\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "system_symbol",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "waypoint_symbol",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "entry: Json<Shipyard>",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1dd6880b5e878465b389537b957c6ccda950ab63d55c4f3bea14e4c53890ef08"
+}

@@ -7,9 +7,10 @@ use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
 use st_domain::{
     extract_system_symbol, AgentInfoResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse,
-    GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSystemResponse, ListAgentsResponse, NavAndFuelResponse, NavigateShipRequest,
-    NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PatchShipNavResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest,
-    RegistrationResponse, SetFlightModeResponse, Ship, ShipSymbol, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
+    GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, ListAgentsResponse, NavAndFuelResponse,
+    NavigateShipRequest, NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PatchShipNavResponse, RefuelShipRequest, RefuelShipResponse,
+    RegistrationRequest, RegistrationResponse, SetFlightModeResponse, Ship, ShipSymbol, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint,
+    WaypointSymbol,
 };
 use std::any::type_name;
 use std::fmt::Debug;
@@ -70,6 +71,10 @@ impl StClientTrait for StClient {
             .await;
         let construction_site_info = resp?.json().await?;
         Ok(construction_site_info)
+    }
+
+    async fn get_supply_chain(&self) -> Result<GetSupplyChainResponse> {
+        Self::make_api_call(self.client.get("https://api.spacetraders.io/v2/market/supply-chain".to_string().to_string())).await
     }
 
     async fn dock_ship(&self, ship_symbol: ShipSymbol) -> Result<DockShipResponse> {
@@ -215,6 +220,8 @@ pub trait StClientTrait: Send + Sync + Debug {
     async fn get_agent(&self) -> Result<AgentInfoResponse>;
 
     async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> Result<GetConstructionResponse>;
+
+    async fn get_supply_chain(&self) -> Result<GetSupplyChainResponse>;
 
     async fn dock_ship(&self, ship_symbol: ShipSymbol) -> Result<DockShipResponse>;
 

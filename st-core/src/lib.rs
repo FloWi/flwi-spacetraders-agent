@@ -3,7 +3,6 @@ pub mod pagination;
 pub mod reqwest_helpers;
 pub mod ship;
 pub mod st_client;
-pub mod supply_chain;
 
 use chrono::TimeDelta;
 use st_domain::FlightMode;

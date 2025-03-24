@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nselect entry as \"entry: Json<SupplyChain>\"\n     , created_at\n    from supply_chain s\n\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entry: Json<SupplyChain>",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "c4abbf93b02b384c72800a27495066ed0a91f2525642ada27e0adad3353d9143"
+}
