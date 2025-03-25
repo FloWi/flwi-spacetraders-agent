@@ -389,7 +389,7 @@ pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: Fl
             CollectMarketInfosOnce {
                 system_symbol: system_symbol.clone(),
             },
-            ObserveAllWaypointsOfSystemWithProbes {
+            ObserveAllWaypointsOfSystemWithStationaryProbes {
                 system_symbol: system_symbol.clone(),
             },
         ]
@@ -398,7 +398,7 @@ pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: Fl
             ConstructJumpGate {
                 system_symbol: system_symbol.clone(),
             },
-            ObserveAllWaypointsOfSystemWithProbes {
+            ObserveAllWaypointsOfSystemWithStationaryProbes {
                 system_symbol: system_symbol.clone(),
             },
             MineOres {
@@ -413,7 +413,7 @@ pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: Fl
             TradeProfitably {
                 system_symbol: system_symbol.clone(),
             },
-            ObserveAllWaypointsOfSystemWithProbes {
+            ObserveAllWaypointsOfSystemWithStationaryProbes {
                 system_symbol: system_symbol.clone(),
             },
         ]
@@ -438,13 +438,15 @@ pub fn compute_fleet_configs(tasks: &[FleetTask], fleet_decision_facts: &FleetDe
                 desired_fleet_config: vec![(ShipType::SHIP_COMMAND_FRIGATE, 1)],
                 task: t.clone(),
             })),
-            FleetTask::ObserveAllWaypointsOfSystemWithProbes { system_symbol } => Some(FleetConfig::MarketObservationCfg(MarketObservationFleetConfig {
-                system_symbol: system_symbol.clone(),
-                marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
-                shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
-                desired_fleet_config: vec![(ShipType::SHIP_PROBE, all_waypoints_of_interest.len() as u32)],
-                task: t.clone(),
-            })),
+            FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { system_symbol } => {
+                Some(FleetConfig::MarketObservationCfg(MarketObservationFleetConfig {
+                    system_symbol: system_symbol.clone(),
+                    marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
+                    shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
+                    desired_fleet_config: vec![(ShipType::SHIP_PROBE, all_waypoints_of_interest.len() as u32)],
+                    task: t.clone(),
+                }))
+            }
             FleetTask::ConstructJumpGate { system_symbol } => Some(FleetConfig::ConstructJumpGateCfg(ConstructJumpGateFleetConfig {
                 system_symbol: system_symbol.clone(),
                 jump_gate_waypoint: WaypointSymbol(fleet_decision_facts.construction_site.clone().expect("construction_site").symbol),
@@ -660,7 +662,7 @@ pub async fn ship_loop(
     let behaviors = ship_behaviors();
     let ship_behavior: Behavior<ShipAction> = behaviors.explorer_behavior;
 
-    println!("Running behavior tree. \n<mermaid>\n{}\n</mermaid>", ship_behavior.to_mermaid());
+    //println!("Running behavior tree. \n<mermaid>\n{}\n</mermaid>", ship_behavior.to_mermaid());
 
     let mut tick: usize = 0;
     let span = span!(Level::INFO, "ship_loop", tick, ship = format!("{}", ship.symbol.0),);

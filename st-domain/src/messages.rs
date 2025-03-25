@@ -46,9 +46,9 @@ pub struct FleetDecisionFacts {
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum FleetTask {
-    CollectMarketInfosOnce { system_symbol: SystemSymbol }, // will be done by SystemSpawningFleet
-    ObserveAllWaypointsOfSystemWithProbes { system_symbol: SystemSymbol }, // will be done by MarketObservationFleet
-    ConstructJumpGate { system_symbol: SystemSymbol },      // will be done by TradingFleet
+    CollectMarketInfosOnce { system_symbol: SystemSymbol },
+    ObserveAllWaypointsOfSystemWithStationaryProbes { system_symbol: SystemSymbol },
+    ConstructJumpGate { system_symbol: SystemSymbol },
     TradeProfitably { system_symbol: SystemSymbol },
     MineOres { system_symbol: SystemSymbol },
     SiphonGases { system_symbol: SystemSymbol },
