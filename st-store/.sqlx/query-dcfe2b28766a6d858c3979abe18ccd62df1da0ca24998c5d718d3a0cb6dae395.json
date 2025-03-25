@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into supply_chain(entry, created_at)\nvalues ($1, $2)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dcfe2b28766a6d858c3979abe18ccd62df1da0ca24998c5d718d3a0cb6dae395"
+}

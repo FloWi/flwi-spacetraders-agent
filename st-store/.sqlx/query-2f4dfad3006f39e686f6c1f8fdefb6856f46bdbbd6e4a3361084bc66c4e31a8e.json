@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into completed_fleet_tasks (task, completed_at)\nvalues ($1, $2)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2f4dfad3006f39e686f6c1f8fdefb6856f46bdbbd6e4a3361084bc66c4e31a8e"
+}

@@ -1,9 +1,18 @@
 use crate::{GetConstructionResponseData, MaterializedSupplyChain, Ship, ShipType, SystemSymbol, TradeGoodSymbol, WaypointSymbol};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum FleetUpdateMessage {}
+pub struct FleetId(pub u32);
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub enum FleetUpdateMessage {
+    FleetTaskCompleted {
+        fleet_task_completion: FleetTaskCompletion,
+        fleet_id: FleetId,
+    },
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum ShipTaskMessage {
@@ -35,7 +44,7 @@ pub struct FleetDecisionFacts {
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum FleetTask {
     CollectMarketInfosOnce { system_symbol: SystemSymbol }, // will be done by SystemSpawningFleet
     ObserveAllWaypointsOfSystemWithProbes { system_symbol: SystemSymbol }, // will be done by MarketObservationFleet
@@ -80,6 +89,7 @@ pub struct SystemSpawningFleetConfig {
     pub marketplace_waypoints_of_interest: Vec<WaypointSymbol>,
     pub shipyard_waypoints_of_interest: Vec<WaypointSymbol>,
     pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub task: FleetTask,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -88,6 +98,7 @@ pub struct MarketObservationFleetConfig {
     pub marketplace_waypoints_of_interest: Vec<WaypointSymbol>,
     pub shipyard_waypoints_of_interest: Vec<WaypointSymbol>,
     pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub task: FleetTask,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -95,6 +106,7 @@ pub struct TradingFleetConfig {
     pub system_symbol: SystemSymbol,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
     pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub task: FleetTask,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -103,6 +115,7 @@ pub struct ConstructJumpGateFleetConfig {
     pub jump_gate_waypoint: WaypointSymbol,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
     pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub task: FleetTask,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -111,6 +124,7 @@ pub struct MiningFleetConfig {
     pub mining_waypoint: WaypointSymbol,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
     pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub task: FleetTask,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -119,6 +133,7 @@ pub struct SiphoningFleetConfig {
     pub siphoning_waypoint: WaypointSymbol,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
     pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub task: FleetTask,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -129,4 +144,10 @@ pub enum FleetConfig {
     ConstructJumpGateCfg(ConstructJumpGateFleetConfig),
     MiningCfg(MiningFleetConfig),
     SiphoningCfg(SiphoningFleetConfig),
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct FleetTaskCompletion {
+    pub task: FleetTask,
+    pub completed_at: DateTime<Utc>,
 }
