@@ -2,22 +2,24 @@ use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
 use crate::behavior_tree::ship_behaviors::{ship_behaviors, Behaviors, ShipAction};
 use crate::exploration::exploration::generate_exploration_route;
+use crate::fleet::Fleet::ConstructJumpGate;
 use crate::marketplaces::marketplaces::{filter_waypoints_with_trait, find_marketplaces_for_exploration, find_shipyards_for_exploration};
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
 use anyhow::{anyhow, Error, Result};
+use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use log::{log, Level};
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    ConstructJumpGateFleetConfig, FleetConfig, FleetDecisionFacts, FleetTask, FleetUpdateMessage, GetConstructionResponse, GetConstructionResponseData,
-    MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipRole, ShipSymbol, ShipTask,
-    ShipTaskMessage, ShipType, SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradingFleetConfig, Waypoint, WaypointSymbol,
-    WaypointTraitSymbol,
+    ConstructJumpGateFleetConfig, FleetConfig, FleetDecisionFacts, FleetId, FleetTask, FleetTaskCompletion, FleetUpdateMessage, GetConstructionResponse,
+    GetConstructionResponseData, MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, Ship, ShipFrameSymbol, ShipRegistrationRole,
+    ShipRole, ShipSymbol, ShipTask, ShipTaskMessage, ShipType, SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol,
+    TradingFleetConfig, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, ConstructionBmc, Ctx, DbJumpGateData, DbModelManager,
-    DbWaypointEntry, MarketBmc, ShipBmc, SystemBmc,
+    DbWaypointEntry, FleetBmc, MarketBmc, ShipBmc, SystemBmc,
 };
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
@@ -30,9 +32,6 @@ use tracing::{event, span};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct FleetId(u32);
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SystemSpawningFleet {
     id: FleetId,
     system_spawning_fleet_config: SystemSpawningFleetConfig,
@@ -41,6 +40,7 @@ pub struct SystemSpawningFleet {
     completed_exploration_tasks: HashSet<WaypointSymbol>,
     budget: u64,
     current_task: Option<ShipTask>,
+    fleet_task: FleetTask,
     spawn_ship_symbol: ShipSymbol,
 }
 
@@ -113,7 +113,7 @@ impl SystemSpawningFleet {
                 // Pass a clone of the fleet Arc for the task
                 let fleet_for_listener = Arc::clone(&fleet);
                 tokio::spawn(async move {
-                    Self::consume_ship_action_messages(ship_action_completed_rx, fleet_for_listener).await;
+                    Self::consume_ship_action_messages(ship_action_completed_rx, fleet_for_listener, fleet_updated_tx.clone()).await;
                 });
 
                 let args = BehaviorArgs {
@@ -132,7 +132,11 @@ impl SystemSpawningFleet {
         Ok(())
     }
 
-    async fn consume_ship_action_messages(mut ship_action_completed_rx: Receiver<ActionEvent>, fleet: Arc<Mutex<SystemSpawningFleet>>) {
+    async fn consume_ship_action_messages(
+        mut ship_action_completed_rx: Receiver<ActionEvent>,
+        fleet: Arc<Mutex<SystemSpawningFleet>>,
+        fleet_update_tx: Sender<FleetUpdateMessage>,
+    ) -> Result<()> {
         while let Some(event) = ship_action_completed_rx.recv().await {
             match event {
                 ActionEvent::ShipActionCompleted(result) => match result {
@@ -161,6 +165,20 @@ impl SystemSpawningFleet {
                                         fleet_guard.completed_exploration_tasks,
                                         ship_op.explore_location_queue
                                     );
+
+                                let is_done = ship_op.explore_location_queue.is_empty();
+                                if is_done {
+                                    let completed_task = FleetTaskCompletion {
+                                        task: fleet_guard.fleet_task.clone(),
+                                        completed_at: Utc::now(),
+                                    };
+                                    fleet_update_tx
+                                        .send(FleetUpdateMessage::FleetTaskCompleted {
+                                            fleet_task_completion: completed_task,
+                                            fleet_id: fleet_guard.id.clone(),
+                                        })
+                                        .await?;
+                                }
                             }
                             _ => {}
                         }
@@ -179,6 +197,8 @@ impl SystemSpawningFleet {
                 },
             }
         }
+
+        Ok(())
     }
 }
 
@@ -304,11 +324,10 @@ pub struct TradingFleet {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ConstructionFleet {
     id: FleetId,
-    system_symbol: SystemSymbol,
-    materials: Vec<TradeGoodSymbol>,
-    trading_ships: Vec<ShipSymbol>,
+    construction_fleet_config: ConstructJumpGateFleetConfig,
+    #[serde(skip)]
+    ship_operations: HashMap<ShipSymbol, ShipOperations>,
     budget: u64,
-    desired_ship_roles: HashMap<ShipRole, u16>,
 }
 
 impl MiningFleet {
@@ -337,7 +356,7 @@ pub enum Fleet {
     ConstructJumpGate(ConstructionFleet),
 }
 
-pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: FleetDecisionFacts) -> Vec<FleetTask> {
+pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: FleetDecisionFacts, completed_tasks: Vec<FleetTaskCompletion>) -> Vec<FleetTask> {
     use FleetTask::*;
 
     // three phases
@@ -350,7 +369,10 @@ pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: Fl
     //    - trade profitably with hauler fleet
     //    - prob. stop mining and siphoning
 
-    let is_jump_gate_done = fleet_decision_facts.construction_site.map(|cs| cs.is_complete).unwrap_or(false);
+    let has_construct_jump_gate_task_been_completed = completed_tasks.iter().any(|t| matches!(&t.task, ConstructJumpGate { system_symbol }));
+    let has_collect_market_infos_once_task_been_completed = completed_tasks.iter().any(|t| matches!(&t.task, CollectMarketInfosOnce { system_symbol }));
+
+    let is_jump_gate_done = fleet_decision_facts.construction_site.map(|cs| cs.is_complete).unwrap_or(false) || has_construct_jump_gate_task_been_completed;
     let is_shipyard_exploration_complete = are_vecs_equal_ignoring_order(
         &fleet_decision_facts.shipyards_of_interest,
         &fleet_decision_facts.shipyards_with_up_to_date_infos,
@@ -359,7 +381,8 @@ pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: Fl
         &fleet_decision_facts.marketplaces_of_interest,
         &fleet_decision_facts.marketplaces_with_up_to_date_infos,
     );
-    let has_collected_all_waypoint_details_once = is_shipyard_exploration_complete && is_marketplace_exploration_complete;
+    let has_collected_all_waypoint_details_once =
+        is_shipyard_exploration_complete && is_marketplace_exploration_complete || has_collect_market_infos_once_task_been_completed;
 
     let tasks = if !has_collected_all_waypoint_details_once {
         vec![
@@ -413,23 +436,27 @@ pub fn compute_fleet_configs(tasks: &[FleetTask], fleet_decision_facts: &FleetDe
                 marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
                 shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
                 desired_fleet_config: vec![(ShipType::SHIP_COMMAND_FRIGATE, 1)],
+                task: t.clone(),
             })),
             FleetTask::ObserveAllWaypointsOfSystemWithProbes { system_symbol } => Some(FleetConfig::MarketObservationCfg(MarketObservationFleetConfig {
                 system_symbol: system_symbol.clone(),
                 marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
                 shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
                 desired_fleet_config: vec![(ShipType::SHIP_PROBE, all_waypoints_of_interest.len() as u32)],
+                task: t.clone(),
             })),
             FleetTask::ConstructJumpGate { system_symbol } => Some(FleetConfig::ConstructJumpGateCfg(ConstructJumpGateFleetConfig {
                 system_symbol: system_symbol.clone(),
                 jump_gate_waypoint: WaypointSymbol(fleet_decision_facts.construction_site.clone().expect("construction_site").symbol),
                 materialized_supply_chain: None,
                 desired_fleet_config: vec![(ShipType::SHIP_COMMAND_FRIGATE, 1), (ShipType::SHIP_LIGHT_HAULER, 4)],
+                task: t.clone(),
             })),
             FleetTask::TradeProfitably { system_symbol } => Some(FleetConfig::TradingCfg(TradingFleetConfig {
                 system_symbol: system_symbol.clone(),
                 materialized_supply_chain: None,
                 desired_fleet_config: vec![(ShipType::SHIP_COMMAND_FRIGATE, 1), (ShipType::SHIP_LIGHT_HAULER, 4)],
+                task: t.clone(),
             })),
             FleetTask::MineOres { system_symbol } => Some(FleetConfig::MiningCfg(MiningFleetConfig {
                 system_symbol: system_symbol.clone(),
@@ -440,12 +467,14 @@ pub fn compute_fleet_configs(tasks: &[FleetTask], fleet_decision_facts: &FleetDe
                     (ShipType::SHIP_SURVEYOR, 2),
                     (ShipType::SHIP_LIGHT_HAULER, 2),
                 ],
+                task: t.clone(),
             })),
             FleetTask::SiphonGases { system_symbol } => Some(FleetConfig::SiphoningCfg(SiphoningFleetConfig {
                 system_symbol: system_symbol.clone(),
                 siphoning_waypoint: WaypointSymbol("TODO add gas giant".to_string()),
                 materialized_supply_chain: None,
                 desired_fleet_config: vec![(ShipType::SHIP_SIPHON_DRONE, 5)],
+                task: t.clone(),
             })),
         })
         .collect_vec()
@@ -509,8 +538,9 @@ pub(crate) async fn compute_fleets(
         return anyhow::bail!("Expected 2 ships, but found {}", ships.len());
     }
 
+    let completed_fleet_tasks = FleetBmc::load_completed_fleet_tasks(&Ctx::Anonymous, &model_manager).await?;
     let decision_facts = collect_fleet_decision_facts(&model_manager, home_system_symbol.clone()).await?;
-    let fleet_tasks = compute_fleet_tasks(home_system_symbol.clone(), decision_facts.clone());
+    let fleet_tasks = compute_fleet_tasks(home_system_symbol.clone(), decision_facts.clone(), completed_fleet_tasks);
     let fleet_configs = compute_fleet_configs(&fleet_tasks, &decision_facts);
 
     let fleets = create_fleets_from_configs(ships, fleet_configs, Arc::clone(&client), &decision_facts);
@@ -549,6 +579,7 @@ fn create_fleets_from_configs(
                     completed_exploration_tasks: Default::default(),
                     budget: 0,
                     current_task: None,
+                    fleet_task: cfg.task.clone(),
                     spawn_ship_symbol: first_ship_symbol,
                 }))
             }
@@ -568,8 +599,19 @@ fn create_fleets_from_configs(
                     budget: 0,
                 }))
             }
-            FleetConfig::TradingCfg(_) => None,
-            FleetConfig::ConstructJumpGateCfg(_) => None,
+            FleetConfig::TradingCfg(cfg) => None,
+            FleetConfig::ConstructJumpGateCfg(cfg) => {
+                let ship_ops = assign_matching_ships(&cfg.desired_fleet_config, &mut available_ships, Arc::clone(&client));
+                let first_ship_symbol = ship_ops.iter().get(0..1).collect_vec().first().expect("only one ship").1.ship.symbol.clone();
+
+                assert_eq!(ship_ops.len(), 1, "Expected only one ship that's been assigned");
+                Some(Fleet::ConstructJumpGate(ConstructionFleet {
+                    id: FleetId(id as u32),
+                    construction_fleet_config: cfg.clone(),
+                    budget: 0,
+                    ship_operations: ship_ops,
+                }))
+            }
             FleetConfig::MiningCfg(_) => None,
             FleetConfig::SiphoningCfg(_) => None,
         })

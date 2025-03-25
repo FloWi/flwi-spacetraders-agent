@@ -33,7 +33,7 @@ async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, Vec<FleetTask
     let home_system_symbol = home_waypoint_symbol.system_symbol();
 
     let decision_facts = collect_fleet_decision_facts(&mm, home_system_symbol.clone()).await.expect("collect_fleet_decision_facts");
-    let fleet_tasks = compute_fleet_tasks(home_system_symbol, decision_facts.clone());
+    let fleet_tasks = compute_fleet_tasks(home_system_symbol, decision_facts.clone(), Vec::new()); //FIXME: persist and load completed tasks
     let fleet_configs = compute_fleet_configs(&fleet_tasks, &decision_facts);
 
     Ok((decision_facts, fleet_tasks, fleet_configs))
