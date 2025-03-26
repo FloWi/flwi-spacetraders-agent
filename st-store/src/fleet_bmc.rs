@@ -15,6 +15,7 @@ struct DbFleetTaskCompletion {
 
 impl FleetBmc {
     pub async fn load_completed_fleet_tasks(_ctx: &Ctx, mm: &DbModelManager) -> Result<Vec<FleetTaskCompletion>> {
+        println!("load_completed_fleet_tasks");
         let completed_tasks: Vec<DbFleetTaskCompletion> = sqlx::query_as!(
             DbFleetTaskCompletion,
             r#"
@@ -25,6 +26,8 @@ SELECT task as "task: Json<FleetTask>"
         )
         .fetch_all(mm.pool())
         .await?;
+
+        println!("load_completed_fleet_tasks: done");
 
         Ok(completed_tasks
             .into_iter()
@@ -51,4 +54,25 @@ values ($1, $2)
 
         Ok(())
     }
+
+    //     pub async fn load_fleets(_ctx: &Ctx, mm: &DbModelManager) -> Result<Vec<>> {
+    //         let completed_tasks: Vec<DbFleetTaskCompletion> = sqlx::query_as!(
+    //             DbFleetTaskCompletion,
+    //             r#"
+    // SELECT task as "task: Json<FleetTask>"
+    //      , completed_at
+    //   from completed_fleet_tasks
+    //         "#,
+    //         )
+    //             .fetch_all(mm.pool())
+    //             .await?;
+    //
+    //         Ok(completed_tasks
+    //             .into_iter()
+    //             .map(|db| FleetTaskCompletion {
+    //                 task: db.task.0,
+    //                 completed_at: db.completed_at,
+    //             })
+    //             .collect_vec())
+    //     }
 }

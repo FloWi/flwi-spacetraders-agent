@@ -1,6 +1,7 @@
 use crate::format_duration;
 use chrono::{DateTime, Utc};
 use itertools::*;
+use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use leptos_use::{use_interval, UseIntervalReturn};
@@ -21,7 +22,7 @@ pub enum GetShipsMode {
 }
 
 #[server]
-async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, Vec<FleetTask>, Vec<FleetConfig>), ServerFnError> {
+async fn get_fleet_decision_facts() -> Result<((FleetDecisionFacts, Vec<FleetTask>, Vec<FleetConfig>), String), ServerFnError> {
     use st_core::fleet::{collect_fleet_decision_facts, compute_fleet_configs, compute_fleet_tasks};
     use st_store::AgentBmc;
     use st_store::Ctx;
@@ -29,14 +30,19 @@ async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, Vec<FleetTask
     let state = expect_context::<crate::app::AppState>();
     let mm = state.db_model_manager;
 
+    log!("fleet_overview_page: get_fleet_decision_facts");
+
     let home_waypoint_symbol = WaypointSymbol(AgentBmc::get_initial_agent(&Ctx::Anonymous, &mm).await.expect("get_initial_agent").headquarters);
     let home_system_symbol = home_waypoint_symbol.system_symbol();
 
-    let decision_facts = collect_fleet_decision_facts(&mm, home_system_symbol.clone()).await.expect("collect_fleet_decision_facts");
-    let fleet_tasks = compute_fleet_tasks(home_system_symbol, decision_facts.clone(), Vec::new()); //FIXME: persist and load completed tasks
+    let decision_facts = collect_fleet_decision_facts(&mm, &home_system_symbol).await.expect("collect_fleet_decision_facts");
+    let fleet_tasks = compute_fleet_tasks(home_system_symbol.clone(), decision_facts.clone(), Vec::new()); //FIXME: persist and load completed tasks
     let fleet_configs = compute_fleet_configs(&fleet_tasks, &decision_facts);
 
-    Ok((decision_facts, fleet_tasks, fleet_configs))
+    let admiral = st_core::super_fleet::super_fleet::SuperFleetAdmiral::new(&mm, home_system_symbol).await.expect("SuperFleetAdmiral::new");
+    log!("fleet_overview_page: get_fleet_decision_facts - got everything");
+
+    Ok(((decision_facts, fleet_tasks, fleet_configs), serde_json::to_string_pretty(&admiral).unwrap()))
 }
 
 #[component]
@@ -58,27 +64,39 @@ pub fn FleetOverviewPage() -> impl IntoView {
                 <Transition>
                     {move || {
                         match fleet_decision_facts_resource.get() {
-                            Some(Ok((fleet_decision_facts, fleet_tasks, fleet_configs))) => {
+                            Some(
+                                Ok(
+                                    (
+                                        (fleet_decision_facts, fleet_tasks, fleet_configs),
+                                        super_fleet_admiral_json,
+                                    ),
+                                ),
+                            ) => {
 
                                 view! {
                                     <div class="flex flex-col gap-4 p-4">
-                                    <div class="flex flex-row gap-4 p-4">
                                         <div class="flex flex-col gap-2">
 
-                                            <h2 class="font-bold text-xl">"Fleet Tasks"</h2>
-                                            <pre>
-                                                {serde_json::to_string_pretty(&fleet_tasks)
-                                                    .unwrap_or("---".to_string())}
-                                            </pre>
+                                            <h2 class="font-bold text-xl">"Super Fleet Admiral"</h2>
+                                            <pre>{super_fleet_admiral_json}</pre>
                                         </div>
-                                    <div class="flex flex-col gap-2">
+                                        <div class="flex flex-row gap-4 p-4">
+                                            <div class="flex flex-col gap-2">
 
-                                            <h2 class="font-bold text-xl">"Fleet Configs"</h2>
-                                            <pre>
-                                                {serde_json::to_string_pretty(&fleet_configs)
-                                                    .unwrap_or("---".to_string())}
-                                            </pre>
-                                        </div>
+                                                <h2 class="font-bold text-xl">"Fleet Tasks"</h2>
+                                                <pre>
+                                                    {serde_json::to_string_pretty(&fleet_tasks)
+                                                        .unwrap_or("---".to_string())}
+                                                </pre>
+                                            </div>
+                                            <div class="flex flex-col gap-2">
+
+                                                <h2 class="font-bold text-xl">"Fleet Configs"</h2>
+                                                <pre>
+                                                    {serde_json::to_string_pretty(&fleet_configs)
+                                                        .unwrap_or("---".to_string())}
+                                                </pre>
+                                            </div>
                                         </div>
                                         <div class="flex flex-row gap-4 p-4">
                                             <div class="flex flex-col gap-2">

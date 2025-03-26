@@ -482,7 +482,7 @@ pub fn compute_fleet_configs(tasks: &[FleetTask], fleet_decision_facts: &FleetDe
         .collect_vec()
 }
 
-pub async fn collect_fleet_decision_facts(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<FleetDecisionFacts> {
+pub async fn collect_fleet_decision_facts(mm: &DbModelManager, system_symbol: &SystemSymbol) -> Result<FleetDecisionFacts> {
     let ships = ShipBmc::get_ships(&Ctx::Anonymous, mm, None).await?;
     let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &system_symbol).await?;
 
@@ -495,7 +495,7 @@ pub async fn collect_fleet_decision_facts(mm: &DbModelManager, system_symbol: Sy
     let shipyards_to_explore = find_shipyards_for_exploration(shipyards_of_interest.clone());
 
     let maybe_construction_site: Option<GetConstructionResponse> =
-        ConstructionBmc::get_construction_site_for_system(&Ctx::Anonymous, mm, system_symbol).await?;
+        ConstructionBmc::get_construction_site_for_system(&Ctx::Anonymous, mm, system_symbol.clone()).await?;
 
     Ok(FleetDecisionFacts {
         marketplaces_of_interest: marketplace_symbols_of_interest.clone(),
@@ -541,7 +541,7 @@ pub(crate) async fn compute_fleets(
     }
 
     let completed_fleet_tasks = FleetBmc::load_completed_fleet_tasks(&Ctx::Anonymous, &model_manager).await?;
-    let decision_facts = collect_fleet_decision_facts(&model_manager, home_system_symbol.clone()).await?;
+    let decision_facts = collect_fleet_decision_facts(&model_manager, home_system_symbol).await?;
     let fleet_tasks = compute_fleet_tasks(home_system_symbol.clone(), decision_facts.clone(), completed_fleet_tasks);
     let fleet_configs = compute_fleet_configs(&fleet_tasks, &decision_facts);
 

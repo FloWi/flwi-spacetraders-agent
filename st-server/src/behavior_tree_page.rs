@@ -63,17 +63,13 @@ pub fn BehaviorTreePage() -> impl IntoView {
                                 .get()
                                 .map(|result| {
                                     match result {
-                                        Ok(
-                                            (
-                                                behavior_trees
-                                            ),
-                                        ) => {
+                                        Ok((behavior_trees)) => {
 
                                             view! {
                                                 <div class="flex flex-row gap-4">
                                                     <div class="w-full flex flex-col gap-4">
-                                                    {render_mermaid_trees(behavior_trees)}
-                                                </div>
+                                                        {render_mermaid_trees(behavior_trees)}
+                                                    </div>
                                                 </div>
                                             }
                                                 .into_any()
@@ -106,7 +102,10 @@ fn render_mermaid_trees(labelled_behaviors: Vec<(String, MermaidString)>) -> imp
                     view! {
                         <div class="flex flex-col">
                             <h2 class="text-2xl font-bold">{label.to_string()}</h2>
-                            <ClipboardButton clipboard_text={mermaid_string.0.clone()} label="Copy to Clipboard".to_string() />
+                            <ClipboardButton
+                                clipboard_text=mermaid_string.0.clone()
+                                label="Copy to Clipboard".to_string()
+                            />
                             <pre class="mermaid">{mermaid_string.0.clone()}</pre>
                         </div>
                     }

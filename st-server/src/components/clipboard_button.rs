@@ -22,9 +22,11 @@ async fn write_to_clipboard(text: String) {
 #[component]
 pub fn ClipboardButton(clipboard_text: String, label: String) -> impl IntoView {
     view! {
-        <button class="p-0.5 w-fit border border-rounded border-solid" on:click=move |_| spawn_local(write_to_clipboard(clipboard_text.clone()))>
-        <Icon icon=COPY_SIMPLE size="2em" />
+        <button
+            class="p-0.5 w-fit border border-rounded border-solid"
+            on:click=move |_| spawn_local(write_to_clipboard(clipboard_text.clone()))
+        >
+            <Icon icon=COPY_SIMPLE size="2em" />
         </button>
-
     }
 }
