@@ -63,6 +63,8 @@ impl SystemSpawningFleet {
     ) -> Result<()> {
         log!(Level::Info, "Running SystemSpawningFleet",);
 
+        todo!();
+
         let task = {
             let mut fleet_guard = fleet.lock().await;
             let task = fleet_guard.compute_initial_exploration_ship_task(&db_model_manager).await?;

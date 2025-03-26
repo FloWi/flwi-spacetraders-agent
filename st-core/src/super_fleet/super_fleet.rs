@@ -3,9 +3,12 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use st_domain::{FleetDecisionFacts, MaterializedSupplyChain, Ship, ShipSymbol, ShipTask, ShipType, SystemSymbol, TradeGoodSymbol, WaypointSymbol};
-use st_store::DbModelManager;
+use st_domain::{
+    FleetDecisionFacts, MaterializedSupplyChain, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, ShipType, SystemSymbol, TradeGoodSymbol, WaypointSymbol,
+};
+use st_store::{Ctx, DbModelManager, ShipBmc};
 use std::collections::HashMap;
+use std::hash::Hash;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SystemSpawningFleetConfig {
@@ -92,6 +95,7 @@ pub struct SuperFleetAdmiral {
     completed_fleet_tasks: Vec<SuperFleetTaskCompletion>,
     fleets: HashMap<SuperFleetId, SuperFleet>,
     all_ships: HashMap<ShipSymbol, Ship>,
+    ship_fleet_assignment: HashMap<ShipSymbol, SuperFleetId>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -105,6 +109,20 @@ pub struct SuperFleet {
 
 impl SuperFleetAdmiral {
     pub async fn new(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Self> {
+        let ships = ShipBmc::get_ships(&Ctx::Anonymous, mm, None).await?;
+        let ship_map: HashMap<ShipSymbol, Ship> = ships.into_iter().map(|s| (s.symbol.clone(), s)).collect();
+        let ship_type_map: HashMap<ShipSymbol, ShipType> = {
+            let mapping = role_to_ship_type_mapping();
+            ship_map
+                .iter()
+                .map(|(ship_symbol, ship)| {
+                    let frame_type = ship_map.get(&ship_symbol).unwrap().frame.symbol.clone();
+                    let ship_type = mapping.get(&frame_type).unwrap().clone();
+                    (ship_symbol.clone(), ship_type)
+                })
+                .collect()
+        };
+
         let completed_tasks = Default::default(); // TODO - refactor this to return correct type FleetBmc::load_completed_fleet_tasks(&Ctx::Anonymous, &mm).await?;
         let facts = collect_fleet_decision_facts(mm, &system_symbol).await?;
         let fleet_tasks = compute_fleet_tasks(system_symbol, &facts, completed_tasks);
@@ -115,11 +133,25 @@ impl SuperFleetAdmiral {
             .map(|(idx, (cfg, task))| Self::create_fleet(cfg.clone(), task.clone(), (completed_tasks.len() + idx) as i32).unwrap())
             .collect_vec();
 
-        Ok(Self {
+        let ship_fleet_assignment = Self::assign_ships(&fleets, &ship_map);
+
+        let mut fleet_map: HashMap<SuperFleetId, SuperFleet> = fleets.into_iter().map(|f| (f.id.clone(), f)).collect();
+
+        for (ship_symbol, fleet_id) in ship_fleet_assignment.iter() {
+            let ship_type = ship_type_map.get(&ship_symbol).unwrap().clone();
+            fleet_map.entry(fleet_id.clone()).and_modify(|fleet| {
+                fleet.ships.insert(ship_symbol.clone(), ship_type);
+            });
+        }
+
+        let mut admiral = Self {
             completed_fleet_tasks: completed_tasks.into_iter().cloned().collect(),
-            fleets: fleets.into_iter().map(|f| (f.id.clone(), f)).collect(),
-            all_ships: Default::default(),
-        })
+            fleets: fleet_map,
+            all_ships: ship_map,
+            ship_fleet_assignment,
+        };
+
+        Ok(admiral)
     }
 
     pub fn create_fleet(super_fleet_config: SuperFleetConfig, fleet_task: SuperFleetTask, id: i32) -> Result<SuperFleet> {
@@ -133,6 +165,25 @@ impl SuperFleetAdmiral {
         };
 
         Ok(fleet)
+    }
+
+    pub fn assign_ships(fleets: &[SuperFleet], all_ships: &HashMap<ShipSymbol, Ship>) -> HashMap<ShipSymbol, SuperFleetId> {
+        fleets
+            .iter()
+            .flat_map(|fleet| {
+                let desired_fleet_config = match fleet.cfg.clone() {
+                    SuperFleetConfig::SystemSpawningCfg(cfg) => cfg.desired_fleet_config,
+                    SuperFleetConfig::MarketObservationCfg(cfg) => cfg.desired_fleet_config,
+                    SuperFleetConfig::TradingCfg(cfg) => cfg.desired_fleet_config,
+                    SuperFleetConfig::ConstructJumpGateCfg(cfg) => cfg.desired_fleet_config,
+                    SuperFleetConfig::MiningCfg(cfg) => cfg.desired_fleet_config,
+                    SuperFleetConfig::SiphoningCfg(cfg) => cfg.desired_fleet_config,
+                };
+                let mut available_ships = all_ships.clone();
+                let assigned_ships_for_fleet = assign_matching_ships(&desired_fleet_config, &mut available_ships);
+                assigned_ships_for_fleet.into_iter().map(|(sym, _)| (sym, fleet.id.clone()))
+            })
+            .collect::<HashMap<_, _>>()
     }
 }
 
@@ -266,4 +317,36 @@ pub fn compute_fleet_tasks(
     };
 
     tasks
+}
+
+fn role_to_ship_type_mapping() -> HashMap<ShipFrameSymbol, ShipType> {
+    HashMap::from([
+        (ShipFrameSymbol::FRAME_FRIGATE, ShipType::SHIP_COMMAND_FRIGATE),
+        (ShipFrameSymbol::FRAME_PROBE, ShipType::SHIP_PROBE),
+    ])
+}
+
+fn assign_matching_ships(desired_fleet_config: &[(ShipType, u32)], available_ships: &mut HashMap<ShipSymbol, Ship>) -> HashMap<ShipSymbol, Ship> {
+    let mapping: HashMap<ShipFrameSymbol, ShipType> = role_to_ship_type_mapping();
+
+    let mut assigned_ships: Vec<Ship> = vec![];
+
+    for (ship_type, amount) in desired_fleet_config.iter() {
+        let assignable_ships = available_ships
+            .iter()
+            .filter_map(|(_, s)| {
+                let current_ship_type = mapping.get(&s.frame.symbol).expect("role_to_ship_type_mapping");
+                (current_ship_type == ship_type).then_some((s.symbol.clone(), current_ship_type.clone(), s.clone()))
+            })
+            .take(*amount as usize)
+            .collect_vec();
+
+        for (assigned_symbol, _, ship) in assignable_ships {
+            assigned_ships.push(ship);
+            available_ships.remove(&assigned_symbol);
+        }
+    }
+    let ships: HashMap<ShipSymbol, Ship> = assigned_ships.into_iter().map(|ship| (ship.symbol.clone(), ship)).collect();
+
+    ships
 }

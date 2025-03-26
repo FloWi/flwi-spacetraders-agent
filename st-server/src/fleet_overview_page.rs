@@ -1,3 +1,4 @@
+use crate::components::clipboard_button::ClipboardButton;
 use crate::format_duration;
 use chrono::{DateTime, Utc};
 use itertools::*;
@@ -78,6 +79,10 @@ pub fn FleetOverviewPage() -> impl IntoView {
                                         <div class="flex flex-col gap-2">
 
                                             <h2 class="font-bold text-xl">"Super Fleet Admiral"</h2>
+                                            <ClipboardButton
+                                                clipboard_text=super_fleet_admiral_json.clone()
+                                                label="Copy to Clipboard".to_string()
+                                            />
                                             <pre>{super_fleet_admiral_json}</pre>
                                         </div>
                                         <div class="flex flex-row gap-4 p-4">
