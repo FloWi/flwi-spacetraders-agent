@@ -23,8 +23,7 @@ use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use crate::behavior_tree::ship_behaviors::ship_behaviors;
 use crate::configuration::AgentConfiguration;
 use crate::exploration::exploration::generate_exploration_route;
-use crate::fleet::Fleet;
-use crate::fleet_admiral::FleetAdmiral;
+use crate::fleet::fleet::FleetAdmiral;
 use crate::format_time_delta_hh_mm_ss;
 use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_marketplaces_to_collect_remotely, find_shipyards_to_collect_remotely};
 use crate::pagination::{fetch_all_pages, fetch_all_pages_into_queue, PaginationInput};
@@ -111,17 +110,10 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
         let hq_system_clone = headquarters_system_symbol.clone();
         let waypoint_entries_of_home_system_clone = waypoint_entries_of_home_system.clone();
         let ship_updated_tx_clone = ship_updated_tx.clone();
+        let mut admiral = FleetAdmiral::new(&model_manager, hq_system_clone).await?;
 
         async move {
-            if let Err(e) = FleetAdmiral::start_fleets(
-                Arc::clone(&client_clone),
-                model_manager,
-                &hq_system_clone,
-                &waypoint_entries_of_home_system_clone,
-                ship_updated_tx_clone,
-            )
-            .await
-            {
+            if let Err(e) = admiral.run_fleets().await {
                 eprintln!("Error on FleetAdmiral::start_fleets: {}", e);
             }
         }
@@ -141,7 +133,7 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
         }
     });
 
-    let _ = tokio::spawn(listen_to_ship_changes_and_persist(ship_updated_rx, pool.clone()));
+    // let _ = tokio::spawn(listen_to_ship_changes_and_persist(ship_updated_rx, pool.clone()));
 
     //let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
     //dbg!(my_ships);

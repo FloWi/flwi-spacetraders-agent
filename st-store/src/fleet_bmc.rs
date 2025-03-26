@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use sqlx::types::Json;
 use sqlx::{Pool, Postgres};
-use st_domain::{Data, FleetTask, FleetTaskCompletion, RegistrationResponse};
+use st_domain::{Data, FleetTask, FleetTaskCompletion, FleetsOverview, RegistrationResponse};
 
 pub struct FleetBmc;
 
@@ -15,7 +15,6 @@ struct DbFleetTaskCompletion {
 
 impl FleetBmc {
     pub async fn load_completed_fleet_tasks(_ctx: &Ctx, mm: &DbModelManager) -> Result<Vec<FleetTaskCompletion>> {
-        println!("load_completed_fleet_tasks");
         let completed_tasks: Vec<DbFleetTaskCompletion> = sqlx::query_as!(
             DbFleetTaskCompletion,
             r#"
@@ -26,8 +25,6 @@ SELECT task as "task: Json<FleetTask>"
         )
         .fetch_all(mm.pool())
         .await?;
-
-        println!("load_completed_fleet_tasks: done");
 
         Ok(completed_tasks
             .into_iter()

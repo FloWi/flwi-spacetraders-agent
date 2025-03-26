@@ -1,9 +1,9 @@
 pub mod configuration;
+pub mod fleet;
 pub mod pagination;
 pub mod reqwest_helpers;
 pub mod ship;
 pub mod st_client;
-pub mod super_fleet;
 
 use chrono::TimeDelta;
 use st_domain::FlightMode;
@@ -13,8 +13,6 @@ pub mod agent_manager;
 pub mod app_state;
 pub mod behavior_tree;
 pub mod exploration;
-pub mod fleet;
-mod fleet_admiral;
 pub mod marketplaces;
 pub mod pathfinder;
 
