@@ -1,4 +1,4 @@
-use crate::fleet::fleet::{diff_waypoint_symbols, FleetAdmiral};
+use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
 use st_domain::{Fleet, FleetDecisionFacts, MarketObservationFleetConfig, Ship, ShipSymbol, ShipTask, WaypointSymbol};
@@ -15,8 +15,8 @@ impl MarketObservationFleet {
     ) -> Result<HashMap<ShipSymbol, ShipTask>> {
         let ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
 
-        let marketplaces_to_explore = diff_waypoint_symbols(&cfg.marketplace_waypoints_of_interest, &facts.marketplaces_with_up_to_date_infos);
-        let shipyards_to_explore = diff_waypoint_symbols(&cfg.shipyard_waypoints_of_interest, &facts.shipyards_with_up_to_date_infos);
+        let marketplaces_to_explore = cfg.marketplace_waypoints_of_interest.clone();
+        let shipyards_to_explore = cfg.shipyard_waypoints_of_interest.clone();
 
         // shipyards have higher prio, so they come first
         let all_locations_of_interest = shipyards_to_explore.iter().chain(marketplaces_to_explore.iter()).unique().cloned().collect_vec();
@@ -34,11 +34,52 @@ impl MarketObservationFleet {
         let already_assigned_waypoints: HashSet<WaypointSymbol> = already_assigned.iter().map(|(_, wps)| wps.clone()).collect();
 
         let non_assigned_ships = ships.iter().filter(|s| !already_assigned_ships.contains(&s.symbol));
-        let non_assigned_waypoints = all_locations_of_interest.iter().filter(|wps| !already_assigned_waypoints.contains(&wps));
+        let non_assigned_waypoints: HashSet<&WaypointSymbol> =
+            all_locations_of_interest.iter().filter(|wps| !already_assigned_waypoints.contains(&wps)).collect::<HashSet<_>>();
+
+        let current_ship_locations: HashMap<WaypointSymbol, Vec<(ShipSymbol, WaypointSymbol)>> =
+            ships.iter().map(|s| (s.symbol.clone(), s.nav.waypoint_symbol.clone())).into_group_map_by(|(_, wps)| wps.clone());
+
+        let correctly_placed_ships: Vec<(ShipSymbol, WaypointSymbol)> = current_ship_locations
+            .into_iter()
+            .filter(|(wps, _)| non_assigned_waypoints.contains(wps))
+            .filter_map(|(wps, ship_locations)| ship_locations.first().map(|ship_location| ship_location.clone())) // there might be multiple ships at this waypoint - we only need one
+            .collect_vec();
+
+        let already_covered_waypoints: HashSet<WaypointSymbol> = correctly_placed_ships.iter().map(|(_ss, wps)| wps.clone()).collect();
+        let already_correctly_placed_ships: HashSet<ShipSymbol> = correctly_placed_ships.iter().map(|(ss, _wps)| ss.clone()).collect();
+
+        //         println!(
+        //             r#"MarketObservationFleet::compute_ship_tasks
+        // marketplaces_to_explore: {:?}
+        // shipyards_to_explore: {:?}
+        // all_locations_of_interest: {:?}
+        // already_assigned: {:?}
+        // already_assigned_ships: {:?}
+        // already_assigned_waypoints: {:?}
+        // non_assigned_ships: {:?}
+        // non_assigned_waypoints: {:?}
+        // current_ship_locations: {:?}
+        //         "#,
+        //             &marketplaces_to_explore,
+        //             &shipyards_to_explore,
+        //             &all_locations_of_interest,
+        //             &already_assigned,
+        //             &already_assigned_ships,
+        //             &already_assigned_waypoints,
+        //             &non_assigned_ships.clone().collect_vec(),
+        //             &non_assigned_waypoints.clone().collect_vec(),
+        //             &current_ship_locations,
+        //         );
+
+        let non_assigned_ships = non_assigned_ships.filter(|s| !already_correctly_placed_ships.contains(&s.symbol));
+        let non_assigned_waypoints: HashSet<&WaypointSymbol> =
+            non_assigned_waypoints.into_iter().filter(|&wps| !already_covered_waypoints.contains(&wps)).collect();
 
         let result = non_assigned_ships
             .zip(non_assigned_waypoints)
             .map(|(s, wps)| (s.symbol.clone(), ShipTask::ObserveWaypointDetails { waypoint_symbol: wps.clone() }))
+            .chain(correctly_placed_ships.iter().map(|(ss, wps)| (ss.clone(), ShipTask::ObserveWaypointDetails { waypoint_symbol: wps.clone() }))) // issue tasks for the probes that are already placed correctly
             .collect();
 
         Ok(result)
