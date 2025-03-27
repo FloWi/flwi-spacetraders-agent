@@ -11,4 +11,4 @@ strum_macros = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 ordered-float = { workspace = true, features = ["serde"] }
 itertools = { workspace = true }
-anyhow = { workspace = true }
+anyhow = { workspace = true, features = ["backtrace"] }

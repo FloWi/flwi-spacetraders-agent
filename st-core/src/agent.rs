@@ -110,7 +110,7 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
         let hq_system_clone = headquarters_system_symbol.clone();
         let waypoint_entries_of_home_system_clone = waypoint_entries_of_home_system.clone();
         let ship_updated_tx_clone = ship_updated_tx.clone();
-        let mut admiral = FleetAdmiral::new(&model_manager, hq_system_clone).await?;
+        let mut admiral = FleetAdmiral::load_or_create(&model_manager, hq_system_clone).await?;
 
         async move {
             if let Err(e) = admiral.run_fleets().await {

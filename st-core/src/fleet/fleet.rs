@@ -23,6 +23,7 @@ pub struct FleetAdmiral {
     completed_fleet_tasks: Vec<FleetTaskCompletion>,
     fleets: HashMap<FleetId, Fleet>,
     all_ships: HashMap<ShipSymbol, Ship>,
+    fleet_tasks: HashMap<FleetId, Vec<FleetTask>>,
     ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
 }
 
@@ -31,19 +32,37 @@ impl FleetAdmiral {
         log!(Level::Info, "Running fleets");
         Ok(())
     }
-
-    pub fn get_overview(&self) -> FleetsOverview {
-        FleetsOverview {
-            completed_fleet_tasks: self.completed_fleet_tasks.clone(),
-            fleets: self.fleets.clone(),
-            all_ships: self.all_ships.clone(),
-            ship_fleet_assignment: self.ship_fleet_assignment.clone(),
-        }
-    }
 }
 
 impl FleetAdmiral {
-    pub async fn new(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Self> {
+    pub async fn load_or_create(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Self> {
+        match Self::load_admiral(mm).await? {
+            None => {
+                let admiral = Self::create(mm, system_symbol).await?;
+                let _ = FleetBmc::store_fleets_data(&Ctx::Anonymous, mm, &admiral.fleets, &admiral.fleet_tasks, &admiral.ship_fleet_assignment).await?;
+                Ok(admiral)
+            }
+            Some(admiral) => Ok(admiral),
+        }
+    }
+
+    pub async fn load_admiral(mm: &DbModelManager) -> Result<Option<Self>> {
+        let overview = FleetBmc::load_overview(&Ctx::Anonymous, mm).await?;
+
+        if overview.fleets.is_empty() || overview.all_ships.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(Self {
+                completed_fleet_tasks: overview.completed_fleet_tasks,
+                fleets: overview.fleets,
+                all_ships: overview.all_ships,
+                fleet_tasks: overview.fleet_task_assignments,
+                ship_fleet_assignment: overview.ship_fleet_assignment,
+            }))
+        }
+    }
+
+    pub async fn create(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Self> {
         let ships = ShipBmc::get_ships(&Ctx::Anonymous, mm, None).await?;
         let ship_map: HashMap<ShipSymbol, Ship> = ships.into_iter().map(|s| (s.symbol.clone(), s)).collect();
         let ship_type_map: HashMap<ShipSymbol, ShipType> = {
@@ -62,44 +81,38 @@ impl FleetAdmiral {
         let facts = collect_fleet_decision_facts(mm, &system_symbol).await?;
         let fleet_tasks = compute_fleet_tasks(system_symbol, &facts, &completed_tasks);
         let fleet_configs = compute_fleet_configs(&fleet_tasks, &facts);
-        let fleets: Vec<Fleet> = fleet_configs
+        let fleets_with_tasks: Vec<(Fleet, (FleetId, FleetTask))> = fleet_configs
             .into_iter()
             .enumerate()
             .map(|(idx, (cfg, task))| Self::create_fleet(cfg.clone(), task.clone(), (completed_tasks.len() + idx) as i32).unwrap())
             .collect_vec();
 
+        let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) = fleets_with_tasks.into_iter().unzip();
+
         let ship_fleet_assignment = Self::assign_ships(&fleets, &ship_map);
 
         let mut fleet_map: HashMap<FleetId, Fleet> = fleets.into_iter().map(|f| (f.id.clone(), f)).collect();
-
-        for (ship_symbol, fleet_id) in ship_fleet_assignment.iter() {
-            let ship_type = ship_type_map.get(&ship_symbol).unwrap().clone();
-            fleet_map.entry(fleet_id.clone()).and_modify(|fleet| {
-                fleet.ships.insert(ship_symbol.clone(), ship_type);
-            });
-        }
+        let fleet_task_map: HashMap<FleetId, Vec<FleetTask>> = fleet_tasks.into_iter().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
 
         let mut admiral = Self {
             completed_fleet_tasks: completed_tasks,
             fleets: fleet_map,
             all_ships: ship_map,
+            fleet_tasks: fleet_task_map,
             ship_fleet_assignment,
         };
 
         Ok(admiral)
     }
 
-    pub fn create_fleet(super_fleet_config: FleetConfig, fleet_task: FleetTask, id: i32) -> Result<Fleet> {
+    pub fn create_fleet(super_fleet_config: FleetConfig, fleet_task: FleetTask, id: i32) -> Result<(Fleet, (FleetId, FleetTask))> {
         let id = FleetId(id);
         let mut fleet = Fleet {
             id: id.clone(),
             cfg: super_fleet_config,
-            tasks: vec![fleet_task],
-            ship_tasks: Default::default(),
-            ships: Default::default(),
         };
 
-        Ok(fleet)
+        Ok((fleet, (id, fleet_task)))
     }
 
     pub fn assign_ships(fleets: &[Fleet], all_ships: &HashMap<ShipSymbol, Ship>) -> HashMap<ShipSymbol, FleetId> {

@@ -23,7 +23,7 @@ reqwest-middleware = { version = "0.3.1", features = ["json"] }
 governor = "0.6.3"
 async-trait = "0.1.78"
 task-local-extensions = "0.1.0"
-anyhow = { workspace = true }
+anyhow = { workspace = true, features = ["backtrace"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "std"] }
 sqlx = { version = "0.8.0", features = ["postgres", "runtime-tokio-native-tls", "chrono", "migrate", "json"] }
 tokio-cron-scheduler = "0.11.0"

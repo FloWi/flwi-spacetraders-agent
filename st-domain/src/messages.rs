@@ -154,9 +154,6 @@ pub enum FleetTask {
 pub struct Fleet {
     pub id: FleetId,
     pub cfg: FleetConfig,
-    pub tasks: Vec<FleetTask>,
-    pub ship_tasks: HashMap<ShipSymbol, ShipTask>,
-    pub ships: HashMap<ShipSymbol, ShipType>,
 }
 
 /// Deep copy of fleet admiral state for serde-compatibility
@@ -165,5 +162,6 @@ pub struct FleetsOverview {
     pub completed_fleet_tasks: Vec<FleetTaskCompletion>,
     pub fleets: HashMap<FleetId, Fleet>,
     pub all_ships: HashMap<ShipSymbol, Ship>,
+    pub fleet_task_assignments: HashMap<FleetId, Vec<FleetTask>>,
     pub ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
 }

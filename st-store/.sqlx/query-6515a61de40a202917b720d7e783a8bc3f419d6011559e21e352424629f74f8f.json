@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into fleets(id, cfg)\nvalues ($1, $2)\non conflict (id) do update SET cfg = excluded.cfg\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6515a61de40a202917b720d7e783a8bc3f419d6011559e21e352424629f74f8f"
+}

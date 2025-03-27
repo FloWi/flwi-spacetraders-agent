@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT fleet_id\n     , ship_symbol\n  from fleet_ship_assignment\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "fleet_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "ship_symbol",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "d3453ca1a40fb2e6991a2bbab199086ed585257b45e2b386428e4e5f6d5c769e"
+}

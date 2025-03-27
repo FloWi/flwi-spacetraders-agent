@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into fleet_ship_assignment(ship_symbol, fleet_id)\nvalues ($1, $2)\non conflict (ship_symbol) do update SET fleet_id = excluded.fleet_id\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "97aa71b65060d7d0b7f2e569fc749999db9f1f488c090c99a08e9abbabc46f33"
+}
