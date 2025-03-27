@@ -335,7 +335,7 @@ where
                 state_changed_tx.send(state.clone()).await.expect("send");
 
                 event!(
-                    Level::DEBUG,
+                    Level::INFO,
                     message = "Finished action and msg sent.",
                     index = self.index(),
                     actionable = actionable_label,

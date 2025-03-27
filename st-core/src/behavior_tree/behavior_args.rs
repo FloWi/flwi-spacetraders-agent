@@ -69,8 +69,8 @@ impl BlackboardOps for DbBlackboard {
             .collect();
 
         match pathfinder::compute_path(
-            from,
-            to,
+            from.clone(),
+            to.clone(),
             waypoints_of_system,
             market_entries_of_system,
             engine_speed,
@@ -78,7 +78,7 @@ impl BlackboardOps for DbBlackboard {
             fuel_capacity,
         ) {
             Some(path) => Ok(path),
-            None => Err(anyhow!("No path found")),
+            None => Err(anyhow!("No path found from {:?} to {:?}", from, to)),
         }
     }
     async fn get_exploration_tasks_for_current_waypoint(&self, current_location: WaypointSymbol) -> Result<Vec<ExplorationTask>> {

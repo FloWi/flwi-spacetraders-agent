@@ -42,7 +42,7 @@ struct FleetRunner {
 }
 
 impl FleetRunner {
-    pub async fn run_fleets(fleet_admiral: &mut FleetAdmiral, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<Self> {
+    pub async fn run_fleets(fleet_admiral: &mut FleetAdmiral, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
         // Create Arc<Mutex<>> wrappers around each ShipOperations to allow shared ownership
@@ -65,6 +65,7 @@ impl FleetRunner {
         let ship_tasks = fleet_admiral.ship_tasks.clone();
 
         let ship_updated_listener_join_handle = tokio::spawn(Self::listen_to_ship_changes_and_persist(ship_updated_rx, db_model_manager.clone()));
+        let ship_updated_listener_join_handle = tokio::spawn(Self::listen_to_ship_action_update_messages(ship_action_completed_rx, db_model_manager.clone()));
 
         let mut ship_fibers: HashMap<ShipSymbol, tokio::task::JoinHandle<Result<()>>> = HashMap::new();
 
@@ -96,15 +97,9 @@ impl FleetRunner {
                 ship_fibers.insert(ship_symbol_clone, fiber);
             }
         }
-
-        Ok(Self {
-            ship_fibers,
-            ship_ops,
-            ship_updated_tx,
-            ship_updated_listener_join_handle,
-            ship_action_completed_tx,
-            ship_action_completed_rx,
-        })
+        // run forever
+        tokio::join!(ship_updated_listener_join_handle);
+        Ok(())
     }
 
     pub async fn ship_loop(
@@ -123,10 +118,12 @@ impl FleetRunner {
             ShipTask::PurchaseShip { .. } => None,
             ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
                 ship.set_explore_locations(vec![waypoint_symbol]);
+                println!("ship_loop: Ship {:?} is running explorer_behavior", ship.symbol);
                 Some(behaviors.explorer_behavior)
             }
             ShipTask::ObserveAllWaypointsOnce { waypoint_symbols } => {
                 ship.set_explore_locations(waypoint_symbols);
+                println!("ship_loop: Ship {:?} is running explorer_behavior", ship.symbol);
                 Some(behaviors.explorer_behavior)
             }
             ShipTask::MineMaterialsAtWaypoint { .. } => None,
@@ -191,6 +188,35 @@ impl FleetRunner {
             }
 
             old_ship_state = Some(updated_ship.clone());
+        }
+
+        Ok(())
+    }
+
+    pub async fn listen_to_ship_action_update_messages(mut ship_action_completed_rx: Receiver<ActionEvent>, mm: DbModelManager) -> Result<()> {
+        let mut old_ship_state: Option<ShipOperations> = None;
+
+        while let Some(msg) = ship_action_completed_rx.recv().await {
+            match msg {
+                ActionEvent::ShipActionCompleted(result) => match result {
+                    Ok((ship_op, ship_action)) => {
+                        let ss = ship_op.symbol.0.clone();
+                        event!(
+                            Level::INFO,
+                            message = "ShipActionCompleted",
+                            ship = ss,
+                            action = %ship_action,
+                        );
+                    }
+                    Err(err) => {
+                        event!(Level::ERROR, message = "Error completing ShipAction", error = %err,);
+                    }
+                },
+                ActionEvent::BehaviorCompleted(result) => match result {
+                    Ok(_) => {}
+                    Err(_) => {}
+                },
+            }
         }
 
         Ok(())

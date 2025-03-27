@@ -4,7 +4,7 @@ use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
-use anyhow::{anyhow, Error};
+use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Local, Utc};
 use core::time::Duration;
@@ -13,7 +13,6 @@ use st_domain::{
     RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol,
     Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
 };
-use std::thread::AccessError;
 use tokio::sync::mpsc::Sender;
 
 #[async_trait]
@@ -59,11 +58,18 @@ impl Actionable for ShipAction {
             },
 
             ShipAction::WaitForArrival => match state.nav.status {
-                NavStatus::Docked | NavStatus::InOrbit => Ok(Success),
+                NavStatus::Docked | NavStatus::InOrbit => {
+                    println!("ShipAction::WaitForArrival: Ship is {:?}", state.nav.status);
+                    Ok(Success)
+                }
                 NavStatus::InTransit => {
                     let now: DateTime<Utc> = Utc::now();
                     let arrival_time: DateTime<Utc> = state.nav.route.arrival;
                     let is_still_travelling: bool = now < arrival_time;
+                    println!(
+                        "ShipAction::WaitForArrival: Ship is InTransit. now: {} arrival_time: {} is_still_travelling: {}",
+                        now, arrival_time, is_still_travelling
+                    );
 
                     if is_still_travelling {
                         Ok(Response::Running)
