@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use sqlx::types::Json;
 use sqlx::{Pool, Postgres};
-use st_domain::{Data, Fleet, FleetConfig, FleetId, FleetTask, FleetTaskCompletion, FleetsOverview, RegistrationResponse, ShipSymbol};
+use st_domain::{Data, Fleet, FleetConfig, FleetId, FleetTask, FleetTaskCompletion, FleetsOverview, RegistrationResponse, ShipSymbol, ShipTask};
 use std::collections::hash_map::Values;
 use std::collections::HashMap;
 
@@ -131,6 +131,7 @@ SELECT id
         let all_ships = ships.into_iter().map(|s| (s.symbol.clone(), s)).collect();
         let ship_fleet_assignment = Self::load_ship_fleet_assignment(ctx, mm).await?;
         let fleet_task_assignments = Self::load_fleet_tasks(ctx, mm).await?;
+        let ship_task_assignments = ShipBmc::load_ship_tasks(ctx, mm).await?;
 
         Ok(FleetsOverview {
             completed_fleet_tasks,
@@ -138,6 +139,7 @@ SELECT id
             all_ships,
             fleet_task_assignments,
             ship_fleet_assignment,
+            ship_tasks: ship_task_assignments,
         })
     }
 
@@ -147,10 +149,12 @@ SELECT id
         fleets: &HashMap<FleetId, Fleet>,
         fleet_tasks: &HashMap<FleetId, Vec<FleetTask>>,
         ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>,
+        ship_task_assignment: &HashMap<ShipSymbol, ShipTask>,
     ) -> Result<()> {
         Self::upsert_fleets(_ctx, mm, &fleets).await?;
         Self::upsert_fleet_tasks(_ctx, mm, &fleet_tasks).await?;
         Self::upsert_ship_fleet_assignment(_ctx, mm, &ship_fleet_assignment).await?;
+        Self::upsert_ship_task_assignment(_ctx, mm, &ship_task_assignment).await?;
 
         Ok(())
     }
@@ -230,6 +234,24 @@ on conflict (ship_symbol) do update SET fleet_id = excluded.fleet_id
 "#,
                 ship_symbol.0,
                 fleet_id.0,
+            )
+            .execute(mm.pool())
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn upsert_ship_task_assignment(_ctx: &Ctx, mm: &DbModelManager, ship_task_assignment: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
+        for (ship_symbol, ship_task) in ship_task_assignment {
+            sqlx::query!(
+                r#"
+insert into ship_task_assignments(ship_symbol, task)
+values ($1, $2)
+on conflict (ship_symbol) do update SET task = excluded.task
+"#,
+                ship_symbol.0,
+                Json(ship_task.clone()) as _,
             )
             .execute(mm.pool())
             .await?;

@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nselect ship_symbol\n     , task as \"task: Json<ShipTask>\"\n  from ship_task_assignments\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ship_symbol",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "task: Json<ShipTask>",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "c65e081fc6f51b2d5f1402cdc01966a97a9f2e03946495e56ac3fba6297fd04f"
+}

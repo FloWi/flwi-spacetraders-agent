@@ -12,8 +12,8 @@ use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
 use st_domain::{
-    distance_to, Data, GetConstructionResponse, JumpGate, MarketData, RegistrationResponse, Ship, Shipyard, StStatusResponse, SupplyChain, SystemSymbol,
-    SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    distance_to, Data, GetConstructionResponse, JumpGate, MarketData, RegistrationResponse, Ship, ShipTask, Shipyard, StStatusResponse, SupplyChain,
+    SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
 #[derive(Clone)]
@@ -231,6 +231,12 @@ pub struct DbShipEntry {
     pub entry: Json<Ship>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbShipTaskEntry {
+    pub ship_symbol: String,
+    pub task: Json<ShipTask>,
 }
 
 #[derive(Serialize, Clone, Debug, Deserialize)]

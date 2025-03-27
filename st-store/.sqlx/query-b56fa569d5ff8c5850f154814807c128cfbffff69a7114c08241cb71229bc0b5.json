@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into ship_task_assignments (ship_symbol, task)\nvalues ($1, $2)\non conflict (ship_symbol) do update set task = excluded.task\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b56fa569d5ff8c5850f154814807c128cfbffff69a7114c08241cb71229bc0b5"
+}

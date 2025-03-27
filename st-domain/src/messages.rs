@@ -164,4 +164,5 @@ pub struct FleetsOverview {
     pub all_ships: HashMap<ShipSymbol, Ship>,
     pub fleet_task_assignments: HashMap<FleetId, Vec<FleetTask>>,
     pub ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
+    pub ship_tasks: HashMap<ShipSymbol, ShipTask>,
 }

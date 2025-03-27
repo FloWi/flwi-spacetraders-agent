@@ -1,11 +1,12 @@
 use crate::ctx::Ctx;
-use crate::{DbModelManager, DbShipEntry};
+use crate::{DbModelManager, DbShipEntry, DbShipTaskEntry};
 use anyhow::*;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use sqlx::types::Json;
 use sqlx::{Pool, Postgres};
-use st_domain::{Ship, ShipSymbol, StStatusResponse};
+use st_domain::{Ship, ShipSymbol, ShipTask, StStatusResponse};
+use std::collections::HashMap;
 
 pub struct ShipBmc;
 
@@ -50,5 +51,37 @@ select ship_symbol
         .await?;
 
         Ok(ship_entry.entry.0)
+    }
+
+    pub async fn load_ship_tasks(ctx: &Ctx, mm: &DbModelManager) -> Result<HashMap<ShipSymbol, ShipTask>> {
+        let entries: Vec<DbShipTaskEntry> = sqlx::query_as!(
+            DbShipTaskEntry,
+            r#"
+select ship_symbol
+     , task as "task: Json<ShipTask>"
+  from ship_task_assignments
+        "#,
+        )
+        .fetch_all(mm.pool())
+        .await?;
+
+        Ok(entries.into_iter().map(|db_entry| (ShipSymbol(db_entry.ship_symbol), db_entry.task.0)).collect())
+    }
+
+    pub async fn save_ship_tasks(ctx: &Ctx, mm: &DbModelManager, ship_task_assignments: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
+        for (ship_symbol, task) in ship_task_assignments {
+            sqlx::query!(
+                r#"
+insert into ship_task_assignments (ship_symbol, task)
+values ($1, $2)
+on conflict (ship_symbol) do update set task = excluded.task
+        "#,
+                ship_symbol.0,
+                Json(task.clone()) as _
+            )
+            .execute(mm.pool())
+            .await?;
+        }
+        Ok(())
     }
 }

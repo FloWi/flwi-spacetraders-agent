@@ -17,11 +17,8 @@ create table fleet_ship_assignment
     fleet_id    int  not null references fleets (id)
 );
 
-create table ship_task_assignment
+create table ship_task_assignments
 (
-    ship_id text  not null primary key references ships (ship_symbol),
-    task    jsonb not null
+    ship_symbol text  not null primary key references ships (ship_symbol),
+    task        jsonb not null
 );
-
-
-

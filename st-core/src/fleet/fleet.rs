@@ -1,9 +1,18 @@
+use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
+use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
+use crate::behavior_tree::ship_behaviors::{ship_behaviors, ShipAction};
+use crate::fleet::market_observation_fleet::MarketObservationFleet;
+use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
 use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_shipyards_for_exploration};
-use anyhow::Result;
+use crate::ship::ShipOperations;
+use crate::st_client::{StClient, StClientTrait};
+use anyhow::{anyhow, Error, Result};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use log::{log, Level};
 use serde::{Deserialize, Serialize};
+use sqlx::__rt::JoinHandle;
+use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{
     CollectMarketInfosOnce, ConstructJumpGate, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably,
 };
@@ -17,12 +26,149 @@ use st_store::{
 };
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::Mutex;
+use tracing::{event, span};
+
+struct FleetRunner {
+    ship_fibers: HashMap<ShipSymbol, tokio::task::JoinHandle<Result<()>>>,
+    ship_ops: HashMap<ShipSymbol, Arc<Mutex<ShipOperations>>>,
+}
+
+impl FleetRunner {
+    pub async fn run_fleets(fleet_admiral: &mut FleetAdmiral, client: Arc<dyn StClientTrait>, db_model_manager: DbModelManager) -> Result<Self> {
+        log!(Level::Info, "Running fleets");
+
+        // Create Arc<Mutex<>> wrappers around each ShipOperations to allow shared ownership
+        let ship_ops: HashMap<ShipSymbol, Arc<Mutex<ShipOperations>>> = fleet_admiral
+            .all_ships
+            .iter()
+            .map(|(_, s)| (s.symbol.clone(), Arc::new(Mutex::new(ShipOperations::new(s.clone(), Arc::clone(&client))))))
+            .collect();
+
+        let args = BehaviorArgs {
+            blackboard: Arc::new(DbBlackboard {
+                model_manager: db_model_manager,
+            }),
+        };
+
+        let (ship_updated_tx, ship_updated_rx) = tokio::sync::mpsc::channel(32);
+        let (ship_action_completed_tx, ship_action_completed_rx) = tokio::sync::mpsc::channel(32);
+
+        // Clone fleet_admiral.ship_tasks to avoid the lifetime issues
+        let ship_tasks = fleet_admiral.ship_tasks.clone();
+
+        let mut ship_fibers: HashMap<ShipSymbol, tokio::task::JoinHandle<Result<()>>> = HashMap::new();
+
+        // Populate ship_fibers with spawned tasks
+        for (ship_symbol, ship_op_mutex) in &ship_ops {
+            let maybe_ship_task = ship_tasks.get(ship_symbol);
+
+            if let Some(ship_task) = maybe_ship_task {
+                // Clone all the values that need to be moved into the async task
+                let ship_op_clone = Arc::clone(ship_op_mutex);
+                let args_clone = args.clone();
+                let ship_updated_tx_clone = ship_updated_tx.clone();
+                let ship_action_completed_tx_clone = ship_action_completed_tx.clone();
+                let ship_task_clone = ship_task.clone();
+                let ship_symbol_clone = ship_symbol.clone();
+
+                let fiber = tokio::spawn(async move {
+                    Self::ship_loop(
+                        ship_op_clone,
+                        args_clone,
+                        ship_updated_tx_clone,
+                        ship_action_completed_tx_clone,
+                        ship_task_clone,
+                    )
+                    .await?;
+                    Ok(())
+                });
+
+                ship_fibers.insert(ship_symbol_clone, fiber);
+            }
+        }
+
+        Ok(Self { ship_fibers, ship_ops })
+    }
+
+    pub async fn ship_loop(
+        ship_op: Arc<Mutex<ShipOperations>>,
+        args: BehaviorArgs,
+        ship_updated_tx: Sender<ShipOperations>,
+        ship_action_completed_tx: Sender<ActionEvent>,
+        ship_task: ShipTask,
+    ) -> Result<()> {
+        use tracing::Level;
+        let behaviors = ship_behaviors();
+
+        let mut ship = ship_op.lock().await;
+
+        let maybe_behavior = match ship_task {
+            ShipTask::PurchaseShip { .. } => None,
+            ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
+                ship.set_explore_locations(vec![waypoint_symbol]);
+                Some(behaviors.explorer_behavior)
+            }
+            ShipTask::ObserveAllWaypointsOnce { waypoint_symbols } => {
+                ship.set_explore_locations(waypoint_symbols);
+                Some(behaviors.explorer_behavior)
+            }
+            ShipTask::MineMaterialsAtWaypoint { .. } => None,
+            ShipTask::DeliverMaterials { .. } => None,
+            ShipTask::SurveyAsteroid { .. } => None,
+        };
+
+        match maybe_behavior {
+            None => {}
+            Some(ship_behavior) => {
+                let mut tick: usize = 0;
+                let span = span!(Level::INFO, "ship_loop", tick, ship = format!("{}", ship.symbol.0),);
+                tick += 1;
+
+                let _enter = span.enter();
+
+                let result: std::result::Result<Response, Error> = ship_behavior
+                    .run(
+                        &args,
+                        &mut ship,
+                        Duration::from_secs(1),
+                        &ship_updated_tx.clone(),
+                        &ship_action_completed_tx.clone(),
+                    )
+                    .await;
+
+                match &result {
+                    Ok(o) => {
+                        event!(
+                            name: "Ship Tick done ",
+                            Level::INFO,
+                            result = %o,
+                        );
+                    }
+                    Err(e) => {
+                        event!(
+                            name: "Ship Tick done with Error",
+                            Level::INFO,
+                            result = %e,
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct FleetAdmiral {
     completed_fleet_tasks: Vec<FleetTaskCompletion>,
     fleets: HashMap<FleetId, Fleet>,
     all_ships: HashMap<ShipSymbol, Ship>,
+    pub(crate) ship_tasks: HashMap<ShipSymbol, ShipTask>,
     fleet_tasks: HashMap<FleetId, Vec<FleetTask>>,
     ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
 }
@@ -30,23 +176,30 @@ pub struct FleetAdmiral {
 impl FleetAdmiral {
     pub async fn run_fleets(&mut self) -> Result<()> {
         log!(Level::Info, "Running fleets");
+
         Ok(())
     }
-}
 
-impl FleetAdmiral {
     pub async fn load_or_create(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Self> {
         match Self::load_admiral(mm).await? {
             None => {
                 let admiral = Self::create(mm, system_symbol).await?;
-                let _ = FleetBmc::store_fleets_data(&Ctx::Anonymous, mm, &admiral.fleets, &admiral.fleet_tasks, &admiral.ship_fleet_assignment).await?;
+                let _ = FleetBmc::store_fleets_data(
+                    &Ctx::Anonymous,
+                    mm,
+                    &admiral.fleets,
+                    &admiral.fleet_tasks,
+                    &admiral.ship_fleet_assignment,
+                    &admiral.ship_tasks,
+                )
+                .await?;
                 Ok(admiral)
             }
             Some(admiral) => Ok(admiral),
         }
     }
 
-    pub async fn load_admiral(mm: &DbModelManager) -> Result<Option<Self>> {
+    async fn load_admiral(mm: &DbModelManager) -> Result<Option<Self>> {
         let overview = FleetBmc::load_overview(&Ctx::Anonymous, mm).await?;
 
         if overview.fleets.is_empty() || overview.all_ships.is_empty() {
@@ -56,13 +209,14 @@ impl FleetAdmiral {
                 completed_fleet_tasks: overview.completed_fleet_tasks,
                 fleets: overview.fleets,
                 all_ships: overview.all_ships,
+                ship_tasks: overview.ship_tasks,
                 fleet_tasks: overview.fleet_task_assignments,
                 ship_fleet_assignment: overview.ship_fleet_assignment,
             }))
         }
     }
 
-    pub async fn create(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Self> {
+    async fn create(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Self> {
         let ships = ShipBmc::get_ships(&Ctx::Anonymous, mm, None).await?;
         let ship_map: HashMap<ShipSymbol, Ship> = ships.into_iter().map(|s| (s.symbol.clone(), s)).collect();
         let ship_type_map: HashMap<ShipSymbol, ShipType> = {
@@ -99,10 +253,38 @@ impl FleetAdmiral {
             fleets: fleet_map,
             all_ships: ship_map,
             fleet_tasks: fleet_task_map,
+            ship_tasks: Default::default(),
             ship_fleet_assignment,
         };
 
+        let _ = Self::compute_ship_tasks(&mut admiral, &facts).await?;
+
         Ok(admiral)
+    }
+
+    async fn compute_ship_tasks(admiral: &mut FleetAdmiral, facts: &FleetDecisionFacts) -> Result<()> {
+        for (fleet_id, fleet) in admiral.fleets.clone().iter() {
+            match &fleet.cfg {
+                FleetConfig::SystemSpawningCfg(cfg) => {
+                    let ship_tasks = SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts).await?;
+                    for (ss, task) in ship_tasks {
+                        admiral.ship_tasks.insert(ss, task);
+                    }
+                }
+                FleetConfig::MarketObservationCfg(cfg) => {
+                    let ship_tasks = MarketObservationFleet::compute_ship_tasks(admiral, cfg, fleet, facts).await?;
+                    for (ss, task) in ship_tasks {
+                        admiral.ship_tasks.insert(ss, task);
+                    }
+                }
+                FleetConfig::TradingCfg(cfg) => (),
+                FleetConfig::ConstructJumpGateCfg(cfg) => (),
+                FleetConfig::MiningCfg(cfg) => (),
+                FleetConfig::SiphoningCfg(cfg) => (),
+            }
+        }
+
+        Ok(())
     }
 
     pub fn create_fleet(super_fleet_config: FleetConfig, fleet_task: FleetTask, id: i32) -> Result<(Fleet, (FleetId, FleetTask))> {
@@ -132,6 +314,19 @@ impl FleetAdmiral {
                 assigned_ships_for_fleet.into_iter().map(|(sym, _)| (sym, fleet.id.clone()))
             })
             .collect::<HashMap<_, _>>()
+    }
+
+    pub(crate) fn get_ships_of_fleet(&self, fleet: &Fleet) -> Vec<&Ship> {
+        self.ship_fleet_assignment
+            .iter()
+            .filter_map(|(ship_symbol, fleet_id)| {
+                if fleet_id == &fleet.id {
+                    self.all_ships.get(&ship_symbol)
+                } else {
+                    None
+                }
+            })
+            .collect_vec()
     }
 }
 
@@ -320,8 +515,8 @@ pub async fn collect_fleet_decision_facts(mm: &DbModelManager, system_symbol: &S
         materialized_supply_chain: None,
     })
 }
-pub fn diff_waypoint_symbols(waypoints_of_interest: &[WaypointSymbol], waypoints_to_explore: &[WaypointSymbol]) -> Vec<WaypointSymbol> {
-    let set2: HashSet<_> = waypoints_to_explore.iter().collect();
+pub fn diff_waypoint_symbols(waypoints_of_interest: &[WaypointSymbol], already_explored: &[WaypointSymbol]) -> Vec<WaypointSymbol> {
+    let set2: HashSet<_> = already_explored.iter().collect();
 
     waypoints_of_interest.iter().filter(|item| !set2.contains(item)).cloned().collect()
 }
