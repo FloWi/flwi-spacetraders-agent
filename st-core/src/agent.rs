@@ -113,7 +113,7 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
         let mut admiral = FleetAdmiral::load_or_create(&model_manager, hq_system_clone).await?;
 
         async move {
-            if let Err(e) = admiral.run_fleets().await {
+            if let Err(e) = admiral.run_fleets(client_clone, &model_manager).await {
                 eprintln!("Error on FleetAdmiral::start_fleets: {}", e);
             }
         }
@@ -217,27 +217,6 @@ async fn load_systems_and_waypoints_if_necessary(
             number_systems_in_db
         );
     }
-    Ok(())
-}
-
-pub async fn listen_to_ship_changes_and_persist(mut ship_updated_rx: Receiver<ShipOperations>, pool: Pool<Postgres>) -> Result<()> {
-    let mut old_ship_state: Option<ShipOperations> = None;
-
-    while let Some(updated_ship) = ship_updated_rx.recv().await {
-        match old_ship_state {
-            Some(old_ship_ops) if old_ship_ops.ship == updated_ship.ship => {
-                // no need to update
-                event!(Level::INFO, "No need to update ship {}. No change detected", updated_ship.symbol.0);
-            }
-            _ => {
-                event!(Level::INFO, "Ship {} updated", updated_ship.symbol.0);
-                let _ = db::upsert_ships(&pool, &vec![updated_ship.ship.clone()], Utc::now()).await?;
-            }
-        }
-
-        old_ship_state = Some(updated_ship.clone());
-    }
-
     Ok(())
 }
 

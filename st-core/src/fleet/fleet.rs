@@ -9,9 +9,9 @@ use crate::st_client::{StClient, StClientTrait};
 use anyhow::{anyhow, Error, Result};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
-use log::{log, Level};
 use serde::{Deserialize, Serialize};
 use sqlx::__rt::JoinHandle;
+use sqlx::{Pool, Postgres};
 use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{
     CollectMarketInfosOnce, ConstructJumpGate, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably,
@@ -22,24 +22,28 @@ use st_domain::{
     SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradingFleetConfig, WaypointSymbol,
 };
 use st_store::{
-    select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, ConstructionBmc, Ctx, DbModelManager, FleetBmc, ShipBmc, SystemBmc,
+    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, ConstructionBmc, Ctx, DbModelManager, FleetBmc, ShipBmc, SystemBmc,
 };
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
-use tracing::{event, span};
+use tracing::{event, span, Level};
 
 struct FleetRunner {
     ship_fibers: HashMap<ShipSymbol, tokio::task::JoinHandle<Result<()>>>,
     ship_ops: HashMap<ShipSymbol, Arc<Mutex<ShipOperations>>>,
+    ship_updated_tx: Sender<ShipOperations>,
+    ship_updated_listener_join_handle: tokio::task::JoinHandle<Result<()>>,
+    ship_action_completed_tx: Sender<ActionEvent>,
+    ship_action_completed_rx: Receiver<ActionEvent>,
 }
 
 impl FleetRunner {
-    pub async fn run_fleets(fleet_admiral: &mut FleetAdmiral, client: Arc<dyn StClientTrait>, db_model_manager: DbModelManager) -> Result<Self> {
-        log!(Level::Info, "Running fleets");
+    pub async fn run_fleets(fleet_admiral: &mut FleetAdmiral, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<Self> {
+        event!(Level::INFO, "Running fleets");
 
         // Create Arc<Mutex<>> wrappers around each ShipOperations to allow shared ownership
         let ship_ops: HashMap<ShipSymbol, Arc<Mutex<ShipOperations>>> = fleet_admiral
@@ -50,15 +54,17 @@ impl FleetRunner {
 
         let args = BehaviorArgs {
             blackboard: Arc::new(DbBlackboard {
-                model_manager: db_model_manager,
+                model_manager: db_model_manager.clone(),
             }),
         };
 
-        let (ship_updated_tx, ship_updated_rx) = tokio::sync::mpsc::channel(32);
-        let (ship_action_completed_tx, ship_action_completed_rx) = tokio::sync::mpsc::channel(32);
+        let (ship_updated_tx, ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = tokio::sync::mpsc::channel(32);
+        let (ship_action_completed_tx, ship_action_completed_rx): (Sender<ActionEvent>, Receiver<ActionEvent>) = tokio::sync::mpsc::channel(32);
 
         // Clone fleet_admiral.ship_tasks to avoid the lifetime issues
         let ship_tasks = fleet_admiral.ship_tasks.clone();
+
+        let ship_updated_listener_join_handle = tokio::spawn(Self::listen_to_ship_changes_and_persist(ship_updated_rx, db_model_manager.clone()));
 
         let mut ship_fibers: HashMap<ShipSymbol, tokio::task::JoinHandle<Result<()>>> = HashMap::new();
 
@@ -91,7 +97,14 @@ impl FleetRunner {
             }
         }
 
-        Ok(Self { ship_fibers, ship_ops })
+        Ok(Self {
+            ship_fibers,
+            ship_ops,
+            ship_updated_tx,
+            ship_updated_listener_join_handle,
+            ship_action_completed_tx,
+            ship_action_completed_rx,
+        })
     }
 
     pub async fn ship_loop(
@@ -161,6 +174,27 @@ impl FleetRunner {
 
         Ok(())
     }
+
+    pub async fn listen_to_ship_changes_and_persist(mut ship_updated_rx: Receiver<ShipOperations>, mm: DbModelManager) -> Result<()> {
+        let mut old_ship_state: Option<ShipOperations> = None;
+
+        while let Some(updated_ship) = ship_updated_rx.recv().await {
+            match old_ship_state {
+                Some(old_ship_ops) if old_ship_ops.ship == updated_ship.ship => {
+                    // no need to update
+                    event!(Level::INFO, "No need to update ship {}. No change detected", updated_ship.symbol.0);
+                }
+                _ => {
+                    event!(Level::INFO, "Ship {} updated", updated_ship.symbol.0);
+                    let _ = db::upsert_ships(mm.pool(), &vec![updated_ship.ship.clone()], Utc::now()).await?;
+                }
+            }
+
+            old_ship_state = Some(updated_ship.clone());
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -174,8 +208,10 @@ pub struct FleetAdmiral {
 }
 
 impl FleetAdmiral {
-    pub async fn run_fleets(&mut self) -> Result<()> {
-        log!(Level::Info, "Running fleets");
+    pub async fn run_fleets(&mut self, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<()> {
+        event!(Level::INFO, "Running fleets");
+
+        FleetRunner::run_fleets(self, Arc::clone(&client), db_model_manager).await?;
 
         Ok(())
     }
