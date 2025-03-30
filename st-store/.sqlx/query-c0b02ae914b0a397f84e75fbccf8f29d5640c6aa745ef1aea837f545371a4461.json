@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nselect system_symbol\n     , waypoint_symbol\n     , entry as \"entry: Json<Shipyard>\"\n     , created_at\n     , updated_at\nfrom shipyards\nwhere system_symbol = $1\n    ",
+  "query": "\nselect system_symbol\n     , waypoint_symbol\n     , entry as \"entry: Json<Shipyard>\"\n     , created_at\nfrom shipyards\nwhere system_symbol = $1\n    ",
   "describe": {
     "columns": [
       {
@@ -22,11 +22,6 @@
         "ordinal": 3,
         "name": "created_at",
         "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 4,
-        "name": "updated_at",
-        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
@@ -38,9 +33,8 @@
       false,
       false,
       false,
-      false,
       false
     ]
   },
-  "hash": "1dd6880b5e878465b389537b957c6ccda950ab63d55c4f3bea14e4c53890ef08"
+  "hash": "c0b02ae914b0a397f84e75fbccf8f29d5640c6aa745ef1aea837f545371a4461"
 }

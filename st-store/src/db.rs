@@ -216,7 +216,6 @@ pub struct DbShipyardData {
     pub waypoint_symbol: String,
     pub entry: Json<Shipyard>,
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
 }
 
 impl DbShipyardData {
@@ -502,7 +501,6 @@ select system_symbol
      , waypoint_symbol
      , entry as "entry: Json<Shipyard>"
      , created_at
-     , updated_at
 from shipyards
 where system_symbol = $1
     "#,
@@ -645,21 +643,18 @@ pub async fn insert_shipyards(pool: &Pool<Postgres>, shipyards: Vec<Shipyard>, n
             waypoint_symbol: j.symbol.clone().0,
             entry: Json(j.clone()),
             created_at: now,
-            updated_at: now,
         })
         .collect();
 
     for entry in db_entries {
         sqlx::query!(
             r#"
-insert into shipyards (system_symbol, waypoint_symbol, entry, created_at, updated_at)
-values ($1, $2, $3, $4, $5)
-on conflict (system_symbol, waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+insert into shipyards (system_symbol, waypoint_symbol, entry, created_at)
+values ($1, $2, $3, $4)
         "#,
             entry.system_symbol,
             entry.waypoint_symbol,
             entry.entry as _,
-            now,
             now,
         )
         .execute(pool)
