@@ -110,10 +110,12 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
         let hq_system_clone = headquarters_system_symbol.clone();
         let waypoint_entries_of_home_system_clone = waypoint_entries_of_home_system.clone();
         let ship_updated_tx_clone = ship_updated_tx.clone();
-        let admiral = Arc::new(Mutex::new(FleetAdmiral::load_or_create(&model_manager, hq_system_clone).await?));
+        let admiral = Arc::new(Mutex::new(
+            FleetAdmiral::load_or_create(&model_manager, hq_system_clone, Arc::clone(&client_clone)).await?,
+        ));
 
         async move {
-            if let Err(e) = FleetAdmiral::run_fleets(Arc::clone(&admiral), client_clone, &model_manager).await {
+            if let Err(e) = FleetAdmiral::run_fleets(Arc::clone(&admiral), Arc::clone(&client_clone), &model_manager).await {
                 eprintln!("Error on FleetAdmiral::start_fleets: {}", e);
             }
         }

@@ -4,6 +4,7 @@ use crate::behavior_tree::ship_behaviors::{ship_behaviors, ShipAction};
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
 use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
 use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_shipyards_for_exploration};
+use crate::pagination::fetch_all_pages;
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
 use anyhow::{anyhow, Error, Result};
@@ -341,10 +342,10 @@ impl FleetAdmiral {
         self.fleet_tasks.get(fleet_id).cloned().unwrap_or_default()
     }
 
-    pub async fn load_or_create(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Self> {
+    pub async fn load_or_create(mm: &DbModelManager, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
         match Self::load_admiral(mm).await? {
             None => {
-                let admiral = Self::create(mm, system_symbol).await?;
+                let admiral = Self::create(mm, system_symbol, Arc::clone(&client)).await?;
                 let _ = FleetBmc::store_fleets_data(
                     &Ctx::Anonymous,
                     mm,
@@ -388,8 +389,17 @@ impl FleetAdmiral {
         }
     }
 
-    async fn create(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Self> {
+    async fn create(mm: &DbModelManager, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
         let ships = ShipBmc::get_ships(&Ctx::Anonymous, mm, None).await?;
+
+        let ships = if ships.is_empty() {
+            let ships: Vec<Ship> = fetch_all_pages(|p| client.list_ships(p)).await?;
+            db::upsert_ships(mm.pool(), &ships, Utc::now()).await?;
+            ships
+        } else {
+            ships
+        };
+
         let ship_map: HashMap<ShipSymbol, Ship> = ships.into_iter().map(|s| (s.symbol.clone(), s)).collect();
         let ship_type_map: HashMap<ShipSymbol, ShipType> = {
             let mapping = role_to_ship_type_mapping();
