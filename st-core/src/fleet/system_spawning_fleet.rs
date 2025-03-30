@@ -1,12 +1,56 @@
 use crate::fleet::fleet::{diff_waypoint_symbols, FleetAdmiral};
 use anyhow::*;
+use chrono::Utc;
 use itertools::Itertools;
-use st_domain::{Fleet, FleetDecisionFacts, Ship, ShipSymbol, ShipTask, SystemSpawningFleetConfig};
+use st_domain::{Fleet, FleetDecisionFacts, FleetTask, FleetTaskCompletion, Ship, ShipSymbol, ShipTask, SystemSpawningFleetConfig};
 use std::collections::HashMap;
 
 pub struct SystemSpawningFleet;
 
 impl SystemSpawningFleet {
+    pub(crate) fn check_for_task_completion(
+        ship_task: &ShipTask,
+        fleet: &Fleet,
+        fleet_tasks: &[FleetTask],
+        cfg: &SystemSpawningFleetConfig,
+        facts: &FleetDecisionFacts,
+    ) -> Option<FleetTaskCompletion> {
+        match ship_task {
+            ShipTask::ObserveAllWaypointsOnce { waypoint_symbols } => {
+                let marketplaces_to_explore = diff_waypoint_symbols(&cfg.marketplace_waypoints_of_interest, &facts.marketplaces_with_up_to_date_infos);
+                let shipyards_to_explore = diff_waypoint_symbols(&cfg.shipyard_waypoints_of_interest, &facts.shipyards_with_up_to_date_infos);
+
+                println!(
+                    r#"SystemSpawningFleet::check_for_task_completion:
+cfg.marketplace_waypoints_of_interest: {:?}
+facts.marketplaces_with_up_to_date_infos: {:?}
+marketplaces_to_explore: {:?}
+cfg.shipyard_waypoints_of_interest: {:?}
+facts.shipyards_with_up_to_date_infos: {:?}
+shipyards_to_explore: {:?}
+                "#,
+                    &cfg.marketplace_waypoints_of_interest,
+                    &facts.marketplaces_with_up_to_date_infos,
+                    &marketplaces_to_explore,
+                    &cfg.shipyard_waypoints_of_interest,
+                    &facts.shipyards_with_up_to_date_infos,
+                    &shipyards_to_explore,
+                );
+
+                if marketplaces_to_explore.is_empty() && shipyards_to_explore.is_empty() {
+                    let maybe_matching_task = fleet_tasks.iter().find(|ft| matches!(ft, FleetTask::CollectMarketInfosOnce { .. }));
+                    maybe_matching_task.map(|ft| FleetTaskCompletion {
+                        task: ft.clone(),
+                        completed_at: Utc::now(),
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     pub async fn compute_ship_tasks(
         admiral: &mut FleetAdmiral,
         cfg: &SystemSpawningFleetConfig,

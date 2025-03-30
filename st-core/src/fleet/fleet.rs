@@ -16,6 +16,7 @@ use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{
     CollectMarketInfosOnce, ConstructJumpGate, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably,
 };
+use st_domain::FleetUpdateMessage::FleetTaskCompleted;
 use st_domain::{
     ConstructJumpGateFleetConfig, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetTask, FleetTaskCompletion, FleetsOverview, GetConstructionResponse,
     MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
@@ -42,11 +43,13 @@ struct FleetRunner {
 }
 
 impl FleetRunner {
-    pub async fn run_fleets(fleet_admiral: &mut FleetAdmiral, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<()> {
+    pub async fn run_fleets(fleet_admiral: Arc<Mutex<FleetAdmiral>>, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
         // Create Arc<Mutex<>> wrappers around each ShipOperations to allow shared ownership
         let ship_ops: HashMap<ShipSymbol, Arc<Mutex<ShipOperations>>> = fleet_admiral
+            .lock()
+            .await
             .all_ships
             .iter()
             .map(|(_, s)| (s.symbol.clone(), Arc::new(Mutex::new(ShipOperations::new(s.clone(), Arc::clone(&client))))))
@@ -60,12 +63,26 @@ impl FleetRunner {
 
         let (ship_updated_tx, ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = tokio::sync::mpsc::channel(32);
         let (ship_action_completed_tx, ship_action_completed_rx): (Sender<ActionEvent>, Receiver<ActionEvent>) = tokio::sync::mpsc::channel(32);
+        let (ship_status_report_tx, ship_status_report_rx): (Sender<ShipStatusReport>, Receiver<ShipStatusReport>) = tokio::sync::mpsc::channel(32);
 
         // Clone fleet_admiral.ship_tasks to avoid the lifetime issues
-        let ship_tasks = fleet_admiral.ship_tasks.clone();
+        let ship_tasks = fleet_admiral.lock().await.ship_tasks.clone();
 
-        let ship_updated_listener_join_handle = tokio::spawn(Self::listen_to_ship_changes_and_persist(ship_updated_rx, db_model_manager.clone()));
-        let ship_updated_listener_join_handle = tokio::spawn(Self::listen_to_ship_action_update_messages(ship_action_completed_rx, db_model_manager.clone()));
+        let ship_updated_listener_join_handle = tokio::spawn(Self::listen_to_ship_changes_and_persist(
+            ship_updated_rx,
+            db_model_manager.clone(),
+            Arc::clone(&fleet_admiral),
+        ));
+        let ship_action_update_listener_join_handle = tokio::spawn(Self::listen_to_ship_action_update_messages(
+            ship_action_completed_rx,
+            db_model_manager.clone(),
+            ship_status_report_tx,
+        ));
+        let ship_status_report_listener_join_handle = tokio::spawn(Self::listen_to_ship_status_report_messages(
+            ship_status_report_rx,
+            db_model_manager.clone(),
+            Arc::clone(&fleet_admiral),
+        ));
 
         let mut ship_fibers: HashMap<ShipSymbol, tokio::task::JoinHandle<Result<()>>> = HashMap::new();
 
@@ -98,7 +115,11 @@ impl FleetRunner {
             }
         }
         // run forever
-        tokio::join!(ship_updated_listener_join_handle);
+        tokio::join!(
+            ship_updated_listener_join_handle,
+            ship_action_update_listener_join_handle,
+            ship_status_report_listener_join_handle
+        );
         Ok(())
     }
 
@@ -117,9 +138,9 @@ impl FleetRunner {
         let maybe_behavior = match ship_task {
             ShipTask::PurchaseShip { .. } => None,
             ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
-                ship.set_explore_locations(vec![waypoint_symbol]);
-                println!("ship_loop: Ship {:?} is running explorer_behavior", ship.symbol);
-                Some(behaviors.explorer_behavior)
+                ship.set_permanent_observation_location(waypoint_symbol);
+                println!("ship_loop: Ship {:?} is running stationary_probe_behavior", ship.symbol);
+                Some(behaviors.stationary_probe_behavior)
             }
             ShipTask::ObserveAllWaypointsOnce { waypoint_symbols } => {
                 ship.set_explore_locations(waypoint_symbols);
@@ -144,7 +165,7 @@ impl FleetRunner {
                     .run(
                         &args,
                         &mut ship,
-                        Duration::from_secs(1),
+                        Duration::from_secs(5),
                         &ship_updated_tx.clone(),
                         &ship_action_completed_tx.clone(),
                     )
@@ -153,15 +174,15 @@ impl FleetRunner {
                 match &result {
                     Ok(o) => {
                         event!(
-                            name: "Ship Tick done ",
                             Level::INFO,
+                            message = "Ship Tick done ",
                             result = %o,
                         );
                     }
                     Err(e) => {
                         event!(
-                            name: "Ship Tick done with Error",
                             Level::INFO,
+                            message = "Ship Tick done with Error",
                             result = %e,
                         );
                     }
@@ -172,30 +193,46 @@ impl FleetRunner {
         Ok(())
     }
 
-    pub async fn listen_to_ship_changes_and_persist(mut ship_updated_rx: Receiver<ShipOperations>, mm: DbModelManager) -> Result<()> {
-        let mut old_ship_state: Option<ShipOperations> = None;
-
+    pub async fn listen_to_ship_changes_and_persist(
+        mut ship_updated_rx: Receiver<ShipOperations>,
+        mm: DbModelManager,
+        admiral: Arc<Mutex<FleetAdmiral>>,
+    ) -> Result<()> {
         while let Some(updated_ship) = ship_updated_rx.recv().await {
-            match old_ship_state {
-                Some(old_ship_ops) if old_ship_ops.ship == updated_ship.ship => {
+            let maybe_old_ship = admiral.lock().await.all_ships.get(&updated_ship.symbol).cloned();
+
+            match maybe_old_ship {
+                Some(old_ship) if old_ship == updated_ship.ship => {
                     // no need to update
                     event!(Level::INFO, "No need to update ship {}. No change detected", updated_ship.symbol.0);
                 }
                 _ => {
                     event!(Level::INFO, "Ship {} updated", updated_ship.symbol.0);
                     let _ = db::upsert_ships(mm.pool(), &vec![updated_ship.ship.clone()], Utc::now()).await?;
+                    admiral.lock().await.all_ships.insert(updated_ship.symbol.clone(), updated_ship.ship);
                 }
             }
-
-            old_ship_state = Some(updated_ship.clone());
         }
 
         Ok(())
     }
 
-    pub async fn listen_to_ship_action_update_messages(mut ship_action_completed_rx: Receiver<ActionEvent>, mm: DbModelManager) -> Result<()> {
-        let mut old_ship_state: Option<ShipOperations> = None;
+    pub async fn listen_to_ship_status_report_messages(
+        mut ship_status_report_rx: Receiver<ShipStatusReport>,
+        mm: DbModelManager,
+        admiral: Arc<Mutex<FleetAdmiral>>,
+    ) -> Result<()> {
+        while let Some(msg) = ship_status_report_rx.recv().await {
+            admiral.lock().await.report_ship_action_completed(msg, &mm).await?;
+        }
 
+        Ok(())
+    }
+    pub async fn listen_to_ship_action_update_messages(
+        mut ship_action_completed_rx: Receiver<ActionEvent>,
+        mm: DbModelManager,
+        ship_status_report_tx: Sender<ShipStatusReport>,
+    ) -> Result<()> {
         while let Some(msg) = ship_action_completed_rx.recv().await {
             match msg {
                 ActionEvent::ShipActionCompleted(result) => match result {
@@ -207,6 +244,12 @@ impl FleetRunner {
                             ship = ss,
                             action = %ship_action,
                         );
+                        match ship_action {
+                            ShipAction::CollectWaypointInfos => {
+                                ship_status_report_tx.send(ShipStatusReport::ShipActionCompleted(ship_op.ship.clone(), ship_action)).await?;
+                            }
+                            _ => {}
+                        }
                     }
                     Err(err) => {
                         event!(Level::ERROR, message = "Error completing ShipAction", error = %err,);
@@ -224,6 +267,10 @@ impl FleetRunner {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum ShipStatusReport {
+    ShipActionCompleted(Ship, ShipAction),
+}
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct FleetAdmiral {
     completed_fleet_tasks: Vec<FleetTaskCompletion>,
     fleets: HashMap<FleetId, Fleet>,
@@ -234,12 +281,64 @@ pub struct FleetAdmiral {
 }
 
 impl FleetAdmiral {
-    pub async fn run_fleets(&mut self, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<()> {
+    pub async fn run_fleets(fleet_admiral: Arc<Mutex<FleetAdmiral>>, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
-        FleetRunner::run_fleets(self, Arc::clone(&client), db_model_manager).await?;
+        FleetRunner::run_fleets(Arc::clone(&fleet_admiral), Arc::clone(&client), db_model_manager).await?;
 
         Ok(())
+    }
+
+    pub async fn report_ship_action_completed(&mut self, ship_status_report: ShipStatusReport, mm: &DbModelManager) -> Result<()> {
+        match ship_status_report {
+            ShipStatusReport::ShipActionCompleted(ship, ship_action) => {
+                let maybe_fleet = self.get_fleet_of_ship(&ship.symbol);
+                let fleet_tasks: Vec<FleetTask> = maybe_fleet.map(|fleet_id| self.get_tasks_of_fleet(&fleet_id.id)).unwrap_or_default();
+                let maybe_ship_task = self.get_task_of_ship(&ship.symbol);
+                if let Some((fleet, ship_task)) = maybe_fleet.zip(maybe_ship_task) {
+                    let fleet_decision_facts: FleetDecisionFacts = collect_fleet_decision_facts(mm, &ship.nav.system_symbol).await?;
+                    match &fleet.cfg {
+                        SystemSpawningCfg(cfg) => {
+                            if let Some(task_complete) =
+                                SystemSpawningFleet::check_for_task_completion(ship_task, fleet, &fleet_tasks, cfg, &fleet_decision_facts)
+                            {
+                                let uncompleted_tasks = fleet_tasks.iter().filter(|&ft| ft != &task_complete.task).cloned().collect_vec();
+
+                                event!(
+                                    Level::INFO,
+                                    message = "FleetTaskCompleted",
+                                    ship = ship.symbol.0,
+                                    fleet_id = fleet.id.0,
+                                    task = task_complete.task.to_string()
+                                );
+                                self.fleet_tasks.insert(fleet.id.clone(), uncompleted_tasks);
+                                FleetBmc::save_completed_fleet_tasks(&Ctx::Anonymous, mm, vec![task_complete.clone()]).await?;
+                            };
+                        }
+                        FleetConfig::MarketObservationCfg(_) => {}
+                        FleetConfig::TradingCfg(_) => {}
+                        FleetConfig::ConstructJumpGateCfg(_) => {}
+                        FleetConfig::MiningCfg(_) => {}
+                        FleetConfig::SiphoningCfg(_) => {}
+                    }
+                    Ok(())
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    pub fn get_fleet_of_ship(&self, ship_symbol: &ShipSymbol) -> Option<&Fleet> {
+        self.ship_fleet_assignment.get(ship_symbol).and_then(|fleet_id| self.fleets.get(fleet_id))
+    }
+
+    pub fn get_task_of_ship(&self, ship_symbol: &ShipSymbol) -> Option<&ShipTask> {
+        self.ship_tasks.get(ship_symbol)
+    }
+
+    pub fn get_tasks_of_fleet(&self, fleet_id: &FleetId) -> Vec<FleetTask> {
+        self.fleet_tasks.get(fleet_id).cloned().unwrap_or_default()
     }
 
     pub async fn load_or_create(mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Self> {

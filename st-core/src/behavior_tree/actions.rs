@@ -6,13 +6,14 @@ use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
 use anyhow::anyhow;
 use async_trait::async_trait;
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Local, TimeDelta, Utc};
 use core::time::Duration;
 use st_domain::{
     Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor,
     RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol,
     Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
 };
+use std::ops::Add;
 use tokio::sync::mpsc::Sender;
 
 #[async_trait]
@@ -349,6 +350,33 @@ impl Actionable for ShipAction {
                 }
                 Ok(Success)
             }
+
+            ShipAction::HasPermanentExploreLocationEntry => match state.permanent_observation_location {
+                None => Err(anyhow!("No permanent_observation_location")),
+                Some(_) => Ok(Success),
+            },
+            ShipAction::SetPermanentExploreLocationAsDestination => match state.permanent_observation_location.clone() {
+                None => Err(anyhow!("No permanent_observation_location")),
+                Some(waypoint) => {
+                    state.set_destination(waypoint);
+                    Ok(Success)
+                }
+            },
+            ShipAction::SetNextObservationTime => {
+                let now = Utc::now();
+                state.set_next_observation_time(now.add(TimeDelta::minutes(10)));
+                Ok(Success)
+            }
+            ShipAction::IsLateEnoughForWaypointObservation => match state.maybe_next_observation_time {
+                None => Ok(Success),
+                Some(next_time) => {
+                    if next_time < Utc::now() {
+                        Ok(Success)
+                    } else {
+                        Ok(Response::Running)
+                    }
+                }
+            },
         };
 
         match result {

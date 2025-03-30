@@ -31,7 +31,7 @@ async fn get_explorer_behavior() -> Result<Vec<(String, MermaidString)>, ServerF
     use st_core::behavior_tree::behavior_tree::Behavior;
     use st_core::behavior_tree::ship_behaviors::ShipAction;
 
-    let behavior = st_core::behavior_tree::ship_behaviors::ship_behaviors().explorer_behavior;
+    let behavior = st_core::behavior_tree::ship_behaviors::ship_behaviors().stationary_probe_behavior;
     let all_behaviors = st_core::behavior_tree::ship_behaviors::ship_behaviors();
     let labelled_behaviors: HashMap<String, Behavior<ShipAction>> = all_behaviors.to_labelled_sub_behaviors();
     let sub_behavior_hashes = st_core::behavior_tree::behavior_tree::compute_sub_behavior_hashes(&labelled_behaviors);

@@ -1,9 +1,9 @@
 use crate::behavior_tree::behavior_tree::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use strum_macros::Display;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Display, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Display, Hash)]
 pub enum ShipAction {
     HasTravelActionEntry,
     WaitForArrival,
@@ -26,6 +26,9 @@ pub enum ShipAction {
     PopExploreLocationAsDestination,
     PrintExploreLocations,
     HasDestination,
+    HasPermanentExploreLocationEntry,
+    SetPermanentExploreLocationAsDestination,
+    SetNextObservationTime,
     IsAtDestination,
     HasRouteToDestination,
     ComputePathToDestination,
@@ -33,6 +36,7 @@ pub enum ShipAction {
     RemoveDestination,
     SkipRefueling,
     PrintDestination,
+    IsLateEnoughForWaypointObservation,
 }
 
 pub struct Behaviors {
@@ -44,6 +48,7 @@ pub struct Behaviors {
     pub refuel_behavior: Behavior<ShipAction>,
     pub travel_action_behavior: Behavior<ShipAction>,
     pub explorer_behavior: Behavior<ShipAction>,
+    pub stationary_probe_behavior: Behavior<ShipAction>,
 }
 
 impl Behaviors {
@@ -182,6 +187,28 @@ pub fn ship_behaviors() -> Behaviors {
         process_explorer_queue_until_empty,
     ]);
 
+    let mut stationary_probe_behavior = Behavior::new_sequence(vec![
+        Behavior::new_select(vec![
+            Behavior::new_action(ShipAction::HasDestination),
+            Behavior::new_sequence(vec![
+                Behavior::new_action(ShipAction::HasPermanentExploreLocationEntry),
+                Behavior::new_action(ShipAction::SetPermanentExploreLocationAsDestination),
+            ]),
+        ]),
+        Behavior::new_select(vec![
+            Behavior::new_action(ShipAction::IsAtDestination),
+            navigate_to_destination.clone(),
+        ]),
+        Behavior::new_while(
+            Behavior::new_action(ShipAction::IsAtDestination),
+            Behavior::new_sequence(vec![
+                Behavior::new_action(ShipAction::IsLateEnoughForWaypointObservation),
+                Behavior::new_action(ShipAction::CollectWaypointInfos),
+                Behavior::new_action(ShipAction::SetNextObservationTime),
+            ]),
+        ),
+    ]);
+
     Behaviors {
         wait_for_arrival_bt: wait_for_arrival_bt.update_indices().clone(),
         orbit_if_necessary: orbit_if_necessary.update_indices().clone(),
@@ -191,6 +218,7 @@ pub fn ship_behaviors() -> Behaviors {
         navigate_to_destination: navigate_to_destination.update_indices().clone(),
         travel_action_behavior: travel_action_behavior.update_indices().clone(),
         explorer_behavior: explorer_behavior.update_indices().clone(),
+        stationary_probe_behavior: stationary_probe_behavior.update_indices().clone(),
     }
 }
 

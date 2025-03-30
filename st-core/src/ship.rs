@@ -1,6 +1,7 @@
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::st_client::StClientTrait;
 use anyhow::*;
+use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use st_domain::{
@@ -17,6 +18,8 @@ pub struct ShipOperations {
     pub travel_action_queue: VecDeque<TravelAction>,
     pub current_navigation_destination: Option<WaypointSymbol>,
     pub explore_location_queue: VecDeque<WaypointSymbol>,
+    pub permanent_observation_location: Option<WaypointSymbol>,
+    pub maybe_next_observation_time: Option<DateTime<Utc>>,
 }
 
 impl ShipOperations {
@@ -59,6 +62,8 @@ impl ShipOperations {
             travel_action_queue: VecDeque::new(),
             current_navigation_destination: None,
             explore_location_queue: VecDeque::new(),
+            permanent_observation_location: None,
+            maybe_next_observation_time: None,
         }
     }
 
@@ -70,6 +75,10 @@ impl ShipOperations {
         self.current_navigation_destination = Some(destination)
     }
 
+    pub fn set_next_observation_time(&mut self, next_time: DateTime<Utc>) {
+        self.maybe_next_observation_time = Some(next_time)
+    }
+
     pub fn pop_explore_location_as_destination(&mut self) {
         self.current_navigation_destination = self.explore_location_queue.pop_front();
     }
@@ -77,6 +86,10 @@ impl ShipOperations {
     pub fn set_explore_locations(&mut self, waypoint_symbols: Vec<WaypointSymbol>) {
         let deque = VecDeque::from(waypoint_symbols);
         self.explore_location_queue = deque;
+    }
+
+    pub fn set_permanent_observation_location(&mut self, waypoint_symbol: WaypointSymbol) {
+        self.permanent_observation_location = Some(waypoint_symbol);
     }
 
     pub async fn dock(&mut self) -> Result<Nav> {

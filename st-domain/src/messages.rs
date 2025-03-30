@@ -2,6 +2,7 @@ use crate::{GetConstructionResponseData, MaterializedSupplyChain, Ship, ShipSymb
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use strum_macros::Display;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum FleetUpdateMessage {
@@ -140,7 +141,7 @@ pub struct FleetTaskCompletion {
     pub completed_at: DateTime<Utc>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Deserialize, Serialize, Debug, Display, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum FleetTask {
     CollectMarketInfosOnce { system_symbol: SystemSymbol },
     ObserveAllWaypointsOfSystemWithStationaryProbes { system_symbol: SystemSymbol },

@@ -20,6 +20,8 @@ pub fn compute_path(
     current_fuel: u32,
     fuel_capacity: u32,
 ) -> Option<Vec<TravelAction>> {
+    let requires_fuel = fuel_capacity > 0;
+
     let waypoints: Vec<PathfindingWaypoint> = waypoints_of_system
         .iter()
         .map(|wps| {
@@ -59,6 +61,7 @@ pub fn compute_path(
         refuel_time: 2,
         engine_speed,
         allowed_flight_modes: vec![FlightMode::Burn, FlightMode::Cruise, FlightMode::Drift],
+        requires_fuel,
     };
 
     let result = astar(
@@ -150,6 +153,7 @@ struct Problem {
     engine_speed: u32,
     allowed_flight_modes: Vec<FlightMode>,
     distance_map: Vec<Vec<u32>>,
+    requires_fuel: bool,
 }
 
 impl Problem {
@@ -171,7 +175,11 @@ impl Problem {
 
             if waypoint_idx != state.waypoint_idx && can_improve_condition {
                 for mode in self.allowed_flight_modes.iter() {
-                    let fuel_consumption = calculate_fuel_consumption(mode, *distance);
+                    let fuel_consumption = if !self.requires_fuel {
+                        0
+                    } else {
+                        calculate_fuel_consumption(mode, *distance)
+                    };
                     let time = calculate_time(mode, *distance, self.engine_speed);
 
                     if current_waypoint.is_refueling_station {
@@ -221,7 +229,7 @@ fn compute_travel_actions(problem: &Problem, path: &Vec<State>) -> Vec<TravelAct
         let mut new_actions = Vec::new();
 
         // Initial refuel action if starting at a refueling station
-        if idx == 0 && from_waypoint.is_refueling_station {
+        if idx == 0 && from_waypoint.is_refueling_station && problem.requires_fuel {
             new_actions.push(TravelAction::Refuel {
                 at: from_waypoint.label.clone(),
                 total_time: current_time + problem.refuel_time,
@@ -235,7 +243,11 @@ fn compute_travel_actions(problem: &Problem, path: &Vec<State>) -> Vec<TravelAct
         } else {
             from.fuel - to.fuel
         };
-        let mode = determine_travel_mode(problem, fuel_consumed, distance);
+        let mode = if !problem.requires_fuel {
+            FlightMode::Burn
+        } else {
+            determine_travel_mode(problem, fuel_consumed, distance)
+        };
         let travel_time = calculate_time(&mode, distance, problem.engine_speed);
 
         new_actions.push(TravelAction::Navigate {
@@ -249,7 +261,7 @@ fn compute_travel_actions(problem: &Problem, path: &Vec<State>) -> Vec<TravelAct
         });
 
         // Refuel action if ending at a refueling station
-        if to_waypoint.is_refueling_station {
+        if to_waypoint.is_refueling_station && problem.requires_fuel {
             new_actions.push(TravelAction::Refuel {
                 at: to_waypoint.label.clone(),
                 total_time: new_actions.last().map_or(current_time + problem.refuel_time, |action: &TravelAction| {
