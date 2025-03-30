@@ -46,21 +46,19 @@ pub struct Behaviors {
     pub wait_for_arrival_bt: Behavior<ShipAction>,
     pub dock_if_necessary: Behavior<ShipAction>,
     pub refuel_behavior: Behavior<ShipAction>,
-    pub travel_action_behavior: Behavior<ShipAction>,
     pub explorer_behavior: Behavior<ShipAction>,
     pub stationary_probe_behavior: Behavior<ShipAction>,
 }
 
 impl Behaviors {
     pub fn to_labelled_sub_behaviors(&self) -> HashMap<String, Behavior<ShipAction>> {
-        let mut all: [(String, Behavior<ShipAction>); 7] = [
-            ("travel_behavior".to_string(), self.navigate_to_destination.clone()),
+        let mut all: [(String, Behavior<ShipAction>); 6] = [
+            ("navigate_to_destination".to_string(), self.navigate_to_destination.clone()),
             ("adjust_flight_mode_if_necessary".to_string(), self.adjust_flight_mode_if_necessary.clone()),
             ("orbit_if_necessary".to_string(), self.orbit_if_necessary.clone()),
             ("wait_for_arrival_bt".to_string(), self.wait_for_arrival_bt.clone()),
             ("dock_if_necessary".to_string(), self.dock_if_necessary.clone()),
             ("refuel_behavior".to_string(), self.refuel_behavior.clone()),
-            ("travel_action_behavior".to_string(), self.travel_action_behavior.clone()),
         ];
 
         for (_, b) in all.iter_mut() {
@@ -216,7 +214,6 @@ pub fn ship_behaviors() -> Behaviors {
         adjust_flight_mode_if_necessary: adjust_flight_mode_if_necessary.update_indices().clone(),
         refuel_behavior: execute_refuel_travel_action.update_indices().clone(),
         navigate_to_destination: navigate_to_destination.update_indices().clone(),
-        travel_action_behavior: travel_action_behavior.update_indices().clone(),
         explorer_behavior: explorer_behavior.update_indices().clone(),
         stationary_probe_behavior: stationary_probe_behavior.update_indices().clone(),
     }

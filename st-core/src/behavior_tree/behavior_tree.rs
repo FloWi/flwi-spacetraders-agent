@@ -136,9 +136,9 @@ impl<A: Display + Hash> Behavior<A> {
         let mut markdown = "".to_string();
 
         for (label, sub_behavior) in labelled_sub_behaviors {
-            let sub_mermaid_string = sub_behavior.to_mermaid_without_repeats(&hash_to_label_map);
+            let sub_mermaid_string = sub_behavior.to_mermaid();
 
-            writeln!(markdown, "## {}", label).unwrap();
+            writeln!(markdown, "## {}\n", label).unwrap();
             writeln!(markdown, "```mermaid\n").unwrap();
             writeln!(markdown, "{}", sub_mermaid_string).unwrap();
             writeln!(markdown, "```\n\n").unwrap();
@@ -163,7 +163,7 @@ impl<A: Display + Hash> Behavior<A> {
         let mut output = String::new();
         // quite ugly, but couldn't find proper workaround to print this string `%%{init: {"flowchart": {"htmlLabels": false}} }%%`
         //writeln!(output, r##"%%{{init: {{"#flowchart": {{"htmlLabels": false}}}} }}%%"##).unwrap();
-        writeln!(output, "\ngraph LR").unwrap();
+        writeln!(output, "\ngraph TD").unwrap();
         self.build_mermaid(&mut output, None, labelled_sub_graphs);
         output
     }
@@ -175,17 +175,18 @@ impl<A: Display + Hash> Behavior<A> {
         self.hash(&mut hasher);
         let hash = hasher.finish();
 
-        // let node_label = labelled_sub_graphs
-        //     .get(&hash)
-        //     .map(|str| str.to_string())
-        //     .unwrap_or(format!("{}", self));
+        let node_label = labelled_sub_graphs.get(&hash).map(|str| format!("Sub Graph {}", str)).unwrap_or(format!("{}", self));
 
-        let node_content = format!("`{}\nIndex: {}\nHash: {:016x}`", self, self.index().unwrap(), hash);
+        let node_content = format!("`{}\nIndex: {}\nHash: {:016x}`", node_label, self.index().unwrap(), hash);
 
         writeln!(output, "    node{index}[\"{content}\"]", index = current_index, content = node_content).unwrap();
 
         if let Some(parent_index) = parent {
             writeln!(output, "    node{parent} --> node{child}", parent = parent_index, child = current_index).unwrap();
+        }
+
+        if labelled_sub_graphs.contains_key(&hash) && parent.is_some() {
+            return;
         }
 
         match self {

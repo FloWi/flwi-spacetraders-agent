@@ -22,18 +22,24 @@ impl SystemSpawningFleet {
 
                 println!(
                     r#"SystemSpawningFleet::check_for_task_completion:
-cfg.marketplace_waypoints_of_interest: {:?}
-facts.marketplaces_with_up_to_date_infos: {:?}
-marketplaces_to_explore: {:?}
-cfg.shipyard_waypoints_of_interest: {:?}
-facts.shipyards_with_up_to_date_infos: {:?}
-shipyards_to_explore: {:?}
+{} marketplace_waypoints_of_interest: {:?}
+{} marketplaces_with_up_to_date_infos: {:?}
+{} marketplaces_to_explore: {:?}
+{} shipyard_waypoints_of_interest: {:?}
+{} facts.shipyards_with_up_to_date_infos: {:?}
+{} shipyards_to_explore: {:?}
                 "#,
+                    &cfg.marketplace_waypoints_of_interest.len(),
                     &cfg.marketplace_waypoints_of_interest,
+                    &facts.marketplaces_with_up_to_date_infos.len(),
                     &facts.marketplaces_with_up_to_date_infos,
+                    &marketplaces_to_explore.len(),
                     &marketplaces_to_explore,
+                    &cfg.shipyard_waypoints_of_interest.len(),
                     &cfg.shipyard_waypoints_of_interest,
+                    &facts.shipyards_with_up_to_date_infos.len(),
                     &facts.shipyards_with_up_to_date_infos,
+                    &shipyards_to_explore.len(),
                     &shipyards_to_explore,
                 );
 
@@ -66,6 +72,29 @@ shipyards_to_explore: {:?}
         let shipyards_to_explore = diff_waypoint_symbols(&cfg.shipyard_waypoints_of_interest, &facts.shipyards_with_up_to_date_infos);
 
         let all_locations_of_interest = marketplaces_to_explore.iter().chain(shipyards_to_explore.iter()).unique().cloned().collect_vec();
+
+        println!(
+            r#"SystemSpawningFleet::compute_ship_tasks
+{} marketplaces_to_explore: {:?}
+{} marketplace_waypoints_of_interest: {:?}
+{} marketplaces_with_up_to_date_infos: {:?}
+{} shipyards_to_explore: {:?}
+{} shipyard_waypoints_of_interest: {:?}
+{} shipyards_with_up_to_date_infos: {:?}
+"#,
+            &marketplaces_to_explore.len(),
+            &marketplaces_to_explore,
+            &cfg.marketplace_waypoints_of_interest.len(),
+            &cfg.marketplace_waypoints_of_interest,
+            &facts.marketplaces_with_up_to_date_infos.len(),
+            &facts.marketplaces_with_up_to_date_infos,
+            &shipyards_to_explore.len(),
+            &shipyards_to_explore,
+            &cfg.shipyard_waypoints_of_interest.len(),
+            &cfg.shipyard_waypoints_of_interest,
+            &facts.shipyards_with_up_to_date_infos.len(),
+            &facts.shipyards_with_up_to_date_infos,
+        );
 
         let result = ships
             .iter()

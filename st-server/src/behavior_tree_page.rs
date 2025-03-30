@@ -41,7 +41,9 @@ async fn get_explorer_behavior() -> Result<Vec<(String, MermaidString)>, ServerF
         MermaidString(behavior.to_mermaid_without_repeats(&sub_behavior_hashes)),
     )];
 
-    Ok(mermaid_strings)
+    let sub_behavior_mermaid_list = labelled_behaviors.iter().map(|(label, behavior)| (label.to_string(), MermaidString(behavior.to_mermaid()))).collect_vec();
+
+    Ok(mermaid_strings.into_iter().chain(sub_behavior_mermaid_list.into_iter()).collect_vec())
 }
 
 #[component]

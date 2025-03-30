@@ -366,14 +366,25 @@ impl FleetAdmiral {
         if overview.fleets.is_empty() || overview.all_ships.is_empty() {
             Ok(None)
         } else {
-            Ok(Some(Self {
+            // fixme: needs to be aware of multiple systems
+            let all_ships = overview.all_ships.values().cloned().collect_vec();
+            let system_symbol = all_ships.first().cloned().unwrap().nav.system_symbol;
+
+            let mut admiral = Self {
                 completed_fleet_tasks: overview.completed_fleet_tasks,
                 fleets: overview.fleets,
                 all_ships: overview.all_ships,
                 ship_tasks: overview.ship_tasks,
                 fleet_tasks: overview.fleet_task_assignments,
                 ship_fleet_assignment: overview.ship_fleet_assignment,
-            }))
+            };
+
+            // recompute ship-tasks and persist them. Might have been outdated since last agent restart
+            let facts = collect_fleet_decision_facts(mm, &system_symbol).await?;
+            let _ = Self::compute_ship_tasks(&mut admiral, &facts).await?;
+            ShipBmc::save_ship_tasks(&Ctx::Anonymous, mm, &admiral.ship_tasks).await?;
+
+            Ok(Some(admiral))
         }
     }
 
