@@ -59,7 +59,7 @@ SELECT task as "task: Json<FleetTask>"
 insert into completed_fleet_tasks (task, completed_at)
 values ($1, $2)
         "#,
-                Json(task.clone()) as _,
+                Json(task.task.clone()) as _,
                 task.completed_at
             )
             .execute(mm.pool())
