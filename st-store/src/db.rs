@@ -497,11 +497,14 @@ pub async fn select_latest_shipyard_entry_of_system(pool: &Pool<Postgres>, syste
     let db_entries: Vec<DbShipyardData> = sqlx::query_as!(
         DbShipyardData,
         r#"
+with latest_shipyards as (select DISTINCT ON (system_symbol, waypoint_symbol) system_symbol, waypoint_symbol, entry, created_at
+                        from shipyards s
+                        order by system_symbol, waypoint_symbol, created_at desc, entry)
 select system_symbol
      , waypoint_symbol
      , entry as "entry: Json<Shipyard>"
      , created_at
-from shipyards
+from latest_shipyards
 where system_symbol = $1
     "#,
         system_symbol.0

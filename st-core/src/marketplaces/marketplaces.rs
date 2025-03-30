@@ -14,7 +14,7 @@ pub fn find_marketplaces_for_exploration(all_marketplaces: Vec<DbMarketEntry>) -
 pub fn find_shipyards_for_exploration(all_shipyards: Vec<DbShipyardData>) -> Vec<WaypointSymbol> {
     let waypoint_symbols: Vec<_> = all_shipyards
         .into_iter()
-        .filter(|mp| !mp.has_detailed_price_information() || Utc::now() - mp.updated_at > TimeDelta::hours(2))
+        .filter(|shipyard| !shipyard.has_detailed_price_information() || Utc::now() - shipyard.created_at > TimeDelta::hours(2))
         .map(|mp| WaypointSymbol(mp.waypoint_symbol.clone()))
         .collect();
     waypoint_symbols

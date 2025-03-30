@@ -474,7 +474,7 @@ pub enum TransactionType {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketTradeGood {
-    pub symbol: String,
+    pub symbol: TradeGoodSymbol,
     #[serde(rename = "type")]
     pub trade_good_type: TradeGoodType,
     pub trade_volume: i32,

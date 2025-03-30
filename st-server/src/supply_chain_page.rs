@@ -16,7 +16,9 @@ pub struct RelevantMarketData {
 }
 
 #[server]
-async fn get_supply_chain_data() -> Result<(SupplyChain, Vec<RelevantMarketData>, Option<GetConstructionResponse>, MaterializedSupplyChain), ServerFnError> {
+async fn get_supply_chain_data(
+    goods_of_interest: Vec<TradeGoodSymbol>,
+) -> Result<(SupplyChain, Vec<RelevantMarketData>, Option<GetConstructionResponse>, MaterializedSupplyChain), ServerFnError> {
     use st_core;
     use st_store::db;
 
@@ -50,6 +52,7 @@ async fn get_supply_chain_data() -> Result<(SupplyChain, Vec<RelevantMarketData>
         &relevant_market_data.iter().cloned().map(|relevant_md| (relevant_md.waypoint_symbol, relevant_md.trade_goods)).collect_vec(),
         &waypoints_of_system,
         &maybe_construction_site,
+        &goods_of_interest,
     );
 
     Ok((supply_chain, relevant_market_data, maybe_construction_site, materialized_supply_chain))
@@ -58,16 +61,16 @@ async fn get_supply_chain_data() -> Result<(SupplyChain, Vec<RelevantMarketData>
 #[component]
 pub fn SupplyChainPage() -> impl IntoView {
     // Use create_resource which is the standard way to handle async data in Leptos
-    let supply_chain_resource = OnceResource::new(get_supply_chain_data());
-
     let goods_of_interest = vec![
         TradeGoodSymbol::ADVANCED_CIRCUITRY,
         TradeGoodSymbol::FAB_MATS,
         TradeGoodSymbol::SHIP_PLATING,
-        //TradeGoodSymbol::SHIP_PARTS,
+        TradeGoodSymbol::SHIP_PARTS,
         TradeGoodSymbol::MICROPROCESSORS,
         TradeGoodSymbol::CLOTHING,
     ];
+
+    let supply_chain_resource = OnceResource::new(get_supply_chain_data(goods_of_interest.clone()));
 
     view! {
         <Title text="Leptos + Tailwindcss" />
@@ -100,10 +103,12 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                 .collect_vec();
 
                                             view! {
-                                                <div class="flex flex-row gap-4">
-                                                    <div class="w-1/2 flex flex-col gap-4">
+                                                <div class="flex flex-col gap-4">
+                                                    <div class="w-full flex flex-col gap-4">
                                                         <h2 class="text-2xl font-bold">"Explanation"</h2>
                                                         <pre>{materialized_supply_chain.explanation}</pre>
+                                                        <h2 class="text-2xl font-bold">"Raw Delivery Routes"</h2>
+                                                        <pre>{serde_json::to_string_pretty(&materialized_supply_chain.raw_delivery_routes).unwrap()}</pre>
                                                         <h2 class="text-2xl font-bold">"Trading Opportunities"</h2>
                                                         <div class="rounded-md overflow-clip m-10 border dark:border-gray-700 float-left"
                                                             .to_string()>

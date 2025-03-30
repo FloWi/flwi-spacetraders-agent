@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nselect system_symbol\n     , waypoint_symbol\n     , entry as \"entry: Json<Shipyard>\"\n     , created_at\nfrom shipyards\nwhere system_symbol = $1\n    ",
+  "query": "\nwith latest_shipyards as (select DISTINCT ON (system_symbol, waypoint_symbol) system_symbol, waypoint_symbol, entry, created_at\n                        from shipyards s\n                        order by system_symbol, waypoint_symbol, created_at desc, entry)\nselect system_symbol\n     , waypoint_symbol\n     , entry as \"entry: Json<Shipyard>\"\n     , created_at\nfrom latest_shipyards\nwhere system_symbol = $1\n    ",
   "describe": {
     "columns": [
       {
@@ -36,5 +36,5 @@
       false
     ]
   },
-  "hash": "c0b02ae914b0a397f84e75fbccf8f29d5640c6aa745ef1aea837f545371a4461"
+  "hash": "6cbc629975626af3e5b6c1d6a79a33e20cc6ef02e0edbc407a5d5c93ef43a801"
 }
