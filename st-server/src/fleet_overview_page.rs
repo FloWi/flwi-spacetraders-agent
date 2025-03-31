@@ -61,12 +61,7 @@ pub fn FleetOverviewPage() -> impl IntoView {
                 <Transition>
                     {move || {
                         match fleet_decision_facts_resource.get() {
-                            Some(
-                                Ok(
-                                    (fleet_decision_facts,fleets_overview,),
-                                ),
-                            ) => {
-
+                            Some(Ok((fleet_decision_facts, fleets_overview))) => {
 
                                 view! {
                                     <div class="flex flex-col gap-4 p-4">
@@ -74,10 +69,16 @@ pub fn FleetOverviewPage() -> impl IntoView {
 
                                             <h2 class="font-bold text-xl">"Super Fleet Admiral"</h2>
                                             <ClipboardButton
-                                                clipboard_text=serde_json::to_string_pretty(&fleets_overview).unwrap_or("---".to_string())
+                                                clipboard_text=serde_json::to_string_pretty(
+                                                        &fleets_overview,
+                                                    )
+                                                    .unwrap_or("---".to_string())
                                                 label="Copy to Clipboard".to_string()
                                             />
-                                            <pre>{serde_json::to_string_pretty(&fleets_overview).unwrap_or("---".to_string())}</pre>
+                                            <pre>
+                                                {serde_json::to_string_pretty(&fleets_overview)
+                                                    .unwrap_or("---".to_string())}
+                                            </pre>
                                         </div>
                                         <div class="flex flex-row gap-4 p-4">
                                             <div class="flex flex-col gap-2">

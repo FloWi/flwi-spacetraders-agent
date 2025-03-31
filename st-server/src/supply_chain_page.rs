@@ -108,7 +108,12 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                         <h2 class="text-2xl font-bold">"Explanation"</h2>
                                                         <pre>{materialized_supply_chain.explanation}</pre>
                                                         <h2 class="text-2xl font-bold">"Raw Delivery Routes"</h2>
-                                                        <pre>{serde_json::to_string_pretty(&materialized_supply_chain.raw_delivery_routes).unwrap()}</pre>
+                                                        <pre>
+                                                            {serde_json::to_string_pretty(
+                                                                    &materialized_supply_chain.raw_delivery_routes,
+                                                                )
+                                                                .unwrap()}
+                                                        </pre>
                                                         <h2 class="text-2xl font-bold">"Trading Opportunities"</h2>
                                                         <div class="rounded-md overflow-clip m-10 border dark:border-gray-700 float-left"
                                                             .to_string()>
