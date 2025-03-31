@@ -5,19 +5,19 @@ use petgraph::algo::toposort;
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
 use serde::{Deserialize, Serialize};
-use st_domain::{ActivityLevel, SupplyLevel};
+use st_domain::{ActivityLevel, SupplyLevel, TradeGoodSymbol, WaypointSymbol};
 use std::collections::HashMap;
 
 // Define data structures for tech tree
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct TechNode {
     id: String,
-    name: String,
+    name: TradeGoodSymbol,
     supply: SupplyLevel,
     activity: ActivityLevel,
     cost: u32,
     volume: u32,
-    waypoint_symbol: String,
+    waypoint_symbol: WaypointSymbol,
     width: f64,
     height: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -100,12 +100,12 @@ pub fn TechTreePetgraph() -> impl IntoView {
     let (nodes, set_nodes) = signal(vec![
         TechNode {
             id: "silicon".to_string(),
-            name: "SILICON_CRYSTALS".to_string(),
+            name: TradeGoodSymbol::SILICON_CRYSTALS,
             supply: SupplyLevel::Moderate,
             activity: ActivityLevel::Weak,
             cost: 84,
             volume: 60,
-            waypoint_symbol: "X1-RX40".to_string(),
+            waypoint_symbol: WaypointSymbol("X1-RX40-F00".to_string()),
             width: 180.0,
             height: 100.0,
             x: None,
@@ -113,12 +113,12 @@ pub fn TechTreePetgraph() -> impl IntoView {
         },
         TechNode {
             id: "copper".to_string(),
-            name: "COPPER".to_string(),
+            name: TradeGoodSymbol::COPPER,
             supply: SupplyLevel::High,
             activity: ActivityLevel::Weak,
             cost: 173,
             volume: 60,
-            waypoint_symbol: "X1-RX40".to_string(),
+            waypoint_symbol: WaypointSymbol("X1-RX40-F00".to_string()),
             width: 180.0,
             height: 100.0,
             x: None,
@@ -126,12 +126,12 @@ pub fn TechTreePetgraph() -> impl IntoView {
         },
         TechNode {
             id: "electronics".to_string(),
-            name: "ELECTRONICS".to_string(),
+            name: TradeGoodSymbol::ELECTRONICS,
             supply: SupplyLevel::Moderate,
             activity: ActivityLevel::Weak,
             cost: 1857,
             volume: 20,
-            waypoint_symbol: "X1-RX40".to_string(),
+            waypoint_symbol: WaypointSymbol("X1-RX40-F00".to_string()),
             width: 180.0,
             height: 100.0,
             x: None,
@@ -139,12 +139,12 @@ pub fn TechTreePetgraph() -> impl IntoView {
         },
         TechNode {
             id: "microprocessors".to_string(),
-            name: "MICROPROCESSORS".to_string(),
+            name: TradeGoodSymbol::MICROPROCESSORS,
             supply: SupplyLevel::Moderate,
             activity: ActivityLevel::Weak,
             cost: 7000,
             volume: 20,
-            waypoint_symbol: "X1-RX40".to_string(),
+            waypoint_symbol: WaypointSymbol("X1-RX40-F00".to_string()),
             width: 180.0,
             height: 100.0,
             x: None,
@@ -152,12 +152,12 @@ pub fn TechTreePetgraph() -> impl IntoView {
         },
         TechNode {
             id: "advanced".to_string(),
-            name: "ADVANCED_CIRCUITRY".to_string(),
+            name: TradeGoodSymbol::ADVANCED_CIRCUITRY,
             supply: SupplyLevel::High,
             activity: ActivityLevel::Weak,
             cost: 4032,
             volume: 20,
-            waypoint_symbol: "X1-RX40".to_string(),
+            waypoint_symbol: WaypointSymbol("X1-RX40-F00".to_string()),
             width: 180.0,
             height: 100.0,
             x: None,
@@ -648,6 +648,8 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                 let x_pos = x - node.width / 2.0;
                                 let y_pos = y - node.height / 2.0;
 
+                                let stroke_color: String = get_stroke_color(&node.activity);
+
                                 view! {
                                     <g
                                         class="node"
@@ -660,7 +662,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                             rx="5"
                                             ry="5"
                                             fill="#1e2939"
-                                            stroke="#ffcc00"
+                                            class=stroke_color
                                             stroke-width="2"
                                         />
 
@@ -673,7 +675,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                             fill="white"
                                             font-weight="bold"
                                         >
-                                            {node.name.clone()}
+                                            {node.name.to_string()}
                                         </text>
 
                                         // Stats line
@@ -717,7 +719,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                             fill="white"
                                             font-size="12"
                                         >
-                                            {node.waypoint_symbol.clone()}
+                                            {node.waypoint_symbol.0.clone()}
                                         </text>
                                     </g>
                                 }
@@ -1002,6 +1004,16 @@ fn get_supply_color(supply: &SupplyLevel) -> String {
         SupplyLevel::Moderate => "fill-yellow-300",
         SupplyLevel::Limited => "fill-orange-500",
         SupplyLevel::Scarce => "fill-red-500",
+    }
+    .to_string()
+}
+
+fn get_stroke_color(activity: &ActivityLevel) -> String {
+    match activity {
+        ActivityLevel::Strong => "stroke-green-500",
+        ActivityLevel::Growing => "stroke-green-300",
+        ActivityLevel::Weak => "stroke-yellow-500",
+        ActivityLevel::Restricted => "stroke-red-500",
     }
     .to_string()
 }
