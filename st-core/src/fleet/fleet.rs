@@ -369,21 +369,40 @@ impl FleetAdmiral {
         } else {
             // fixme: needs to be aware of multiple systems
             let all_ships = overview.all_ships.values().cloned().collect_vec();
-            let system_symbol = all_ships.first().cloned().unwrap().nav.system_symbol;
+            let ship_map: HashMap<ShipSymbol, Ship> = all_ships.iter().map(|s| (s.symbol.clone(), s.clone())).collect();
 
-            let mut admiral = Self {
-                completed_fleet_tasks: overview.completed_fleet_tasks,
-                fleets: overview.fleets,
-                all_ships: overview.all_ships,
-                ship_tasks: overview.ship_tasks,
-                fleet_tasks: overview.fleet_task_assignments,
-                ship_fleet_assignment: overview.ship_fleet_assignment,
-            };
+            let system_symbol = all_ships.first().cloned().unwrap().nav.system_symbol;
 
             // recompute ship-tasks and persist them. Might have been outdated since last agent restart
             let facts = collect_fleet_decision_facts(mm, &system_symbol).await?;
+            let (fleets, fleet_tasks) = Self::compute_fleets_with_tasks(system_symbol, &overview.completed_fleet_tasks, &facts);
+            let mut fleet_map: HashMap<FleetId, Fleet> = fleets.iter().map(|f| (f.id.clone(), f.clone())).collect();
+            let fleet_task_map: HashMap<FleetId, Vec<FleetTask>> = fleet_tasks.into_iter().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
+
+            let ship_fleet_assignment = Self::assign_ships(&fleets, &ship_map);
+
+            let mut admiral = Self {
+                completed_fleet_tasks: overview.completed_fleet_tasks.clone(),
+                fleets: fleet_map,
+                all_ships: overview.all_ships,
+                ship_tasks: overview.ship_tasks,
+                fleet_tasks: fleet_task_map,
+                ship_fleet_assignment,
+            };
+
             let _ = Self::compute_ship_tasks(&mut admiral, &facts).await?;
             ShipBmc::save_ship_tasks(&Ctx::Anonymous, mm, &admiral.ship_tasks).await?;
+
+            let _ = FleetBmc::store_fleets_data(
+                &Ctx::Anonymous,
+                mm,
+                &admiral.fleets,
+                &admiral.fleet_tasks,
+                &admiral.ship_fleet_assignment,
+                &admiral.ship_tasks,
+            )
+                .await?;
+
 
             Ok(Some(admiral))
         }
@@ -401,29 +420,11 @@ impl FleetAdmiral {
         };
 
         let ship_map: HashMap<ShipSymbol, Ship> = ships.into_iter().map(|s| (s.symbol.clone(), s)).collect();
-        let ship_type_map: HashMap<ShipSymbol, ShipType> = {
-            let mapping = role_to_ship_type_mapping();
-            ship_map
-                .iter()
-                .map(|(ship_symbol, ship)| {
-                    let frame_type = ship_map.get(&ship_symbol).unwrap().frame.symbol.clone();
-                    let ship_type = mapping.get(&frame_type).unwrap().clone();
-                    (ship_symbol.clone(), ship_type)
-                })
-                .collect()
-        };
 
         let completed_tasks = FleetBmc::load_completed_fleet_tasks(&Ctx::Anonymous, mm).await?;
         let facts = collect_fleet_decision_facts(mm, &system_symbol).await?;
-        let fleet_tasks = compute_fleet_tasks(system_symbol, &facts, &completed_tasks);
-        let fleet_configs = compute_fleet_configs(&fleet_tasks, &facts);
-        let fleets_with_tasks: Vec<(Fleet, (FleetId, FleetTask))> = fleet_configs
-            .into_iter()
-            .enumerate()
-            .map(|(idx, (cfg, task))| Self::create_fleet(cfg.clone(), task.clone(), (completed_tasks.len() + idx) as i32).unwrap())
-            .collect_vec();
 
-        let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) = fleets_with_tasks.into_iter().unzip();
+        let (fleets, fleet_tasks) = Self::compute_fleets_with_tasks(system_symbol, &completed_tasks, &facts);
 
         let ship_fleet_assignment = Self::assign_ships(&fleets, &ship_map);
 
@@ -442,6 +443,23 @@ impl FleetAdmiral {
         let _ = Self::compute_ship_tasks(&mut admiral, &facts).await?;
 
         Ok(admiral)
+    }
+
+    fn compute_fleets_with_tasks(
+        system_symbol: SystemSymbol,
+        completed_tasks: &Vec<FleetTaskCompletion>,
+        facts: &FleetDecisionFacts,
+    ) -> (Vec<Fleet>, Vec<(FleetId, FleetTask)>) {
+        let fleet_tasks = compute_fleet_tasks(system_symbol, &facts, &completed_tasks);
+        let fleet_configs = compute_fleet_configs(&fleet_tasks, &facts);
+        let fleets_with_tasks: Vec<(Fleet, (FleetId, FleetTask))> = fleet_configs
+            .into_iter()
+            .enumerate()
+            .map(|(idx, (cfg, task))| Self::create_fleet(cfg.clone(), task.clone(), (completed_tasks.len() + idx) as i32).unwrap())
+            .collect_vec();
+
+        let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) = fleets_with_tasks.into_iter().unzip();
+        (fleets, fleet_tasks)
     }
 
     async fn compute_ship_tasks(admiral: &mut FleetAdmiral, facts: &FleetDecisionFacts) -> Result<()> {
@@ -636,6 +654,19 @@ pub fn compute_fleet_tasks(system_symbol: SystemSymbol, fleet_decision_facts: &F
     } else {
         unimplemented!("this shouldn't happen - think harder")
     };
+
+//     println!(
+//         r#"compute_fleet_tasks:
+// has_construct_jump_gate_task_been_completed: {has_construct_jump_gate_task_been_completed}
+// has_collect_market_infos_once_task_been_completed: {has_collect_market_infos_once_task_been_completed}
+// is_jump_gate_done: {is_jump_gate_done}
+// is_shipyard_exploration_complete: {is_shipyard_exploration_complete}
+// is_marketplace_exploration_complete: {is_marketplace_exploration_complete}
+// has_collected_all_waypoint_details_once: {has_collected_all_waypoint_details_once}
+// tasks: {:?}
+//     "#,
+//         &tasks
+//     );
 
     tasks
 }
