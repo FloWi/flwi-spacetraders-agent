@@ -24,7 +24,7 @@ wasm-bindgen = { version = "=0.2.100", optional = true }
 serde_json = { version = "1.0.139" }
 itertools = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
-
+petgraph = "0.7.1"
 
 st-domain = { path = "../st-domain" }
 st-store = { path = "../st-store", optional = true }

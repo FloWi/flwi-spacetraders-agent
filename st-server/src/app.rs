@@ -1,6 +1,7 @@
 use crate::behavior_tree_page::BehaviorTreePage;
 use crate::db_overview_page::*;
 use crate::fleet_overview_page::*;
+use crate::petgraph_example_page::TechTreePetgraph;
 use crate::ship_overview_page::ShipOverviewPage;
 use crate::supply_chain_page::*;
 use leptos::prelude::*;
@@ -51,6 +52,7 @@ pub fn App() -> impl IntoView {
                     <Route path=StaticSegment("ship-overview") view=ShipOverviewPage />
                     <Route path=StaticSegment("fleet-overview") view=FleetOverviewPage />
                     <Route path=StaticSegment("behavior-overview") view=BehaviorTreePage />
+                    <Route path=StaticSegment("petgraph-example") view=TechTreePetgraph />
                 </Routes>
             </main>
         </Router>
