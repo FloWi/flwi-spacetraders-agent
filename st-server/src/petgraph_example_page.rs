@@ -5,7 +5,7 @@ use petgraph::algo::toposort;
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
 use serde::{Deserialize, Serialize};
-use st_domain::{ActivityLevel, SupplyLevel, TradeGoodSymbol, WaypointSymbol};
+use st_domain::{ActivityLevel, SupplyLevel, TradeGoodSymbol, TradeGoodType, WaypointSymbol};
 use std::collections::HashMap;
 
 // Define data structures for tech tree
@@ -13,11 +13,12 @@ use std::collections::HashMap;
 struct TechNode {
     id: String,
     name: TradeGoodSymbol,
+    waypoint_symbol: WaypointSymbol,
+    waypoint_type: TradeGoodType,
     supply: SupplyLevel,
     activity: ActivityLevel,
     cost: u32,
     volume: u32,
-    waypoint_symbol: WaypointSymbol,
     width: f64,
     height: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,6 +111,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
             height: 100.0,
             x: None,
             y: None,
+            waypoint_type: TradeGoodType::Export,
         },
         TechNode {
             id: "copper".to_string(),
@@ -123,6 +125,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
             height: 100.0,
             x: None,
             y: None,
+            waypoint_type: TradeGoodType::Export,
         },
         TechNode {
             id: "electronics".to_string(),
@@ -136,6 +139,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
             height: 100.0,
             x: None,
             y: None,
+            waypoint_type: TradeGoodType::Export,
         },
         TechNode {
             id: "microprocessors".to_string(),
@@ -149,6 +153,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
             height: 100.0,
             x: None,
             y: None,
+            waypoint_type: TradeGoodType::Export,
         },
         TechNode {
             id: "advanced".to_string(),
@@ -162,6 +167,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
             height: 100.0,
             x: None,
             y: None,
+            waypoint_type: TradeGoodType::Export,
         },
     ]);
 
@@ -694,33 +700,29 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                             y="45"
                                             text-anchor="middle"
                                             font-size="12"
+                                            fill="white"
                                         >
                                             <tspan class={get_supply_color(&node.supply)}>{node.supply.to_string()}</tspan>
                                             <tspan fill="white">" • "</tspan>
                                             <tspan class={get_activity_color(&node.activity)}>{node.activity.to_string()}</tspan>
-                                        </text>
 
                                         // Cost and volume
-                                        <text
+                                        <tspan
                                             x=node.width / 2.0
-                                            y="65"
-                                            text-anchor="middle"
-                                            fill="white"
-                                            font-size="12"
+                                            dy="2em"
                                         >
                                             {format!("{}c • vol. {}", node.cost, node.volume)}
+                                        </tspan>
+                                        // Waypoint Infos
+                                        <tspan
+                                            x=node.width / 2.0
+                                            dy="2em"
+                                        >
+                                                                                        {format!("{} ({})", node.waypoint_symbol.0.clone(), node.waypoint_type.to_string())}
+
+                                        </tspan>
                                         </text>
 
-                                        // Spec
-                                        <text
-                                            x=node.width / 2.0
-                                            y="80"
-                                            text-anchor="middle"
-                                            fill="white"
-                                            font-size="12"
-                                        >
-                                            {node.waypoint_symbol.0.clone()}
-                                        </text>
                                     </g>
                                 }
                                     .into_any()
@@ -944,48 +946,6 @@ pub fn TechTreePetgraph() -> impl IntoView {
         </div>
     }
 }
-
-/*
-       graph.edges.map { edge =>
-         val edgeStr = edge.v + " --> " + edge.w
-         val route   = edgeStringToRouteMap(edgeStr)
-         val me      = route.destinationDeliveryMarketEntry
-
-         val importEdgeLabel = {
-           val maybeActivity       = me.trade_good_activity.map(ActivityLevel.valueMap.apply)
-           val supplyLevel         = SupplyLevel.valueMap(me.trade_good_supply)
-           val nodeWidth           = 200.0
-           val nodeHeight          = 100.0
-           val topRightLabelXValue = (0.97 * nodeWidth).toString
-           val lastEdgePoint       = edge.value.points.last
-           val topLeftX            = lastEdgePoint.x - nodeWidth
-           val topLeftY            = lastEdgePoint.y - nodeHeight * 0.215
-
-           svg(
-             width  := nodeWidth.toString,
-             height := nodeHeight.toString,
-             x      := topLeftX.toString,
-             y      := topLeftY.toString,
-             svg(
-               text(
-                 cls                              := "text-slate-300 fill-current",
-                 VMod.style("text-anchor")        := "end",
-                 VMod.style("alignment-baseline") := "before-edge",
-                 y                                := (0.175 * nodeHeight).toString,
-                 x                                := topRightLabelXValue,
-                 VMod(
-                   tspan(s"${me.selling_price_per_unit}c"),
-                   tspan(" | "),
-                   tspan(s"${maybeActivity.getOrElse("no activity")}", maybeActivity.map(activityColorTextClsMap.apply).getOrElse(cls := "text-slate-500")),
-                   tspan(x := topRightLabelXValue, dy := "1.5em", s"vol ${me.trade_good_volume}"),
-                   tspan(" | "),
-                   tspan(s"${supplyLevel.value}", supplyColorClassesForExport(supplyLevel)),
-                 ),
-               )
-             ),
-           )
-         }
-*/
 
 fn get_activity_color(activity: &ActivityLevel) -> String {
     match activity {
