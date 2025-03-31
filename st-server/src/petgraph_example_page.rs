@@ -5,6 +5,7 @@ use petgraph::algo::toposort;
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
 use serde::{Deserialize, Serialize};
+use st_domain::{ActivityLevel, SupplyLevel};
 use std::collections::HashMap;
 
 // Define data structures for tech tree
@@ -12,11 +13,11 @@ use std::collections::HashMap;
 struct TechNode {
     id: String,
     name: String,
-    level: String,
-    strength: String,
-    cost: String,
-    version: String,
-    spec: String,
+    supply: SupplyLevel,
+    activity: ActivityLevel,
+    cost: u32,
+    volume: u32,
+    waypoint_symbol: String,
     width: f64,
     height: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -29,11 +30,10 @@ struct TechNode {
 struct TechEdge {
     source: String,
     target: String,
-    cost: String,
-    cost_level: String,
-    version: String,
-    strength: String,
-    label: String,
+    cost: u32,
+    activity: ActivityLevel,
+    volume: u32,
+    supply: SupplyLevel,
     #[serde(skip_serializing_if = "Option::is_none")]
     points: Option<Vec<Point>>,
     // Add a curve factor for each edge
@@ -101,11 +101,11 @@ pub fn TechTreePetgraph() -> impl IntoView {
         TechNode {
             id: "silicon".to_string(),
             name: "SILICON_CRYSTALS".to_string(),
-            level: "MODERATE".to_string(),
-            strength: "WEAK".to_string(),
-            cost: "84c".to_string(),
-            version: "v:60".to_string(),
-            spec: "X1-RX40".to_string(),
+            supply: SupplyLevel::Moderate,
+            activity: ActivityLevel::Weak,
+            cost: 84,
+            volume: 60,
+            waypoint_symbol: "X1-RX40".to_string(),
             width: 180.0,
             height: 100.0,
             x: None,
@@ -114,11 +114,11 @@ pub fn TechTreePetgraph() -> impl IntoView {
         TechNode {
             id: "copper".to_string(),
             name: "COPPER".to_string(),
-            level: "HIGH".to_string(),
-            strength: "WEAK".to_string(),
-            cost: "173c".to_string(),
-            version: "v:60".to_string(),
-            spec: "X1-RX40".to_string(),
+            supply: SupplyLevel::High,
+            activity: ActivityLevel::Weak,
+            cost: 173,
+            volume: 60,
+            waypoint_symbol: "X1-RX40".to_string(),
             width: 180.0,
             height: 100.0,
             x: None,
@@ -127,11 +127,11 @@ pub fn TechTreePetgraph() -> impl IntoView {
         TechNode {
             id: "electronics".to_string(),
             name: "ELECTRONICS".to_string(),
-            level: "MODERATE".to_string(),
-            strength: "WEAK".to_string(),
-            cost: "1,857c".to_string(),
-            version: "v:20".to_string(),
-            spec: "X1-RX40".to_string(),
+            supply: SupplyLevel::Moderate,
+            activity: ActivityLevel::Weak,
+            cost: 1857,
+            volume: 20,
+            waypoint_symbol: "X1-RX40".to_string(),
             width: 180.0,
             height: 100.0,
             x: None,
@@ -140,11 +140,11 @@ pub fn TechTreePetgraph() -> impl IntoView {
         TechNode {
             id: "microprocessors".to_string(),
             name: "MICROPROCESSORS".to_string(),
-            level: "MODERATE".to_string(),
-            strength: "WEAK".to_string(),
-            cost: "7,000c".to_string(),
-            version: "v:20".to_string(),
-            spec: "X1-RX40".to_string(),
+            supply: SupplyLevel::Moderate,
+            activity: ActivityLevel::Weak,
+            cost: 7000,
+            volume: 20,
+            waypoint_symbol: "X1-RX40".to_string(),
             width: 180.0,
             height: 100.0,
             x: None,
@@ -153,11 +153,11 @@ pub fn TechTreePetgraph() -> impl IntoView {
         TechNode {
             id: "advanced".to_string(),
             name: "ADVANCED_CIRCUITRY".to_string(),
-            level: "HIGH".to_string(),
-            strength: "WEAK".to_string(),
-            cost: "4,032c".to_string(),
-            version: "v:20".to_string(),
-            spec: "X1-RX40".to_string(),
+            supply: SupplyLevel::High,
+            activity: ActivityLevel::Weak,
+            cost: 4032,
+            volume: 20,
+            waypoint_symbol: "X1-RX40".to_string(),
             width: 180.0,
             height: 100.0,
             x: None,
@@ -169,66 +169,60 @@ pub fn TechTreePetgraph() -> impl IntoView {
         TechEdge {
             source: "silicon".to_string(),
             target: "electronics".to_string(),
-            cost: "40c".to_string(),
-            cost_level: "MODERATE".to_string(),
-            version: "v:60".to_string(),
-            strength: "WEAK".to_string(),
-            label: "40c | MOD".to_string(),
+            cost: 40,
+            supply: SupplyLevel::Moderate,
+            volume: 60,
+            activity: ActivityLevel::Weak,
             points: None,
             curve_factor: Some(30.0), // Add curve to avoid crossing labels
         },
         TechEdge {
             source: "silicon".to_string(),
             target: "microprocessors".to_string(),
-            cost: "83c".to_string(),
-            cost_level: "HIGH".to_string(),
-            version: "v:60".to_string(),
-            strength: "WEAK".to_string(),
-            label: "83c | HIGH".to_string(),
+            cost: 83,
+            supply: SupplyLevel::High,
+            volume: 60,
+            activity: ActivityLevel::Weak,
             points: None,
             curve_factor: None,
         },
         TechEdge {
             source: "copper".to_string(),
             target: "microprocessors".to_string(),
-            cost: "83c".to_string(),
-            cost_level: "HIGH".to_string(),
-            version: "v:60".to_string(),
-            strength: "WEAK".to_string(),
-            label: "83c | HIGH".to_string(),
+            cost: 83,
+            supply: SupplyLevel::High,
+            volume: 60,
+            activity: ActivityLevel::Weak,
             points: None,
             curve_factor: Some(-30.0), // Opposite curve to avoid crossing labels
         },
         TechEdge {
             source: "copper".to_string(),
             target: "electronics".to_string(),
-            cost: "40c".to_string(),
-            cost_level: "MODERATE".to_string(),
-            version: "v:60".to_string(),
-            strength: "WEAK".to_string(),
-            label: "40c | MOD".to_string(),
+            cost: 40,
+            supply: SupplyLevel::Moderate,
+            volume: 60,
+            activity: ActivityLevel::Weak,
             points: None,
             curve_factor: None,
         },
         TechEdge {
             source: "electronics".to_string(),
             target: "advanced".to_string(),
-            cost: "878c".to_string(),
-            cost_level: "MODERATE".to_string(),
-            version: "v:20".to_string(),
-            strength: "WEAK".to_string(),
-            label: "878c | MOD".to_string(),
+            cost: 878,
+            supply: SupplyLevel::Moderate,
+            volume: 20,
+            activity: ActivityLevel::Weak,
             points: None,
             curve_factor: Some(30.0), // Add curve to avoid crossing labels
         },
         TechEdge {
             source: "microprocessors".to_string(),
             target: "advanced".to_string(),
-            cost: "3,303c".to_string(),
-            cost_level: "MODERATE".to_string(),
-            version: "v:20".to_string(),
-            strength: "WEAK".to_string(),
-            label: "3,303c | MOD".to_string(),
+            cost: 3303,
+            supply: SupplyLevel::Moderate,
+            volume: 20,
+            activity: ActivityLevel::Weak,
             points: None,
             curve_factor: Some(-30.0), // Opposite curve to avoid crossing labels
         },
@@ -241,9 +235,42 @@ pub fn TechTreePetgraph() -> impl IntoView {
     let container_ref: NodeRef<Pre> = NodeRef::new();
 
     // Create a curved edge path
-    fn create_path(source: &Point, target: &Point, curve_factor: Option<f64>) -> Vec<Point> {
+    fn create_curved_path(source: &Point, target: &Point, curve_factor: Option<f64>) -> Vec<Point> {
+        // if let Some(curve) = curve_factor {
+        //     // Vector from source to target
+        //     let dx = target.x - source.x;
+        //     let dy = target.y - source.y;
+        //     let length = (dx * dx + dy * dy).sqrt();
+        //
+        //     // Find midpoint
+        //     let mid_x = (source.x + target.x) / 2.0;
+        //     let mid_y = (source.y + target.y) / 2.0;
+        //
+        //     // Calculate control point with perpendicular offset
+        //     let control_x = mid_x - dy / length * curve;
+        //     let control_y = mid_y + dx / length * curve;
+        //
+        //     // Create points for a quadratic bezier curve
+        //     // Return enough points to approximate the curve
+        //     let steps = 10;
+        //     let mut points = Vec::with_capacity(steps);
+        //
+        //     for i in 0..=steps {
+        //         let t = i as f64 / steps as f64;
+        //         let t1 = 1.0 - t;
+        //
+        //         // Quadratic bezier formula
+        //         let x = t1 * t1 * source.x + 2.0 * t1 * t * control_x + t * t * target.x;
+        //         let y = t1 * t1 * source.y + 2.0 * t1 * t * control_y + t * t * target.y;
+        //
+        //         points.push(Point { x, y });
+        //     }
+        //
+        //     points
+        // } else {
         // Simple straight line
         vec![Point { x: source.x, y: source.y }, Point { x: target.x, y: target.y }]
+        // }
     }
 
     // Calculate edge points between two nodes
@@ -326,7 +353,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
         };
 
         // Create a curved path between the source and target points
-        create_path(&source_point, &target_point, curve_factor)
+        create_curved_path(&source_point, &target_point, curve_factor)
     }
 
     // Function to calculate layout using petgraph
@@ -586,14 +613,8 @@ pub fn TechTreePetgraph() -> impl IntoView {
                 "{} {} {} {}",
                 layout.bounds.min_x, layout.bounds.min_y, layout.bounds.width, layout.bounds.height
             );
-
             let svg_content = view! {
-                <svg
-                    width="100%"
-                    height="600px"
-                    viewBox=viewbox
-                    xmlns="http://www.w3.org/2000/svg"
-                >
+                <svg width="100%" height="600px" viewBox=viewbox xmlns="http://www.w3.org/2000/svg">
                     // Background
                     <rect
                         x=layout.bounds.min_x
@@ -619,210 +640,217 @@ pub fn TechTreePetgraph() -> impl IntoView {
                     </defs>
 
                     // Render nodes
-                    {layout.nodes.iter().map(|node| {
-                        if let (Some(x), Some(y)) = (node.x, node.y) {
-                            let x_pos = x - node.width / 2.0;
-                            let y_pos = y - node.height / 2.0;
+                    {layout
+                        .nodes
+                        .iter()
+                        .map(|node| {
+                            if let (Some(x), Some(y)) = (node.x, node.y) {
+                                let x_pos = x - node.width / 2.0;
+                                let y_pos = y - node.height / 2.0;
 
-                            // Determine level color
-                            let level_color = match node.level.as_str() {
-                                "HIGH" => "#00ff00",
-                                "MODERATE" => "#00aaff",
-                                _ => "#ffffff"
-                            };
-
-                            view! {
-                                <g class="node" transform=format!("translate({}, {})", x_pos, y_pos)>
-                                    // Node background
-                                    <rect
-                                        width=node.width
-                                        height=node.height
-                                        rx="5"
-                                        ry="5"
-                                        fill="#1e2939"
-                                        stroke="#ffcc00"
-                                        stroke-width="2"
-                                    />
-
-                                    // Node title
-                                    <text
-                                        x=node.width / 2.0
-                                        y="20"
-                                        text-anchor="middle"
-                                        font-size="14"
-                                        fill="white"
-                                        font-weight="bold"
+                                view! {
+                                    <g
+                                        class="node"
+                                        transform=format!("translate({}, {})", x_pos, y_pos)
                                     >
-                                        {node.name.clone()}
-                                    </text>
+                                        // Node background
+                                        <rect
+                                            width=node.width
+                                            height=node.height
+                                            rx="5"
+                                            ry="5"
+                                            fill="#1e2939"
+                                            stroke="#ffcc00"
+                                            stroke-width="2"
+                                        />
 
-                                    // Stats line
-                                    <line
-                                        x1="20"
-                                        y1="30"
-                                        x2=node.width - 20.0
-                                        y2="30"
-                                        stroke="#555"
-                                        stroke-width="1"
-                                    />
+                                        // Node title
+                                        <text
+                                            x=node.width / 2.0
+                                            y="20"
+                                            text-anchor="middle"
+                                            font-size="14"
+                                            fill="white"
+                                            font-weight="bold"
+                                        >
+                                            {node.name.clone()}
+                                        </text>
 
-                                    // Level and strength
-                                    <text
-                                        x=node.width / 2.0
-                                        y="45"
-                                        text-anchor="middle"
-                                        font-size="12"
-                                    >
-                                        <tspan fill=level_color>{node.level.clone()}</tspan>
-                                        <tspan fill="white">" • "</tspan>
-                                        <tspan fill="#ffcc00">{node.strength.clone()}</tspan>
-                                    </text>
+                                        // Stats line
+                                        <line
+                                            x1="20"
+                                            y1="30"
+                                            x2=node.width - 20.0
+                                            y2="30"
+                                            stroke="#555"
+                                            stroke-width="1"
+                                        />
 
-                                    // Cost and version
-                                    <text
-                                        x=node.width / 2.0
-                                        y="65"
-                                        text-anchor="middle"
-                                        fill="white"
-                                        font-size="12"
-                                    >
-                                        {format!("{} • {}", node.cost, node.version)}
-                                    </text>
+                                        // Level and activity
+                                        <text
+                                            x=node.width / 2.0
+                                            y="45"
+                                            text-anchor="middle"
+                                            font-size="12"
+                                        >
+                                            <tspan class={get_supply_color(&node.supply)}>{node.supply.to_string()}</tspan>
+                                            <tspan fill="white">" • "</tspan>
+                                            <tspan class={get_activity_color(&node.activity)}>{node.activity.to_string()}</tspan>
+                                        </text>
 
-                                    // Spec
-                                    <text
-                                        x=node.width / 2.0
-                                        y="80"
-                                        text-anchor="middle"
-                                        fill="white"
-                                        font-size="12"
-                                    >
-                                        {node.spec.clone()}
-                                    </text>
-                                </g>
-                            }.into_any()
-                        } else {
-                            // Fallback for nodes without calculated positions
-                            view! { <g></g> }.into_any()
-                        }
-                    }).collect::<Vec<_>>()}
+                                        // Cost and volume
+                                        <text
+                                            x=node.width / 2.0
+                                            y="65"
+                                            text-anchor="middle"
+                                            fill="white"
+                                            font-size="12"
+                                        >
+                                            {format!("{} • {}", node.cost, node.volume)}
+                                        </text>
 
-                // Render edges
-                    {layout.edges.iter().map(|edge| {
-                        if let Some(points) = &edge.points {
-                            if points.len() < 2 {
-                                return view! { <g></g> }.into_any();
-                            }
-
-                            // Create SVG path from points
-                            let mut path_data = String::new();
-                            path_data.push_str(&format!("M{},{}", points[0].x, points[0].y));
-
-                            // If we have bezier curve points
-                            if points.len() > 2 {
-                                for point in &points[1..] {
-                                    path_data.push_str(&format!(" L{},{}", point.x, point.y));
+                                        // Spec
+                                        <text
+                                            x=node.width / 2.0
+                                            y="80"
+                                            text-anchor="middle"
+                                            fill="white"
+                                            font-size="12"
+                                        >
+                                            {node.waypoint_symbol.clone()}
+                                        </text>
+                                    </g>
                                 }
+                                    .into_any()
                             } else {
-                                // Just a straight line
-                                path_data.push_str(&format!(" L{},{}", points[1].x, points[1].y));
+                                // Fallback for nodes without calculated positions
+                                view! { <g></g> }
+                                    .into_any()
                             }
+                        })
+                        .collect::<Vec<_>>()}
 
-                            // Determine edge color based on cost level
-                            let color = match edge.cost_level.as_str() {
-                                "HIGH" => "#00ff00",
-                                "MODERATE" => "#00aaff",
-                                _ => "#666666"
-                            };
+                    // Render edges
+                    {layout
+                        .edges
+                        .iter()
+                        .map(|edge| {
+                            if let Some(points) = &edge.points {
+                                if points.len() < 2 {
+                                    return view! { <g></g> }.into_any();
+                                }
+                                let mut path_data = String::new();
+                                path_data.push_str(&format!("M{},{}", points[0].x, points[0].y));
+                                if points.len() > 2 {
+                                    for point in &points[1..] {
+                                        path_data.push_str(&format!(" L{},{}", point.x, point.y));
+                                    }
+                                } else {
+                                    path_data
+                                        .push_str(&format!(" L{},{}", points[1].x, points[1].y));
+                                }
 
-                            // Find a point near the target for the label (70% along the path)
-                            let label_point_idx = (points.len() as f64 * 0.7) as usize;
-                            let label_point = if label_point_idx < points.len() {
-                                &points[label_point_idx]
-                            } else if !points.is_empty() {
-                                &points[points.len() - 1]
-                            } else {
-                                return view! { <g></g> }.into_any();
-                            };
+                                let label_point_idx = (points.len() as f64 * 0.7) as usize;
+                                let label_point = if label_point_idx < points.len() {
+                                    &points[label_point_idx]
+                                } else if !points.is_empty() {
+                                    &points[points.len() - 1]
+                                } else {
+                                    return // Create SVG path from points
 
-                            // Add a slight offset to the label to avoid the edge
-                            // Calculate the direction at the label point
-                            let dx;
-                            let dy;
+                                    // If we have bezier curve points
+                                    // Just a straight line
 
-                            if label_point_idx < points.len() - 1 {
+                                    // Determine edge color based on cost supply
+
+                                    // Find a point near the target for the label (70% along the path)
+                                    view! { <g></g> }
+                                        .into_any();
+                                };
+                                let dx;
+                                let dy;
+                                if label_point_idx < points.len() - 1 {
+                                    dx = points[label_point_idx + 1].x - label_point.x;
+                                    dy = points[label_point_idx + 1].y - label_point.y;
+                                } else if label_point_idx > 0 {
+                                    dx = label_point.x - points[label_point_idx - 1].x;
+                                    dy = label_point.y - points[label_point_idx - 1].y;
+                                } else {
+                                    dx = 0.0;
+                                    dy = -1.0;
+                                }
+                                let length = (dx * dx + dy * dy).sqrt();
+                                let offset = 15.0;
+                                let (nx, ny) = if length > 0.0 {
+                                    (-dy / length, dx / length)
+                                } else {
+                                    (1.0, 0.0)
+                                };
+                                let label_x = label_point.x + (-55.);
+                                let label_y = label_point.y + (-25.);
+
+                                // Add a slight offset to the label to avoid the edge
+                                // Calculate the direction at the label point
+
                                 // Use the direction of the next segment
-                                dx = points[label_point_idx + 1].x - label_point.x;
-                                dy = points[label_point_idx + 1].y - label_point.y;
-                            } else if label_point_idx > 0 {
                                 // Use the direction of the previous segment
-                                dx = label_point.x - points[label_point_idx - 1].x;
-                                dy = label_point.y - points[label_point_idx - 1].y;
-                            } else {
                                 // Fallback
-                                dx = 0.0;
-                                dy = -1.0;
-                            }
 
-                            // Calculate perpendicular offset
-                            let length = (dx * dx + dy * dy).sqrt();
-                            let offset = 15.0;
-                            let (nx, ny) = if length > 0.0 {
-                                (-dy / length, dx / length)
+                                // Calculate perpendicular offset
+
+                                view! {
+                                    <g class="edge">
+                                        <path
+                                            d=path_data
+                                            fill="none"
+                                            stroke="white"
+                                            stroke-width="2"
+                                            marker-end="url(#arrowhead)"
+                                        />
+                                        <rect
+                                            x=label_x - 50.0
+                                            y=label_y - 10.0
+                                            width="100"
+                                            height="40"
+                                            rx="5"
+                                            ry="5"
+                                            fill="#1e2939"
+                                            stroke="#333"
+                                        />
+                                        <text
+                                            x=label_x
+                                            y=label_y + 5.0
+                                            text-anchor="middle"
+                                            font-size="10"
+                                            fill="white"
+                                        >
+                                            <tspan>{format!("{}c", edge.cost)}</tspan>
+                                            <tspan>" | "</tspan>
+                                            <tspan class={get_activity_color(&edge.activity)}>{edge.activity.to_string().clone()}</tspan>
+                                            <tspan x=label_x dy="1.5em">
+                                                {format!("vol. {}", edge.volume)}
+                                            </tspan>
+                                            <tspan>" | "</tspan>
+                                            <tspan class={get_supply_color(&edge.supply)}>{edge.supply.to_string().clone()}</tspan>
+
+                                        </text>
+                                    </g>
+                                }
+                                    .into_any()
                             } else {
-                                (1.0, 0.0)
-                            };
-
-                            let label_x = label_point.x + nx * offset;
-                            let label_y = label_point.y + ny * offset;
-
-                            view! {
-                                <g class="edge">
-                                    <path
-                                        d=path_data
-                                        fill="none"
-                                        stroke=color
-                                        stroke-width="2"
-                                        marker-end="url(#arrowhead)"
-                                    />
-                                    <rect
-                                        x=label_x - 30.0
-                                        y=label_y - 10.0
-                                        width="60"
-                                        height="20"
-                                        rx="5"
-                                        ry="5"
-                                        fill="#1e2939"
-                                        stroke="#333"
-                                    />
-                                    <text
-                                        x=label_x
-                                        y=label_y + 5.0
-                                        text-anchor="middle"
-                                        font-size="10"
-                                        fill="white"
-                                    >
-                                        {edge.label.clone()}
-                                    </text>
-                                </g>
-                            }.into_any()
-                        } else {
-                            // Fallback for edges without calculated points
-                            view! { <g></g> }.into_any()
-                        }
-                    }).collect::<Vec<_>>()}
+                                // Fallback for edges without calculated points
+                                view! { <g></g> }
+                                    .into_any()
+                            }
+                        })
+                        .collect::<Vec<_>>()}
                 </svg>
             };
 
             svg_content.into_any()
         } else {
             // Render loading or empty state if no layout is calculated yet
-            view! {
-                <div class="loading">
-                    "Calculating layout..."
-                </div>
-            }
-            .into_any()
+            view! { <div class="loading">"Calculating layout..."</div> }.into_any()
         }
     };
 
@@ -834,49 +862,146 @@ pub fn TechTreePetgraph() -> impl IntoView {
                 <div class="control-group">
                     <label for="direction-select">"Direction:"</label>
                     <select id="direction-select" on:change=update_direction>
-                        {direction_options.into_iter().map(|(value, label)| {
-                            view! {
-                                <option value={value} selected={value == "TB"}>{label}</option>
-                            }
-                        }).collect::<Vec<_>>()}
+                        {direction_options
+                            .into_iter()
+                            .map(|(value, label)| {
+                                view! {
+                                    <option value=value selected=value == "TB">
+                                        {label}
+                                    </option>
+                                }
+                            })
+                            .collect::<Vec<_>>()}
                     </select>
                 </div>
 
                 <div class="control-group">
                     <label for="node-sep">"Node Separation:"</label>
-                    <input type="number" id="node-sep" value="80" min="10" max="500" on:change=update_node_sep/>
+                    <input
+                        type="number"
+                        id="node-sep"
+                        value="80"
+                        min="10"
+                        max="500"
+                        on:change=update_node_sep
+                    />
                 </div>
 
                 <div class="control-group">
                     <label for="rank-sep">"Rank Separation:"</label>
-                    <input type="number" id="rank-sep" value="200" min="50" max="500" on:change=update_rank_sep/>
+                    <input
+                        type="number"
+                        id="rank-sep"
+                        value="200"
+                        min="50"
+                        max="500"
+                        on:change=update_rank_sep
+                    />
                 </div>
 
                 <div class="control-group">
                     <label for="horizontal-spacing">"Horizontal Spacing:"</label>
-                    <input type="number" id="horizontal-spacing" value="300" min="50" max="500" on:change=update_horizontal_spacing/>
+                    <input
+                        type="number"
+                        id="horizontal-spacing"
+                        value="300"
+                        min="50"
+                        max="500"
+                        on:change=update_horizontal_spacing
+                    />
                 </div>
 
                 <div class="control-group">
                     <label for="padding">"SVG Padding:"</label>
-                    <input type="number" id="padding" value="50" min="10" max="200" on:change=update_padding/>
+                    <input
+                        type="number"
+                        id="padding"
+                        value="50"
+                        min="10"
+                        max="200"
+                        on:change=update_padding
+                    />
                 </div>
 
-                <button on:click={move|_| calculate_layout()}>"Calculate Layout"</button>
+                <button on:click=move |_| calculate_layout()>"Calculate Layout"</button>
             </div>
 
-            <div class="visualization">
-                {render_svg}
-            </div>
+            <div class="visualization">{render_svg}</div>
 
             <div class="layout-result">
                 <h3>"Layout Result (JSON)"</h3>
                 <pre node_ref=container_ref>
-                    {move || layout_result.get()
-                        .map(|result| serde_json::to_string_pretty(&result).unwrap_or_default())
-                        .unwrap_or_else(|| "No layout calculated yet".to_string())}
+                    {move || {
+                        layout_result
+                            .get()
+                            .map(|result| serde_json::to_string_pretty(&result).unwrap_or_default())
+                            .unwrap_or_else(|| "No layout calculated yet".to_string())
+                    }}
                 </pre>
             </div>
         </div>
     }
+}
+
+/*
+       graph.edges.map { edge =>
+         val edgeStr = edge.v + " --> " + edge.w
+         val route   = edgeStringToRouteMap(edgeStr)
+         val me      = route.destinationDeliveryMarketEntry
+
+         val importEdgeLabel = {
+           val maybeActivity       = me.trade_good_activity.map(ActivityLevel.valueMap.apply)
+           val supplyLevel         = SupplyLevel.valueMap(me.trade_good_supply)
+           val nodeWidth           = 200.0
+           val nodeHeight          = 100.0
+           val topRightLabelXValue = (0.97 * nodeWidth).toString
+           val lastEdgePoint       = edge.value.points.last
+           val topLeftX            = lastEdgePoint.x - nodeWidth
+           val topLeftY            = lastEdgePoint.y - nodeHeight * 0.215
+
+           svg(
+             width  := nodeWidth.toString,
+             height := nodeHeight.toString,
+             x      := topLeftX.toString,
+             y      := topLeftY.toString,
+             svg(
+               text(
+                 cls                              := "text-slate-300 fill-current",
+                 VMod.style("text-anchor")        := "end",
+                 VMod.style("alignment-baseline") := "before-edge",
+                 y                                := (0.175 * nodeHeight).toString,
+                 x                                := topRightLabelXValue,
+                 VMod(
+                   tspan(s"${me.selling_price_per_unit}c"),
+                   tspan(" | "),
+                   tspan(s"${maybeActivity.getOrElse("no activity")}", maybeActivity.map(activityColorTextClsMap.apply).getOrElse(cls := "text-slate-500")),
+                   tspan(x := topRightLabelXValue, dy := "1.5em", s"vol ${me.trade_good_volume}"),
+                   tspan(" | "),
+                   tspan(s"${supplyLevel.value}", supplyColorClassesForExport(supplyLevel)),
+                 ),
+               )
+             ),
+           )
+         }
+*/
+
+fn get_activity_color(activity: &ActivityLevel) -> String {
+    match activity {
+        ActivityLevel::Strong => "fill-green-500",
+        ActivityLevel::Growing => "fill-green-300",
+        ActivityLevel::Weak => "fill-yellow-500",
+        ActivityLevel::Restricted => "fill-red-500",
+    }
+    .to_string()
+}
+
+fn get_supply_color(supply: &SupplyLevel) -> String {
+    match supply {
+        SupplyLevel::Abundant => "fill-green-500",
+        SupplyLevel::High => "fill-green-300",
+        SupplyLevel::Moderate => "fill-yellow-300",
+        SupplyLevel::Limited => "fill-orange-500",
+        SupplyLevel::Scarce => "fill-red-500",
+    }
+    .to_string()
 }
