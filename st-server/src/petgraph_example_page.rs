@@ -706,7 +706,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                             fill="white"
                                             font-size="12"
                                         >
-                                            {format!("{} • {}", node.cost, node.volume)}
+                                            {format!("{}c • vol. {}", node.cost, node.volume)}
                                         </text>
 
                                         // Spec
@@ -866,7 +866,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                             .into_iter()
                             .map(|(value, label)| {
                                 view! {
-                                    <option value=value selected=value == "TB">
+                                    <option value=value selected=value == "LR">
                                         {label}
                                     </option>
                                 }
