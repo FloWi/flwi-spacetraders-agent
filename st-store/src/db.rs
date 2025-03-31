@@ -493,6 +493,7 @@ where system_symbol = $1
 
     Ok(market_data_entries)
 }
+
 pub async fn select_latest_shipyard_entry_of_system(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Vec<DbShipyardData>> {
     let db_entries: Vec<DbShipyardData> = sqlx::query_as!(
         DbShipyardData,

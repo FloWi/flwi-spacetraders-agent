@@ -49,29 +49,6 @@ impl MarketObservationFleet {
         let already_covered_waypoints: HashSet<WaypointSymbol> = correctly_placed_ships.iter().map(|(_ss, wps)| wps.clone()).collect();
         let already_correctly_placed_ships: HashSet<ShipSymbol> = correctly_placed_ships.iter().map(|(ss, _wps)| ss.clone()).collect();
 
-        //         println!(
-        //             r#"MarketObservationFleet::compute_ship_tasks
-        // marketplaces_to_explore: {:?}
-        // shipyards_to_explore: {:?}
-        // all_locations_of_interest: {:?}
-        // already_assigned: {:?}
-        // already_assigned_ships: {:?}
-        // already_assigned_waypoints: {:?}
-        // non_assigned_ships: {:?}
-        // non_assigned_waypoints: {:?}
-        // current_ship_locations: {:?}
-        //         "#,
-        //             &marketplaces_to_explore,
-        //             &shipyards_to_explore,
-        //             &all_locations_of_interest,
-        //             &already_assigned,
-        //             &already_assigned_ships,
-        //             &already_assigned_waypoints,
-        //             &non_assigned_ships.clone().collect_vec(),
-        //             &non_assigned_waypoints.clone().collect_vec(),
-        //             &current_ship_locations,
-        //         );
-
         let non_assigned_ships = non_assigned_ships.filter(|s| !already_correctly_placed_ships.contains(&s.symbol));
         let non_assigned_waypoints: HashSet<&WaypointSymbol> =
             non_assigned_waypoints.into_iter().filter(|&wps| !already_covered_waypoints.contains(&wps)).collect();

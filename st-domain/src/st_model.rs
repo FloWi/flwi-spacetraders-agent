@@ -86,7 +86,7 @@ pub struct ShipTypeEntry {
     r#type: ShipType,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Display)]
+#[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Display)]
 #[allow(non_camel_case_types)]
 pub enum ShipType {
     SHIP_PROBE,

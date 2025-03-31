@@ -8,7 +8,7 @@ use leptos::{component, view, IntoView};
 use leptos_use::{use_interval, UseIntervalReturn};
 use phosphor_leptos::{Icon, CLOCK, GAS_PUMP, PACKAGE, TRUCK};
 use serde::{Deserialize, Serialize};
-use st_domain::{FleetConfig, FleetDecisionFacts, FleetTask, FleetsOverview, NavStatus, Ship, WaypointSymbol};
+use st_domain::{Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetTask, FleetsOverview, NavStatus, Ship, ShipType, WaypointSymbol};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
@@ -23,7 +23,7 @@ pub enum GetShipsMode {
 }
 
 #[server]
-async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, FleetsOverview), ServerFnError> {
+async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, FleetsOverview, Vec<(ShipType, FleetTask)>), ServerFnError> {
     use st_core::fleet::fleet;
     use st_store::AgentBmc;
     use st_store::Ctx;
@@ -39,7 +39,9 @@ async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, FleetsOvervie
 
     let fleet_overview = FleetBmc::load_overview(&Ctx::Anonymous, &mm).await.expect("FleetBmc::load_overview");
 
-    Ok((decision_facts, fleet_overview))
+    let (_0, _1, shopping_list) = fleet::compute_fleets_with_tasks(home_system_symbol.clone(), &fleet_overview.completed_fleet_tasks, &decision_facts);
+
+    Ok((decision_facts, fleet_overview, shopping_list))
 }
 
 #[component]
@@ -61,7 +63,7 @@ pub fn FleetOverviewPage() -> impl IntoView {
                 <Transition>
                     {move || {
                         match fleet_decision_facts_resource.get() {
-                            Some(Ok((fleet_decision_facts, fleets_overview))) => {
+                            Some(Ok((fleet_decision_facts, fleets_overview, shopping_list))) => {
 
                                 view! {
                                     <div class="flex flex-col gap-4 p-4">
@@ -81,6 +83,18 @@ pub fn FleetOverviewPage() -> impl IntoView {
                                             </pre>
                                         </div>
                                         <div class="flex flex-row gap-4 p-4">
+                                            <div class="flex flex-col gap-2">
+
+                                                <h2 class="font-bold text-xl">
+                                                    "Ship Shopping List"
+                                                </h2>
+                                                <pre>
+                                                    {serde_json::to_string_pretty(
+                                                            &shopping_list,
+                                                        )
+                                                        .unwrap_or("---".to_string())}
+                                                </pre>
+                                            </div>
                                             <div class="flex flex-col gap-2">
 
                                                 <h2 class="font-bold text-xl">

@@ -76,7 +76,7 @@ pub struct SystemSpawningFleetConfig {
     pub system_symbol: SystemSymbol,
     pub marketplace_waypoints_of_interest: Vec<WaypointSymbol>,
     pub shipyard_waypoints_of_interest: Vec<WaypointSymbol>,
-    pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub desired_fleet_config: Vec<ShipType>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -84,14 +84,14 @@ pub struct MarketObservationFleetConfig {
     pub system_symbol: SystemSymbol,
     pub marketplace_waypoints_of_interest: Vec<WaypointSymbol>,
     pub shipyard_waypoints_of_interest: Vec<WaypointSymbol>,
-    pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub desired_fleet_config: Vec<ShipType>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TradingFleetConfig {
     pub system_symbol: SystemSymbol,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
-    pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub desired_fleet_config: Vec<ShipType>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -99,7 +99,7 @@ pub struct ConstructJumpGateFleetConfig {
     pub system_symbol: SystemSymbol,
     pub jump_gate_waypoint: WaypointSymbol,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
-    pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub desired_fleet_config: Vec<ShipType>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -109,7 +109,7 @@ pub struct MiningFleetConfig {
     pub materials: Vec<TradeGoodSymbol>,
     pub delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
-    pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub desired_fleet_config: Vec<ShipType>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -119,7 +119,7 @@ pub struct SiphoningFleetConfig {
     pub materials: Vec<TradeGoodSymbol>,
     pub delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
-    pub desired_fleet_config: Vec<(ShipType, u32)>,
+    pub desired_fleet_config: Vec<ShipType>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
