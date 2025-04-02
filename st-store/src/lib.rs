@@ -6,6 +6,7 @@ pub mod db_model_manager;
 pub mod fleet_bmc;
 pub mod market_bmc;
 pub mod ship_bmc;
+pub mod shipyard_bmc;
 pub mod status_bmc;
 pub mod system_bmc;
 

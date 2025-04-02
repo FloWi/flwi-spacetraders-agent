@@ -11,6 +11,7 @@ use crate::st_client::{StClient, StClientTrait};
 use anyhow::{anyhow, Error, Result};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
+use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use sqlx::__rt::JoinHandle;
 use sqlx::{Pool, Postgres};
@@ -20,9 +21,10 @@ use st_domain::FleetTask::{
 };
 use st_domain::FleetUpdateMessage::FleetTaskCompleted;
 use st_domain::{
-    Agent, ConstructJumpGateFleetConfig, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion,
-    FleetsOverview, GetConstructionResponse, MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, PurchaseTicket, Ship, ShipFrameSymbol,
-    ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradingFleetConfig, WaypointSymbol,
+    Agent, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask,
+    FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig,
+    PurchaseGoodTicketDetails, PurchaseReason, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, ShipType,
+    SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradeTicket, TradingFleetConfig, WaypointSymbol,
 };
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, AgentBmc, ConstructionBmc, Ctx, DbModelManager, FleetBmc, ShipBmc,
@@ -36,6 +38,7 @@ use strum_macros::Display;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tracing::{event, span, Level};
+use uuid::Uuid;
 
 struct FleetRunner {
     ship_fibers: HashMap<ShipSymbol, tokio::task::JoinHandle<Result<()>>>,
@@ -283,12 +286,58 @@ pub struct FleetAdmiral {
     pub ship_tasks: HashMap<ShipSymbol, ShipTask>,
     pub fleet_tasks: HashMap<FleetId, Vec<FleetTask>>,
     pub ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
-    pub ship_purchase_tickets: HashMap<ShipSymbol, Vec<PurchaseTicket>>,
     pub agent_info: Agent,
     pub fleet_phase: FleetPhase,
+    pub active_trades: HashMap<ShipSymbol, TradeTicket>,
 }
 
 impl FleetAdmiral {
+    pub(crate) fn assign_ship_purchase_ticket_if_possible(&mut self, details: &PurchaseShipTicketDetails) {
+        // TODO: run by budget master, but for now we trust the fleets
+        if self.active_trades.contains_key(&details.ship_symbol) {
+            event!(
+                Level::WARN,
+                "Tried to insert a PurchaseShipTicket for {}, but it already had a ticket assigned",
+                &details.ship_symbol.0
+            );
+        } else {
+            self.active_trades.insert(details.ship_symbol.clone(), TradeTicket::PurchaseShipTicket { details: details.clone() });
+        }
+    }
+
+    pub(crate) fn assign_trading_tickets_if_possible(&mut self, trading_opportunities_within_budget: &[EvaluatedTradingOpportunity]) {
+        for opp in trading_opportunities_within_budget.iter() {
+            let ticket = TradeTicket::TradeCargo {
+                purchase_completion_status: vec![(PurchaseGoodTicketDetails::from_trading_opportunity(&opp), false)],
+                sale_completion_status: vec![(SellGoodTicketDetails::from_trading_opportunity(&opp), false)],
+                evaluation_result: vec![opp.clone()],
+            };
+            self.active_trades.insert(opp.ship_symbol.clone(), ticket);
+        }
+    }
+
+    pub fn get_next_ship_purchase(&self) -> Option<ShipType> {
+        let mapping = role_to_ship_type_mapping();
+
+        let mut current_ship_types: HashMap<ShipType, u32> = HashMap::new();
+
+        for (_, s) in self.all_ships.iter() {
+            let ship_type = mapping.get(&s.frame.symbol).expect("role_to_ship_type_mapping");
+            current_ship_types.entry(*ship_type).and_modify(|counter| *counter += 1).or_insert(1);
+        }
+
+        for (ship_type, _) in self.fleet_phase.shopping_list_in_order.iter() {
+            let num_of_ships_left = current_ship_types.get(&ship_type).unwrap_or(&0);
+            if num_of_ships_left.is_zero() {
+                return Some(*ship_type);
+            } else {
+                // we already have this ship - continue
+                current_ship_types.entry(*ship_type).and_modify(|counter| *counter -= 1);
+            }
+        }
+        None
+    }
+
     pub(crate) fn get_ship_tasks_of_fleet(&self, fleet: &Fleet) -> Vec<(ShipSymbol, ShipTask)> {
         self.get_ships_of_fleet(fleet).iter().flat_map(|ss| self.get_task_of_ship(&ss.symbol).map(|st| (ss.symbol.clone(), st.clone()))).collect_vec()
     }
@@ -299,32 +348,52 @@ impl FleetAdmiral {
         let number_of_fleets = self.fleets.len();
         let budget_per_fleet = self.agent_info.credits / number_of_fleets as i64;
 
-        let fleet_budget: u64 = self.fleet_phase.calculate_budget_for_fleet(&self.agent_info, fleet, &self.fleets);
+        let fleet_budget: u64 = self.calculate_budget_for_fleet(&self.agent_info, fleet, &self.fleets);
         fleet_budget
     }
 
-    pub(crate) fn get_allocated_budget_of_fleet(&self, fleet: &Fleet) -> u64 {
-        self.get_ships_of_fleet(fleet)
-            .iter()
-            .flat_map(|ship| self.ship_purchase_tickets.get(&ship.symbol).cloned().unwrap_or_default())
-            .map(|purchase_ticket| match purchase_ticket {
-                PurchaseTicket::PurchaseCargoTicket { details } => details.allocated_credits,
-                PurchaseTicket::PurchaseShipTicket { details } => details.allocated_credits,
-                PurchaseTicket::RefuelShip { details, .. } => details.allocated_credits,
+    pub fn calculate_budget_for_fleet(&self, agent: &Agent, fleet: &Fleet, fleets: &HashMap<FleetId, Fleet>) -> u64 {
+        match self.fleet_phase.name {
+            FleetPhaseName::InitialExploration => 0,
+            FleetPhaseName::ConstructJumpGate => match fleet.cfg {
+                FleetConfig::ConstructJumpGateCfg(_) => {
+                    if agent.credits < 0 {
+                        0
+                    } else {
+                        agent.credits as u64
+                    }
+                }
+                _ => 0,
+            },
+            FleetPhaseName::TradeProfitably => 0,
+        }
+    }
+
+    fn sum_allocated_tickets<'a, I>(trade_tickets: I) -> u64
+    where
+        I: IntoIterator<Item = &'a TradeTicket>,
+    {
+        trade_tickets
+            .into_iter()
+            .map(|trade_ticket| match trade_ticket {
+                TradeTicket::PurchaseShipTicket { details } => details.allocated_credits,
+                TradeTicket::RefuelShip { details, .. } => details.allocated_credits,
+                TradeTicket::TradeCargo {
+                    purchase_completion_status, ..
+                } => purchase_completion_status.iter().filter_map(|(ticket, is_completed)| (!is_completed).then_some(ticket.allocated_credits)).sum(),
+                TradeTicket::DeliverConstructionMaterials { purchase_completion_status } => {
+                    purchase_completion_status.iter().filter_map(|(ticket, is_completed)| (!is_completed).then_some(ticket.allocated_credits)).sum()
+                }
             })
             .sum()
     }
 
+    pub(crate) fn get_allocated_budget_of_fleet(&self, fleet: &Fleet) -> u64 {
+        Self::sum_allocated_tickets(self.get_ships_of_fleet(fleet).iter().flat_map(|ship| self.active_trades.get(&ship.symbol)))
+    }
+
     pub(crate) fn get_total_allocated_budget(&self) -> u64 {
-        self.ship_purchase_tickets
-            .values()
-            .flatten()
-            .map(|purchase_ticket| match purchase_ticket {
-                PurchaseTicket::PurchaseCargoTicket { details } => details.allocated_credits,
-                PurchaseTicket::PurchaseShipTicket { details } => details.allocated_credits,
-                PurchaseTicket::RefuelShip { details, .. } => details.allocated_credits,
-            })
-            .sum()
+        Self::sum_allocated_tickets(self.active_trades.values())
     }
 
     pub async fn run_fleets(fleet_admiral: Arc<Mutex<FleetAdmiral>>, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<()> {
@@ -439,9 +508,9 @@ impl FleetAdmiral {
                 ship_tasks: overview.ship_tasks,
                 fleet_tasks: fleet_task_map,
                 ship_fleet_assignment,
-                ship_purchase_tickets: Default::default(),
                 agent_info,
                 fleet_phase,
+                active_trades: Default::default(),
             };
 
             Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
@@ -493,9 +562,9 @@ impl FleetAdmiral {
             fleet_tasks: fleet_task_map,
             ship_tasks: Default::default(),
             ship_fleet_assignment,
-            ship_purchase_tickets: Default::default(),
             agent_info,
             fleet_phase,
+            active_trades: Default::default(),
         };
 
         let _ = Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
@@ -838,7 +907,6 @@ fn compute_ship_shopping_list(
     fleets: &[Fleet],
     fleet_task_map: HashMap<FleetId, Vec<FleetTask>>,
 ) {
-
     /*
     purchase list
 

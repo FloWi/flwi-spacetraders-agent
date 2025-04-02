@@ -3938,6 +3938,7 @@ dependencies = [
  "utoipa-rapidoc",
  "utoipa-redoc",
  "utoipa-swagger-ui",
+ "uuid",
 ]
 
 [[package]]

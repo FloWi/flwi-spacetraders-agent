@@ -50,17 +50,18 @@ pub struct ShipTransaction {}
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct ShipyardShip {
-    name: String,
-    description: String,
-    supply: SupplyLevel,
-    activity: ActivityLevel,
-    purchase_price: u32,
-    frame: Frame,
-    reactor: Reactor,
-    engine: Engine,
-    modules: Vec<Module>,
-    mounts: Vec<Mount>,
-    crew: ShipyardShipCrew,
+    pub name: String,
+    pub r#type: ShipType,
+    pub description: String,
+    pub supply: SupplyLevel,
+    pub activity: ActivityLevel,
+    pub purchase_price: u32,
+    pub frame: Frame,
+    pub reactor: Reactor,
+    pub engine: Engine,
+    pub modules: Vec<Module>,
+    pub mounts: Vec<Mount>,
+    pub crew: ShipyardShipCrew,
 }
 
 pub type CreateChartResponse = Data<CreateChartBody>;

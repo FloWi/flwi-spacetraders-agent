@@ -1,4 +1,7 @@
-use crate::{Agent, GetConstructionResponseData, MaterializedSupplyChain, Ship, ShipSymbol, ShipType, SystemSymbol, TradeGoodSymbol, WaypointSymbol};
+use crate::{
+    Agent, EvaluatedTradingOpportunity, GetConstructionResponseData, MaterializedSupplyChain, Ship, ShipSymbol, ShipType, ShipyardShip, SystemSymbol,
+    TradeGoodSymbol, WaypointSymbol,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -49,13 +52,19 @@ pub enum RefuelingType {
     RefuelDirectly,
     StoreFuelBarrelsInCargo,
 }
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum PurchaseTicket {
-    PurchaseCargoTicket {
-        details: PurchaseGoodTicketDetails,
+pub enum TradeTicket {
+    TradeCargo {
+        purchase_completion_status: Vec<(PurchaseGoodTicketDetails, bool)>,
+        sale_completion_status: Vec<(SellGoodTicketDetails, bool)>,
+        evaluation_result: Vec<EvaluatedTradingOpportunity>,
+    },
+    DeliverConstructionMaterials {
+        purchase_completion_status: Vec<(PurchaseGoodTicketDetails, bool)>,
     },
     PurchaseShipTicket {
-        details: PurchaseShipTicket,
+        details: PurchaseShipTicketDetails,
     },
     RefuelShip {
         details: PurchaseGoodTicketDetails,
@@ -75,8 +84,49 @@ pub struct PurchaseGoodTicketDetails {
     pub purchase_reason: PurchaseReason,
 }
 
+impl PurchaseGoodTicketDetails {
+    pub fn from_trading_opportunity(opp: &EvaluatedTradingOpportunity) -> PurchaseGoodTicketDetails {
+        let purchase_mtg = &opp.trading_opportunity.purchase_market_trade_good_entry;
+        PurchaseGoodTicketDetails {
+            ticket_id: Uuid::new_v4(),
+            ship_symbol: opp.ship_symbol.clone(),
+            waypoint_symbol: opp.trading_opportunity.purchase_waypoint_symbol.clone(),
+            trade_good: purchase_mtg.symbol.clone(),
+            quantity: opp.units,
+            price_per_unit: purchase_mtg.purchase_price as u64,
+            allocated_credits: purchase_mtg.purchase_price as u64 * opp.units as u64,
+            purchase_reason: PurchaseReason::Trading,
+        }
+    }
+}
+
+impl SellGoodTicketDetails {
+    pub fn from_trading_opportunity(opp: &EvaluatedTradingOpportunity) -> SellGoodTicketDetails {
+        let sell_mtg = &opp.trading_opportunity.sell_market_trade_good_entry;
+
+        SellGoodTicketDetails {
+            ticket_id: Uuid::new_v4(),
+            ship_symbol: opp.ship_symbol.clone(),
+            waypoint_symbol: opp.trading_opportunity.purchase_waypoint_symbol.clone(),
+            trade_good: sell_mtg.symbol.clone(),
+            quantity: opp.units,
+            price_per_unit: sell_mtg.sell_price as u64,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct PurchaseShipTicket {
+pub struct SellGoodTicketDetails {
+    pub ticket_id: Uuid,
+    pub ship_symbol: ShipSymbol,
+    pub waypoint_symbol: WaypointSymbol,
+    pub trade_good: TradeGoodSymbol,
+    pub quantity: u32,
+    pub price_per_unit: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PurchaseShipTicketDetails {
     pub ticket_id: Uuid,
     pub ship_symbol: ShipSymbol,
     pub waypoint_symbol: WaypointSymbol,
@@ -96,7 +146,7 @@ pub enum PurchaseReason {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ShipTask {
-    PurchaseShip { ticket: PurchaseShipTicket },
+    PurchaseShip { ticket: PurchaseShipTicketDetails },
 
     ObserveWaypointDetails { waypoint_symbol: WaypointSymbol },
 
@@ -222,21 +272,7 @@ pub struct FleetPhase {
     pub tasks: Vec<FleetTask>,
 }
 
-impl FleetPhase {
-    pub fn calculate_budget_for_fleet(&self, agent: &Agent, fleet: &Fleet, fleets: &HashMap<FleetId, Fleet>) -> u64 {
-        match self.name {
-            FleetPhaseName::InitialExploration => 0,
-            FleetPhaseName::ConstructJumpGate => match fleet.cfg {
-                FleetConfig::ConstructJumpGateCfg(_) => {
-                    if agent.credits < 0 {
-                        0
-                    } else {
-                        agent.credits as u64
-                    }
-                }
-                _ => 0,
-            },
-            FleetPhaseName::TradeProfitably => 0,
-        }
-    }
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ShipPriceInfo {
+    pub price_infos: Vec<(WaypointSymbol, Vec<ShipyardShip>)>,
 }
