@@ -3,7 +3,7 @@ use leptos::prelude::{RwSignal, Signal};
 use leptos::{component, IntoView};
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
-use st_domain::{ActivityLevel, SupplyLevel, TradeGoodType, TradingOpportunity, WaypointSymbol};
+use st_domain::{ActivityLevel, EvaluatedTradingOpportunity, SupplyLevel, TradeGoodType, TradingOpportunity, WaypointSymbol};
 
 #[derive(Serialize, Deserialize, Clone, Debug, TableRow)]
 #[table(impl_vec_data_provider, sortable, classes_provider = "TailwindClassesPreset")]
@@ -71,7 +71,7 @@ impl From<TradingOpportunity> for TradingOpportunityRow {
             sell_activity: opportunity.sell_market_trade_good_entry.activity,
             sell_price: opportunity.sell_market_trade_good_entry.sell_price,
 
-            profit: opportunity.profit,
+            profit: opportunity.profit_per_unit,
         }
     }
 }

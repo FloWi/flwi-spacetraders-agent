@@ -1,8 +1,9 @@
 use crate::supply_chain::RawMaterialSourceType::{Extraction, Siphoning};
 use crate::{
-    ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, TradeGoodSymbol, TradeGoodType, Waypoint,
-    WaypointSymbol, WaypointType,
+    ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, TradeGoodSymbol, TradeGoodType,
+    Waypoint, WaypointSymbol, WaypointType,
 };
+use chrono::Duration;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -124,7 +125,7 @@ graph LR
 pub fn materialize_supply_chain(
     supply_chain: &SupplyChain,
     market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
-    waypoints: &[Waypoint],
+    waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
     maybe_construction_site: &Option<GetConstructionResponse>,
     goods_of_interest: &[TradeGoodSymbol],
 ) -> MaterializedSupplyChain {
@@ -143,7 +144,7 @@ pub fn materialize_supply_chain(
         })
         .join("\n");
 
-    let raw_delivery_routes = compute_raw_delivery_routes(market_data, waypoints, missing_construction_materials, goods_of_interest, supply_chain);
+    let raw_delivery_routes = compute_raw_delivery_routes(market_data, waypoint_map, missing_construction_materials, goods_of_interest, supply_chain);
 
     MaterializedSupplyChain {
         explanation: format!(
@@ -151,14 +152,14 @@ pub fn materialize_supply_chain(
 {completion_explanation}
 "#,
         ),
-        trading_opportunities: crate::trading::find_trading_opportunities(&market_data, &waypoints),
+        trading_opportunities: crate::trading::find_trading_opportunities(&market_data, waypoint_map),
         raw_delivery_routes,
     }
 }
 
 pub fn compute_raw_delivery_routes(
     market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
-    waypoints_of_system: &[Waypoint],
+    waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
     missing_construction_materials: Vec<&ConstructionMaterial>,
     goods_of_interest: &[TradeGoodSymbol],
     supply_chain: &SupplyChain,
@@ -183,7 +184,7 @@ pub fn compute_raw_delivery_routes(
     let end_products = outputs.iter().filter(|t| intermediates.contains(t).not() && inputs.contains(t).not()).cloned().collect::<HashSet<_>>();
 
     let source_type_map: HashMap<TradeGoodSymbol, RawMaterialSourceType> = get_raw_material_source();
-    let source_waypoints: HashMap<RawMaterialSourceType, Vec<Waypoint>> = get_sourcing_waypoints(waypoints_of_system);
+    let source_waypoints: HashMap<RawMaterialSourceType, Vec<Waypoint>> = get_sourcing_waypoints(waypoint_map);
 
     let raw_material_sources: Vec<RawMaterialSource> = raw_materials
         .iter()
@@ -256,11 +257,11 @@ pub fn compute_raw_delivery_routes(
             let source_waypoint = raw_material_sources
                 .iter()
                 .find(|rms| rms.trade_good == raw_material.clone())
-                .and_then(|rms| waypoints_of_system.iter().find(|wp| wp.symbol == rms.source_waypoint))
+                .and_then(|rms| waypoint_map.get(&rms.source_waypoint))
                 .expect("Should find waypoint");
 
             let delivery_markets_with_distances = delivery_markets.iter().map(|(mtg, wps)| {
-                let waypoint = waypoints_of_system.iter().find(|wp| wp.symbol == *wps).expect("Should find waypoint");
+                let waypoint = waypoint_map.get(wps).expect("Should find waypoint");
                 let distance = waypoint.distance_to(source_waypoint);
                 (mtg.clone(), wps.clone(), distance)
             });
@@ -375,19 +376,20 @@ pub fn get_raw_material_source() -> HashMap<TradeGoodSymbol, RawMaterialSourceTy
     ])
 }
 
-pub fn get_sourcing_waypoints(waypoints: &[Waypoint]) -> HashMap<RawMaterialSourceType, Vec<Waypoint>> {
+pub fn get_sourcing_waypoints(waypoint_map: &HashMap<WaypointSymbol, &Waypoint>) -> HashMap<RawMaterialSourceType, Vec<Waypoint>> {
     [Extraction, Siphoning]
         .into_iter()
         .map(|source| {
-            let relevant_waypoints = waypoints
-                .iter()
+            let relevant_waypoints = waypoint_map
+                .values()
                 .filter(|wp| match source {
                     Extraction => wp.r#type == WaypointType::ENGINEERED_ASTEROID,
                     Siphoning => wp.r#type == WaypointType::GAS_GIANT,
                 })
                 .cloned()
+                .cloned()
                 .collect_vec();
-            (source, relevant_waypoints)
+            (source, relevant_waypoints.iter().cloned().collect())
         })
         .collect()
 }
@@ -419,5 +421,17 @@ pub struct TradingOpportunity {
     pub purchase_market_trade_good_entry: MarketTradeGood,
     pub sell_waypoint_symbol: WaypointSymbol,
     pub sell_market_trade_good_entry: MarketTradeGood,
-    pub profit: u64,
+    pub direct_distance: u32,
+    pub profit_per_unit: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct EvaluatedTradingOpportunity {
+    pub ship_symbol: ShipSymbol,
+    pub distance_to_start: u32,
+    pub total_distance: u32,
+    pub total_profit: u64,
+    pub profit_per_distance_unit: u64,
+    pub units: u32,
+    pub trading_opportunity: TradingOpportunity,
 }

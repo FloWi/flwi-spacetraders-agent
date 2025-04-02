@@ -3,7 +3,6 @@ use crate::pathfinder::pathfinder::TravelAction;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::Local;
-use sqlx::{Pool, Postgres};
 use st_domain::{JumpGate, MarketData, Shipyard, Waypoint, WaypointSymbol, WaypointTraitSymbol, WaypointType};
 use st_store::{
     insert_jump_gates, insert_market_data, insert_shipyards, select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints,

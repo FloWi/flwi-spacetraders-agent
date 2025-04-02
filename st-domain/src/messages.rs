@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use strum_macros::Display;
+use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum FleetUpdateMessage {
@@ -43,32 +44,70 @@ pub struct FleetDecisionFacts {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum RefuelingType {
+    RefuelDirectly,
+    StoreFuelBarrelsInCargo,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum PurchaseTicket {
+    PurchaseCargoTicket {
+        details: PurchaseGoodTicketDetails,
+    },
+    PurchaseShipTicket {
+        details: PurchaseShipTicket,
+    },
+    RefuelShip {
+        details: PurchaseGoodTicketDetails,
+        refueling_type: RefuelingType,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PurchaseGoodTicketDetails {
+    pub ticket_id: Uuid,
+    pub ship_symbol: ShipSymbol,
+    pub waypoint_symbol: WaypointSymbol,
+    pub trade_good: TradeGoodSymbol,
+    pub quantity: u32,
+    pub price_per_unit: u64,
+    pub allocated_credits: u64,
+    pub purchase_reason: PurchaseReason,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PurchaseShipTicket {
+    pub ticket_id: Uuid,
+    pub ship_symbol: ShipSymbol,
+    pub waypoint_symbol: WaypointSymbol,
+    pub ship_type: ShipType,
+    pub price: u64,
+    pub allocated_credits: u64,
+    pub assigned_fleet_id: FleetId,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum PurchaseReason {
+    Trading,
+    ConstructionSiteSupply,
+    ContractFulfilment,
+    ShipUpgrade,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ShipTask {
-    PurchaseShip {
-        r#type: ShipType,
-        max_amount: u32,
-        waypoint_symbol: WaypointSymbol,
-    },
+    PurchaseShip { ticket: PurchaseShipTicket },
 
-    ObserveWaypointDetails {
-        waypoint_symbol: WaypointSymbol,
-    },
+    ObserveWaypointDetails { waypoint_symbol: WaypointSymbol },
 
-    ObserveAllWaypointsOnce {
-        waypoint_symbols: Vec<WaypointSymbol>,
-    },
+    ObserveAllWaypointsOnce { waypoint_symbols: Vec<WaypointSymbol> },
 
-    MineMaterialsAtWaypoint {
-        mining_waypoint: WaypointSymbol,
-    },
+    MineMaterialsAtWaypoint { mining_waypoint: WaypointSymbol },
 
-    DeliverMaterials {
-        delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
-    },
+    DeliverGoods { tickets: Vec<PurchaseGoodTicketDetails> },
 
-    SurveyAsteroid {
-        waypoint_symbol: WaypointSymbol,
-    },
+    PurchaseGoods { purchase_tickets: Vec<PurchaseGoodTicketDetails> },
+
+    SurveyAsteroid { waypoint_symbol: WaypointSymbol },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

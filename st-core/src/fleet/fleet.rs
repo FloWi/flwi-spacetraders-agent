@@ -21,8 +21,8 @@ use st_domain::FleetTask::{
 use st_domain::FleetUpdateMessage::FleetTaskCompleted;
 use st_domain::{
     ConstructJumpGateFleetConfig, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetTask, FleetTaskCompletion, FleetsOverview, GetConstructionResponse,
-    MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
-    SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradingFleetConfig, WaypointSymbol,
+    MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, PurchaseTicket, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, ShipType,
+    SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradingFleetConfig, WaypointSymbol,
 };
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, ConstructionBmc, Ctx, DbModelManager, FleetBmc, ShipBmc, SystemBmc,
@@ -151,8 +151,9 @@ impl FleetRunner {
                 Some(behaviors.explorer_behavior)
             }
             ShipTask::MineMaterialsAtWaypoint { .. } => None,
-            ShipTask::DeliverMaterials { .. } => None,
+            ShipTask::DeliverGoods { .. } => None,
             ShipTask::SurveyAsteroid { .. } => None,
+            ShipTask::PurchaseGoods { .. } => todo!(),
         };
 
         match maybe_behavior {
@@ -275,16 +276,59 @@ pub enum ShipStatusReport {
 }
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct FleetAdmiral {
-    completed_fleet_tasks: Vec<FleetTaskCompletion>,
-    fleets: HashMap<FleetId, Fleet>,
-    all_ships: HashMap<ShipSymbol, Ship>,
-    pub(crate) ship_tasks: HashMap<ShipSymbol, ShipTask>,
-    fleet_tasks: HashMap<FleetId, Vec<FleetTask>>,
-    ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
+    pub completed_fleet_tasks: Vec<FleetTaskCompletion>,
+    pub fleets: HashMap<FleetId, Fleet>,
+    pub all_ships: HashMap<ShipSymbol, Ship>,
+    pub ship_tasks: HashMap<ShipSymbol, ShipTask>,
+    pub fleet_tasks: HashMap<FleetId, Vec<FleetTask>>,
+    pub ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
     pub shopping_list_in_order: Vec<(ShipType, FleetTask)>,
+    pub ship_purchase_tickets: HashMap<ShipSymbol, Vec<PurchaseTicket>>,
+    pub current_credits: i64,
 }
 
 impl FleetAdmiral {
+    pub(crate) fn get_ship_tasks_of_fleet(&self, fleet: &Fleet) -> Vec<(ShipSymbol, ShipTask)> {
+        self.get_ships_of_fleet(fleet).iter().flat_map(|ss| self.get_task_of_ship(&ss.symbol).map(|st| (ss.symbol.clone(), st.clone()))).collect_vec()
+    }
+
+    pub(crate) fn get_total_budget_for_fleet(&self, fleet: &Fleet) -> u64 {
+        // todo: take into account what the fleet still has to do
+        // e.g. a fully equipped market_observation_fleet (probes at all locations) doesn't need any budget
+        let number_of_fleets = self.fleets.len();
+        let budget_per_fleet = self.current_credits / number_of_fleets as i64;
+
+        if budget_per_fleet > 0 {
+            budget_per_fleet as u64
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn get_allocated_budget_of_fleet(&self, fleet: &Fleet) -> u64 {
+        self.get_ships_of_fleet(fleet)
+            .iter()
+            .flat_map(|ship| self.ship_purchase_tickets.get(&ship.symbol).cloned().unwrap_or_default())
+            .map(|purchase_ticket| match purchase_ticket {
+                PurchaseTicket::PurchaseCargoTicket { details } => details.allocated_credits,
+                PurchaseTicket::PurchaseShipTicket { details } => details.allocated_credits,
+                PurchaseTicket::RefuelShip { details, .. } => details.allocated_credits,
+            })
+            .sum()
+    }
+
+    pub(crate) fn get_total_allocated_budget(&self) -> u64 {
+        self.ship_purchase_tickets
+            .values()
+            .flatten()
+            .map(|purchase_ticket| match purchase_ticket {
+                PurchaseTicket::PurchaseCargoTicket { details } => details.allocated_credits,
+                PurchaseTicket::PurchaseShipTicket { details } => details.allocated_credits,
+                PurchaseTicket::RefuelShip { details, .. } => details.allocated_credits,
+            })
+            .sum()
+    }
+
     pub async fn run_fleets(fleet_admiral: Arc<Mutex<FleetAdmiral>>, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
@@ -392,9 +436,11 @@ impl FleetAdmiral {
                 fleet_tasks: fleet_task_map,
                 ship_fleet_assignment,
                 shopping_list_in_order,
+                ship_purchase_tickets: Default::default(),
+                current_credits: 0,
             };
 
-            Self::compute_ship_tasks(&mut admiral, &facts).await?;
+            Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
 
             let _ = FleetBmc::store_fleets_data(
                 &Ctx::Anonymous,
@@ -441,14 +487,16 @@ impl FleetAdmiral {
             ship_tasks: Default::default(),
             ship_fleet_assignment,
             shopping_list_in_order,
+            ship_purchase_tickets: Default::default(),
+            current_credits: 0,
         };
 
-        let _ = Self::compute_ship_tasks(&mut admiral, &facts).await?;
+        let _ = Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
 
         Ok(admiral)
     }
 
-    async fn compute_ship_tasks(admiral: &mut FleetAdmiral, facts: &FleetDecisionFacts) -> Result<()> {
+    async fn compute_ship_tasks(admiral: &mut FleetAdmiral, facts: &FleetDecisionFacts, mm: &DbModelManager) -> Result<()> {
         for (fleet_id, fleet) in admiral.fleets.clone().iter() {
             match &fleet.cfg {
                 FleetConfig::SystemSpawningCfg(cfg) => {
@@ -464,7 +512,7 @@ impl FleetAdmiral {
                     }
                 }
                 FleetConfig::ConstructJumpGateCfg(cfg) => {
-                    let ship_tasks = ConstructJumpGateFleet::compute_ship_tasks(admiral, cfg, fleet, facts).await?;
+                    let ship_tasks = ConstructJumpGateFleet::compute_ship_tasks(admiral, cfg, fleet, facts, mm).await?;
                     for (ss, task) in ship_tasks {
                         admiral.ship_tasks.insert(ss, task);
                     }

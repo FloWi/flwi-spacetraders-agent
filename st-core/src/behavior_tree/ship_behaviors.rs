@@ -48,6 +48,7 @@ pub struct Behaviors {
     pub refuel_behavior: Behavior<ShipAction>,
     pub explorer_behavior: Behavior<ShipAction>,
     pub stationary_probe_behavior: Behavior<ShipAction>,
+    pub trading_behavior: Behavior<ShipAction>,
 }
 
 impl Behaviors {
@@ -207,6 +208,8 @@ pub fn ship_behaviors() -> Behaviors {
         ),
     ]);
 
+    let mut trading_behavior = Behavior::new_sequence(vec![]);
+
     Behaviors {
         wait_for_arrival_bt: wait_for_arrival_bt.update_indices().clone(),
         orbit_if_necessary: orbit_if_necessary.update_indices().clone(),
@@ -216,6 +219,7 @@ pub fn ship_behaviors() -> Behaviors {
         navigate_to_destination: navigate_to_destination.update_indices().clone(),
         explorer_behavior: explorer_behavior.update_indices().clone(),
         stationary_probe_behavior: stationary_probe_behavior.update_indices().clone(),
+        trading_behavior: trading_behavior.update_indices().clone(),
     }
 }
 

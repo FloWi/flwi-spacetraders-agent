@@ -1,13 +1,16 @@
+use crate::components::clipboard_button::ClipboardButton;
 use crate::trading_opportunity_table::TradingOpportunityRow;
 use itertools::Itertools;
 use leptos::prelude::*;
 use leptos_meta::Title;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
+use st_domain::trading::evaluate_trading_opportunities;
 use st_domain::{
-    find_complete_supply_chain, trade_map, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt,
-    TradeGoodSymbol, WaypointSymbol,
+    find_complete_supply_chain, trade_map, EvaluatedTradingOpportunity, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain,
+    SupplyChainNodeVecExt, TradeGoodSymbol, Waypoint, WaypointSymbol,
 };
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RelevantMarketData {
@@ -18,9 +21,21 @@ pub struct RelevantMarketData {
 #[server]
 async fn get_supply_chain_data(
     goods_of_interest: Vec<TradeGoodSymbol>,
-) -> Result<(SupplyChain, Vec<RelevantMarketData>, Option<GetConstructionResponse>, MaterializedSupplyChain), ServerFnError> {
+) -> Result<
+    (
+        SupplyChain,
+        Vec<(WaypointSymbol, Vec<MarketTradeGood>)>,
+        Option<GetConstructionResponse>,
+        MaterializedSupplyChain,
+        Vec<EvaluatedTradingOpportunity>,
+        Vec<EvaluatedTradingOpportunity>,
+    ),
+    ServerFnError,
+> {
     use st_core;
+    use st_domain::trading;
     use st_store::db;
+    use st_store::ShipBmc;
 
     use st_store::{AgentBmc, ConstructionBmc, Ctx, MarketBmc, SystemBmc};
 
@@ -32,30 +47,39 @@ async fn get_supply_chain_data(
     let agent = AgentBmc::get_initial_agent(&Ctx::Anonymous, &mm).await.expect("get_initial_agent");
     let headquarters_waypoint = WaypointSymbol(agent.headquarters);
 
-    let market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol().0).await.expect("status");
+    let market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, &mm, &headquarters_waypoint.system_symbol()).await.expect("status");
 
-    let relevant_market_data: Vec<RelevantMarketData> = market_data
-        .iter()
-        .map(|md| RelevantMarketData {
-            waypoint_symbol: md.symbol.clone(),
-            trade_goods: md.trade_goods.clone().unwrap_or_default(),
-        })
-        .collect_vec();
+    let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
 
     let maybe_construction_site =
         ConstructionBmc::get_construction_site_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol()).await.expect("construction_site");
 
     let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, &mm, &headquarters_waypoint.system_symbol()).await.expect("waypoints");
 
-    let materialized_supply_chain = st_domain::supply_chain::materialize_supply_chain(
-        &supply_chain,
-        &relevant_market_data.iter().cloned().map(|relevant_md| (relevant_md.waypoint_symbol, relevant_md.trade_goods)).collect_vec(),
-        &waypoints_of_system,
-        &maybe_construction_site,
-        &goods_of_interest,
-    );
+    let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints_of_system.iter().map(|wp| (wp.symbol.clone(), wp)).collect::<HashMap<_, _>>();
 
-    Ok((supply_chain, relevant_market_data, maybe_construction_site, materialized_supply_chain))
+    let materialized_supply_chain =
+        st_domain::supply_chain::materialize_supply_chain(&supply_chain, &market_data, &waypoint_map, &maybe_construction_site, &goods_of_interest);
+
+    let ships = ShipBmc::get_ships(&Ctx::Anonymous, &mm, None).await.expect("Ships");
+
+    let trading_opportunities = trading::find_trading_opportunities(&market_data, &waypoint_map);
+    let cargo_capable_ships = ships.iter().filter(|s| s.cargo.capacity > 0).collect_vec();
+
+    let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
+        trading::evaluate_trading_opportunities(cargo_capable_ships, &waypoint_map, trading_opportunities);
+
+    let active_trades = Vec::new();
+    let trading_decision = trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trades);
+
+    Ok((
+        supply_chain,
+        market_data,
+        maybe_construction_site,
+        materialized_supply_chain,
+        evaluated_trading_opportunities,
+        trading_decision,
+    ))
 }
 
 #[component]
@@ -91,6 +115,8 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                 market_data,
                                                 maybe_construction_site,
                                                 materialized_supply_chain,
+                                                evaluated_trading_opportunities,
+                                                trading_decision,
                                             ),
                                         ) => {
                                             let trading_opportunities_table_data: Vec<
@@ -108,9 +134,48 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                         <h2 class="text-2xl font-bold">"Explanation"</h2>
                                                         <pre>{materialized_supply_chain.explanation}</pre>
                                                         <h2 class="text-2xl font-bold">"Raw Delivery Routes"</h2>
+                                                        <ClipboardButton
+                                                            clipboard_text=serde_json::to_string_pretty(
+                                                                    &materialized_supply_chain.raw_delivery_routes,
+                                                                )
+                                                                .unwrap_or("---".to_string())
+                                                            label="Copy to Clipboard".to_string()
+                                                        />
                                                         <pre>
                                                             {serde_json::to_string_pretty(
                                                                     &materialized_supply_chain.raw_delivery_routes,
+                                                                )
+                                                                .unwrap()}
+                                                        </pre>
+                                                        <h2 class="text-2xl font-bold">
+                                                            "Trading Decision"
+                                                        </h2>
+                                                        <ClipboardButton
+                                                            clipboard_text=serde_json::to_string_pretty(
+                                                                    &trading_decision,
+                                                                )
+                                                                .unwrap_or("---".to_string())
+                                                            label="Copy to Clipboard".to_string()
+                                                        />
+                                                        <pre>
+                                                            {serde_json::to_string_pretty(
+                                                                    &trading_decision,
+                                                                )
+                                                                .unwrap()}
+                                                        </pre>
+                                                        <h2 class="text-2xl font-bold">
+                                                            "Evaluated Trading Opportunities"
+                                                        </h2>
+                                                        <ClipboardButton
+                                                            clipboard_text=serde_json::to_string_pretty(
+                                                                    &evaluated_trading_opportunities,
+                                                                )
+                                                                .unwrap_or("---".to_string())
+                                                            label="Copy to Clipboard".to_string()
+                                                        />
+                                                        <pre>
+                                                            {serde_json::to_string_pretty(
+                                                                    &evaluated_trading_opportunities,
                                                                 )
                                                                 .unwrap()}
                                                         </pre>

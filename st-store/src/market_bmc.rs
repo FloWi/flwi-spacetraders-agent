@@ -5,13 +5,13 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use sqlx::types::Json;
 use sqlx::{Pool, Postgres};
-use st_domain::{MarketData, Ship, StStatusResponse};
+use st_domain::{MarketData, Ship, StStatusResponse, SystemSymbol};
 
 pub struct MarketBmc;
 
 impl MarketBmc {
-    pub async fn get_latest_market_data_for_system(ctx: &Ctx, mm: &DbModelManager, system_symbol: String) -> Result<Vec<MarketData>> {
-        let waypoint_symbol_pattern = format!("{}%", system_symbol);
+    pub async fn get_latest_market_data_for_system(ctx: &Ctx, mm: &DbModelManager, system_symbol: &SystemSymbol) -> Result<Vec<MarketData>> {
+        let waypoint_symbol_pattern = format!("{}%", system_symbol.0);
 
         let market_entriy: Vec<DbMarketEntry> = sqlx::query_as!(
             DbMarketEntry,
