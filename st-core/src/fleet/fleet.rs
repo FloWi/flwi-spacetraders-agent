@@ -20,12 +20,13 @@ use st_domain::FleetTask::{
 };
 use st_domain::FleetUpdateMessage::FleetTaskCompleted;
 use st_domain::{
-    ConstructJumpGateFleetConfig, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetTask, FleetTaskCompletion, FleetsOverview, GetConstructionResponse,
-    MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, PurchaseTicket, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, ShipType,
-    SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradingFleetConfig, WaypointSymbol,
+    Agent, ConstructJumpGateFleetConfig, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion,
+    FleetsOverview, GetConstructionResponse, MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, PurchaseTicket, Ship, ShipFrameSymbol,
+    ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradingFleetConfig, WaypointSymbol,
 };
 use st_store::{
-    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, ConstructionBmc, Ctx, DbModelManager, FleetBmc, ShipBmc, SystemBmc,
+    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, AgentBmc, ConstructionBmc, Ctx, DbModelManager, FleetBmc, ShipBmc,
+    SystemBmc,
 };
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
@@ -282,9 +283,9 @@ pub struct FleetAdmiral {
     pub ship_tasks: HashMap<ShipSymbol, ShipTask>,
     pub fleet_tasks: HashMap<FleetId, Vec<FleetTask>>,
     pub ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
-    pub shopping_list_in_order: Vec<(ShipType, FleetTask)>,
     pub ship_purchase_tickets: HashMap<ShipSymbol, Vec<PurchaseTicket>>,
-    pub current_credits: i64,
+    pub agent_info: Agent,
+    pub fleet_phase: FleetPhase,
 }
 
 impl FleetAdmiral {
@@ -296,13 +297,10 @@ impl FleetAdmiral {
         // todo: take into account what the fleet still has to do
         // e.g. a fully equipped market_observation_fleet (probes at all locations) doesn't need any budget
         let number_of_fleets = self.fleets.len();
-        let budget_per_fleet = self.current_credits / number_of_fleets as i64;
+        let budget_per_fleet = self.agent_info.credits / number_of_fleets as i64;
 
-        if budget_per_fleet > 0 {
-            budget_per_fleet as u64
-        } else {
-            0
-        }
+        let fleet_budget: u64 = self.fleet_phase.calculate_budget_for_fleet(&self.agent_info, fleet, &self.fleets);
+        fleet_budget
     }
 
     pub(crate) fn get_allocated_budget_of_fleet(&self, fleet: &Fleet) -> u64 {
@@ -390,6 +388,10 @@ impl FleetAdmiral {
     }
 
     pub async fn load_or_create(mm: &DbModelManager, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
+        //make sure we have up-to-date agent info
+        let agent = client.get_agent().await?;
+        AgentBmc::store_agent(&Ctx::Anonymous, mm, &agent.data).await?;
+
         match Self::load_admiral(mm).await? {
             None => {
                 let admiral = Self::create(mm, system_symbol, Arc::clone(&client)).await?;
@@ -422,11 +424,13 @@ impl FleetAdmiral {
 
             // recompute ship-tasks and persist them. Might have been outdated since last agent restart
             let facts = collect_fleet_decision_facts(mm, &system_symbol).await?;
-            let (fleets, fleet_tasks, shopping_list_in_order) = compute_fleets_with_tasks(system_symbol, &overview.completed_fleet_tasks, &facts);
+            let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(system_symbol, &overview.completed_fleet_tasks, &facts);
             let mut fleet_map: HashMap<FleetId, Fleet> = fleets.iter().map(|f| (f.id.clone(), f.clone())).collect();
             let fleet_task_map: HashMap<FleetId, Vec<FleetTask>> = fleet_tasks.iter().map(|(fleet_id, task)| (fleet_id.clone(), vec![task.clone()])).collect();
 
-            let ship_fleet_assignment = Self::assign_ships(&fleet_tasks, &ship_map, &shopping_list_in_order);
+            let ship_fleet_assignment = Self::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
+
+            let agent_info = AgentBmc::load_agent(&Ctx::Anonymous, mm).await?;
 
             let mut admiral = Self {
                 completed_fleet_tasks: overview.completed_fleet_tasks.clone(),
@@ -435,9 +439,9 @@ impl FleetAdmiral {
                 ship_tasks: overview.ship_tasks,
                 fleet_tasks: fleet_task_map,
                 ship_fleet_assignment,
-                shopping_list_in_order,
                 ship_purchase_tickets: Default::default(),
-                current_credits: 0,
+                agent_info,
+                fleet_phase,
             };
 
             Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
@@ -472,12 +476,15 @@ impl FleetAdmiral {
         let completed_tasks = FleetBmc::load_completed_fleet_tasks(&Ctx::Anonymous, mm).await?;
         let facts = collect_fleet_decision_facts(mm, &system_symbol).await?;
 
-        let (fleets, fleet_tasks, shopping_list_in_order) = compute_fleets_with_tasks(system_symbol, &completed_tasks, &facts);
+        let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(system_symbol, &completed_tasks, &facts);
 
-        let ship_fleet_assignment = Self::assign_ships(&fleet_tasks, &ship_map, &shopping_list_in_order);
+        let ship_fleet_assignment = Self::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
 
         let mut fleet_map: HashMap<FleetId, Fleet> = fleets.into_iter().map(|f| (f.id.clone(), f)).collect();
         let fleet_task_map: HashMap<FleetId, Vec<FleetTask>> = fleet_tasks.into_iter().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
+
+        let agent_info = client.get_agent().await?.data;
+        AgentBmc::store_agent(&Ctx::Anonymous, mm, &agent_info).await?;
 
         let mut admiral = Self {
             completed_fleet_tasks: completed_tasks,
@@ -486,12 +493,22 @@ impl FleetAdmiral {
             fleet_tasks: fleet_task_map,
             ship_tasks: Default::default(),
             ship_fleet_assignment,
-            shopping_list_in_order,
             ship_purchase_tickets: Default::default(),
-            current_credits: 0,
+            agent_info,
+            fleet_phase,
         };
 
         let _ = Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
+
+        FleetBmc::store_fleets_data(
+            &Ctx::Anonymous,
+            mm,
+            &admiral.fleets,
+            &admiral.fleet_tasks,
+            &admiral.ship_fleet_assignment,
+            &admiral.ship_tasks,
+        )
+        .await?;
 
         Ok(admiral)
     }
@@ -616,20 +633,6 @@ pub fn compute_fleet_configs(
             maybe_cfg.map(|cfg| (cfg, t.clone()))
         })
         .collect_vec()
-}
-
-#[derive(Deserialize, Serialize, Debug, Display, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum FleetPhaseName {
-    InitialExploration,
-    ConstructJumpGate,
-    TradeProfitably,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct FleetPhase {
-    name: FleetPhaseName,
-    shopping_list_in_order: Vec<(ShipType, FleetTask)>,
-    tasks: Vec<FleetTask>,
 }
 
 pub fn compute_fleet_phase_with_tasks(
@@ -850,6 +853,8 @@ pub async fn collect_fleet_decision_facts(mm: &DbModelManager, system_symbol: &S
     let ships = ShipBmc::get_ships(&Ctx::Anonymous, mm, None).await?;
     let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &system_symbol).await?;
 
+    let agent_info = AgentBmc::load_agent(&Ctx::Anonymous, &mm).await.expect("agent");
+
     let marketplaces_of_interest = select_latest_marketplace_entry_of_system(mm.pool(), &system_symbol).await?;
     let marketplace_symbols_of_interest = marketplaces_of_interest.iter().map(|db_entry| WaypointSymbol(db_entry.waypoint_symbol.clone())).collect_vec();
     let marketplaces_to_explore = find_marketplaces_for_exploration(marketplaces_of_interest.clone());
@@ -869,6 +874,7 @@ pub async fn collect_fleet_decision_facts(mm: &DbModelManager, system_symbol: &S
         construction_site: maybe_construction_site.map(|resp| resp.data),
         ships,
         materialized_supply_chain: None,
+        agent_info,
     })
 }
 pub fn diff_waypoint_symbols(waypoints_of_interest: &[WaypointSymbol], already_explored: &[WaypointSymbol]) -> Vec<WaypointSymbol> {
@@ -894,13 +900,10 @@ pub fn compute_fleets_with_tasks(
     system_symbol: SystemSymbol,
     completed_tasks: &Vec<FleetTaskCompletion>,
     facts: &FleetDecisionFacts,
-) -> (Vec<Fleet>, Vec<(FleetId, FleetTask)>, Vec<(ShipType, FleetTask)>) {
-    let FleetPhase {
-        name,
-        tasks,
-        shopping_list_in_order,
-    } = compute_fleet_phase_with_tasks(system_symbol, &facts, &completed_tasks);
-    let fleet_configs = compute_fleet_configs(&tasks, &facts, &shopping_list_in_order);
+) -> (Vec<Fleet>, Vec<(FleetId, FleetTask)>, FleetPhase) {
+    let fleet_phase = compute_fleet_phase_with_tasks(system_symbol, &facts, &completed_tasks);
+
+    let fleet_configs = compute_fleet_configs(&fleet_phase.tasks, &facts, &fleet_phase.shopping_list_in_order);
     let fleets_with_tasks: Vec<(Fleet, (FleetId, FleetTask))> = fleet_configs
         .into_iter()
         .enumerate()
@@ -908,7 +911,7 @@ pub fn compute_fleets_with_tasks(
         .collect_vec();
 
     let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) = fleets_with_tasks.into_iter().unzip();
-    (fleets, fleet_tasks, shopping_list_in_order)
+    (fleets, fleet_tasks, fleet_phase)
 }
 
 pub fn create_fleet(super_fleet_config: FleetConfig, fleet_task: FleetTask, id: i32) -> Result<(Fleet, (FleetId, FleetTask))> {

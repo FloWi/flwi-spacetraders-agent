@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into agent (agent_symbol, entry)\nvalues ($1, $2)\non conflict (agent_symbol) do update set entry = excluded.entry\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f8b9aef10e318514fb335b7dfacd31c90dd3712695583bd034f9bb914457b8de"
+}

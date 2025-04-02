@@ -1,4 +1,4 @@
-use crate::{GetConstructionResponseData, MaterializedSupplyChain, Ship, ShipSymbol, ShipType, SystemSymbol, TradeGoodSymbol, WaypointSymbol};
+use crate::{Agent, GetConstructionResponseData, MaterializedSupplyChain, Ship, ShipSymbol, ShipType, SystemSymbol, TradeGoodSymbol, WaypointSymbol};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -41,6 +41,7 @@ pub struct FleetDecisionFacts {
     pub construction_site: Option<GetConstructionResponseData>,
     pub ships: Vec<Ship>,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
+    pub agent_info: Agent,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -205,4 +206,37 @@ pub struct FleetsOverview {
     pub fleet_task_assignments: HashMap<FleetId, Vec<FleetTask>>,
     pub ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
     pub ship_tasks: HashMap<ShipSymbol, ShipTask>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Display, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub enum FleetPhaseName {
+    InitialExploration,
+    ConstructJumpGate,
+    TradeProfitably,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct FleetPhase {
+    pub name: FleetPhaseName,
+    pub shopping_list_in_order: Vec<(ShipType, FleetTask)>,
+    pub tasks: Vec<FleetTask>,
+}
+
+impl FleetPhase {
+    pub fn calculate_budget_for_fleet(&self, agent: &Agent, fleet: &Fleet, fleets: &HashMap<FleetId, Fleet>) -> u64 {
+        match self.name {
+            FleetPhaseName::InitialExploration => 0,
+            FleetPhaseName::ConstructJumpGate => match fleet.cfg {
+                FleetConfig::ConstructJumpGateCfg(_) => {
+                    if agent.credits < 0 {
+                        0
+                    } else {
+                        agent.credits as u64
+                    }
+                }
+                _ => 0,
+            },
+            FleetPhaseName::TradeProfitably => 0,
+        }
+    }
 }

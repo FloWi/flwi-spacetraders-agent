@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT entry as \"entry: Json<Agent>\"\n  from agent\n\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entry: Json<Agent>",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "50b3215b99cfaa9dd956d9d3160bed8569488276411ada01c4c24f2e9931fe9c"
+}

@@ -1,7 +1,7 @@
 use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
-use st_domain::{ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, Ship, ShipSymbol, ShipTask};
+use st_domain::{trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, Ship, ShipSymbol, ShipTask};
 use st_store::{Ctx, DbModelManager, MarketBmc, SystemBmc};
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -40,7 +40,21 @@ impl ConstructJumpGateFleet {
         let market_data = st_domain::trading::to_trade_goods_with_locations(&latest_market_data);
         let trading_opportunities = st_domain::trading::find_trading_opportunities(&market_data, &waypoint_map);
         let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
-            st_domain::trading::evaluate_trading_opportunities(unassigned_ships, &waypoint_map, trading_opportunities);
+            st_domain::trading::evaluate_trading_opportunities(&unassigned_ships, &waypoint_map, trading_opportunities);
+
+        // FIXME: get currently active trades
+        let active_trades = Vec::new();
+        let trades_for_ships = trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trades);
+
+        dbg!(budget);
+        dbg!(ship_tasks);
+        dbg!(allocated_budget);
+        dbg!(ships_with_tasks);
+        dbg!(unassigned_ships);
+        dbg!(reserved_for_trading);
+        dbg!(rest_budget);
+        dbg!(evaluated_trading_opportunities);
+        dbg!(trades_for_ships);
 
         // TradingManager::acquire_trading_tickets(trading_tickets, admiral);
 

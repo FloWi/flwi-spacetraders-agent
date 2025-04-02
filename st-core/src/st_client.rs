@@ -6,11 +6,10 @@ use reqwest_middleware::ClientWithMiddleware;
 use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
 use st_domain::{
-    extract_system_symbol, AgentInfoResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse,
-    GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, ListAgentsResponse, NavAndFuelResponse,
-    NavigateShipRequest, NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PatchShipNavResponse, RefuelShipRequest, RefuelShipResponse,
-    RegistrationRequest, RegistrationResponse, SetFlightModeResponse, Ship, ShipSymbol, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint,
-    WaypointSymbol,
+    extract_system_symbol, AgentResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse, GetJumpGateResponse,
+    GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, ListAgentsResponse, NavAndFuelResponse, NavigateShipRequest,
+    NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PatchShipNavResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest,
+    RegistrationResponse, SetFlightModeResponse, Ship, ShipSymbol, StStatusResponse, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
 };
 use std::any::type_name;
 use std::fmt::Debug;
@@ -52,10 +51,10 @@ impl StClientTrait for StClient {
         Self::make_api_call(self.client.post("https://api.spacetraders.io/v2/register").json(&registration_request)).await
     }
 
-    async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentInfoResponse> {
+    async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentResponse> {
         Ok(self.client.get(format!("https://api.spacetraders.io/v2/agents/{}", agent_symbol.0)).send().await?.json().await?)
     }
-    async fn get_agent(&self) -> Result<AgentInfoResponse> {
+    async fn get_agent(&self) -> Result<AgentResponse> {
         Ok(self.client.get("https://api.spacetraders.io/v2/my/agent".to_string()).send().await?.json().await?)
     }
 
@@ -215,9 +214,9 @@ impl StClientTrait for StClient {
 pub trait StClientTrait: Send + Sync + Debug {
     async fn register(&self, registration_request: RegistrationRequest) -> Result<Data<RegistrationResponse>>;
 
-    async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentInfoResponse>;
+    async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentResponse>;
 
-    async fn get_agent(&self) -> Result<AgentInfoResponse>;
+    async fn get_agent(&self) -> Result<AgentResponse>;
 
     async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> Result<GetConstructionResponse>;
 

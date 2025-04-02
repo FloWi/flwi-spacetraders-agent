@@ -42,7 +42,7 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
 
     let model_manager = DbModelManager::new(pool.clone());
 
-    let headquarters_waypoint_symbol = WaypointSymbol(my_agent.data.headquarters.clone());
+    let headquarters_waypoint_symbol = my_agent.data.headquarters.clone();
     let headquarters_system_symbol = headquarters_waypoint_symbol.system_symbol();
 
     let now = Local::now().to_utc();

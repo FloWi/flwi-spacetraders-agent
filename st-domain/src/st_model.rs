@@ -229,8 +229,8 @@ pub struct FactionSymbol(pub String);
 
 #[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct AgentInfoResponse {
-    pub data: AgentInfoResponseData,
+pub struct AgentResponse {
+    pub data: Agent,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
@@ -253,17 +253,6 @@ pub struct GetConstructionResponseData {
 #[serde(rename_all = "camelCase")]
 pub struct GetConstructionResponse {
     pub data: GetConstructionResponseData,
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentInfoResponseData {
-    pub account_id: Option<String>,
-    pub symbol: String,
-    pub headquarters: String,
-    pub credits: i64,
-    pub starting_faction: String,
-    pub ship_count: u32,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
@@ -390,7 +379,7 @@ pub struct SystemFaction {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ListAgentsResponse {
-    pub data: Vec<AgentInfoResponseData>,
+    pub data: Vec<Agent>,
     pub meta: Meta,
 }
 
@@ -581,7 +570,7 @@ pub struct RegistrationResponse {
 pub struct Agent {
     pub account_id: Option<String>,
     pub symbol: AgentSymbol,
-    pub headquarters: String,
+    pub headquarters: WaypointSymbol,
     pub credits: i64,
     pub starting_faction: String,
     pub ship_count: i32,

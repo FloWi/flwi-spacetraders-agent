@@ -439,7 +439,7 @@ impl TestObjects {
             agent: Agent {
                 account_id: None,
                 symbol: AgentSymbol("".to_string()),
-                headquarters: "".to_string(),
+                headquarters: WaypointSymbol("".to_string()),
                 credits: 42,
                 starting_faction: "".to_string(),
                 ship_count: 2,
@@ -590,10 +590,10 @@ mod tests {
     use mockall::predicate::*;
 
     use st_domain::{
-        AgentInfoResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse, GetJumpGateResponse,
-        GetMarketResponse, GetShipyardResponse, JumpGate, ListAgentsResponse, MarketData, NavAndFuelResponse, NavOnlyResponse, NavStatus, NavigateShipResponse,
-        OrbitShipResponse, PatchShipNavResponse, RefuelShipResponse, RegistrationRequest, RegistrationResponse, Ship, ShipSymbol, Shipyard, StStatusResponse,
-        SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol,
+        AgentResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse,
+        GetShipyardResponse, JumpGate, ListAgentsResponse, MarketData, NavAndFuelResponse, NavOnlyResponse, NavStatus, NavigateShipResponse, OrbitShipResponse,
+        PatchShipNavResponse, RefuelShipResponse, RegistrationRequest, RegistrationResponse, Ship, ShipSymbol, Shipyard, StStatusResponse, SystemSymbol,
+        SystemsPageData, Waypoint, WaypointSymbol,
     };
 
     use crate::st_client::StClientTrait;
@@ -628,9 +628,9 @@ mod tests {
         impl StClientTrait for StClient {
             async fn register(&self, registration_request: RegistrationRequest) -> anyhow::Result<Data<RegistrationResponse>> {}
 
-            async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> anyhow::Result<AgentInfoResponse> {}
+            async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> anyhow::Result<AgentResponse> {}
 
-            async fn get_agent(&self) -> anyhow::Result<AgentInfoResponse> {}
+            async fn get_agent(&self) -> anyhow::Result<AgentResponse> {}
 
             async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<GetConstructionResponse> {}
 

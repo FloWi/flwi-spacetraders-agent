@@ -58,7 +58,7 @@ pub fn to_trade_goods_with_locations(market_data: &Vec<MarketData>) -> Vec<(Wayp
 }
 
 pub fn evaluate_trading_opportunities(
-    unassigned_ships: Vec<&Ship>,
+    unassigned_ships: &[&Ship],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
     trading_opportunities: Vec<TradingOpportunity>,
 ) -> Vec<EvaluatedTradingOpportunity> {
