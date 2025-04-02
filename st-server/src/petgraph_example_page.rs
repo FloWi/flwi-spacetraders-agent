@@ -653,7 +653,6 @@ pub fn TechTreePetgraph() -> impl IntoView {
                             if let (Some(x), Some(y)) = (node.x, node.y) {
                                 let x_pos = x - node.width / 2.0;
                                 let y_pos = y - node.height / 2.0;
-
                                 let stroke_color: String = get_stroke_color(&node.activity);
 
                                 view! {
@@ -702,25 +701,27 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                             font-size="12"
                                             fill="white"
                                         >
-                                            <tspan class={get_supply_color(&node.supply)}>{node.supply.to_string()}</tspan>
+                                            <tspan class=get_supply_color(
+                                                &node.supply,
+                                            )>{node.supply.to_string()}</tspan>
                                             <tspan fill="white">" • "</tspan>
-                                            <tspan class={get_activity_color(&node.activity)}>{node.activity.to_string()}</tspan>
+                                            <tspan class=get_activity_color(
+                                                &node.activity,
+                                            )>{node.activity.to_string()}</tspan>
 
-                                        // Cost and volume
-                                        <tspan
-                                            x=node.width / 2.0
-                                            dy="2em"
-                                        >
-                                            {format!("{}c • vol. {}", node.cost, node.volume)}
-                                        </tspan>
-                                        // Waypoint Infos
-                                        <tspan
-                                            x=node.width / 2.0
-                                            dy="2em"
-                                        >
-                                                                                        {format!("{} ({})", node.waypoint_symbol.0.clone(), node.waypoint_type.to_string())}
+                                            // Cost and volume
+                                            <tspan x=node.width / 2.0 dy="2em">
+                                                {format!("{}c • vol. {}", node.cost, node.volume)}
+                                            </tspan>
+                                            // Waypoint Infos
+                                            <tspan x=node.width / 2.0 dy="2em">
+                                                {format!(
+                                                    "{} ({})",
+                                                    node.waypoint_symbol.0.clone(),
+                                                    node.waypoint_type.to_string(),
+                                                )}
 
-                                        </tspan>
+                                            </tspan>
                                         </text>
 
                                     </g>
@@ -753,14 +754,14 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                     path_data
                                         .push_str(&format!(" L{},{}", points[1].x, points[1].y));
                                 }
-
                                 let label_point_idx = (points.len() as f64 * 0.7) as usize;
                                 let label_point = if label_point_idx < points.len() {
                                     &points[label_point_idx]
                                 } else if !points.is_empty() {
                                     &points[points.len() - 1]
                                 } else {
-                                    return // Create SVG path from points
+                                    return 
+                                    // Create SVG path from points
 
                                     // If we have bezier curve points
                                     // Just a straight line
@@ -830,12 +831,16 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                         >
                                             <tspan>{format!("{}c", edge.cost)}</tspan>
                                             <tspan>" | "</tspan>
-                                            <tspan class={get_activity_color(&edge.activity)}>{edge.activity.to_string().clone()}</tspan>
+                                            <tspan class=get_activity_color(
+                                                &edge.activity,
+                                            )>{edge.activity.to_string().clone()}</tspan>
                                             <tspan x=label_x dy="1.5em">
                                                 {format!("vol. {}", edge.volume)}
                                             </tspan>
                                             <tspan>" | "</tspan>
-                                            <tspan class={get_supply_color(&edge.supply)}>{edge.supply.to_string().clone()}</tspan>
+                                            <tspan class=get_supply_color(
+                                                &edge.supply,
+                                            )>{edge.supply.to_string().clone()}</tspan>
 
                                         </text>
                                     </g>

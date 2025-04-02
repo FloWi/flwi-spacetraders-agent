@@ -85,13 +85,9 @@ pub fn FleetOverviewPage() -> impl IntoView {
                                         <div class="flex flex-row gap-4 p-4">
                                             <div class="flex flex-col gap-2">
 
-                                                <h2 class="font-bold text-xl">
-                                                    "Ship Shopping List"
-                                                </h2>
+                                                <h2 class="font-bold text-xl">"Ship Shopping List"</h2>
                                                 <pre>
-                                                    {serde_json::to_string_pretty(
-                                                            &shopping_list,
-                                                        )
+                                                    {serde_json::to_string_pretty(&shopping_list)
                                                         .unwrap_or("---".to_string())}
                                                 </pre>
                                             </div>
