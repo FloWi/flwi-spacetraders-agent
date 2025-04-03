@@ -3,7 +3,7 @@ use anyhow::*;
 use itertools::Itertools;
 use st_domain::{
     trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, PurchaseShipTicketDetails, Ship,
-    ShipSymbol, ShipTask, Waypoint,
+    ShipSymbol, ShipTask, TicketId, TransactionTicketId, Waypoint,
 };
 use st_store::shipyard_bmc::ShipyardBmc;
 use st_store::{Ctx, DbModelManager, MarketBmc, SystemBmc};
@@ -80,13 +80,14 @@ impl ConstructJumpGateFleet {
             match maybe_closest_ship {
                 None => None,
                 Some((closest_ship_symbol, _distance)) => Some(PurchaseShipTicketDetails {
-                    ticket_id: Uuid::new_v4(),
+                    id: TransactionTicketId(Uuid::new_v4()),
                     ship_symbol: closest_ship_symbol,
                     waypoint_symbol: wps,
                     ship_type: s.r#type,
                     price: s.purchase_price as u64,
                     allocated_credits: s.purchase_price as u64,
                     assigned_fleet_id: fleet.id.clone(),
+                    is_complete: false,
                 }),
             }
         });

@@ -8,12 +8,14 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Local, TimeDelta, Utc};
 use core::time::Duration;
+use itertools::Itertools;
+use st_domain::TransactionActionEvent::{PurchasedTradeGoods, ShipPurchased, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
     Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor,
     RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol,
-    Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
+    TradeTicket, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
 };
-use std::ops::Add;
+use std::ops::{Add, Not};
 use tokio::sync::mpsc::Sender;
 
 #[async_trait]
@@ -377,6 +379,163 @@ impl Actionable for ShipAction {
                     }
                 }
             },
+            ShipAction::SetNextTradeStopAsDestination => match state.maybe_trade.clone() {
+                None => Err(anyhow!("No next trade waypoint found - state.maybe_trade is None")),
+                Some(trade) => match trade {
+                    TradeTicket::TradeCargo {
+                        purchase_completion_status,
+                        sale_completion_status,
+                        ..
+                    } => {
+                        let candidates = purchase_completion_status
+                            .iter()
+                            .filter_map(|(ticket, is_completed)| is_completed.not().then_some(ticket.waypoint_symbol.clone()))
+                            .chain(sale_completion_status.iter().filter_map(|(ticket, is_completed)| {
+                                let is_in_cargo =
+                                    state.cargo.inventory.iter().any(|inventory| inventory.symbol == ticket.trade_good && inventory.units >= ticket.quantity);
+                                (is_completed.not() && is_in_cargo).then_some(ticket.waypoint_symbol.clone())
+                            }))
+                            .unique()
+                            .collect_vec();
+                        let maybe_best_wps: Option<WaypointSymbol> = args.get_closest_waypoint(&state.nav.waypoint_symbol, &candidates).await?;
+                        match maybe_best_wps {
+                            None => Err(anyhow!("No next trade waypoint found - maybe_best_waypoint is None")),
+                            Some(best_wps) => {
+                                state.set_destination(best_wps);
+                                Ok(Success)
+                            }
+                        }
+                    }
+                    TradeTicket::DeliverConstructionMaterials {
+                        ticket_id,
+                        purchase_completion_status,
+                        delivery_status,
+                    } => {
+                        let candidates = purchase_completion_status
+                            .iter()
+                            .filter_map(|(ticket, is_completed)| is_completed.not().then_some(ticket.waypoint_symbol.clone()))
+                            .collect_vec();
+
+                        let maybe_best_wps: Option<WaypointSymbol> = args.get_closest_waypoint(&state.nav.waypoint_symbol, &candidates).await?;
+                        match maybe_best_wps {
+                            None => Err(anyhow!("No next trade waypoint found - maybe_best_waypoint is None")),
+                            Some(best_wps) => {
+                                state.set_destination(best_wps);
+                                Ok(Success)
+                            }
+                        }
+                    }
+                    TradeTicket::PurchaseShipTicket { ticket_id, details } => {
+                        state.set_destination(details.waypoint_symbol);
+                        Ok(Success)
+                    }
+                },
+            },
+            ShipAction::PerformTradeActionAndMarkAsCompleted => {
+                if let Some(trade) = &state.maybe_trade.clone() {
+                    match trade {
+                        TradeTicket::TradeCargo {
+                            ticket_id,
+                            purchase_completion_status,
+                            sale_completion_status,
+                            ..
+                        } => {
+                            let current_location = state.current_location();
+
+                            let purchases = purchase_completion_status
+                                .iter()
+                                .filter(|(ticket, is_completed)| is_completed.not() && ticket.waypoint_symbol == current_location);
+
+                            let sales =
+                                sale_completion_status.iter().filter(|(ticket, is_completed)| is_completed.not() && ticket.waypoint_symbol == current_location);
+
+                            for (purchase, _) in purchases {
+                                let result = state.purchase_trade_good(purchase).await?;
+                                state.mark_transaction_as_complete(&purchase.id);
+                                action_completed_tx.send(ActionEvent::TransactionCompleted(PurchasedTradeGoods(purchase.clone(), result))).await?;
+                            }
+
+                            for (sale, _) in sales {
+                                let result = state.sell_trade_good(sale).await?;
+                                state.mark_transaction_as_complete(&sale.id);
+                                action_completed_tx.send(ActionEvent::TransactionCompleted(SoldTradeGoods(sale.clone(), result))).await?;
+                            }
+                        }
+                        TradeTicket::DeliverConstructionMaterials {
+                            ticket_id,
+                            purchase_completion_status,
+                            delivery_status: delivery_completion_status,
+                        } => {
+                            let current_location = state.current_location();
+
+                            let purchases = purchase_completion_status
+                                .iter()
+                                .filter(|(ticket, is_completed)| is_completed.not() && ticket.waypoint_symbol == current_location);
+
+                            let deliveries = delivery_completion_status
+                                .iter()
+                                .filter(|(ticket, is_completed)| is_completed.not() && ticket.construction_site_waypoint_symbol == current_location);
+
+                            for (purchase, _) in purchases {
+                                let result = state.purchase_trade_good(purchase).await?;
+                                state.mark_transaction_as_complete(&purchase.id);
+                                action_completed_tx.send(ActionEvent::TransactionCompleted(PurchasedTradeGoods(purchase.clone(), result))).await?;
+                                // args.report_purchase(ticket_id, &purchase.id, &result).await?;
+                            }
+
+                            for (delivery, _) in deliveries {
+                                let result = state.supply_construction_site(delivery).await?;
+                                state.mark_transaction_as_complete(&delivery.id);
+                                action_completed_tx.send(ActionEvent::TransactionCompleted(SuppliedConstructionSite(delivery.clone(), result))).await?;
+                            }
+                        }
+                        TradeTicket::PurchaseShipTicket { ticket_id, details } => {
+                            let result = state.purchase_ship(details).await?;
+                            state.mark_transaction_as_complete(&details.id);
+                            action_completed_tx.send(ActionEvent::TransactionCompleted(ShipPurchased(result))).await?;
+                        }
+                    }
+                    todo!()
+                } else {
+                    todo!()
+                }
+            }
+
+            ShipAction::HasNextTradeWaypoint => {
+                match state.maybe_trade.clone() {
+                    None => Err(anyhow!("No next trade waypoint found - state.maybe_trade is None")),
+                    Some(trade) => {
+                        match trade {
+                            TradeTicket::TradeCargo {
+                                purchase_completion_status,
+                                sale_completion_status,
+                                ..
+                            } => {
+                                if purchase_completion_status.iter().any(|(_, is_complete)| !is_complete)
+                                    || sale_completion_status.iter().any(|(_, is_complete)| !is_complete)
+                                {
+                                    Ok(Success)
+                                } else {
+                                    Err(anyhow!("No next trade waypoint found - All transactions marked as completed"))
+                                }
+                            }
+                            TradeTicket::DeliverConstructionMaterials {
+                                purchase_completion_status, ..
+                            } => {
+                                if purchase_completion_status.iter().any(|(_, is_complete)| !is_complete) {
+                                    Ok(Success)
+                                } else {
+                                    Err(anyhow!("No next trade waypoint found - All transactions marked as completed"))
+                                }
+                            }
+                            TradeTicket::PurchaseShipTicket { .. } => {
+                                // one-off action
+                                Ok(Success)
+                            }
+                        }
+                    }
+                }
+            }
         };
 
         match result {

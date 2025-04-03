@@ -5,11 +5,14 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    CreateChartBody, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse, RefuelShipResponse, Ship, Shipyard, Waypoint, WaypointSymbol,
+    CreateChartBody, DeliverConstructionMaterialTicketDetails, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseGoodTicketDetails,
+    PurchaseShipResponse, PurchaseShipTicketDetails, PurchaseTradeGoodResponse, RefuelShipResponse, SellGoodTicketDetails, SellTradeGoodResponse, Ship,
+    Shipyard, SupplyConstructionSiteResponse, TradeTicket, TransactionTicketId, Waypoint, WaypointSymbol,
 };
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Clone, Debug)]
 pub struct ShipOperations {
@@ -20,12 +23,7 @@ pub struct ShipOperations {
     pub explore_location_queue: VecDeque<WaypointSymbol>,
     pub permanent_observation_location: Option<WaypointSymbol>,
     pub maybe_next_observation_time: Option<DateTime<Utc>>,
-}
-
-impl ShipOperations {
-    pub(crate) fn current_location(&self) -> WaypointSymbol {
-        self.ship.nav.waypoint_symbol.clone()
-    }
+    pub maybe_trade: Option<TradeTicket>,
 }
 
 impl PartialEq for ShipOperations {
@@ -35,6 +33,16 @@ impl PartialEq for ShipOperations {
 }
 
 impl ShipOperations {
+    pub(crate) fn current_location(&self) -> WaypointSymbol {
+        self.ship.nav.waypoint_symbol.clone()
+    }
+
+    pub(crate) fn mark_transaction_as_complete(&mut self, transaction_ticket_id: &TransactionTicketId) {
+        if let Some(trade) = self.maybe_trade.as_mut() {
+            trade.mark_transaction_as_complete(transaction_ticket_id)
+        }
+    }
+
     pub(crate) fn current_travel_action(&self) -> Option<&TravelAction> {
         self.travel_action_queue.front()
     }
@@ -64,6 +72,7 @@ impl ShipOperations {
             explore_location_queue: VecDeque::new(),
             permanent_observation_location: None,
             maybe_next_observation_time: None,
+            maybe_trade: None,
         }
     }
 
@@ -145,6 +154,46 @@ impl ShipOperations {
 
         let response = self.client.refuel(self.ship.symbol.clone(), amount as u32, from_cargo).await?;
         println!("{:?}", response);
+        Ok(response)
+    }
+
+    pub async fn sell_trade_good(&mut self, ticket: &SellGoodTicketDetails) -> Result<SellTradeGoodResponse> {
+        let response = self.client.sell_trade_good(self.symbol.clone(), ticket.quantity, ticket.trade_good.clone()).await?;
+        self.cargo = response.data.cargo.clone();
+
+        println!("{:?}", response);
+
+        Ok(response)
+    }
+
+    pub async fn purchase_trade_good(&mut self, ticket: &PurchaseGoodTicketDetails) -> Result<PurchaseTradeGoodResponse> {
+        let response = self.client.purchase_trade_good(self.symbol.clone(), ticket.quantity, ticket.trade_good.clone()).await?;
+        self.cargo = response.data.cargo.clone();
+        println!("{:?}", response);
+
+        Ok(response)
+    }
+
+    pub async fn supply_construction_site(&mut self, ticket: &DeliverConstructionMaterialTicketDetails) -> Result<SupplyConstructionSiteResponse> {
+        let response = self
+            .client
+            .supply_construction_site(
+                self.symbol.clone(),
+                ticket.quantity,
+                ticket.trade_good.clone(),
+                ticket.construction_site_waypoint_symbol.clone(),
+            )
+            .await?;
+        self.cargo = response.data.cargo.clone();
+        println!("{:?}", response);
+
+        Ok(response)
+    }
+
+    pub async fn purchase_ship(&self, ticket: &PurchaseShipTicketDetails) -> Result<PurchaseShipResponse> {
+        let response = self.client.purchase_ship(ticket.ship_type.clone(), ticket.waypoint_symbol.clone()).await?;
+        println!("{:?}", response);
+
         Ok(response)
     }
 

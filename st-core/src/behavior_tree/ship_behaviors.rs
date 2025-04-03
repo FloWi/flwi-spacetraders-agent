@@ -37,6 +37,9 @@ pub enum ShipAction {
     SkipRefueling,
     PrintDestination,
     IsLateEnoughForWaypointObservation,
+    SetNextTradeStopAsDestination,
+    PerformTradeActionAndMarkAsCompleted,
+    HasNextTradeWaypoint,
 }
 
 pub struct Behaviors {
@@ -208,7 +211,22 @@ pub fn ship_behaviors() -> Behaviors {
         ),
     ]);
 
-    let mut trading_behavior = Behavior::new_sequence(vec![]);
+    let while_condition_trader = Behavior::new_select(vec![
+        Behavior::new_action(ShipAction::HasDestination),
+        Behavior::new_action(ShipAction::HasNextTradeWaypoint),
+    ]);
+
+    let mut trading_behavior = Behavior::new_sequence(vec![Behavior::new_while(
+        while_condition_trader,
+        Behavior::new_sequence(vec![
+            Behavior::new_action(ShipAction::SetNextTradeStopAsDestination),
+            navigate_to_destination.clone(),
+            wait_for_arrival_bt.clone(),
+            dock_if_necessary.clone(),
+            Behavior::new_action(ShipAction::PerformTradeActionAndMarkAsCompleted),
+            Behavior::new_action(ShipAction::CollectWaypointInfos),
+        ]),
+    )]);
 
     Behaviors {
         wait_for_arrival_bt: wait_for_arrival_bt.update_indices().clone(),

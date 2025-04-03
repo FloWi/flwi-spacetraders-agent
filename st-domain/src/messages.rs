@@ -1,6 +1,6 @@
 use crate::{
-    Agent, EvaluatedTradingOpportunity, GetConstructionResponseData, MaterializedSupplyChain, Ship, ShipSymbol, ShipType, ShipyardShip, SystemSymbol,
-    TradeGoodSymbol, WaypointSymbol,
+    Agent, Construction, EvaluatedTradingOpportunity, MaterializedSupplyChain, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Ship,
+    ShipSymbol, ShipType, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol, TradeGoodSymbol, WaypointSymbol,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -41,7 +41,7 @@ pub struct FleetDecisionFacts {
     pub marketplaces_with_up_to_date_infos: Vec<WaypointSymbol>,
     pub shipyards_of_interest: Vec<WaypointSymbol>,
     pub shipyards_with_up_to_date_infos: Vec<WaypointSymbol>,
-    pub construction_site: Option<GetConstructionResponseData>,
+    pub construction_site: Option<Construction>,
     pub ships: Vec<Ship>,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
     pub agent_info: Agent,
@@ -54,27 +54,100 @@ pub enum RefuelingType {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TicketId(pub Uuid);
+
+impl TicketId {
+    pub fn new() -> TicketId {
+        Self(Uuid::new_v4())
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum TradeTicket {
     TradeCargo {
+        ticket_id: TicketId,
         purchase_completion_status: Vec<(PurchaseGoodTicketDetails, bool)>,
         sale_completion_status: Vec<(SellGoodTicketDetails, bool)>,
         evaluation_result: Vec<EvaluatedTradingOpportunity>,
     },
     DeliverConstructionMaterials {
+        ticket_id: TicketId,
         purchase_completion_status: Vec<(PurchaseGoodTicketDetails, bool)>,
+        delivery_status: Vec<(DeliverConstructionMaterialTicketDetails, bool)>,
     },
     PurchaseShipTicket {
+        ticket_id: TicketId,
         details: PurchaseShipTicketDetails,
     },
-    RefuelShip {
-        details: PurchaseGoodTicketDetails,
-        refueling_type: RefuelingType,
-    },
+    // RefuelShip {
+    //     details: PurchaseGoodTicketDetails,
+    //     refueling_type: RefuelingType,
+    // },
 }
+
+impl TradeTicket {
+    pub fn mark_transaction_as_complete(&mut self, transaction_ticket_id: &TransactionTicketId) {
+        match self {
+            TradeTicket::TradeCargo {
+                purchase_completion_status,
+                sale_completion_status,
+                ..
+            } => {
+                // Try to find and mark a purchase as complete
+                for (purchase_details, completed) in purchase_completion_status.iter_mut() {
+                    if &purchase_details.id == transaction_ticket_id {
+                        *completed = true;
+                        return;
+                    }
+                }
+
+                // If not found in purchases, try to find in sales
+                for (sale_details, completed) in sale_completion_status.iter_mut() {
+                    if &sale_details.id == transaction_ticket_id {
+                        *completed = true;
+                        return;
+                    }
+                }
+            }
+            TradeTicket::DeliverConstructionMaterials {
+                purchase_completion_status,
+                delivery_status,
+                ..
+            } => {
+                // Try to find and mark a purchase as complete
+                for (purchase_details, completed) in purchase_completion_status.iter_mut() {
+                    if &purchase_details.id == transaction_ticket_id {
+                        *completed = true;
+                        return;
+                    }
+                }
+
+                // Try to find and mark a delivery as complete
+                for (delivery_details, completed) in delivery_status.iter_mut() {
+                    if &delivery_details.id == transaction_ticket_id {
+                        *completed = true;
+                        return;
+                    }
+                }
+            }
+            TradeTicket::PurchaseShipTicket { details, .. } => {
+                // Assuming PurchaseShipTicketDetails has a transaction_id field
+                if &details.id == transaction_ticket_id {
+                    // You might need to add a field to track completion status
+                    // details.completed = true;
+                    details.is_complete = true
+                }
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct TransactionTicketId(pub Uuid);
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PurchaseGoodTicketDetails {
-    pub ticket_id: Uuid,
+    pub id: TransactionTicketId,
     pub ship_symbol: ShipSymbol,
     pub waypoint_symbol: WaypointSymbol,
     pub trade_good: TradeGoodSymbol,
@@ -88,7 +161,7 @@ impl PurchaseGoodTicketDetails {
     pub fn from_trading_opportunity(opp: &EvaluatedTradingOpportunity) -> PurchaseGoodTicketDetails {
         let purchase_mtg = &opp.trading_opportunity.purchase_market_trade_good_entry;
         PurchaseGoodTicketDetails {
-            ticket_id: Uuid::new_v4(),
+            id: TransactionTicketId(Uuid::new_v4()),
             ship_symbol: opp.ship_symbol.clone(),
             waypoint_symbol: opp.trading_opportunity.purchase_waypoint_symbol.clone(),
             trade_good: purchase_mtg.symbol.clone(),
@@ -105,7 +178,7 @@ impl SellGoodTicketDetails {
         let sell_mtg = &opp.trading_opportunity.sell_market_trade_good_entry;
 
         SellGoodTicketDetails {
-            ticket_id: Uuid::new_v4(),
+            id: TransactionTicketId(Uuid::new_v4()),
             ship_symbol: opp.ship_symbol.clone(),
             waypoint_symbol: opp.trading_opportunity.purchase_waypoint_symbol.clone(),
             trade_good: sell_mtg.symbol.clone(),
@@ -117,7 +190,7 @@ impl SellGoodTicketDetails {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SellGoodTicketDetails {
-    pub ticket_id: Uuid,
+    pub id: TransactionTicketId,
     pub ship_symbol: ShipSymbol,
     pub waypoint_symbol: WaypointSymbol,
     pub trade_good: TradeGoodSymbol,
@@ -126,14 +199,24 @@ pub struct SellGoodTicketDetails {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DeliverConstructionMaterialTicketDetails {
+    pub id: TransactionTicketId,
+    pub ship_symbol: ShipSymbol,
+    pub construction_site_waypoint_symbol: WaypointSymbol,
+    pub trade_good: TradeGoodSymbol,
+    pub quantity: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PurchaseShipTicketDetails {
-    pub ticket_id: Uuid,
+    pub id: TransactionTicketId,
     pub ship_symbol: ShipSymbol,
     pub waypoint_symbol: WaypointSymbol,
     pub ship_type: ShipType,
     pub price: u64,
     pub allocated_credits: u64,
     pub assigned_fleet_id: FleetId,
+    pub is_complete: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -275,4 +358,12 @@ pub struct FleetPhase {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ShipPriceInfo {
     pub price_infos: Vec<(WaypointSymbol, Vec<ShipyardShip>)>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum TransactionActionEvent {
+    PurchasedTradeGoods(PurchaseGoodTicketDetails, PurchaseTradeGoodResponse),
+    SoldTradeGoods(SellGoodTicketDetails, SellTradeGoodResponse),
+    SuppliedConstructionSite(DeliverConstructionMaterialTicketDetails, SupplyConstructionSiteResponse),
+    ShipPurchased(PurchaseShipResponse),
 }

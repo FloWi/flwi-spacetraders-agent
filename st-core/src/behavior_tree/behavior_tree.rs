@@ -3,7 +3,10 @@ use crate::ship::ShipOperations;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use st_domain::ShipTaskMessage;
+use st_domain::{
+    DeliverConstructionMaterialTicketDetails, PurchaseGoodTicketDetails, PurchaseShipResponse, PurchaseTradeGoodResponse, SellGoodTicketDetails,
+    SellTradeGoodResponse, Ship, ShipTaskMessage, SupplyConstructionSiteResponse, TransactionActionEvent,
+};
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -228,6 +231,7 @@ pub enum Response {
 pub enum ActionEvent {
     ShipActionCompleted(Result<(ShipOperations, ShipAction), anyhow::Error>),
     BehaviorCompleted(Result<Behavior<ShipAction>, anyhow::Error>),
+    TransactionCompleted(TransactionActionEvent),
 }
 
 #[async_trait]

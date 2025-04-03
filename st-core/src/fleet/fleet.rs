@@ -24,7 +24,8 @@ use st_domain::{
     Agent, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask,
     FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig,
     PurchaseGoodTicketDetails, PurchaseReason, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, ShipType,
-    SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TradeGoodSymbol, TradeTicket, TradingFleetConfig, WaypointSymbol,
+    SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket, TradingFleetConfig, TransactionActionEvent,
+    WaypointSymbol,
 };
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, AgentBmc, ConstructionBmc, Ctx, DbModelManager, FleetBmc, ShipBmc,
@@ -62,15 +63,15 @@ impl FleetRunner {
             .map(|(_, s)| (s.symbol.clone(), Arc::new(Mutex::new(ShipOperations::new(s.clone(), Arc::clone(&client))))))
             .collect();
 
+        let (ship_updated_tx, ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = tokio::sync::mpsc::channel(32);
+        let (ship_action_completed_tx, ship_action_completed_rx): (Sender<ActionEvent>, Receiver<ActionEvent>) = tokio::sync::mpsc::channel(32);
+        let (ship_status_report_tx, ship_status_report_rx): (Sender<ShipStatusReport>, Receiver<ShipStatusReport>) = tokio::sync::mpsc::channel(32);
+
         let args = BehaviorArgs {
             blackboard: Arc::new(DbBlackboard {
                 model_manager: db_model_manager.clone(),
             }),
         };
-
-        let (ship_updated_tx, ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = tokio::sync::mpsc::channel(32);
-        let (ship_action_completed_tx, ship_action_completed_rx): (Sender<ActionEvent>, Receiver<ActionEvent>) = tokio::sync::mpsc::channel(32);
-        let (ship_status_report_tx, ship_status_report_rx): (Sender<ShipStatusReport>, Receiver<ShipStatusReport>) = tokio::sync::mpsc::channel(32);
 
         // Clone fleet_admiral.ship_tasks to avoid the lifetime issues
         let ship_tasks = fleet_admiral.lock().await.ship_tasks.clone();
@@ -267,6 +268,7 @@ impl FleetRunner {
                     Ok(_) => {}
                     Err(_) => {}
                 },
+                ActionEvent::TransactionCompleted(transaction) => {}
             }
         }
 
@@ -277,6 +279,7 @@ impl FleetRunner {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum ShipStatusReport {
     ShipActionCompleted(Ship, ShipAction),
+    TransactionCompleted(Ship, TransactionActionEvent),
 }
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct FleetAdmiral {
@@ -301,13 +304,20 @@ impl FleetAdmiral {
                 &details.ship_symbol.0
             );
         } else {
-            self.active_trades.insert(details.ship_symbol.clone(), TradeTicket::PurchaseShipTicket { details: details.clone() });
+            self.active_trades.insert(
+                details.ship_symbol.clone(),
+                TradeTicket::PurchaseShipTicket {
+                    ticket_id: TicketId::new(),
+                    details: details.clone(),
+                },
+            );
         }
     }
 
     pub(crate) fn assign_trading_tickets_if_possible(&mut self, trading_opportunities_within_budget: &[EvaluatedTradingOpportunity]) {
         for opp in trading_opportunities_within_budget.iter() {
             let ticket = TradeTicket::TradeCargo {
+                ticket_id: TicketId::new(),
                 purchase_completion_status: vec![(PurchaseGoodTicketDetails::from_trading_opportunity(&opp), false)],
                 sale_completion_status: vec![(SellGoodTicketDetails::from_trading_opportunity(&opp), false)],
                 evaluation_result: vec![opp.clone()],
@@ -376,14 +386,13 @@ impl FleetAdmiral {
         trade_tickets
             .into_iter()
             .map(|trade_ticket| match trade_ticket {
-                TradeTicket::PurchaseShipTicket { details } => details.allocated_credits,
-                TradeTicket::RefuelShip { details, .. } => details.allocated_credits,
+                TradeTicket::PurchaseShipTicket { details, .. } => details.allocated_credits,
                 TradeTicket::TradeCargo {
                     purchase_completion_status, ..
                 } => purchase_completion_status.iter().filter_map(|(ticket, is_completed)| (!is_completed).then_some(ticket.allocated_credits)).sum(),
-                TradeTicket::DeliverConstructionMaterials { purchase_completion_status } => {
-                    purchase_completion_status.iter().filter_map(|(ticket, is_completed)| (!is_completed).then_some(ticket.allocated_credits)).sum()
-                }
+                TradeTicket::DeliverConstructionMaterials {
+                    purchase_completion_status, ..
+                } => purchase_completion_status.iter().filter_map(|(ticket, is_completed)| (!is_completed).then_some(ticket.allocated_credits)).sum(),
             })
             .sum()
     }
@@ -440,6 +449,10 @@ impl FleetAdmiral {
                 } else {
                     Ok(())
                 }
+            }
+            ShipStatusReport::TransactionCompleted(ship, transaction) => {
+                // TODO: react to events
+                Ok(())
             }
         }
     }

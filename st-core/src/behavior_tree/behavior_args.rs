@@ -3,7 +3,11 @@ use crate::pathfinder::pathfinder::TravelAction;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::Local;
-use st_domain::{JumpGate, MarketData, Shipyard, Waypoint, WaypointSymbol, WaypointTraitSymbol, WaypointType};
+use itertools::Itertools;
+use st_domain::{
+    JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseShipTicketDetails, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard,
+    SupplyConstructionSiteResponse, TicketId, TransactionTicketId, Waypoint, WaypointSymbol, WaypointTraitSymbol, WaypointType,
+};
 use st_store::{
     insert_jump_gates, insert_market_data, insert_shipyards, select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints,
     DbModelManager,
@@ -26,6 +30,11 @@ pub trait BlackboardOps: Send + Sync {
     async fn insert_market(&self, market_data: MarketData) -> Result<()>;
     async fn insert_jump_gate(&self, jump_gate: JumpGate) -> Result<()>;
     async fn insert_shipyard(&self, shipyard: Shipyard) -> Result<()>;
+    async fn get_closest_waypoint(&self, current_waypoint: &WaypointSymbol, candidates: &[WaypointSymbol]) -> Result<Option<WaypointSymbol>>;
+    // async fn report_purchase(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &PurchaseTradeGoodResponse) -> Result<()>;
+    // async fn report_sale(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &SellTradeGoodResponse) -> Result<()>;
+    // async fn report_delivery(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &SupplyConstructionSiteResponse) -> Result<()>;
+    // async fn report_ship_purchase(&self, ticket_id: &TicketId, ticket: &PurchaseShipTicketDetails, response: PurchaseShipResponse) -> Result<()>;
 }
 
 #[derive(Clone)]
@@ -80,6 +89,7 @@ impl BlackboardOps for DbBlackboard {
             None => Err(anyhow!("No path found from {:?} to {:?}", from, to)),
         }
     }
+
     async fn get_exploration_tasks_for_current_waypoint(&self, current_location: WaypointSymbol) -> Result<Vec<ExplorationTask>> {
         let waypoints = select_waypoints_of_system(&self.model_manager.pool(), &current_location.system_symbol()).await?;
 
@@ -107,6 +117,7 @@ impl BlackboardOps for DbBlackboard {
             }
         }
     }
+
     async fn insert_waypoint(&self, waypoint: &Waypoint) -> Result<()> {
         let now = Local::now().to_utc();
         upsert_waypoints(&self.model_manager.pool(), vec![waypoint.clone()], now).await
@@ -122,6 +133,22 @@ impl BlackboardOps for DbBlackboard {
     async fn insert_shipyard(&self, shipyard: Shipyard) -> Result<()> {
         let now = Local::now().to_utc();
         insert_shipyards(&self.model_manager.pool(), vec![shipyard], now).await
+    }
+    async fn get_closest_waypoint(&self, current_location: &WaypointSymbol, candidates: &[WaypointSymbol]) -> Result<Option<WaypointSymbol>> {
+        //TODO: improve by caching a waypoint_map
+        let waypoints = select_waypoints_of_system(&self.model_manager.pool(), &current_location.system_symbol()).await?;
+        let current_waypoint = waypoints.iter().find(|wp| wp.symbol == *current_location).expect("Current location waypoint");
+
+        Ok(candidates
+            .iter()
+            .map(|wps| {
+                let wp = waypoints.iter().find(|wp| wp.symbol == *wps).expect("candidate waypoint");
+                (wps.clone(), current_waypoint.distance_to(wp))
+            })
+            .sorted_by_key(|(_, distance)| *distance)
+            .take(1)
+            .next()
+            .map(|(best, _)| best))
     }
 }
 

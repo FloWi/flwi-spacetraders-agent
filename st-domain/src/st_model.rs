@@ -244,7 +244,7 @@ pub struct ConstructionMaterial {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct GetConstructionResponseData {
+pub struct Construction {
     pub symbol: String,
     pub materials: Vec<ConstructionMaterial>,
     pub is_complete: bool,
@@ -253,7 +253,7 @@ pub struct GetConstructionResponseData {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GetConstructionResponse {
-    pub data: GetConstructionResponseData,
+    pub data: Construction,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
@@ -747,6 +747,71 @@ pub struct RefuelShipResponseBody {
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
+pub struct SellTradeGoodRequest {
+    pub symbol: TradeGoodSymbol,
+    pub units: u32,
+}
+
+pub type SellTradeGoodResponse = Data<SellTradeGoodResponseBody>;
+pub type PurchaseTradeGoodResponse = Data<PurchaseTradeGoodResponseBody>;
+pub type SupplyConstructionSiteResponse = Data<SupplyConstructionSiteResponseBody>;
+pub type PurchaseShipResponse = Data<PurchaseShipResponseBody>;
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct SellTradeGoodResponseBody {
+    pub agent: Agent,
+    pub cargo: Cargo,
+    pub transaction: Transaction,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct PurchaseTradeGoodRequest {
+    pub symbol: TradeGoodSymbol,
+    pub units: u32,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct PurchaseTradeGoodResponseBody {
+    pub agent: Agent,
+    pub cargo: Cargo,
+    pub transaction: Transaction,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct SupplyConstructionSiteRequest {
+    pub ship_symbol: ShipSymbol,
+    pub trade_symbol: TradeGoodSymbol,
+    pub units: u32,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SupplyConstructionSiteResponseBody {
+    pub cargo: Cargo,
+    pub construction: Construction,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct PurchaseShipRequest {
+    pub ship_type: ShipType,
+    pub waypoint_symbol: WaypointSymbol,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PurchaseShipResponseBody {
+    pub ship: Ship,
+    pub transaction: Transaction,
+    pub agent: Agent,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
 pub struct NavigateShipResponse {
     pub data: NavAndFuelResponse,
 }
@@ -883,10 +948,10 @@ pub struct Cargo {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct Inventory {
-    pub symbol: String,
+    pub symbol: TradeGoodSymbol,
     pub name: String,
     pub description: String,
-    pub units: i32,
+    pub units: u32,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
