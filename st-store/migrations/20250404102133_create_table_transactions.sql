@@ -6,6 +6,5 @@ create table transactions
     total_price           bigint      not null,
     ship_symbol           text        not null references ships (ship_symbol),
     tx_summary            jsonb       not null,
-    completed_at          timestamptz not null,
-    is_complete           bool        not null
+    completed_at          timestamptz not null
 )

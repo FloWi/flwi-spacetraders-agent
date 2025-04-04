@@ -26,18 +26,18 @@ async fn get_behavior_trees() -> Result<Vec<(String, MermaidString)>, ServerFnEr
 }
 
 #[server]
-async fn get_explorer_behavior() -> Result<Vec<(String, MermaidString)>, ServerFnError> {
+async fn get_trading_behavior() -> Result<Vec<(String, MermaidString)>, ServerFnError> {
     use st_core;
     use st_core::behavior_tree::behavior_tree::Behavior;
     use st_core::behavior_tree::ship_behaviors::ShipAction;
 
-    let behavior = st_core::behavior_tree::ship_behaviors::ship_behaviors().stationary_probe_behavior;
+    let behavior = st_core::behavior_tree::ship_behaviors::ship_behaviors().trading_behavior;
     let all_behaviors = st_core::behavior_tree::ship_behaviors::ship_behaviors();
     let labelled_behaviors: HashMap<String, Behavior<ShipAction>> = all_behaviors.to_labelled_sub_behaviors();
     let sub_behavior_hashes = st_core::behavior_tree::behavior_tree::compute_sub_behavior_hashes(&labelled_behaviors);
 
     let mermaid_strings = vec![(
-        "Explorer Behavior".to_string(),
+        "Trading Behavior".to_string(),
         MermaidString(behavior.to_mermaid_without_repeats(&sub_behavior_hashes)),
     )];
 
@@ -49,7 +49,7 @@ async fn get_explorer_behavior() -> Result<Vec<(String, MermaidString)>, ServerF
 #[component]
 pub fn BehaviorTreePage() -> impl IntoView {
     // Use create_resource which is the standard way to handle async data in Leptos
-    let explorer_behavior_resource = OnceResource::new(get_explorer_behavior());
+    let explorer_behavior_resource = OnceResource::new(get_trading_behavior());
     let behavior_trees_resource = OnceResource::new(get_behavior_trees());
 
     view! {

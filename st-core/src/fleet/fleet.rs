@@ -1,10 +1,11 @@
 use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
 use crate::behavior_tree::ship_behaviors::{ship_behaviors, ShipAction};
-use crate::fleet::construction_fleet::{ConstructJumpGateFleet, TradingManager};
+use crate::fleet::construction_fleet::ConstructJumpGateFleet;
 use crate::fleet::fleet_runner::FleetRunner;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
 use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
+use crate::fleet::trading_manager::TradingManager;
 use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_shipyards_for_exploration};
 use crate::pagination::fetch_all_pages;
 use crate::ship::ShipOperations;
@@ -247,6 +248,8 @@ impl FleetAdmiral {
                         }
                     }
                 };
+
+                AgentBmc::store_agent(&Ctx::Anonymous, mm, &self.agent_info).await?;
 
                 if is_complete {
                     event!(
@@ -557,10 +560,12 @@ pub fn compute_fleet_phase_with_tasks(
     //    - prob. stop mining and siphoning
 
     let has_construct_jump_gate_task_been_completed = completed_tasks.iter().any(|t| matches!(&t.task, ConstructJumpGate { system_symbol }));
+
     let has_collect_market_infos_once_task_been_completed = completed_tasks.iter().any(|t| matches!(&t.task, CollectMarketInfosOnce { system_symbol }));
 
     let is_jump_gate_done =
         fleet_decision_facts.construction_site.clone().map(|cs| cs.is_complete).unwrap_or(false) || has_construct_jump_gate_task_been_completed;
+
     let is_shipyard_exploration_complete = are_vecs_equal_ignoring_order(
         &fleet_decision_facts.shipyards_of_interest,
         &fleet_decision_facts.shipyards_with_up_to_date_infos,
@@ -582,7 +587,13 @@ pub fn compute_fleet_phase_with_tasks(
             },
         ];
 
-        let shopping_list_in_order = vec![];
+        let frigate_task = tasks[0].clone();
+        let probe_task = tasks[1].clone();
+
+        let shopping_list_in_order = vec![
+            (ShipType::SHIP_COMMAND_FRIGATE, frigate_task),
+            (ShipType::SHIP_PROBE, probe_task),
+        ];
 
         FleetPhase {
             name: FleetPhaseName::InitialExploration,

@@ -401,6 +401,18 @@ impl Actionable for ShipAction {
                         match maybe_best_wps {
                             None => Err(anyhow!("No next trade waypoint found - maybe_best_waypoint is None")),
                             Some(best_wps) => {
+                                println!(
+                                    r#"ShipAction::SetNextTradeStopAsDestination:
+                                purchase_completion_status: {}
+                                sale_completion_status: {}
+                                candidates: {}
+                                maybe_best_wps: {}
+                                "#,
+                                    serde_json::to_string(&purchase_completion_status)?,
+                                    serde_json::to_string(&sale_completion_status)?,
+                                    serde_json::to_string(&candidates)?,
+                                    best_wps.0,
+                                );
                                 state.set_destination(best_wps);
                                 Ok(Success)
                             }
@@ -456,7 +468,7 @@ impl Actionable for ShipAction {
                                     .send(ActionEvent::TransactionCompleted(
                                         state.clone(),
                                         PurchasedTradeGoods(purchase.clone(), result),
-                                        trade.clone(),
+                                        state.maybe_trade.clone().unwrap(),
                                     ))
                                     .await?;
                             }
@@ -495,7 +507,7 @@ impl Actionable for ShipAction {
                                     .send(ActionEvent::TransactionCompleted(
                                         state.clone(),
                                         PurchasedTradeGoods(purchase.clone(), result),
-                                        trade.clone(),
+                                        state.maybe_trade.clone().unwrap(),
                                     ))
                                     .await?;
                                 // args.report_purchase(ticket_id, &purchase.id, &result).await?;
@@ -508,7 +520,7 @@ impl Actionable for ShipAction {
                                     .send(ActionEvent::TransactionCompleted(
                                         state.clone(),
                                         SuppliedConstructionSite(delivery.clone(), result),
-                                        trade.clone(),
+                                        state.maybe_trade.clone().unwrap(),
                                     ))
                                     .await?;
                             }
@@ -520,14 +532,14 @@ impl Actionable for ShipAction {
                                 .send(ActionEvent::TransactionCompleted(
                                     state.clone(),
                                     ShipPurchased(details.clone(), result),
-                                    trade.clone(),
+                                    state.maybe_trade.clone().unwrap(),
                                 ))
                                 .await?;
                         }
                     }
-                    todo!()
+                    Ok(Success)
                 } else {
-                    todo!()
+                    Ok(Success)
                 }
             }
 
@@ -567,6 +579,9 @@ impl Actionable for ShipAction {
                 }
             }
         };
+
+        let capacity = action_completed_tx.capacity();
+        println!("Sending ActionEvent::ShipActionCompleted to action_completed_tx - capacity: {capacity}");
 
         match result {
             Ok(_res) => {

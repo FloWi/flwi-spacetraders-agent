@@ -807,8 +807,19 @@ pub struct PurchaseShipRequest {
 #[serde(rename_all = "camelCase")]
 pub struct PurchaseShipResponseBody {
     pub ship: Ship,
-    pub transaction: Transaction,
+    pub transaction: ShipPurchaseTransaction,
     pub agent: Agent,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShipPurchaseTransaction {
+    pub ship_symbol: ShipSymbol,
+    pub ship_type: ShipType,
+    pub waypoint_symbol: WaypointSymbol,
+    pub agent_symbol: AgentSymbol,
+    pub price: u64,
+    pub timestamp: DateTime<Utc>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]

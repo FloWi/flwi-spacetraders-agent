@@ -3,10 +3,9 @@ use anyhow::*;
 use itertools::Itertools;
 use st_domain::{
     trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, PurchaseShipTicketDetails, Ship,
-    ShipSymbol, ShipTask, TradeTicket, TransactionActionEvent, TransactionSummary, TransactionTicketId,
+    ShipSymbol, ShipTask, TransactionTicketId,
 };
 use st_store::shipyard_bmc::ShipyardBmc;
-use st_store::trade_bmc::TradeBmc;
 use st_store::{Ctx, DbModelManager, MarketBmc, SystemBmc};
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -22,8 +21,8 @@ impl ConstructJumpGateFleet {
         facts: &FleetDecisionFacts,
         mm: &DbModelManager,
     ) -> Result<HashMap<ShipSymbol, ShipTask>> {
-        let ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
-
+        let fleet_ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
+        let fleet_ship_symbols = fleet_ships.iter().map(|&s| s.symbol.clone()).collect_vec();
         let budget: u64 = admiral.get_total_budget_for_fleet(fleet);
         let my_ships = admiral.get_ships_of_fleet(fleet);
         let ship_tasks: Vec<(ShipSymbol, ShipTask)> = admiral.get_ship_tasks_of_fleet(fleet);
@@ -31,13 +30,17 @@ impl ConstructJumpGateFleet {
         let allocated_budget: u64 = admiral.get_allocated_budget_of_fleet(fleet);
 
         let ships_with_tasks = ship_tasks.iter().map(|(ss, _)| ss.clone()).collect::<HashSet<_>>();
-        let unassigned_ships = ships.into_iter().filter(|s| ships_with_tasks.contains(&s.symbol).not()).collect_vec();
+        let unassigned_ships = fleet_ships.into_iter().filter(|s| ships_with_tasks.contains(&s.symbol).not()).collect_vec();
+        let initial_unassigned_ships = unassigned_ships.iter().map(|s| s.symbol.clone()).collect_vec();
 
         // all ships are traders (command frigate + 4 haulers --> 200k each => 1M total)
         let reserved_for_trading = (50_000 * unassigned_ships.len()) as i64;
-        let rest_budget = (budget as i64) - allocated_budget as i64;
 
-        let budget_for_ship_purchase = rest_budget - reserved_for_trading;
+        let not_allocated_budget = (budget as i64) - allocated_budget as i64;
+
+        let trading_budget = reserved_for_trading.min(not_allocated_budget);
+
+        let budget_for_ship_purchase = not_allocated_budget - trading_budget;
 
         // if we have enough budget for purchasing construction material, we do so
 
@@ -93,7 +96,15 @@ impl ConstructJumpGateFleet {
             }
         });
 
-        let unassigned_ships = unassigned_ships
+        // TODO: allow more trading budget if now ship gets purchased
+        let _budget_used_for_ship_purchase = maybe_ship_purchase_ticket_details.clone().map(|t| t.allocated_credits).unwrap_or(0);
+        let budget_for_trading = if reserved_for_trading < 0 {
+            0
+        } else {
+            reserved_for_trading as u64
+        };
+
+        let still_unassigned_ships = unassigned_ships
             .into_iter()
             .filter(|s| {
                 let is_ship_assigned_for_ship_purchase = maybe_ship_purchase_ticket_details.clone().map(|t| t.ship_symbol == s.symbol).unwrap_or(false);
@@ -101,13 +112,13 @@ impl ConstructJumpGateFleet {
             })
             .collect_vec();
 
-        let unassigned_ships_symbols = unassigned_ships.iter().map(|s| s.symbol.clone()).collect_vec();
+        let still_unassigned_ships_symbols = still_unassigned_ships.iter().map(|s| s.symbol.clone()).collect_vec();
 
         let latest_market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, mm, &cfg.system_symbol).await?;
         let market_data = trading::to_trade_goods_with_locations(&latest_market_data);
         let trading_opportunities = trading::find_trading_opportunities(&market_data, &waypoint_map);
         let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
-            trading::evaluate_trading_opportunities(&unassigned_ships, &waypoint_map, trading_opportunities);
+            trading::evaluate_trading_opportunities(&still_unassigned_ships, &waypoint_map, trading_opportunities, trading_budget);
 
         // FIXME: get currently active trades
         let active_trades_of_goods: Vec<EvaluatedTradingOpportunity> = Vec::new();
@@ -123,19 +134,20 @@ impl ConstructJumpGateFleet {
         // can_purchase_ship = rest_budget - ship_price > required_for_trading ==> true
 
         dbg!(budget);
+        dbg!(fleet_ship_symbols);
         dbg!(ship_tasks);
         dbg!(allocated_budget);
         dbg!(ships_with_tasks);
-        dbg!(unassigned_ships_symbols);
+        dbg!(&still_unassigned_ships_symbols);
         dbg!(reserved_for_trading);
-        dbg!(rest_budget);
+        dbg!(not_allocated_budget);
         //dbg!(evaluated_trading_opportunities);
         dbg!(&trades_for_ships);
         dbg!(&admiral.fleet_phase);
 
         dbg!(&maybe_next_ship_to_purchase);
         dbg!(&reserved_for_trading);
-        dbg!(&rest_budget);
+        dbg!(&not_allocated_budget);
         dbg!(&budget_for_ship_purchase);
         dbg!(&maybe_ship_purchase_location);
         dbg!(&maybe_ship_purchase_ticket_details);
@@ -146,41 +158,13 @@ impl ConstructJumpGateFleet {
             admiral.assign_ship_purchase_ticket_if_possible(&ticket_details);
         }
 
+        let new_ship_tasks: HashMap<ShipSymbol, ShipTask> = initial_unassigned_ships
+            .iter()
+            .filter_map(|ss| admiral.active_trades.get(ss).map(|trade_ticket| (ss.clone(), ShipTask::Trade { ticket: trade_ticket.clone() })))
+            .collect();
+
         println!("Assigned trades to ships: \n{}", serde_json::to_string_pretty(&admiral.active_trades)?);
 
-        // TradingManager::acquire_trading_tickets(trading_tickets, admiral);
-
-        Ok(Default::default())
-    }
-}
-
-pub struct TradingManager;
-
-impl TradingManager {
-    pub(crate) async fn log_transaction_completed(
-        ctx: Ctx,
-        mm: &DbModelManager,
-        ship: &Ship,
-        transaction_action_event: &TransactionActionEvent,
-        trade_ticket: &TradeTicket,
-    ) -> Result<TransactionSummary> {
-        let total_price: i64 = match transaction_action_event.clone() {
-            TransactionActionEvent::PurchasedTradeGoods(_, resp) => -resp.data.transaction.total_price as i64,
-            TransactionActionEvent::SoldTradeGoods(_, resp) => resp.data.transaction.total_price as i64,
-            TransactionActionEvent::SuppliedConstructionSite(_, _) => 0,
-            TransactionActionEvent::ShipPurchased(_, resp) => -resp.data.transaction.total_price as i64,
-        };
-
-        let transaction_ticket_id = transaction_action_event.transaction_ticket_id();
-        let tx_summary = TransactionSummary {
-            ship_symbol: ship.symbol.clone(),
-            transaction_action_event: transaction_action_event.clone(),
-            trade_ticket: trade_ticket.clone(),
-            total_price,
-            transaction_ticket_id,
-        };
-
-        TradeBmc::save_transaction_completed(ctx, mm, &tx_summary).await?;
-        Ok(tx_summary)
+        Ok(new_ship_tasks)
     }
 }

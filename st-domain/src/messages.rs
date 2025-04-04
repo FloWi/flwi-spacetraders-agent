@@ -206,7 +206,7 @@ impl SellGoodTicketDetails {
         SellGoodTicketDetails {
             id: TransactionTicketId(Uuid::new_v4()),
             ship_symbol: opp.ship_symbol.clone(),
-            waypoint_symbol: opp.trading_opportunity.purchase_waypoint_symbol.clone(),
+            waypoint_symbol: opp.trading_opportunity.sell_waypoint_symbol.clone(),
             trade_good: sell_mtg.symbol.clone(),
             quantity: opp.units,
             price_per_unit: sell_mtg.sell_price as u64,

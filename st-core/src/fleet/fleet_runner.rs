@@ -190,11 +190,13 @@ impl FleetRunner {
         Ok(())
     }
 
-    pub async fn listen_to_ship_changes_and_persist(runner: Arc<Mutex<FleetRunner>>, mut ship_updated_rx: Receiver<ShipOperations>) -> Result<()> {
-        let guard = runner.lock().await;
-        let mm = guard.db_model_manager.clone();
+    pub async fn listen_to_ship_changes_and_persist(
+        db_model_manager: DbModelManager,
+        fleet_admiral: Arc<Mutex<FleetAdmiral>>,
+        mut ship_updated_rx: Receiver<ShipOperations>,
+    ) -> Result<()> {
         while let Some(updated_ship) = ship_updated_rx.recv().await {
-            let mut admiral = guard.fleet_admiral.lock().await;
+            let mut admiral = fleet_admiral.lock().await;
             let maybe_old_ship = admiral.all_ships.get(&updated_ship.symbol).cloned();
 
             match maybe_old_ship {
@@ -204,7 +206,7 @@ impl FleetRunner {
                 }
                 _ => {
                     event!(Level::INFO, "Ship {} updated", updated_ship.symbol.0);
-                    let _ = st_store::upsert_ships(mm.pool(), &vec![updated_ship.ship.clone()], Utc::now()).await?;
+                    let _ = st_store::upsert_ships(db_model_manager.pool(), &vec![updated_ship.ship.clone()], Utc::now()).await?;
                     admiral.all_ships.insert(updated_ship.symbol.clone(), updated_ship.ship);
                 }
             }
@@ -212,21 +214,26 @@ impl FleetRunner {
 
         Ok(())
     }
-
-    pub async fn listen_to_ship_status_report_messages(runner: Arc<Mutex<FleetRunner>>, mut ship_status_report_rx: Receiver<ShipStatusReport>) -> Result<()> {
-        let mm = runner.lock().await.db_model_manager.clone();
-
-        let admiral = Arc::clone(&runner.lock().await.fleet_admiral);
+    pub async fn listen_to_ship_status_report_messages(
+        fleet_admiral: Arc<Mutex<FleetAdmiral>>,
+        db_model_manager: DbModelManager,
+        mut ship_status_report_rx: Receiver<ShipStatusReport>,
+    ) -> Result<()> {
+        println!("Fleet_runner::listen_to_ship_status_report_messages - starting");
 
         while let Some(msg) = ship_status_report_rx.recv().await {
-            let mut admiral = admiral.lock().await;
-            admiral.report_ship_action_completed(msg, &mm).await?;
+            println!("Fleet_runner::listen_to_ship_status_report_messages - got message");
+            let mut admiral = fleet_admiral.lock().await;
+            admiral.report_ship_action_completed(msg, &db_model_manager).await?;
+            println!("Fleet_runner::listen_to_ship_status_report_messages - successfully processed message");
         }
 
         Ok(())
     }
-    pub async fn listen_to_ship_action_update_messages(runner: Arc<Mutex<FleetRunner>>, mut ship_action_completed_rx: Receiver<ActionEvent>) -> Result<()> {
-        let ship_status_report_tx = runner.lock().await.ship_status_report_tx.clone();
+    pub async fn listen_to_ship_action_update_messages(
+        ship_status_report_tx: Sender<ShipStatusReport>,
+        mut ship_action_completed_rx: Receiver<ActionEvent>,
+    ) -> Result<()> {
         while let Some(msg) = ship_action_completed_rx.recv().await {
             match msg {
                 ActionEvent::ShipActionCompleted(result) => match result {
@@ -268,10 +275,30 @@ impl FleetRunner {
         ship_action_completed_rx: Receiver<ActionEvent>,
         ship_status_report_rx: Receiver<ShipStatusReport>,
     ) {
-        let ship_updated_listener_join_handle = tokio::spawn(Self::listen_to_ship_changes_and_persist(Arc::clone(&runner), ship_updated_rx));
+        // Extract all needed data with a single lock acquisition
+        let (db_model_manager, fleet_admiral, ship_status_report_tx) = {
+            let guard = runner.lock().await;
+            (
+                guard.db_model_manager.clone(),
+                Arc::clone(&guard.fleet_admiral),
+                guard.ship_status_report_tx.clone(),
+            )
+        };
 
-        let ship_action_update_listener_join_handle = tokio::spawn(Self::listen_to_ship_action_update_messages(Arc::clone(&runner), ship_action_completed_rx));
-        let ship_status_report_listener_join_handle = tokio::spawn(Self::listen_to_ship_status_report_messages(Arc::clone(&runner), ship_status_report_rx));
+        let ship_updated_listener_join_handle = tokio::spawn(Self::listen_to_ship_changes_and_persist(
+            db_model_manager.clone(),
+            Arc::clone(&fleet_admiral),
+            ship_updated_rx,
+        ));
+
+        let ship_action_update_listener_join_handle =
+            tokio::spawn(Self::listen_to_ship_action_update_messages(ship_status_report_tx, ship_action_completed_rx));
+
+        let ship_status_report_listener_join_handle = tokio::spawn(Self::listen_to_ship_status_report_messages(
+            fleet_admiral,
+            db_model_manager,
+            ship_status_report_rx,
+        ));
 
         // run forever
         tokio::join!(

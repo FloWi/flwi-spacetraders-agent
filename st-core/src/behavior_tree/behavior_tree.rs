@@ -339,9 +339,10 @@ where
 
                 state_changed_tx.send(state.clone()).await.expect("send");
 
+                let capacity = state_changed_tx.capacity();
                 event!(
                     Level::INFO,
-                    message = "Finished action and msg sent.",
+                    message = format!("Finished action and msg sent. Capacity of state_changed_tx {capacity}"),
                     index = self.index(),
                     actionable = actionable_label,
                     result = %o,

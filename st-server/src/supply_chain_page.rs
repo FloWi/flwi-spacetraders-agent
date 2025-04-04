@@ -44,7 +44,7 @@ async fn get_supply_chain_data(
 
     let supply_chain = db::load_supply_chain(mm.pool()).await.unwrap().unwrap();
 
-    let agent = AgentBmc::get_initial_agent(&Ctx::Anonymous, &mm).await.expect("get_initial_agent");
+    let agent = AgentBmc::load_agent(&Ctx::Anonymous, &mm).await.expect("agent");
     let headquarters_waypoint = agent.headquarters;
 
     let market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, &mm, &headquarters_waypoint.system_symbol()).await.expect("status");
@@ -67,9 +67,10 @@ async fn get_supply_chain_data(
     let cargo_capable_ships = ships.iter().filter(|s| s.cargo.capacity > 0).collect_vec();
 
     let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
-        trading::evaluate_trading_opportunities(&cargo_capable_ships, &waypoint_map, trading_opportunities);
+        trading::evaluate_trading_opportunities(&cargo_capable_ships, &waypoint_map, trading_opportunities, agent.credits);
 
     let active_trades = Vec::new();
+
     let trading_decision = trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trades);
 
     Ok((

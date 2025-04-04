@@ -26,7 +26,7 @@ pub fn find_trading_opportunities(
             imports
                 .iter()
                 .filter(move |(import_wps, import_mtg)| {
-                    export_wps != import_wps && export_mtg.symbol == import_mtg.symbol && export_mtg.purchase_price < import_mtg.sell_price
+                    export_wps != import_wps && export_mtg.symbol == import_mtg.symbol && import_mtg.sell_price > export_mtg.purchase_price
                 })
                 .map(|(import_wps, import_mtg)| {
                     let import_wp = waypoint_map.get(import_wps).unwrap();
@@ -61,8 +61,15 @@ pub fn evaluate_trading_opportunities(
     unassigned_ships: &[&Ship],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
     trading_opportunities: Vec<TradingOpportunity>,
+    budget_for_trading: i64,
 ) -> Vec<EvaluatedTradingOpportunity> {
     let top_trading_opps = trading_opportunities.iter().sorted_by_key(|t| -(t.profit_per_unit as i64)).take(15).collect_vec();
+
+    let budget_for_ship = if unassigned_ships.is_empty() {
+        0
+    } else {
+        u64::try_from(budget_for_trading).unwrap_or(0) / unassigned_ships.len() as u64
+    };
 
     let evaluated_trading_opportunities = unassigned_ships
         .iter()
@@ -78,8 +85,45 @@ pub fn evaluate_trading_opportunities(
                 } else {
                     total_distance
                 };
-                //TODO: relax restriction when supply is abundant or high (check old scala solution of batches again)
-                let units = trading_opp.purchase_market_trade_good_entry.trade_volume.min(trading_opp.sell_market_trade_good_entry.trade_volume) as u32;
+                //TODO: maybe relax restriction when supply is abundant or high (check old scala solution of batches again)
+
+                // in the beginning we have to respect the budget constraint.
+                // after a bit of trading we should always be able to afford a full cargo load
+
+                let num_units_within_budget = budget_for_ship as u32 / trading_opp.purchase_market_trade_good_entry.purchase_price as u32;
+                let units = (trading_opp.purchase_market_trade_good_entry.trade_volume.min(trading_opp.sell_market_trade_good_entry.trade_volume) as u32)
+                    .min(num_units_within_budget);
+
+                /*
+                "trade_good": "CLOTHING",
+                "ship_symbol": "FLWI-1",
+                "price_per_unit": 5125,
+                "waypoint_symbol": "X1-FN42-D48"
+
+                       */
+                println!(
+                    r#"
+trade_good: {}
+purchase_waypoint: {}
+sell_waypoint: {}
+let num_units_within_budget = budget_for_ship as u32 / trading_opp.purchase_market_trade_good_entry.purchase_price as u32;
+let units = (trading_opp.purchase_market_trade_good_entry.trade_volume.min(trading_opp.sell_market_trade_good_entry.trade_volume) as u32)
+            .min(num_units_within_budget);
+let {} = {} / {};
+let units = ({}.min({}) as u32)
+            .min({});
+                "#,
+                    trading_opp.purchase_market_trade_good_entry.symbol.to_string(),
+                    trading_opp.purchase_waypoint_symbol.0,
+                    trading_opp.sell_waypoint_symbol.0,
+                    num_units_within_budget,
+                    budget_for_ship as u32,
+                    trading_opp.purchase_market_trade_good_entry.purchase_price as u32,
+                    trading_opp.purchase_market_trade_good_entry.trade_volume,
+                    trading_opp.sell_market_trade_good_entry.trade_volume,
+                    num_units_within_budget
+                );
+
                 let total_profit = trading_opp.profit_per_unit * units as u64;
                 let profit_per_distance = (total_profit as f64 / total_distance as f64) as u64;
 

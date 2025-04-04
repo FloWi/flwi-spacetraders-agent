@@ -46,6 +46,7 @@ on conflict (ticket_id) do update set entry = excluded.entry
 select ship_symbol
      , entry as "entry: Json<TradeTicket>"
   from trade_tickets
+ where completed_at is null
         "#,
         )
         .fetch_all(mm.pool())
@@ -62,6 +63,22 @@ select ship_symbol
 
         let is_complete = tx_summary.trade_ticket.is_complete();
 
+        if is_complete {
+            sqlx::query!(
+                r#"
+update trade_tickets
+set updated_at = $1
+  , completed_at = $2
+where ticket_id = $3
+    "#,
+                now,
+                now,
+                ticket_id.0,
+            )
+            .execute(mm.pool())
+            .await?;
+        }
+
         sqlx::query!(
             r#"
 insert into transactions (ticket_id,
@@ -69,9 +86,8 @@ insert into transactions (ticket_id,
                           total_price,
                           ship_symbol,
                           tx_summary,
-                          completed_at,
-                          is_complete)
-values ($1, $2, $3, $4, $5, $6, $7)
+                          completed_at)
+values ($1, $2, $3, $4, $5, $6)
         "#,
             ticket_id.0,
             transaction_ticket_id.0,
@@ -79,7 +95,6 @@ values ($1, $2, $3, $4, $5, $6, $7)
             ship_symbol.0,
             Json(tx_summary.clone()) as _,
             now,
-            is_complete,
         )
         .execute(mm.pool())
         .await?;
