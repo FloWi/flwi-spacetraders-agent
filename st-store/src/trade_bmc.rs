@@ -3,7 +3,7 @@ use crate::{DbModelManager, DbShipTaskEntry};
 use anyhow::*;
 use chrono::Utc;
 use sqlx::types::Json;
-use st_domain::{ShipSymbol, TicketId, TradeTicket};
+use st_domain::{ShipSymbol, TicketId, TradeTicket, TransactionSummary, TransactionTicketId};
 use std::collections::HashMap;
 
 pub struct TradeBmc;
@@ -52,6 +52,39 @@ select ship_symbol
         .await?;
 
         Ok(entries.into_iter().map(|db_entry| (ShipSymbol(db_entry.ship_symbol), db_entry.entry.0)).collect())
+    }
+
+    pub async fn save_transaction_completed(_ctx: Ctx, mm: &DbModelManager, tx_summary: &TransactionSummary) -> Result<()> {
+        let now = Utc::now();
+        let transaction_ticket_id: TransactionTicketId = tx_summary.transaction_ticket_id.clone();
+        let ticket_id = tx_summary.trade_ticket.ticket_id();
+        let ship_symbol = tx_summary.ship_symbol.clone();
+
+        let is_complete = tx_summary.trade_ticket.is_complete();
+
+        sqlx::query!(
+            r#"
+insert into transactions (ticket_id,
+                          transaction_ticket_id,
+                          total_price,
+                          ship_symbol,
+                          tx_summary,
+                          completed_at,
+                          is_complete)
+values ($1, $2, $3, $4, $5, $6, $7)
+        "#,
+            ticket_id.0,
+            transaction_ticket_id.0,
+            tx_summary.total_price,
+            ship_symbol.0,
+            Json(tx_summary.clone()) as _,
+            now,
+            is_complete,
+        )
+        .execute(mm.pool())
+        .await?;
+
+        Ok(())
     }
 }
 

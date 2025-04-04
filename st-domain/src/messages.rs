@@ -388,5 +388,34 @@ pub enum TransactionActionEvent {
     PurchasedTradeGoods(PurchaseGoodTicketDetails, PurchaseTradeGoodResponse),
     SoldTradeGoods(SellGoodTicketDetails, SellTradeGoodResponse),
     SuppliedConstructionSite(DeliverConstructionMaterialTicketDetails, SupplyConstructionSiteResponse),
-    ShipPurchased(PurchaseShipResponse, PurchaseShipTicketDetails),
+    ShipPurchased(PurchaseShipTicketDetails, PurchaseShipResponse),
+}
+
+impl TransactionActionEvent {
+    pub fn transaction_ticket_id(&self) -> TransactionTicketId {
+        match self {
+            TransactionActionEvent::PurchasedTradeGoods(t, _) => t.id.clone(),
+            TransactionActionEvent::SoldTradeGoods(t, _) => t.id.clone(),
+            TransactionActionEvent::SuppliedConstructionSite(t, _) => t.id.clone(),
+            TransactionActionEvent::ShipPurchased(t, _) => t.id.clone(),
+        }
+    }
+
+    pub fn maybe_updated_agent_credits(&self) -> Option<i64> {
+        match self {
+            TransactionActionEvent::PurchasedTradeGoods(_, resp) => Some(resp.data.agent.credits),
+            TransactionActionEvent::SoldTradeGoods(_, resp) => Some(resp.data.agent.credits),
+            TransactionActionEvent::SuppliedConstructionSite(_, resp) => None,
+            TransactionActionEvent::ShipPurchased(_, resp) => Some(resp.data.agent.credits),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct TransactionSummary {
+    pub ship_symbol: ShipSymbol,
+    pub transaction_action_event: TransactionActionEvent,
+    pub trade_ticket: TradeTicket,
+    pub total_price: i64,
+    pub transaction_ticket_id: TransactionTicketId,
 }

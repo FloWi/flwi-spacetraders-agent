@@ -519,7 +519,7 @@ impl Actionable for ShipAction {
                             action_completed_tx
                                 .send(ActionEvent::TransactionCompleted(
                                     state.clone(),
-                                    ShipPurchased(result, details.clone()),
+                                    ShipPurchased(details.clone(), result),
                                     trade.clone(),
                                 ))
                                 .await?;

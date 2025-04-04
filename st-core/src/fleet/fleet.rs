@@ -1,7 +1,7 @@
 use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
 use crate::behavior_tree::ship_behaviors::{ship_behaviors, ShipAction};
-use crate::fleet::construction_fleet::ConstructJumpGateFleet;
+use crate::fleet::construction_fleet::{ConstructJumpGateFleet, TradingManager};
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
 use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
 use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_shipyards_for_exploration};
@@ -466,21 +466,47 @@ impl FleetAdmiral {
                 let is_complete = updated_trade_ticket.is_complete();
                 TradeBmc::upsert_ticket(&Ctx::Anonymous, mm, &ship.symbol, ticket_id, &updated_trade_ticket, is_complete).await?;
 
+                let tx_summary = TradingManager::log_transaction_completed(Ctx::Anonymous, mm, &ship, &transaction_event, &updated_trade_ticket).await?;
+
+                let maybe_updated_agent_credits = tx_summary.transaction_action_event.maybe_updated_agent_credits();
+                let old_credits = self.agent_info.credits;
+                let new_credits = self.agent_info.credits + tx_summary.total_price;
+
+                match maybe_updated_agent_credits {
+                    None => {}
+                    Some(agent_credits_from_response) => {
+                        if agent_credits_from_response != new_credits {
+                            event!(
+                        Level::WARN,
+                            "Agent Credits differ from our expectation!\nExpected Agent Credits: {new_credits}\n Actual Agent Credits: {agent_credits_from_response}\nApplying correct agent credits."
+                              );
+
+                            self.agent_info.credits = agent_credits_from_response;
+                        }
+                    }
+                };
+
                 if is_complete {
                     event!(
                         Level::INFO,
-                        "Transaction complete. It completed the whole trade.\nTransaction: {:?}\nTrade: {:?}",
-                        &transaction_event,
-                        &updated_trade_ticket
+                        "Transaction complete. It completed the whole trade.\nTransaction: {:?}\nTrade: {:?}\nTotal Price: {}\nOld Agent Credits: {}\nNew Agent Credits: {}",
+                        &tx_summary.transaction_ticket_id,
+                        &tx_summary.trade_ticket.ticket_id(),
+                        &tx_summary.total_price,
+                        old_credits,
+                        self.agent_info.credits,
                     );
                     self.active_trades.remove(&ship.symbol);
                 } else {
                     self.active_trades.insert(ship.symbol.clone(), updated_trade_ticket.clone());
                     event!(
                         Level::INFO,
-                        "Transaction complete. Transaction is not complete yet.\nTransaction: {:?}\nTrade: {:?}",
-                        &transaction_event,
-                        &updated_trade_ticket
+                        "Transaction complete. Transaction is not complete yet.\nTransaction: {:?}\nTrade: {:?}\nTotal Price: {}\nOld Agent Credits: {}\nNew Agent Credits: {}",
+                        &tx_summary.transaction_ticket_id,
+                        &tx_summary.trade_ticket.ticket_id(),
+                        &tx_summary.total_price,
+                        old_credits,
+                        self.agent_info.credits,
                     );
                 }
                 Ok(())

@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into transactions (ticket_id,\n                          transaction_ticket_id,\n                          total_price,\n                          ship_symbol,\n                          tx_summary,\n                          completed_at,\n                          is_complete)\nvalues ($1, $2, $3, $4, $5, $6, $7)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Text",
+        "Jsonb",
+        "Timestamptz",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "795b328e7f37a3c8d64543620d8e4d33564ed3fd850eb5f7bb1a823c376b664d"
+}
