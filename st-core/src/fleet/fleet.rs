@@ -176,7 +176,7 @@ impl FleetAdmiral {
     pub async fn run_fleets(fleet_admiral: Arc<Mutex<FleetAdmiral>>, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
-        FleetRunner::run_fleets(Arc::clone(&fleet_admiral), Arc::clone(&client), db_model_manager).await?;
+        FleetRunner::run_fleets(Arc::clone(&fleet_admiral), Arc::clone(&client), db_model_manager.clone()).await?;
 
         Ok(())
     }
