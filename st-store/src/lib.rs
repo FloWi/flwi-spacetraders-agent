@@ -9,6 +9,7 @@ pub mod ship_bmc;
 pub mod shipyard_bmc;
 pub mod status_bmc;
 pub mod system_bmc;
+pub mod trade_bmc;
 
 pub use agent_bmc::*;
 pub use construction_bmc::*;
