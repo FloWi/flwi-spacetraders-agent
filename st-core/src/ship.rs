@@ -101,6 +101,10 @@ impl ShipOperations {
         self.permanent_observation_location = Some(waypoint_symbol);
     }
 
+    pub fn set_trade_ticket(&mut self, trade_ticket: TradeTicket) {
+        self.maybe_trade = Some(trade_ticket);
+    }
+
     pub async fn dock(&mut self) -> Result<Nav> {
         let response = self.client.dock_ship(self.ship.symbol.clone()).await?;
         println!("{:?}", response);

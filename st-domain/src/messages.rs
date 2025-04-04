@@ -86,6 +86,32 @@ pub enum TradeTicket {
 }
 
 impl TradeTicket {
+    pub fn ticket_id(&self) -> TicketId {
+        match self {
+            TradeTicket::TradeCargo { ticket_id, .. } => ticket_id.clone(),
+            TradeTicket::DeliverConstructionMaterials { ticket_id, .. } => ticket_id.clone(),
+            TradeTicket::PurchaseShipTicket { ticket_id, .. } => ticket_id.clone(),
+        }
+    }
+    pub fn is_complete(&self) -> bool {
+        match self {
+            TradeTicket::TradeCargo {
+                ticket_id,
+                purchase_completion_status,
+                sale_completion_status,
+                evaluation_result: _evaluation_result,
+            } => purchase_completion_status.iter().all(|(_, is_complete)| *is_complete) && sale_completion_status.iter().all(|(_, is_complete)| *is_complete),
+            TradeTicket::DeliverConstructionMaterials {
+                ticket_id,
+                purchase_completion_status,
+                delivery_status,
+            } => purchase_completion_status.iter().all(|(_, is_complete)| *is_complete) && delivery_status.iter().all(|(_, is_complete)| *is_complete),
+            TradeTicket::PurchaseShipTicket { ticket_id, details } => details.is_complete,
+        }
+    }
+}
+
+impl TradeTicket {
     pub fn mark_transaction_as_complete(&mut self, transaction_ticket_id: &TransactionTicketId) {
         match self {
             TradeTicket::TradeCargo {
@@ -229,19 +255,15 @@ pub enum PurchaseReason {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ShipTask {
-    PurchaseShip { ticket: PurchaseShipTicketDetails },
-
     ObserveWaypointDetails { waypoint_symbol: WaypointSymbol },
 
     ObserveAllWaypointsOnce { waypoint_symbols: Vec<WaypointSymbol> },
 
     MineMaterialsAtWaypoint { mining_waypoint: WaypointSymbol },
 
-    DeliverGoods { tickets: Vec<PurchaseGoodTicketDetails> },
-
-    PurchaseGoods { purchase_tickets: Vec<PurchaseGoodTicketDetails> },
-
     SurveyAsteroid { waypoint_symbol: WaypointSymbol },
+
+    Trade { ticket: TradeTicket },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -339,6 +361,7 @@ pub struct FleetsOverview {
     pub fleet_task_assignments: HashMap<FleetId, Vec<FleetTask>>,
     pub ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
     pub ship_tasks: HashMap<ShipSymbol, ShipTask>,
+    pub open_trade_tickets: HashMap<ShipSymbol, TradeTicket>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Display, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -365,5 +388,5 @@ pub enum TransactionActionEvent {
     PurchasedTradeGoods(PurchaseGoodTicketDetails, PurchaseTradeGoodResponse),
     SoldTradeGoods(SellGoodTicketDetails, SellTradeGoodResponse),
     SuppliedConstructionSite(DeliverConstructionMaterialTicketDetails, SupplyConstructionSiteResponse),
-    ShipPurchased(PurchaseShipResponse),
+    ShipPurchased(PurchaseShipResponse, PurchaseShipTicketDetails),
 }

@@ -452,13 +452,25 @@ impl Actionable for ShipAction {
                             for (purchase, _) in purchases {
                                 let result = state.purchase_trade_good(purchase).await?;
                                 state.mark_transaction_as_complete(&purchase.id);
-                                action_completed_tx.send(ActionEvent::TransactionCompleted(PurchasedTradeGoods(purchase.clone(), result))).await?;
+                                action_completed_tx
+                                    .send(ActionEvent::TransactionCompleted(
+                                        state.clone(),
+                                        PurchasedTradeGoods(purchase.clone(), result),
+                                        trade.clone(),
+                                    ))
+                                    .await?;
                             }
 
                             for (sale, _) in sales {
                                 let result = state.sell_trade_good(sale).await?;
                                 state.mark_transaction_as_complete(&sale.id);
-                                action_completed_tx.send(ActionEvent::TransactionCompleted(SoldTradeGoods(sale.clone(), result))).await?;
+                                action_completed_tx
+                                    .send(ActionEvent::TransactionCompleted(
+                                        state.clone(),
+                                        SoldTradeGoods(sale.clone(), result),
+                                        trade.clone(),
+                                    ))
+                                    .await?;
                             }
                         }
                         TradeTicket::DeliverConstructionMaterials {
@@ -479,20 +491,38 @@ impl Actionable for ShipAction {
                             for (purchase, _) in purchases {
                                 let result = state.purchase_trade_good(purchase).await?;
                                 state.mark_transaction_as_complete(&purchase.id);
-                                action_completed_tx.send(ActionEvent::TransactionCompleted(PurchasedTradeGoods(purchase.clone(), result))).await?;
+                                action_completed_tx
+                                    .send(ActionEvent::TransactionCompleted(
+                                        state.clone(),
+                                        PurchasedTradeGoods(purchase.clone(), result),
+                                        trade.clone(),
+                                    ))
+                                    .await?;
                                 // args.report_purchase(ticket_id, &purchase.id, &result).await?;
                             }
 
                             for (delivery, _) in deliveries {
                                 let result = state.supply_construction_site(delivery).await?;
                                 state.mark_transaction_as_complete(&delivery.id);
-                                action_completed_tx.send(ActionEvent::TransactionCompleted(SuppliedConstructionSite(delivery.clone(), result))).await?;
+                                action_completed_tx
+                                    .send(ActionEvent::TransactionCompleted(
+                                        state.clone(),
+                                        SuppliedConstructionSite(delivery.clone(), result),
+                                        trade.clone(),
+                                    ))
+                                    .await?;
                             }
                         }
                         TradeTicket::PurchaseShipTicket { ticket_id, details } => {
                             let result = state.purchase_ship(details).await?;
                             state.mark_transaction_as_complete(&details.id);
-                            action_completed_tx.send(ActionEvent::TransactionCompleted(ShipPurchased(result))).await?;
+                            action_completed_tx
+                                .send(ActionEvent::TransactionCompleted(
+                                    state.clone(),
+                                    ShipPurchased(result, details.clone()),
+                                    trade.clone(),
+                                ))
+                                .await?;
                         }
                     }
                     todo!()

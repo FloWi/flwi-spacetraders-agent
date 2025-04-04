@@ -24,9 +24,10 @@ use st_domain::{
     Agent, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask,
     FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig,
     PurchaseGoodTicketDetails, PurchaseReason, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, ShipType,
-    SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket, TradingFleetConfig, TransactionActionEvent,
-    WaypointSymbol,
+    SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket, TradingFleetConfig, Transaction,
+    TransactionActionEvent, WaypointSymbol,
 };
+use st_store::trade_bmc::TradeBmc;
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, AgentBmc, ConstructionBmc, Ctx, DbModelManager, FleetBmc, ShipBmc,
     SystemBmc,
@@ -144,7 +145,6 @@ impl FleetRunner {
         let mut ship = ship_op.lock().await;
 
         let maybe_behavior = match ship_task {
-            ShipTask::PurchaseShip { .. } => None,
             ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
                 ship.set_permanent_observation_location(waypoint_symbol);
                 println!("ship_loop: Ship {:?} is running stationary_probe_behavior", ship.symbol);
@@ -156,9 +156,12 @@ impl FleetRunner {
                 Some(behaviors.explorer_behavior)
             }
             ShipTask::MineMaterialsAtWaypoint { .. } => None,
-            ShipTask::DeliverGoods { .. } => None,
             ShipTask::SurveyAsteroid { .. } => None,
-            ShipTask::PurchaseGoods { .. } => todo!(),
+            ShipTask::Trade { ticket } => {
+                ship.set_trade_ticket(ticket);
+                println!("ship_loop: Ship {:?} is running trading_behavior", ship.symbol);
+                Some(behaviors.trading_behavior)
+            }
         };
 
         match maybe_behavior {
@@ -268,7 +271,9 @@ impl FleetRunner {
                     Ok(_) => {}
                     Err(_) => {}
                 },
-                ActionEvent::TransactionCompleted(transaction) => {}
+                ActionEvent::TransactionCompleted(ship, transaction, ticket) => {
+                    ship_status_report_tx.send(ShipStatusReport::TransactionCompleted(ship.ship, transaction, ticket)).await?;
+                }
             }
         }
 
@@ -279,7 +284,7 @@ impl FleetRunner {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum ShipStatusReport {
     ShipActionCompleted(Ship, ShipAction),
-    TransactionCompleted(Ship, TransactionActionEvent),
+    TransactionCompleted(Ship, TransactionActionEvent, TradeTicket),
 }
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct FleetAdmiral {
@@ -322,7 +327,8 @@ impl FleetAdmiral {
                 sale_completion_status: vec![(SellGoodTicketDetails::from_trading_opportunity(&opp), false)],
                 evaluation_result: vec![opp.clone()],
             };
-            self.active_trades.insert(opp.ship_symbol.clone(), ticket);
+            self.active_trades.insert(opp.ship_symbol.clone(), ticket.clone());
+            self.ship_tasks.insert(opp.ship_symbol.clone(), ShipTask::Trade { ticket });
         }
     }
 
@@ -450,8 +456,33 @@ impl FleetAdmiral {
                     Ok(())
                 }
             }
-            ShipStatusReport::TransactionCompleted(ship, transaction) => {
-                // TODO: react to events
+            ShipStatusReport::TransactionCompleted(ship, transaction_event, updated_trade_ticket) => {
+                let ticket_id = match &updated_trade_ticket {
+                    TradeTicket::TradeCargo { ticket_id, .. } => ticket_id,
+                    TradeTicket::DeliverConstructionMaterials { ticket_id, .. } => ticket_id,
+                    TradeTicket::PurchaseShipTicket { ticket_id, .. } => ticket_id,
+                };
+
+                let is_complete = updated_trade_ticket.is_complete();
+                TradeBmc::upsert_ticket(&Ctx::Anonymous, mm, &ship.symbol, ticket_id, &updated_trade_ticket, is_complete).await?;
+
+                if is_complete {
+                    event!(
+                        Level::INFO,
+                        "Transaction complete. It completed the whole trade.\nTransaction: {:?}\nTrade: {:?}",
+                        &transaction_event,
+                        &updated_trade_ticket
+                    );
+                    self.active_trades.remove(&ship.symbol);
+                } else {
+                    self.active_trades.insert(ship.symbol.clone(), updated_trade_ticket.clone());
+                    event!(
+                        Level::INFO,
+                        "Transaction complete. Transaction is not complete yet.\nTransaction: {:?}\nTrade: {:?}",
+                        &transaction_event,
+                        &updated_trade_ticket
+                    );
+                }
                 Ok(())
             }
         }
@@ -484,6 +515,7 @@ impl FleetAdmiral {
                     &admiral.fleet_tasks,
                     &admiral.ship_fleet_assignment,
                     &admiral.ship_tasks,
+                    &admiral.active_trades,
                 )
                 .await?;
                 Ok(admiral)
@@ -523,7 +555,7 @@ impl FleetAdmiral {
                 ship_fleet_assignment,
                 agent_info,
                 fleet_phase,
-                active_trades: Default::default(),
+                active_trades: overview.open_trade_tickets,
             };
 
             Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
@@ -535,6 +567,7 @@ impl FleetAdmiral {
                 &admiral.fleet_tasks,
                 &admiral.ship_fleet_assignment,
                 &admiral.ship_tasks,
+                &admiral.active_trades,
             )
             .await?;
 
@@ -589,6 +622,7 @@ impl FleetAdmiral {
             &admiral.fleet_tasks,
             &admiral.ship_fleet_assignment,
             &admiral.ship_tasks,
+            &admiral.active_trades,
         )
         .await?;
 

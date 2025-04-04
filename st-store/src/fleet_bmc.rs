@@ -1,11 +1,10 @@
+use crate::trade_bmc::TradeBmc;
 use crate::{Ctx, DbModelManager, ShipBmc};
 use anyhow::*;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use sqlx::types::Json;
-use sqlx::{Pool, Postgres};
-use st_domain::{Data, Fleet, FleetConfig, FleetId, FleetTask, FleetTaskCompletion, FleetsOverview, RegistrationResponse, ShipSymbol, ShipTask};
-use std::collections::hash_map::Values;
+use st_domain::{Fleet, FleetConfig, FleetId, FleetTask, FleetTaskCompletion, FleetsOverview, ShipSymbol, ShipTask, TradeTicket};
 use std::collections::HashMap;
 
 pub struct FleetBmc;
@@ -132,6 +131,7 @@ SELECT id
         let ship_fleet_assignment = Self::load_ship_fleet_assignment(ctx, mm).await?;
         let fleet_task_assignments = Self::load_fleet_tasks(ctx, mm).await?;
         let ship_task_assignments = ShipBmc::load_ship_tasks(ctx, mm).await?;
+        let open_trade_tickets = TradeBmc::load_uncompleted_tickets(ctx, mm).await?;
 
         Ok(FleetsOverview {
             completed_fleet_tasks,
@@ -140,6 +140,7 @@ SELECT id
             fleet_task_assignments,
             ship_fleet_assignment,
             ship_tasks: ship_task_assignments,
+            open_trade_tickets,
         })
     }
 
@@ -150,11 +151,16 @@ SELECT id
         fleet_tasks: &HashMap<FleetId, Vec<FleetTask>>,
         ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>,
         ship_task_assignment: &HashMap<ShipSymbol, ShipTask>,
+        active_trades: &HashMap<ShipSymbol, TradeTicket>,
     ) -> Result<()> {
         Self::upsert_fleets(_ctx, mm, &fleets).await?;
         Self::upsert_fleet_tasks(_ctx, mm, &fleet_tasks).await?;
         Self::upsert_ship_fleet_assignment(_ctx, mm, &ship_fleet_assignment).await?;
         Self::upsert_ship_task_assignment(_ctx, mm, &ship_task_assignment).await?;
+
+        for (ss, ticket) in active_trades {
+            TradeBmc::upsert_ticket(&Ctx::Anonymous, mm, &ss, &ticket.ticket_id(), &ticket, ticket.is_complete()).await?
+        }
 
         Ok(())
     }
