@@ -1,19 +1,17 @@
+use crate::exploration::exploration::{get_exploration_tasks_for_waypoint, ExplorationTask};
 use crate::pathfinder::pathfinder;
 use crate::pathfinder::pathfinder::TravelAction;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::Local;
 use itertools::Itertools;
-use st_domain::{
-    JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseShipTicketDetails, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard,
-    SupplyConstructionSiteResponse, TicketId, TransactionTicketId, Waypoint, WaypointSymbol, WaypointTraitSymbol, WaypointType,
-};
+use st_domain::{JumpGate, LabelledCoordinate, MarketData, Shipyard, TicketId, TradeTicket, Waypoint, WaypointSymbol};
+use st_store::trade_bmc::TradeBmc;
 use st_store::{
-    insert_jump_gates, insert_market_data, insert_shipyards, select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints,
+    insert_jump_gates, insert_market_data, insert_shipyards, select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints, Ctx,
     DbModelManager,
 };
 use std::sync::Arc;
-use strum_macros::Display;
 
 #[async_trait]
 pub trait BlackboardOps: Send + Sync {
@@ -31,6 +29,9 @@ pub trait BlackboardOps: Send + Sync {
     async fn insert_jump_gate(&self, jump_gate: JumpGate) -> Result<()>;
     async fn insert_shipyard(&self, shipyard: Shipyard) -> Result<()>;
     async fn get_closest_waypoint(&self, current_waypoint: &WaypointSymbol, candidates: &[WaypointSymbol]) -> Result<Option<WaypointSymbol>>;
+
+    async fn get_ticket_by_id(&self, ticket_id: TicketId) -> Result<TradeTicket>;
+
     // async fn report_purchase(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &PurchaseTradeGoodResponse) -> Result<()>;
     // async fn report_sale(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &SellTradeGoodResponse) -> Result<()>;
     // async fn report_delivery(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &SupplyConstructionSiteResponse) -> Result<()>;
@@ -98,20 +99,7 @@ impl BlackboardOps for DbBlackboard {
         match waypoints.iter().find(|wp| wp.symbol == current_location) {
             None => Err(anyhow::anyhow!("can't find waypoint in db")),
             Some(wp) => {
-                let mut tasks = Vec::new();
-                if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::UNCHARTED) {
-                    tasks.push(ExplorationTask::CreateChart);
-                }
-                if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::SHIPYARD) {
-                    tasks.push(ExplorationTask::GetShipyard);
-                }
-                if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::MARKETPLACE) {
-                    tasks.push(ExplorationTask::GetMarket);
-                }
-                if wp.r#type == WaypointType::JUMP_GATE {
-                    //maybe_jump_gate.map(|db_jg| db_jg.)
-                    tasks.push(ExplorationTask::GetJumpGate);
-                }
+                let tasks = get_exploration_tasks_for_waypoint(wp);
 
                 Ok(tasks)
             }
@@ -150,13 +138,8 @@ impl BlackboardOps for DbBlackboard {
             .next()
             .map(|(best, _)| best))
     }
-}
 
-/// What observation to do once a ship is present at this waypoint
-#[derive(Eq, PartialEq, Debug, Display)]
-pub enum ExplorationTask {
-    GetMarket,
-    GetJumpGate,
-    CreateChart,
-    GetShipyard,
+    async fn get_ticket_by_id(&self, ticket_id: TicketId) -> Result<TradeTicket> {
+        TradeBmc::get_ticket_by_id(&Ctx::Anonymous, &self.model_manager, ticket_id).await
+    }
 }

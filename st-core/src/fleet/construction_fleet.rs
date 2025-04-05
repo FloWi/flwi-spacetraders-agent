@@ -160,7 +160,16 @@ impl ConstructJumpGateFleet {
 
         let new_ship_tasks: HashMap<ShipSymbol, ShipTask> = initial_unassigned_ships
             .iter()
-            .filter_map(|ss| admiral.active_trades.get(ss).map(|trade_ticket| (ss.clone(), ShipTask::Trade { ticket: trade_ticket.clone() })))
+            .filter_map(|ss| {
+                admiral.active_trades.get(ss).map(|trade_ticket| {
+                    (
+                        ss.clone(),
+                        ShipTask::Trade {
+                            ticket_id: trade_ticket.ticket_id().clone(),
+                        },
+                    )
+                })
+            })
             .collect();
 
         println!("Assigned trades to ships: \n{}", serde_json::to_string_pretty(&admiral.active_trades)?);

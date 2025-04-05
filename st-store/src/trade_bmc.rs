@@ -9,6 +9,23 @@ use std::collections::HashMap;
 pub struct TradeBmc;
 
 impl TradeBmc {
+    pub async fn get_ticket_by_id(_ctx: &Ctx, mm: &DbModelManager, ticket_id: TicketId) -> Result<TradeTicket> {
+        let db_entry: DbTradeTicket = sqlx::query_as!(
+            DbTradeTicket,
+            r#"
+select ship_symbol
+     , entry as "entry: Json<TradeTicket>"
+  from trade_tickets
+ where ticket_id = $1
+        "#,
+            ticket_id.0,
+        )
+        .fetch_one(mm.pool())
+        .await?;
+
+        Ok(db_entry.entry.0)
+    }
+
     pub async fn upsert_ticket(
         _ctx: &Ctx,
         mm: &DbModelManager,
@@ -69,10 +86,12 @@ select ship_symbol
 update trade_tickets
 set updated_at = $1
   , completed_at = $2
-where ticket_id = $3
+  , entry = $3
+where ticket_id = $4
     "#,
                 now,
                 now,
+                Json(tx_summary.trade_ticket.clone()) as _,
                 ticket_id.0,
             )
             .execute(mm.pool())

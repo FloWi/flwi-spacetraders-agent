@@ -1,5 +1,6 @@
 use petgraph::prelude::{NodeIndex, UnGraph};
-use st_domain::LabelledCoordinate;
+use st_domain::{LabelledCoordinate, Waypoint, WaypointTraitSymbol, WaypointType};
+use strum_macros::Display;
 
 pub fn rotate_to_entry_point<T>(slice: &[T], start: &T) -> Option<Vec<T>>
 where
@@ -97,4 +98,31 @@ where
     }
 
     tour.iter().map(|&idx| waypoints[idx].clone()).collect()
+}
+
+/// What observation to do once a ship is present at this waypoint
+#[derive(Eq, PartialEq, Debug, Display)]
+pub enum ExplorationTask {
+    GetMarket,
+    GetJumpGate,
+    CreateChart,
+    GetShipyard,
+}
+
+pub fn get_exploration_tasks_for_waypoint(wp: &Waypoint) -> Vec<ExplorationTask> {
+    let mut tasks = Vec::new();
+    if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::UNCHARTED) {
+        tasks.push(ExplorationTask::CreateChart);
+    }
+    if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::SHIPYARD) {
+        tasks.push(ExplorationTask::GetShipyard);
+    }
+    if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::MARKETPLACE) {
+        tasks.push(ExplorationTask::GetMarket);
+    }
+    if wp.r#type == WaypointType::JUMP_GATE {
+        //maybe_jump_gate.map(|db_jg| db_jg.)
+        tasks.push(ExplorationTask::GetJumpGate);
+    }
+    tasks
 }

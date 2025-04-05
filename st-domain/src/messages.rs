@@ -263,7 +263,7 @@ pub enum ShipTask {
 
     SurveyAsteroid { waypoint_symbol: WaypointSymbol },
 
-    Trade { ticket: TradeTicket },
+    Trade { ticket_id: TicketId },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

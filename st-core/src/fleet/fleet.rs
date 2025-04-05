@@ -91,7 +91,7 @@ impl FleetAdmiral {
                 evaluation_result: vec![opp.clone()],
             };
             self.active_trades.insert(opp.ship_symbol.clone(), ticket.clone());
-            self.ship_tasks.insert(opp.ship_symbol.clone(), ShipTask::Trade { ticket });
+            self.ship_tasks.insert(opp.ship_symbol.clone(), ShipTask::Trade { ticket_id: ticket.ticket_id() });
         }
     }
 

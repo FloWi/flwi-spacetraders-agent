@@ -3984,6 +3984,7 @@ dependencies = [
  "st-domain",
  "st-store",
  "tokio",
+ "tracing",
  "tracing-subscriber",
  "tracing-test",
  "wasm-bindgen",

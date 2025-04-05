@@ -158,6 +158,7 @@ impl StClientTrait for StClient {
     async fn orbit_ship(&self, ship_symbol: ShipSymbol) -> Result<OrbitShipResponse> {
         Self::make_api_call(self.client.post(format!("https://api.spacetraders.io/v2/my/ships/{}/orbit", ship_symbol.0).to_string())).await
     }
+
     async fn list_ships(&self, pagination_input: PaginationInput) -> Result<PaginatedResponse<Ship>> {
         let query_param_list = [
             ("page", pagination_input.page.to_string()),
@@ -168,6 +169,13 @@ impl StClientTrait for StClient {
 
         Self::make_api_call(request).await
     }
+
+    async fn get_ship(&self, ship_symbol: ShipSymbol) -> Result<Data<Ship>> {
+        let request = self.client.get(format!("https://api.spacetraders.io/v2/my/ships/{}", ship_symbol.0));
+
+        Self::make_api_call(request).await
+    }
+
     async fn list_waypoints_of_system_page(&self, system_symbol: &SystemSymbol, pagination_input: PaginationInput) -> Result<PaginatedResponse<Waypoint>> {
         let query_param_list = [
             ("page", pagination_input.page.to_string()),
@@ -286,6 +294,8 @@ pub trait StClientTrait: Send + Sync + Debug {
     async fn orbit_ship(&self, ship_symbol: ShipSymbol) -> Result<OrbitShipResponse>;
 
     async fn list_ships(&self, pagination_input: PaginationInput) -> Result<PaginatedResponse<Ship>>;
+
+    async fn get_ship(&self, ship_symbol: ShipSymbol) -> Result<Data<Ship>>;
 
     async fn list_waypoints_of_system_page(&self, system_symbol: &SystemSymbol, pagination_input: PaginationInput) -> Result<PaginatedResponse<Waypoint>>;
 

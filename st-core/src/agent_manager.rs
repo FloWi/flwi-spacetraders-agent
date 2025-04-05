@@ -106,7 +106,7 @@ impl AgentManager {
         let pool = self.pool.clone().unwrap();
 
         // Get the authenticated client
-        let authenticated_client = self.get_authenticated_client(pool.clone(), client_with_account_token).await?;
+        let authenticated_client = get_authenticated_client(&self.cfg, pool.clone(), client_with_account_token).await?;
 
         // Clone configuration for the new agent
         let cfg = self.cfg.clone();
@@ -149,42 +149,42 @@ impl AgentManager {
 
         Ok(handle)
     }
+}
 
-    async fn get_authenticated_client(&self, pool: Pool<Postgres>, client_with_account_token: StClient) -> Result<StClient> {
-        event!(Level::INFO, "Trying to load registration from database");
+pub async fn get_authenticated_client(cfg: &AgentConfiguration, pool: Pool<Postgres>, client_with_account_token: StClient) -> Result<StClient> {
+    event!(Level::INFO, "Trying to load registration from database");
 
-        let maybe_existing_registration = db::load_registration(&pool).await?;
+    let maybe_existing_registration = db::load_registration(&pool).await?;
 
-        match maybe_existing_registration {
-            Some(db_entry) => {
-                event!(Level::INFO, "Found registration infos in database. Creating authenticated client",);
+    match maybe_existing_registration {
+        Some(db_entry) => {
+            event!(Level::INFO, "Found registration infos in database. Creating authenticated client",);
 
-                // Create a reset channel for this specific client
-                let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
+            // Create a reset channel for this specific client
+            let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
 
-                Ok(StClient::new(create_client(Some(db_entry.token), Some(agent_reset_tx))))
-            }
-            None => {
-                event!(Level::INFO, "No registration infos found in database. Registering new agent",);
+            Ok(StClient::new(create_client(Some(db_entry.token), Some(agent_reset_tx))))
+        }
+        None => {
+            event!(Level::INFO, "No registration infos found in database. Registering new agent",);
 
-                let registration_response = client_with_account_token
-                    .register(RegistrationRequest {
-                        faction: FactionSymbol(self.cfg.spacetraders_agent_faction.clone()),
-                        symbol: self.cfg.spacetraders_agent_symbol.clone(),
-                        email: self.cfg.spacetraders_registration_email.clone(),
-                    })
-                    .await
-                    .expect("Error during registration");
+            let registration_response = client_with_account_token
+                .register(RegistrationRequest {
+                    faction: FactionSymbol(cfg.spacetraders_agent_faction.clone()),
+                    symbol: cfg.spacetraders_agent_symbol.clone(),
+                    email: cfg.spacetraders_registration_email.clone(),
+                })
+                .await
+                .expect("Error during registration");
 
-                event!(Level::INFO, "Registration complete: {:?}", registration_response);
+            event!(Level::INFO, "Registration complete: {:?}", registration_response);
 
-                let _ = db::save_registration(&pool, registration_response.clone()).await;
+            let _ = db::save_registration(&pool, registration_response.clone()).await;
 
-                // Create a reset channel for this specific client
-                let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
+            // Create a reset channel for this specific client
+            let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
 
-                Ok(StClient::new(create_client(Some(registration_response.data.token), Some(agent_reset_tx))))
-            }
+            Ok(StClient::new(create_client(Some(registration_response.data.token), Some(agent_reset_tx))))
         }
     }
 }

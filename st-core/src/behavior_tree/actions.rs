@@ -1,7 +1,8 @@
-use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps, ExplorationTask};
+use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps};
 use crate::behavior_tree::behavior_tree::Response::Success;
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
+use crate::exploration::exploration::ExplorationTask;
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
 use anyhow::anyhow;

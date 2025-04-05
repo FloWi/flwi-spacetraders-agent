@@ -6,7 +6,7 @@ use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
 use anyhow::Result;
 use chrono::Utc;
-use st_domain::{Ship, ShipSymbol, ShipTask};
+use st_domain::{Ship, ShipSymbol, ShipTask, TradeTicket};
 use st_store::DbModelManager;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -142,7 +142,8 @@ impl FleetRunner {
             }
             ShipTask::MineMaterialsAtWaypoint { .. } => None,
             ShipTask::SurveyAsteroid { .. } => None,
-            ShipTask::Trade { ticket } => {
+            ShipTask::Trade { ticket_id } => {
+                let ticket: TradeTicket = args.blackboard.get_ticket_by_id(ticket_id).await?;
                 ship.set_trade_ticket(ticket);
                 println!("ship_loop: Ship {:?} is running trading_behavior", ship.symbol);
                 Some(behaviors.trading_behavior)
@@ -230,6 +231,7 @@ impl FleetRunner {
 
         Ok(())
     }
+
     pub async fn listen_to_ship_action_update_messages(
         ship_status_report_tx: Sender<ShipStatusReport>,
         mut ship_action_completed_rx: Receiver<ActionEvent>,
@@ -307,6 +309,6 @@ impl FleetRunner {
             ship_status_report_listener_join_handle
         );
 
-        todo!()
+        unreachable!()
     }
 }
