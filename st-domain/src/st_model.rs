@@ -48,7 +48,6 @@ pub struct Shipyard {
 #[serde(rename_all = "camelCase")]
 pub struct ShipTransaction {
     pub waypoint_symbol: WaypointSymbol,
-    pub ship_symbol: ShipSymbol,
     pub ship_type: ShipType,
     pub price: u32,
     pub agent_symbol: AgentSymbol,
