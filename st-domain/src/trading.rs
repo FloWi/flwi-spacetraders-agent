@@ -75,8 +75,9 @@ pub fn evaluate_trading_opportunities(
         .iter()
         .flat_map(|ship| {
             let ship_wp = waypoint_map.get(&ship.nav.waypoint_symbol).unwrap();
+            let ship_cargo_space = (ship.cargo.capacity - ship.cargo.units) as u32;
 
-            top_trading_opps.iter().map(|trading_opp| {
+            top_trading_opps.iter().map(move |trading_opp| {
                 let purchase_wp = waypoint_map.get(&trading_opp.purchase_waypoint_symbol).unwrap();
                 let distance_to_start = ship_wp.distance_to(purchase_wp);
                 let total_distance = distance_to_start + trading_opp.direct_distance;
@@ -92,7 +93,8 @@ pub fn evaluate_trading_opportunities(
 
                 let num_units_within_budget = budget_for_ship as u32 / trading_opp.purchase_market_trade_good_entry.purchase_price as u32;
                 let units = (trading_opp.purchase_market_trade_good_entry.trade_volume.min(trading_opp.sell_market_trade_good_entry.trade_volume) as u32)
-                    .min(num_units_within_budget);
+                    .min(num_units_within_budget)
+                    .min(ship_cargo_space);
 
                 /*
                 "trade_good": "CLOTHING",
