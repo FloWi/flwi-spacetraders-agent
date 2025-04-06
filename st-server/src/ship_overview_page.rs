@@ -65,11 +65,13 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
         // make this closure depend on the counter signal
         let _ = counter.get();
         //log!("Counter changed to {counter_value}");
-        is_traveling.then(|| {
-            let now = Utc::now();
+        is_traveling
+            .then(|| {
+                let now = Utc::now();
 
-            arrival_time - now
-        })
+                arrival_time - now
+            })
+            .and_then(|delta| (delta.num_seconds() < 0).then_some(delta)) // ship nav status might not have been fixed after we've arrived
     };
 
     view! {
@@ -147,6 +149,7 @@ pub fn ShipOverviewPage() -> impl IntoView {
                                             {ships_overview
                                                 .ships
                                                 .iter()
+                                                .sorted_by_key(|s| s.symbol.0.clone())
                                                 .map(|ship| {
                                                     view! { <ShipCard ship=ship /> }
                                                 })
