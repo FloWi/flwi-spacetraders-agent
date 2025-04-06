@@ -481,7 +481,7 @@ impl Actionable for ShipAction {
                                     .send(ActionEvent::TransactionCompleted(
                                         state.clone(),
                                         SoldTradeGoods(sale.clone(), result),
-                                        trade.clone(),
+                                        state.maybe_trade.clone().unwrap(),
                                     ))
                                     .await?;
                             }
