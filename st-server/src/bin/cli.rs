@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use chrono::Utc;
 use clap;
 use clap::{Arg, ArgAction, Parser, Subcommand};
+use itertools::Itertools;
 use st_core::agent_manager;
 use st_core::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps, DbBlackboard};
 use st_core::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior};
@@ -12,9 +13,14 @@ use st_core::fleet::fleet::{FleetAdmiral, ShipStatusReport};
 use st_core::reqwest_helpers::create_client;
 use st_core::ship::ShipOperations;
 use st_core::st_client::{StClient, StClientTrait};
-use st_domain::{Ship, ShipSymbol, Waypoint, WaypointSymbol};
+use st_domain::trading::find_trading_opportunities;
+use st_domain::{
+    trading, EvaluatedTradingOpportunity, PurchaseGoodTicketDetails, SellGoodTicketDetails, Ship, ShipSymbol, SystemSymbol, TicketId, TradeTicket, Waypoint,
+    WaypointSymbol,
+};
 use st_server::cli_args::AppConfig;
 use st_store::{db, Ctx, DbModelManager, MarketBmc, SystemBmc};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -150,6 +156,7 @@ async fn run_behavior(mm: DbModelManager, authenticated_client: StClient, ship_s
     });
 
     let ship_behavior_join_handle = tokio::spawn({
+        let mm = mm.clone();
         let mut ship_op = ShipOperations::new(ship, Arc::clone(&client));
         let behavior = behavior.clone();
         let behavior_args = BehaviorArgs {
@@ -157,20 +164,56 @@ async fn run_behavior(mm: DbModelManager, authenticated_client: StClient, ship_s
         };
 
         async move {
-            behavior
-                .run(
-                    &behavior_args,
-                    &mut ship_op,
-                    Duration::from_secs(10),
-                    &ship_updated_tx,
-                    &ship_action_completed_tx,
-                )
-                .await
+            while let Some(trading_ticket) =
+                find_best_trade(&mm, &ship_op.nav.system_symbol, &ship_op.ship, Arc::clone(&client)).await.expect("ticket").map(create_ticket)
+            {
+                println!("Found best trade: {:?}", &trading_ticket);
+                ship_op.set_trade_ticket(trading_ticket);
+                let _ = behavior
+                    .run(
+                        &behavior_args,
+                        &mut ship_op,
+                        Duration::from_secs(10),
+                        &ship_updated_tx,
+                        &ship_action_completed_tx,
+                    )
+                    .await
+                    .expect("trading_behavior");
+            }
         }
     });
 
     tokio::join!(message_listeners_join_handle, ship_behavior_join_handle);
     Ok(())
+}
+
+async fn find_best_trade(
+    mm: &DbModelManager,
+    system_symbol: &SystemSymbol,
+    ship: &Ship,
+    client: Arc<dyn StClientTrait>,
+) -> Result<Option<EvaluatedTradingOpportunity>> {
+    let waypoints = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, system_symbol).await?;
+    let waypoint_map = waypoints.iter().map(|wp| (wp.symbol.clone(), wp)).collect::<HashMap<_, _>>();
+
+    let latest_market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, mm, system_symbol).await?;
+    let market_data = trading::to_trade_goods_with_locations(&latest_market_data);
+    let trading_opportunities = find_trading_opportunities(&market_data, &waypoint_map);
+    let trading_budget = client.get_agent().await?.data.credits;
+    let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
+        trading::evaluate_trading_opportunities(&vec![ship], &waypoint_map, trading_opportunities, trading_budget);
+
+    let maybe_best_opp = evaluated_trading_opportunities.iter().sorted_by_key(|e| e.profit_per_distance_unit).last();
+    Ok(maybe_best_opp.cloned())
+}
+
+fn create_ticket(opp: EvaluatedTradingOpportunity) -> TradeTicket {
+    TradeTicket::TradeCargo {
+        ticket_id: TicketId::new(),
+        purchase_completion_status: vec![(PurchaseGoodTicketDetails::from_trading_opportunity(&opp), false)],
+        sale_completion_status: vec![(SellGoodTicketDetails::from_trading_opportunity(&opp), false)],
+        evaluation_result: vec![opp.clone()],
+    }
 }
 
 async fn run_message_listeners(
@@ -247,19 +290,16 @@ pub async fn listen_to_ship_action_update_messages(
 }
 
 pub async fn listen_to_ship_status_report_messages(db_model_manager: DbModelManager, mut ship_status_report_rx: Receiver<ShipStatusReport>) -> Result<()> {
-    event!(Level::INFO, "Fleet_runner::listen_to_ship_status_report_messages - starting");
+    event!(Level::INFO, "listen_to_ship_status_report_messages - starting");
 
     while let Some(msg) = ship_status_report_rx.recv().await {
         event!(
             Level::INFO,
-            message = "Fleet_runner::listen_to_ship_status_report_messages - got message",
+            message = "listen_to_ship_status_report_messages - got message",
             msg = serde_json::to_string(&msg)?
         );
 
-        event!(
-            Level::INFO,
-            "Fleet_runner::listen_to_ship_status_report_messages - successfully processed message"
-        );
+        event!(Level::INFO, "listen_to_ship_status_report_messages - successfully processed message");
     }
 
     Ok(())
