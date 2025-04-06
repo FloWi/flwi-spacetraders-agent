@@ -46,7 +46,14 @@ pub struct Shipyard {
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
-pub struct ShipTransaction {}
+pub struct ShipTransaction {
+    pub waypoint_symbol: WaypointSymbol,
+    pub ship_symbol: ShipSymbol,
+    pub ship_type: ShipType,
+    pub price: u32,
+    pub agent_symbol: AgentSymbol,
+    pub timestamp: DateTime<Utc>,
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
