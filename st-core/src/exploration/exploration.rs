@@ -101,7 +101,7 @@ where
 }
 
 /// What observation to do once a ship is present at this waypoint
-#[derive(Eq, PartialEq, Debug, Display)]
+#[derive(Eq, PartialEq, Clone, Debug, Display)]
 pub enum ExplorationTask {
     GetMarket,
     GetJumpGate,

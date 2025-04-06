@@ -114,6 +114,7 @@ let units = (trading_opp.purchase_market_trade_good_entry.trade_volume.min(tradi
 let {} = {} / {};
 let units = ({}.min({}) as u32)
             .min({});
+units = {}
                 "#,
                     trading_opp.purchase_market_trade_good_entry.symbol.to_string(),
                     trading_opp.purchase_waypoint_symbol.0,
@@ -123,7 +124,8 @@ let units = ({}.min({}) as u32)
                     trading_opp.purchase_market_trade_good_entry.purchase_price as u32,
                     trading_opp.purchase_market_trade_good_entry.trade_volume,
                     trading_opp.sell_market_trade_good_entry.trade_volume,
-                    num_units_within_budget
+                    num_units_within_budget,
+                    units
                 );
 
                 let total_profit = trading_opp.profit_per_unit * units as u64;

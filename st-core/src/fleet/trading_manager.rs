@@ -5,7 +5,7 @@ use st_store::{Ctx, DbModelManager};
 pub struct TradingManager;
 
 impl TradingManager {
-    pub(crate) async fn log_transaction_completed(
+    pub async fn log_transaction_completed(
         ctx: Ctx,
         mm: &DbModelManager,
         ship: &Ship,
