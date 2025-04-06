@@ -159,6 +159,7 @@ pub fn ship_behaviors() -> Behaviors {
             Behavior::new_action(ShipAction::PrintTravelActions),
         ]),
         follow_travel_actions.clone(),
+        Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
         Behavior::new_action(ShipAction::RemoveDestination),
     ]);
 
