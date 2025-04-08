@@ -3,7 +3,9 @@ use chrono::Utc;
 use clap;
 use clap::{Arg, ArgAction, Parser, Subcommand};
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use leptos::html::Mark;
+use serde::{Deserialize, Serialize};
 use st_core::agent_manager;
 use st_core::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps, DbBlackboard};
 use st_core::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior};
@@ -27,14 +29,22 @@ use st_store::{
 };
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use time::format_description;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
-use tracing::{event, Level};
+use tracing::{event, span, Instrument, Level};
+use tracing_appender::{
+    non_blocking::NonBlocking,
+    rolling::{RollingFileAppender, Rotation},
+};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{fmt, registry::Registry, EnvFilter};
+
+use tracing_subscriber::fmt::time::UtcTime;
 
 /// SpaceTraders CLI utility
 #[derive(Parser, Debug)]
@@ -73,6 +83,8 @@ enum MyCommand {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    setup_tracing();
+
     let AppConfig {
         database_url,
         spacetraders_agent_faction,
@@ -81,7 +93,7 @@ async fn main() -> Result<()> {
         spacetraders_account_token,
     } = AppConfig::from_env().expect("cfg");
 
-    tracing_subscriber::registry().with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE)).with(EnvFilter::from_default_env()).init();
+    //tracing_subscriber::registry().with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE)).with(EnvFilter::from_default_env()).init();
 
     let cfg: AgentConfiguration = AgentConfiguration {
         database_url,
@@ -221,22 +233,34 @@ async fn collect_waypoints_infos_for_waypoint(
         match task {
             ExplorationTask::CreateChart => return Err(anyhow!("Waypoint should have been charted by now")),
             ExplorationTask::GetMarket => {
-                println!("Getting marketplace data for waypoint {} ...", waypoint_symbol.0);
+                event!(Level::INFO, message = "loading marketplace data", waypoint_symbol = waypoint_symbol.0);
                 let market = authenticated_client.get_marketplace(waypoint_symbol.clone()).await?;
                 db::insert_market_data(mm.pool(), vec![market.data], Utc::now()).await?;
-                println!("Inserted marketplace data for waypoint {} successfully.", waypoint_symbol.0);
+                event!(
+                    Level::INFO,
+                    message = "inserted marketplace data successfully.",
+                    waypoint_symbol = waypoint_symbol.0
+                );
             }
             ExplorationTask::GetJumpGate => {
-                println!("Getting jump_gate data for waypoint {} ...", waypoint_symbol.0);
+                event!(Level::INFO, message = "loading jump_gate data", waypoint_symbol = waypoint_symbol.0);
                 let jump_gate = authenticated_client.get_jump_gate(waypoint_symbol.clone()).await?;
                 db::insert_jump_gates(mm.pool(), vec![jump_gate.data], Utc::now()).await?;
-                println!("Inserted marketplace data for waypoint {} successfully.", waypoint_symbol.0);
+                event!(
+                    Level::INFO,
+                    message = "inserted jump_gate data successfully.",
+                    waypoint_symbol = waypoint_symbol.0
+                );
             }
             ExplorationTask::GetShipyard => {
-                println!("Getting shipyard data for waypoint {} ...", waypoint_symbol.0);
+                event!(Level::INFO, message = "loading shipyard data", waypoint_symbol = waypoint_symbol.0);
                 let shipyard = authenticated_client.get_shipyard(waypoint_symbol.clone()).await?;
                 db::insert_shipyards(mm.pool(), vec![shipyard.data], Utc::now()).await?;
-                println!("Inserted marketplace data for waypoint {} successfully.", waypoint_symbol.0);
+                event!(
+                    Level::INFO,
+                    message = "inserted shipyard data successfully.",
+                    waypoint_symbol = waypoint_symbol.0
+                );
             }
         }
     }
@@ -244,6 +268,7 @@ async fn collect_waypoints_infos_for_waypoint(
     Ok(())
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
 enum CliShipBehavior {
     CollectWaypointInfosOnce,
     Trading,
@@ -255,7 +280,12 @@ async fn run_behavior(
     ship_symbol: ShipSymbol,
     cli_ship_behavior: CliShipBehavior,
 ) -> Result<()> {
-    let ship = authenticated_client.get_ship(ship_symbol).await?.data;
+    let behavior_label = match cli_ship_behavior.clone() {
+        CliShipBehavior::CollectWaypointInfosOnce => "explorer_behavior",
+        CliShipBehavior::Trading => "trading_behavior",
+    };
+
+    let ship = authenticated_client.get_ship(ship_symbol.clone()).await?.data;
     let (ship_updated_tx, ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = tokio::sync::mpsc::channel(32);
     let (ship_action_completed_tx, ship_action_completed_rx): (Sender<ActionEvent>, Receiver<ActionEvent>) = tokio::sync::mpsc::channel(32);
     let (ship_status_report_tx, ship_status_report_rx): (Sender<ShipStatusReport>, Receiver<ShipStatusReport>) = tokio::sync::mpsc::channel(32);
@@ -264,8 +294,12 @@ async fn run_behavior(
 
     let message_listeners_join_handle = tokio::spawn({
         let mm = mm.clone();
-        run_message_listeners(mm, ship_updated_rx, ship_action_completed_rx, ship_status_report_rx, ship_status_report_tx)
+        let message_listener_span = span!(Level::INFO, "message_listener", ship = ship_symbol.0, behavior = behavior_label);
+        run_message_listeners(mm, ship_updated_rx, ship_action_completed_rx, ship_status_report_rx, ship_status_report_tx).instrument(message_listener_span)
     });
+
+    let ships: Vec<Ship> = fetch_all_pages(|p| authenticated_client.list_ships(p)).await?;
+    db::upsert_ships(mm.pool(), &ships, Utc::now()).await?;
 
     let system_symbol = authenticated_client.get_agent().await?.data.headquarters.system_symbol();
     let observation_tasks: Vec<(WaypointSymbol, Vec<ExplorationTask>)> = get_waypoints_exploration_tasks(&system_symbol, &mm).await?;
@@ -273,6 +307,7 @@ async fn run_behavior(
     let waypoint_observation_join_handle = tokio::spawn({
         let client = Arc::clone(&authenticated_client);
         let mm = mm.clone();
+        let waypoint_span = span!(Level::INFO, "waypoint_observation");
 
         async move {
             let tick_duration = Duration::from_secs(5 * 60);
@@ -285,20 +320,30 @@ async fn run_behavior(
                 let waypoints_with_ships: HashSet<WaypointSymbol> =
                     ships.iter().filter(|s| s.nav.status != NavStatus::InTransit).map(|s| s.nav.waypoint_symbol.clone()).collect();
                 let relevant_tasks = observation_tasks.into_iter().filter(|(wps, _)| waypoints_with_ships.contains(wps)).collect_vec();
-                println!("Collecting infos for {} waypoints", &relevant_tasks.len());
+                event!(Level::INFO, "Collecting infos for {} waypoints", &relevant_tasks.len());
                 for (wps, tasks) in relevant_tasks.iter().cloned() {
                     collect_waypoints_infos_for_waypoint(&mm, Arc::clone(&client), wps, tasks).await.expect("collect_waypoints_infos_for_waypoint")
                 }
-                println!("Done collecting infos for {} waypoints. Next tick in {:?}", relevant_tasks.len(), tick_duration);
+                event!(
+                    Level::INFO,
+                    "Done collecting infos for {} waypoints. Next tick in {:?}",
+                    relevant_tasks.len(),
+                    tick_duration
+                );
             }
         }
+        .instrument(waypoint_span)
     });
+
+    let ship_span = span!(Level::INFO, "ship_behavior", ship = ship_symbol.0, behavior = behavior_label);
 
     let ship_behavior_join_handle = tokio::spawn({
         let mm = mm.clone();
         let client = Arc::clone(&authenticated_client);
+
         async move {
             let behaviors = ship_behaviors();
+
             match cli_ship_behavior {
                 CliShipBehavior::CollectWaypointInfosOnce => {
                     explore_waypoints_once(
@@ -310,6 +355,7 @@ async fn run_behavior(
                         mm,
                         behaviors.explorer_behavior,
                     )
+                    .instrument(ship_span)
                     .await
                 }
                 CliShipBehavior::Trading => {
@@ -322,6 +368,7 @@ async fn run_behavior(
                         mm,
                         behaviors.trading_behavior,
                     )
+                    .instrument(ship_span)
                     .await
                 }
             }
@@ -360,7 +407,8 @@ async fn trade_forever(
             trading_ticket.is_complete(),
         )
         .await?;
-        println!("Found best trade: {:?}", &trading_ticket);
+
+        event!(Level::INFO, "Found best trade: {:?}", &trading_ticket);
         ship_op.set_trade_ticket(trading_ticket);
         let _ = behavior
             .run(
@@ -447,13 +495,15 @@ async fn run_message_listeners(
     ship_status_report_rx: Receiver<ShipStatusReport>,
     ship_status_report_tx: Sender<ShipStatusReport>,
 ) {
-    let ship_updated_listener_join_handle = tokio::spawn(listen_to_ship_changes_and_persist(db_model_manager.clone(), ship_updated_rx));
+    let ship_updated_listener_join_handle =
+        tokio::spawn(listen_to_ship_changes_and_persist(db_model_manager.clone(), ship_updated_rx).instrument(tracing::Span::current()));
 
-    let ship_action_update_listener_join_handle = tokio::spawn(listen_to_ship_action_update_messages(ship_status_report_tx, ship_action_completed_rx));
+    let ship_action_update_listener_join_handle =
+        tokio::spawn(listen_to_ship_action_update_messages(ship_status_report_tx, ship_action_completed_rx).instrument(tracing::Span::current()));
 
     let ship_status_report_listener_join_handle = tokio::spawn({
         let mm = db_model_manager.clone();
-        listen_to_ship_status_report_messages(mm, ship_status_report_rx)
+        listen_to_ship_status_report_messages(mm, ship_status_report_rx).instrument(tracing::Span::current())
     });
 
     // run forever
@@ -467,7 +517,6 @@ async fn run_message_listeners(
 
 async fn listen_to_ship_changes_and_persist(mm: DbModelManager, mut ship_updated_rx: Receiver<ShipOperations>) -> Result<()> {
     while let Some(updated_ship) = ship_updated_rx.recv().await {
-        event!(Level::INFO, "Got Ship Change Message For Ship {}", updated_ship.symbol.0);
         let _ = st_store::upsert_ships(mm.pool(), &vec![updated_ship.ship.clone()], Utc::now()).await?;
     }
 
@@ -481,7 +530,7 @@ pub async fn listen_to_ship_action_update_messages(
     while let Some(msg) = ship_action_completed_rx.recv().await {
         match msg {
             ActionEvent::ShipActionCompleted(result) => match result {
-                std::prelude::rust_2015::Ok((ship_op, ship_action)) => {
+                Ok((ship_op, ship_action)) => {
                     let ss = ship_op.symbol.0.clone();
                     event!(
                         Level::INFO,
@@ -539,4 +588,45 @@ pub async fn listen_to_ship_status_report_messages(db_model_manager: DbModelMana
     }
 
     Ok(())
+}
+
+lazy_static! {
+    static ref GUARD: std::sync::Mutex<Option<tracing_appender::non_blocking::WorkerGuard>> = std::sync::Mutex::new(None);
+}
+
+fn setup_tracing() {
+    // Create a file appender with daily rotation
+    let file_appender = RollingFileAppender::new(Rotation::DAILY, "./logs", "spaceTraders.log.ndjson");
+
+    // Create a non-blocking writer for the file appender
+    let (non_blocking_appender, guard) = tracing_appender::non_blocking(file_appender);
+
+    // Format for timestamps
+    let time_format = format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond]Z").expect("Invalid time format");
+
+    let timer = UtcTime::new(time_format);
+
+    // Create the console layer with colored output
+    let console_layer = fmt::layer().with_timer(timer.clone()).with_ansi(true).with_target(true).pretty();
+
+    // Create the JSON file layer
+    let file_layer = fmt::layer()
+        .with_span_events(fmt::format::FmtSpan::CLOSE) // Only log spans when they close
+        .with_timer(timer)
+        .with_ansi(false)
+        .json()
+        .with_current_span(true) // Keep just one current span
+        .with_span_list(false) // Don't include the full span list
+        .with_writer(non_blocking_appender);
+
+    // Create the filter
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    // Register all layers
+    Registry::default().with(filter).with(console_layer).with(file_layer).init();
+
+    // Store guard in a static to keep it alive for the program duration
+    if let Ok(mut g) = GUARD.lock() {
+        *g = Some(guard);
+    }
 }

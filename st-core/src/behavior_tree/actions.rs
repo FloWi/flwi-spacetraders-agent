@@ -18,6 +18,8 @@ use st_domain::{
 };
 use std::ops::{Add, Not};
 use tokio::sync::mpsc::Sender;
+use tracing::event;
+use tracing_core::Level;
 
 #[async_trait]
 impl Actionable for ShipAction {
@@ -63,16 +65,19 @@ impl Actionable for ShipAction {
 
             ShipAction::WaitForArrival => match state.nav.status {
                 NavStatus::Docked | NavStatus::InOrbit => {
-                    println!("ShipAction::WaitForArrival: Ship is {:?}", state.nav.status);
+                    event!(Level::DEBUG, "ShipAction::WaitForArrival: Ship is {:?}", state.nav.status);
                     Ok(Success)
                 }
                 NavStatus::InTransit => {
                     let now: DateTime<Utc> = Utc::now();
                     let arrival_time: DateTime<Utc> = state.nav.route.arrival;
                     let is_still_travelling: bool = now < arrival_time;
-                    println!(
+                    event!(
+                        Level::DEBUG,
                         "ShipAction::WaitForArrival: Ship is InTransit. now: {} arrival_time: {} is_still_travelling: {}",
-                        now, arrival_time, is_still_travelling
+                        now,
+                        arrival_time,
+                        is_still_travelling
                     );
 
                     if is_still_travelling {
@@ -232,7 +237,7 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::PrintTravelActions => {
-                println!("travel_action queue: {:?}", state.travel_action_queue);
+                event!(Level::DEBUG, "travel_action queue: {:?}", state.travel_action_queue);
                 Ok(Success)
             }
             ShipAction::HasExploreLocationEntry => {
@@ -249,11 +254,11 @@ impl Actionable for ShipAction {
             }
 
             ShipAction::PrintExploreLocations => {
-                println!("explore_location_queue: {:?}", state.explore_location_queue);
+                event!(Level::DEBUG, "explore_location_queue: {:?}", state.explore_location_queue);
                 Ok(Success)
             }
             ShipAction::PrintDestination => {
-                println!("current_navigation_destination: {:?}", state.current_navigation_destination);
+                event!(Level::DEBUG, "current_navigation_destination: {:?}", state.current_navigation_destination);
                 Ok(Success)
             }
 
@@ -310,7 +315,7 @@ impl Actionable for ShipAction {
                     )
                     .await?;
 
-                println!("successfully computed route from {:?} to {:?}: {:?}", from, to, &path);
+                event!(Level::DEBUG, "successfully computed route from {:?} to {:?}: {:?}", from, to, &path);
                 state.set_route(path);
                 Ok(Success)
             }
@@ -332,7 +337,7 @@ impl Actionable for ShipAction {
                     exploration_tasks
                 };
 
-                println!("CollectWaypointInfos - exploration_tasks: {:?}", exploration_tasks);
+                event!(Level::DEBUG, "CollectWaypointInfos - exploration_tasks: {:?}", exploration_tasks);
 
                 for task in exploration_tasks {
                     match task {
@@ -402,7 +407,8 @@ impl Actionable for ShipAction {
                         match maybe_best_wps {
                             None => Err(anyhow!("No next trade waypoint found - maybe_best_waypoint is None")),
                             Some(best_wps) => {
-                                println!(
+                                event!(
+                                    Level::DEBUG,
                                     r#"ShipAction::SetNextTradeStopAsDestination:
                                 purchase_completion_status: {}
                                 sale_completion_status: {}
@@ -582,7 +588,10 @@ impl Actionable for ShipAction {
         };
 
         let capacity = action_completed_tx.capacity();
-        println!("Sending ActionEvent::ShipActionCompleted to action_completed_tx - capacity: {capacity}");
+        event!(
+            Level::DEBUG,
+            "Sending ActionEvent::ShipActionCompleted to action_completed_tx - capacity: {capacity}"
+        );
 
         match result {
             Ok(_res) => {
