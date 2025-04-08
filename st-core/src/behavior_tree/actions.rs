@@ -474,7 +474,10 @@ impl Actionable for ShipAction {
                                 action_completed_tx
                                     .send(ActionEvent::TransactionCompleted(
                                         state.clone(),
-                                        PurchasedTradeGoods(purchase.clone(), result),
+                                        PurchasedTradeGoods {
+                                            ticket_details: purchase.clone(),
+                                            response: result,
+                                        },
                                         state.maybe_trade.clone().unwrap(),
                                     ))
                                     .await?;
@@ -486,7 +489,10 @@ impl Actionable for ShipAction {
                                 action_completed_tx
                                     .send(ActionEvent::TransactionCompleted(
                                         state.clone(),
-                                        SoldTradeGoods(sale.clone(), result),
+                                        SoldTradeGoods {
+                                            ticket_details: sale.clone(),
+                                            response: result,
+                                        },
                                         state.maybe_trade.clone().unwrap(),
                                     ))
                                     .await?;
@@ -513,7 +519,10 @@ impl Actionable for ShipAction {
                                 action_completed_tx
                                     .send(ActionEvent::TransactionCompleted(
                                         state.clone(),
-                                        PurchasedTradeGoods(purchase.clone(), result),
+                                        PurchasedTradeGoods {
+                                            ticket_details: purchase.clone(),
+                                            response: result,
+                                        },
                                         state.maybe_trade.clone().unwrap(),
                                     ))
                                     .await?;
@@ -526,7 +535,10 @@ impl Actionable for ShipAction {
                                 action_completed_tx
                                     .send(ActionEvent::TransactionCompleted(
                                         state.clone(),
-                                        SuppliedConstructionSite(delivery.clone(), result),
+                                        SuppliedConstructionSite {
+                                            ticket_details: delivery.clone(),
+                                            response: result,
+                                        },
                                         state.maybe_trade.clone().unwrap(),
                                     ))
                                     .await?;
@@ -538,7 +550,10 @@ impl Actionable for ShipAction {
                             action_completed_tx
                                 .send(ActionEvent::TransactionCompleted(
                                     state.clone(),
-                                    ShipPurchased(details.clone(), result),
+                                    ShipPurchased {
+                                        ticket_details: details.clone(),
+                                        response: result,
+                                    },
                                     state.maybe_trade.clone().unwrap(),
                                 ))
                                 .await?;
