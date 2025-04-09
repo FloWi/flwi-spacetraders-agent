@@ -15,4 +15,4 @@ scrape_configs:
           - localhost
         labels:
           job: varlogs
-          __path__: /var/log/*.ndjson*
+          __path__: /var/log/**/*.ndjson*

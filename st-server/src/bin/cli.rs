@@ -596,7 +596,7 @@ lazy_static! {
 
 fn setup_tracing() {
     // Create a file appender with daily rotation
-    let file_appender = RollingFileAppender::new(Rotation::DAILY, "./logs", "spaceTraders.log.ndjson");
+    let file_appender = RollingFileAppender::new(Rotation::DAILY, "./logs/cli", "spaceTraders-cli.log.ndjson");
 
     // Create a non-blocking writer for the file appender
     let (non_blocking_appender, guard) = tracing_appender::non_blocking(file_appender);
