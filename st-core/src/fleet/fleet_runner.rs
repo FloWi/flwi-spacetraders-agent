@@ -1,19 +1,21 @@
 use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use crate::behavior_tree::behavior_tree::ActionEvent;
 use crate::behavior_tree::ship_behaviors::ShipAction;
-use crate::fleet::fleet::{FleetAdmiral, ShipStatusReport};
+use crate::fleet;
+use crate::fleet::fleet::{collect_fleet_decision_facts, compute_fleets_with_tasks, FleetAdmiral, NewTaskResult, ShipStatusReport};
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use chrono::Utc;
-use st_domain::{Ship, ShipSymbol, ShipTask, TradeTicket};
-use st_store::DbModelManager;
+use fleet::fleet::recompute_tasks_after_ship_finishing_behavior_tree;
+use st_domain::{Fleet, Ship, ShipSymbol, ShipTask, TradeTicket, TransactionActionEvent};
+use st_store::{db, DbModelManager, FleetBmc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tracing::event;
+use tracing::{event, Instrument};
 use tracing_core::Level;
 
 pub struct FleetRunner {
@@ -79,7 +81,10 @@ impl FleetRunner {
         Ok(())
     }
 
-    async fn launch_and_register_ship(runner: Arc<Mutex<FleetRunner>>, ss: &ShipSymbol, ship: Ship) -> Result<()> {
+    pub async fn launch_and_register_ship(runner: Arc<Mutex<FleetRunner>>, ss: &ShipSymbol, ship: Ship) -> Result<()> {
+        // if ss.0 != "FLWI-26" {
+        //     return Ok(());
+        // }
         let mut guard = runner.lock().await;
         let ship_tasks = guard.fleet_admiral.lock().await.ship_tasks.clone();
 
@@ -92,11 +97,12 @@ impl FleetRunner {
             let args_clone = guard.args.clone();
             let ship_updated_tx_clone = guard.ship_updated_tx.clone();
             let ship_action_completed_tx_clone = guard.ship_action_completed_tx.clone();
+            let ship_status_report_tx_clone = guard.ship_status_report_tx.clone();
             let ship_task_clone = ship_task.clone();
             let ship_symbol_clone = ss.clone();
 
             let fiber = tokio::spawn(async move {
-                Self::ship_loop(
+                let maybe_task_finished_result = Self::behavior_runner(
                     ship_op_clone,
                     args_clone,
                     ship_updated_tx_clone,
@@ -104,6 +110,11 @@ impl FleetRunner {
                     ship_task_clone,
                 )
                 .await?;
+
+                if let Some((ship, ship_task)) = maybe_task_finished_result {
+                    ship_status_report_tx_clone.send(ShipStatusReport::ShipFinishedBehaviorTree(ship, ship_task)).await?;
+                }
+
                 Ok(())
             });
 
@@ -113,13 +124,53 @@ impl FleetRunner {
         Ok(())
     }
 
-    pub async fn ship_loop(
+    //TODO - refactor to DRY up with fn launch_and_register_ship
+    pub async fn relaunch_ship(runner: Arc<Mutex<FleetRunner>>, ss: &ShipSymbol) -> Result<()> {
+        let mut guard = runner.lock().await;
+        let ship_tasks = guard.fleet_admiral.lock().await.ship_tasks.clone();
+
+        let ship_op_mutex = guard.ship_ops.get(ss).unwrap();
+        let maybe_ship_task = ship_tasks.get(&ss);
+
+        if let Some(ship_task) = maybe_ship_task {
+            // Clone all the values that need to be moved into the async task
+            let ship_op_clone = Arc::clone(&ship_op_mutex);
+            let args_clone = guard.args.clone();
+            let ship_updated_tx_clone = guard.ship_updated_tx.clone();
+            let ship_action_completed_tx_clone = guard.ship_action_completed_tx.clone();
+            let ship_status_report_tx_clone = guard.ship_status_report_tx.clone();
+            let ship_task_clone = ship_task.clone();
+            let ship_symbol_clone = ss.clone();
+
+            let fiber = tokio::spawn(async move {
+                let maybe_task_finished_result = Self::behavior_runner(
+                    ship_op_clone,
+                    args_clone,
+                    ship_updated_tx_clone,
+                    ship_action_completed_tx_clone,
+                    ship_task_clone,
+                )
+                .await?;
+
+                if let Some((ship, ship_task)) = maybe_task_finished_result {
+                    ship_status_report_tx_clone.send(ShipStatusReport::ShipFinishedBehaviorTree(ship, ship_task)).await?;
+                }
+
+                Ok(())
+            });
+
+            guard.ship_fibers.insert(ship_symbol_clone, fiber);
+        }
+        Ok(())
+    }
+
+    pub async fn behavior_runner(
         ship_op: Arc<Mutex<ShipOperations>>,
         args: BehaviorArgs,
         ship_updated_tx: Sender<ShipOperations>,
         ship_action_completed_tx: Sender<ActionEvent>,
         ship_task: ShipTask,
-    ) -> Result<()> {
+    ) -> Result<Option<(Ship, ShipTask)>> {
         use crate::behavior_tree::behavior_tree::{Actionable, Response};
         use crate::behavior_tree::ship_behaviors::ship_behaviors;
         use anyhow::Error;
@@ -129,16 +180,16 @@ impl FleetRunner {
 
         let mut ship = ship_op.lock().await;
 
-        let maybe_behavior = match ship_task {
+        let maybe_behavior = match ship_task.clone() {
             ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
                 ship.set_permanent_observation_location(waypoint_symbol);
                 println!("ship_loop: Ship {:?} is running stationary_probe_behavior", ship.symbol);
-                Some(behaviors.stationary_probe_behavior)
+                Some((behaviors.stationary_probe_behavior, "stationary_probe_behavior"))
             }
             ShipTask::ObserveAllWaypointsOnce { waypoint_symbols } => {
                 ship.set_explore_locations(waypoint_symbols);
                 println!("ship_loop: Ship {:?} is running explorer_behavior", ship.symbol);
-                Some(behaviors.explorer_behavior)
+                Some((behaviors.explorer_behavior, "explorer_behavior"))
             }
             ShipTask::MineMaterialsAtWaypoint { .. } => None,
             ShipTask::SurveyAsteroid { .. } => None,
@@ -146,20 +197,16 @@ impl FleetRunner {
                 let ticket: TradeTicket = args.blackboard.get_ticket_by_id(ticket_id).await?;
                 ship.set_trade_ticket(ticket);
                 println!("ship_loop: Ship {:?} is running trading_behavior", ship.symbol);
-                Some(behaviors.trading_behavior)
+                Some((behaviors.trading_behavior, "trading_behavior"))
             }
         };
 
         match maybe_behavior {
-            None => {}
-            Some(ship_behavior) => {
-                let mut tick: usize = 0;
-                let span = span!(Level::INFO, "ship_loop", tick, ship = format!("{}", ship.symbol.0),);
-                tick += 1;
+            None => Ok(None),
+            Some((ship_behavior, behavior_label)) => {
+                let ship_span = span!(Level::INFO, "ship_behavior", ship = format!("{}", ship.symbol.0), behavior = behavior_label);
 
-                let _enter = span.enter();
-
-                let result: std::result::Result<Response, Error> = ship_behavior
+                let result: Result<Response, Error> = ship_behavior
                     .run(
                         &args,
                         &mut ship,
@@ -167,28 +214,30 @@ impl FleetRunner {
                         &ship_updated_tx.clone(),
                         &ship_action_completed_tx.clone(),
                     )
+                    .instrument(ship_span)
                     .await;
 
                 match &result {
                     Ok(o) => {
                         event!(
                             Level::INFO,
-                            message = "Ship Tick done ",
+                            message = "behavior_runner done",
                             result = %o,
                         );
+                        let ship_clone = ship.ship.clone();
+                        Ok(Some((ship_clone, ship_task)))
                     }
                     Err(e) => {
                         event!(
                             Level::INFO,
-                            message = "Ship Tick done with Error",
+                            message = "behavior_runner done with Error",
                             result = %e,
                         );
+                        Err(anyhow!("behavior_runner done with Error: {}", e))
                     }
                 }
             }
         }
-
-        Ok(())
     }
 
     pub async fn listen_to_ship_changes_and_persist(
@@ -219,14 +268,49 @@ impl FleetRunner {
         fleet_admiral: Arc<Mutex<FleetAdmiral>>,
         db_model_manager: DbModelManager,
         mut ship_status_report_rx: Receiver<ShipStatusReport>,
+        runner: Arc<Mutex<FleetRunner>>,
     ) -> Result<()> {
-        println!("Fleet_runner::listen_to_ship_status_report_messages - starting");
-
         while let Some(msg) = ship_status_report_rx.recv().await {
-            println!("Fleet_runner::listen_to_ship_status_report_messages - got message");
-            let mut admiral = fleet_admiral.lock().await;
-            admiral.report_ship_action_completed(msg, &db_model_manager).await?;
-            println!("Fleet_runner::listen_to_ship_status_report_messages - successfully processed message");
+            let mut admiral_guard = fleet_admiral.lock().await;
+            admiral_guard.report_ship_action_completed(&msg, &db_model_manager).await?;
+
+            match msg {
+                ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
+                    let mut admiral_guard = fleet_admiral.lock().await;
+                    admiral_guard.ship_tasks.remove(&ship.symbol);
+                    let result = recompute_tasks_after_ship_finishing_behavior_tree(&admiral_guard, &ship, &task, &db_model_manager).await?;
+                    match result {
+                        NewTaskResult::DismantleFleets { .. } => {}
+                        NewTaskResult::RegisterWaypointForPermanentObservation { .. } => {}
+                        NewTaskResult::AssignNewTaskToShip {
+                            ship_symbol,
+                            task,
+                            ship_task_requirement,
+                        } => {
+                            FleetAdmiral::assign_ship_task_and_potential_requirement(&mut admiral_guard, ship_symbol.clone(), task, ship_task_requirement);
+                            Self::relaunch_ship(runner.clone(), &ship_symbol).await?
+                        }
+                    }
+                }
+
+                ShipStatusReport::ShipActionCompleted(_, _) => {}
+                ShipStatusReport::TransactionCompleted(_, transaction_event, _) => match &transaction_event {
+                    TransactionActionEvent::PurchasedTradeGoods { .. } => {}
+                    TransactionActionEvent::SoldTradeGoods { .. } => {}
+                    TransactionActionEvent::SuppliedConstructionSite { .. } => {}
+                    TransactionActionEvent::ShipPurchased { ticket_details, response } => {
+                        let new_ship = response.data.ship.clone();
+                        db::upsert_ships(db_model_manager.pool(), &vec![new_ship.clone()], Utc::now()).await?;
+                        admiral_guard.all_ships.insert(new_ship.symbol.clone(), new_ship.clone());
+                        admiral_guard.ship_fleet_assignment.insert(new_ship.symbol.clone(), ticket_details.assigned_fleet_id.clone());
+
+                        let facts = collect_fleet_decision_facts(&db_model_manager, &new_ship.nav.system_symbol).await?;
+                        let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, &db_model_manager).await?;
+                        FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut admiral_guard, new_ship_tasks);
+                        Self::launch_and_register_ship(Arc::clone(&runner), &new_ship.symbol, new_ship.clone()).await?
+                    }
+                },
+            }
         }
 
         Ok(())
@@ -300,6 +384,7 @@ impl FleetRunner {
             fleet_admiral,
             db_model_manager,
             ship_status_report_rx,
+            Arc::clone(&runner),
         ));
 
         // run forever
