@@ -2,8 +2,8 @@ use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
 use st_domain::{
-    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, PurchaseShipTicketDetails, Ship,
-    ShipSymbol, ShipTask, TransactionTicketId,
+    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, PurchaseGoodTicketDetails,
+    PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipSymbol, ShipTask, TicketId, TradeTicket, TransactionTicketId,
 };
 use st_store::shipyard_bmc::ShipyardBmc;
 use st_store::{Ctx, DbModelManager, MarketBmc, SystemBmc};
@@ -15,12 +15,12 @@ pub struct ConstructJumpGateFleet;
 
 impl ConstructJumpGateFleet {
     pub async fn compute_ship_tasks(
-        admiral: &mut FleetAdmiral,
+        admiral: &FleetAdmiral,
         cfg: &ConstructJumpGateFleetConfig,
         fleet: &Fleet,
         facts: &FleetDecisionFacts,
         mm: &DbModelManager,
-    ) -> Result<HashMap<ShipSymbol, ShipTask>> {
+    ) -> Result<Vec<PotentialTradingTask>> {
         let fleet_ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
         let fleet_ship_symbols = fleet_ships.iter().map(|&s| s.symbol.clone()).collect_vec();
         let budget: u64 = admiral.get_total_budget_for_fleet(fleet);
@@ -68,7 +68,7 @@ impl ConstructJumpGateFleet {
             }
         };
 
-        let maybe_ship_purchase_ticket_details = maybe_ship_purchase_location.clone().and_then(|(wps, s)| {
+        let maybe_ship_purchase_ticket_details: Option<PurchaseShipTicketDetails> = maybe_ship_purchase_location.clone().and_then(|(wps, s)| {
             let shipyard_waypoint = waypoint_map.get(&wps.clone()).expect("Waypoint of shipyard");
 
             let maybe_closest_ship: Option<(ShipSymbol, u32)> = unassigned_ships
@@ -122,7 +122,8 @@ impl ConstructJumpGateFleet {
 
         // FIXME: get currently active trades
         let active_trades_of_goods: Vec<EvaluatedTradingOpportunity> = Vec::new();
-        let trades_for_ships = trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trades_of_goods);
+        let trades_for_ships: Vec<EvaluatedTradingOpportunity> =
+            trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trades_of_goods);
 
         // agent has 175_000
         // fleet has budget of 175_000
@@ -152,28 +153,55 @@ impl ConstructJumpGateFleet {
         dbg!(&maybe_ship_purchase_location);
         dbg!(&maybe_ship_purchase_ticket_details);
 
-        admiral.assign_trading_tickets_if_possible(&trades_for_ships);
+        let trading_tasks_with_trading_tickets = create_trading_tickets(&trades_for_ships);
+        let ship_purchase_tasks_with_trading_ticket = match maybe_ship_purchase_ticket_details {
+            Some(ticket_details) => vec![create_ship_purchase_ticket(ticket_details)],
+            None => vec![],
+        };
 
-        if let Some(ticket_details) = maybe_ship_purchase_ticket_details {
-            admiral.assign_ship_purchase_ticket_if_possible(&ticket_details);
-        }
+        // ship purchases first
+        let tasks_with_tickets = ship_purchase_tasks_with_trading_ticket
+            .into_iter()
+            .chain(trading_tasks_with_trading_tickets.into_iter())
+            .unique_by(|ptt| ptt.ship_symbol.clone())
+            .collect_vec();
 
-        let new_ship_tasks: HashMap<ShipSymbol, ShipTask> = initial_unassigned_ships
-            .iter()
-            .filter_map(|ss| {
-                admiral.active_trades.get(ss).map(|trade_ticket| {
-                    (
-                        ss.clone(),
-                        ShipTask::Trade {
-                            ticket_id: trade_ticket.ticket_id().clone(),
-                        },
-                    )
-                })
-            })
-            .collect();
-
-        println!("Assigned trades to ships: \n{}", serde_json::to_string_pretty(&admiral.active_trades)?);
-
-        Ok(new_ship_tasks)
+        Ok(tasks_with_tickets)
     }
+}
+
+pub fn create_trading_tickets(trading_opportunities_within_budget: &[EvaluatedTradingOpportunity]) -> Vec<PotentialTradingTask> {
+    let mut new_tasks_with_tickets = Vec::new();
+    for opp in trading_opportunities_within_budget.iter() {
+        let ticket = TradeTicket::TradeCargo {
+            ticket_id: TicketId::new(),
+            purchase_completion_status: vec![(PurchaseGoodTicketDetails::from_trading_opportunity(&opp), false)],
+            sale_completion_status: vec![(SellGoodTicketDetails::from_trading_opportunity(&opp), false)],
+            evaluation_result: vec![opp.clone()],
+        };
+        new_tasks_with_tickets.push(PotentialTradingTask {
+            ship_symbol: opp.ship_symbol.clone(),
+            trade_ticket: ticket.clone(),
+            ship_task: ShipTask::Trade { ticket_id: ticket.ticket_id() },
+        });
+    }
+    new_tasks_with_tickets
+}
+
+pub fn create_ship_purchase_ticket(details: PurchaseShipTicketDetails) -> PotentialTradingTask {
+    let ticket = TradeTicket::PurchaseShipTicket {
+        ticket_id: TicketId::new(),
+        details: details.clone(),
+    };
+    PotentialTradingTask {
+        ship_symbol: details.ship_symbol.clone(),
+        trade_ticket: ticket.clone(),
+        ship_task: ShipTask::Trade { ticket_id: ticket.ticket_id() },
+    }
+}
+
+pub struct PotentialTradingTask {
+    pub ship_symbol: ShipSymbol,
+    pub trade_ticket: TradeTicket,
+    pub ship_task: ShipTask,
 }

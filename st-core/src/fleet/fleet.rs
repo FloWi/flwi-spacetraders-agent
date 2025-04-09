@@ -1,7 +1,8 @@
 use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
 use crate::behavior_tree::ship_behaviors::{ship_behaviors, ShipAction};
-use crate::fleet::construction_fleet::ConstructJumpGateFleet;
+use crate::exploration::exploration::{get_exploration_tasks_for_waypoint, ExplorationTask};
+use crate::fleet::construction_fleet::{ConstructJumpGateFleet, PotentialTradingTask};
 use crate::fleet::fleet_runner::FleetRunner;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
 use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
@@ -36,6 +37,7 @@ use st_store::{
 };
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::slice::Iter;
 use std::sync::Arc;
 use std::time::Duration;
 use strum_macros::Display;
@@ -48,6 +50,7 @@ use uuid::Uuid;
 pub enum ShipStatusReport {
     ShipActionCompleted(Ship, ShipAction),
     TransactionCompleted(Ship, TransactionActionEvent, TradeTicket),
+    ShipFinishedBehaviorTree(Ship, ShipTask),
 }
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct FleetAdmiral {
@@ -63,38 +66,6 @@ pub struct FleetAdmiral {
 }
 
 impl FleetAdmiral {
-    pub(crate) fn assign_ship_purchase_ticket_if_possible(&mut self, details: &PurchaseShipTicketDetails) {
-        // TODO: run by budget master, but for now we trust the fleets
-        if self.active_trades.contains_key(&details.ship_symbol) {
-            event!(
-                Level::WARN,
-                "Tried to insert a PurchaseShipTicket for {}, but it already had a ticket assigned",
-                &details.ship_symbol.0
-            );
-        } else {
-            self.active_trades.insert(
-                details.ship_symbol.clone(),
-                TradeTicket::PurchaseShipTicket {
-                    ticket_id: TicketId::new(),
-                    details: details.clone(),
-                },
-            );
-        }
-    }
-
-    pub(crate) fn assign_trading_tickets_if_possible(&mut self, trading_opportunities_within_budget: &[EvaluatedTradingOpportunity]) {
-        for opp in trading_opportunities_within_budget.iter() {
-            let ticket = TradeTicket::TradeCargo {
-                ticket_id: TicketId::new(),
-                purchase_completion_status: vec![(PurchaseGoodTicketDetails::from_trading_opportunity(&opp), false)],
-                sale_completion_status: vec![(SellGoodTicketDetails::from_trading_opportunity(&opp), false)],
-                evaluation_result: vec![opp.clone()],
-            };
-            self.active_trades.insert(opp.ship_symbol.clone(), ticket.clone());
-            self.ship_tasks.insert(opp.ship_symbol.clone(), ShipTask::Trade { ticket_id: ticket.ticket_id() });
-        }
-    }
-
     pub fn get_next_ship_purchase(&self) -> Option<ShipType> {
         let mapping = role_to_ship_type_mapping();
 
@@ -182,7 +153,7 @@ impl FleetAdmiral {
         Ok(())
     }
 
-    pub async fn report_ship_action_completed(&mut self, ship_status_report: ShipStatusReport, mm: &DbModelManager) -> Result<()> {
+    pub async fn report_ship_action_completed(&mut self, ship_status_report: &ShipStatusReport, mm: &DbModelManager) -> Result<()> {
         match ship_status_report {
             ShipStatusReport::ShipActionCompleted(ship, ship_action) => {
                 let maybe_fleet = self.get_fleet_of_ship(&ship.symbol);
@@ -276,6 +247,15 @@ impl FleetAdmiral {
                 }
                 Ok(())
             }
+            ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
+                event!(
+                    Level::INFO,
+                    message = "Ship finished behavior tree",
+                    ship = ship.symbol.0,
+                    task = task.to_string()
+                );
+                Ok(())
+            }
         }
     }
 
@@ -349,7 +329,8 @@ impl FleetAdmiral {
                 active_trades: overview.open_trade_tickets,
             };
 
-            Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
+            let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
+            Self::assign_ship_tasks_and_potential_requirements(&mut admiral, new_ship_tasks);
 
             let _ = FleetBmc::store_fleets_data(
                 &Ctx::Anonymous,
@@ -404,7 +385,8 @@ impl FleetAdmiral {
             active_trades: Default::default(),
         };
 
-        let _ = Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
+        let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
+        Self::assign_ship_tasks_and_potential_requirements(&mut admiral, new_ship_tasks);
 
         FleetBmc::store_fleets_data(
             &Ctx::Anonymous,
@@ -420,25 +402,36 @@ impl FleetAdmiral {
         Ok(admiral)
     }
 
-    async fn compute_ship_tasks(admiral: &mut FleetAdmiral, facts: &FleetDecisionFacts, mm: &DbModelManager) -> Result<()> {
+    pub(crate) async fn compute_ship_tasks(
+        admiral: &FleetAdmiral,
+        facts: &FleetDecisionFacts,
+        mm: &DbModelManager,
+    ) -> Result<Vec<(ShipSymbol, ShipTask, ShipTaskRequirement)>> {
+        let mut new_fleet_tasks = Vec::new();
         for (fleet_id, fleet) in admiral.fleets.clone().iter() {
             match &fleet.cfg {
                 FleetConfig::SystemSpawningCfg(cfg) => {
                     let ship_tasks = SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts).await?;
                     for (ss, task) in ship_tasks {
-                        admiral.ship_tasks.insert(ss, task);
+                        new_fleet_tasks.push((ss, task, ShipTaskRequirement::None));
                     }
                 }
                 FleetConfig::MarketObservationCfg(cfg) => {
                     let ship_tasks = MarketObservationFleet::compute_ship_tasks(admiral, cfg, fleet, facts).await?;
                     for (ss, task) in ship_tasks {
-                        admiral.ship_tasks.insert(ss, task);
+                        new_fleet_tasks.push((ss, task, ShipTaskRequirement::None));
                     }
                 }
                 FleetConfig::ConstructJumpGateCfg(cfg) => {
-                    let ship_tasks = ConstructJumpGateFleet::compute_ship_tasks(admiral, cfg, fleet, facts, mm).await?;
-                    for (ss, task) in ship_tasks {
-                        admiral.ship_tasks.insert(ss, task);
+                    let potential_trading_tasks = ConstructJumpGateFleet::compute_ship_tasks(admiral, cfg, fleet, facts, mm).await?;
+
+                    for PotentialTradingTask {
+                        ship_symbol,
+                        trade_ticket,
+                        ship_task,
+                    } in potential_trading_tasks
+                    {
+                        new_fleet_tasks.push((ship_symbol, ship_task, ShipTaskRequirement::TradeTicket { trade_ticket }));
                     }
                 }
                 FleetConfig::TradingCfg(cfg) => (),
@@ -447,7 +440,38 @@ impl FleetAdmiral {
             }
         }
 
-        Ok(())
+        Ok(new_fleet_tasks)
+    }
+
+    pub(crate) fn assign_ship_tasks_and_potential_requirements(admiral: &mut FleetAdmiral, ship_tasks: Vec<(ShipSymbol, ShipTask, ShipTaskRequirement)>) {
+        for (ship_symbol, ship_task, requirements) in ship_tasks {
+            Self::assign_ship_task_and_potential_requirement(admiral, ship_symbol, ship_task, requirements)
+        }
+    }
+
+    pub fn assign_ship_task_and_potential_requirement(
+        admiral: &mut FleetAdmiral,
+        ship_symbol: ShipSymbol,
+        ship_task: ShipTask,
+        requirements: ShipTaskRequirement,
+    ) {
+        match requirements {
+            ShipTaskRequirement::TradeTicket { trade_ticket } => {
+                if !(admiral.active_trades.contains_key(&ship_symbol)) {
+                    admiral.active_trades.insert(ship_symbol.clone(), trade_ticket);
+                    admiral.ship_tasks.insert(ship_symbol.clone(), ship_task);
+                } else {
+                    event!(
+                        Level::WARN,
+                        message = "Can't assign new trade_ticket to ship - there's already a trade assigned to it",
+                        ship = ship_symbol.0
+                    );
+                }
+            }
+            ShipTaskRequirement::None => {
+                admiral.ship_tasks.insert(ship_symbol, ship_task);
+            }
+        }
     }
 
     pub fn assign_ships(
@@ -478,6 +502,63 @@ impl FleetAdmiral {
                 }
             })
             .collect_vec()
+    }
+}
+
+pub enum NewTaskResult {
+    DismantleFleets {
+        fleets_to_dismantle: Vec<FleetId>,
+    },
+    AssignNewTaskToShip {
+        ship_symbol: ShipSymbol,
+        task: ShipTask,
+        ship_task_requirement: ShipTaskRequirement,
+    },
+    RegisterWaypointForPermanentObservation {
+        ship_symbol: ShipSymbol,
+        waypoint_symbol: WaypointSymbol,
+        exploration_tasks: Vec<ExplorationTask>,
+    },
+}
+
+pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
+    admiral: &FleetAdmiral,
+    ship: &Ship,
+    finished_task: &ShipTask,
+    mm: &DbModelManager,
+) -> Result<NewTaskResult> {
+    match finished_task {
+        ShipTask::MineMaterialsAtWaypoint { .. } => {
+            unreachable!("this behavior should run forever")
+        }
+        ShipTask::SurveyAsteroid { .. } => {
+            unreachable!("this behavior should run forever")
+        }
+        ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
+            let waypoints = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &waypoint_symbol.system_symbol()).await?;
+            let waypoint = waypoints.iter().find(|wp| &wp.symbol == waypoint_symbol).unwrap();
+            Ok(NewTaskResult::RegisterWaypointForPermanentObservation {
+                ship_symbol: ship.symbol.clone(),
+                waypoint_symbol: waypoint_symbol.clone(),
+                exploration_tasks: get_exploration_tasks_for_waypoint(waypoint),
+            })
+        }
+        ShipTask::ObserveAllWaypointsOnce { .. } => Ok(NewTaskResult::DismantleFleets {
+            fleets_to_dismantle: vec![admiral.ship_fleet_assignment.get(&ship.symbol).unwrap().clone()],
+        }),
+        ShipTask::Trade { .. } => {
+            let facts = collect_fleet_decision_facts(mm, &ship.nav.system_symbol).await?;
+            let new_tasks = FleetAdmiral::compute_ship_tasks(admiral, &facts, mm).await?;
+            if let Some((ss, new_task_for_ship, ship_task_requirement)) = new_tasks.iter().find(|(ss, task, _)| ss == &ship.symbol) {
+                Ok(NewTaskResult::AssignNewTaskToShip {
+                    ship_symbol: ss.clone(),
+                    task: new_task_for_ship.clone(),
+                    ship_task_requirement: ship_task_requirement.clone(),
+                })
+            } else {
+                Err(anyhow!("No new task for ship found"))
+            }
+        }
     }
 }
 
@@ -715,6 +796,7 @@ fn role_to_ship_type_mapping() -> HashMap<ShipFrameSymbol, ShipType> {
     HashMap::from([
         (ShipFrameSymbol::FRAME_FRIGATE, ShipType::SHIP_COMMAND_FRIGATE),
         (ShipFrameSymbol::FRAME_PROBE, ShipType::SHIP_PROBE),
+        (ShipFrameSymbol::FRAME_LIGHT_FREIGHTER, ShipType::SHIP_LIGHT_HAULER),
     ])
 }
 
@@ -836,4 +918,10 @@ pub fn create_fleet(super_fleet_config: FleetConfig, fleet_task: FleetTask, id: 
     };
 
     Ok((fleet, (id, fleet_task)))
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub enum ShipTaskRequirement {
+    TradeTicket { trade_ticket: TradeTicket },
+    None,
 }

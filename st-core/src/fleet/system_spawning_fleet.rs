@@ -58,7 +58,7 @@ impl SystemSpawningFleet {
     }
 
     pub async fn compute_ship_tasks(
-        admiral: &mut FleetAdmiral,
+        admiral: &FleetAdmiral,
         cfg: &SystemSpawningFleetConfig,
         fleet: &Fleet,
         facts: &FleetDecisionFacts,

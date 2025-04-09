@@ -8,7 +8,7 @@ pub struct MarketObservationFleet;
 
 impl MarketObservationFleet {
     pub async fn compute_ship_tasks(
-        admiral: &mut FleetAdmiral,
+        admiral: &FleetAdmiral,
         cfg: &MarketObservationFleetConfig,
         fleet: &Fleet,
         facts: &FleetDecisionFacts,
