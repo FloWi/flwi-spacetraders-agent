@@ -253,7 +253,7 @@ pub enum PurchaseReason {
     ShipUpgrade,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display)]
 pub enum ShipTask {
     ObserveWaypointDetails { waypoint_symbol: WaypointSymbol },
 
