@@ -26,6 +26,7 @@ pub enum ShipAction {
     PopExploreLocationAsDestination,
     PrintExploreLocations,
     HasDestination,
+    HasUncompletedTrade,
     HasPermanentExploreLocationEntry,
     SetPermanentExploreLocationAsDestination,
     SetNextObservationTime,
@@ -213,6 +214,7 @@ pub fn ship_behaviors() -> Behaviors {
     ]);
 
     let while_condition_trader = Behavior::new_select(vec![
+        Behavior::new_action(ShipAction::HasUncompletedTrade),
         Behavior::new_action(ShipAction::HasDestination),
         Behavior::new_action(ShipAction::HasNextTradeWaypoint),
     ]);

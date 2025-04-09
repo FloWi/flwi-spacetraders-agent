@@ -275,6 +275,17 @@ impl Actionable for ShipAction {
                 }
             }
 
+            ShipAction::HasUncompletedTrade => match &state.maybe_trade {
+                None => Err(anyhow!("No trade assigned")),
+                Some(trade) => {
+                    if trade.is_complete() {
+                        Err(anyhow!("Trade is complete"))
+                    } else {
+                        Ok(Success)
+                    }
+                }
+            },
+
             ShipAction::IsAtDestination => {
                 if let Some(current) = &state.current_navigation_destination {
                     if &state.nav.waypoint_symbol == current {
