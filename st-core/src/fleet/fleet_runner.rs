@@ -443,10 +443,13 @@ mod tests {
     use itertools::Itertools;
     use st_domain::{FleetDecisionFacts, FleetPhaseName, FleetsOverview, ShipFrameSymbol, ShipSymbol, WaypointTraitSymbol, WaypointType};
     use std::collections::HashMap;
-
+    use std::sync::Arc;
     use crate::fleet::fleet::{compute_fleets_with_tasks, FleetAdmiral};
     use crate::test_objects::TestObjects;
     use test_log::test;
+    use tokio::sync::Mutex;
+    use crate::fleet::fleet_runner::FleetRunner;
+    use crate::st_client::MockStClientTrait;
 
     #[test(tokio::test)]
     async fn create_fleet_admiral_from_startup_ship_config() {
@@ -536,6 +539,11 @@ mod tests {
         )
         .unwrap();
 
+        let mut mock_client = MockStClientTrait::new();
+
         FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut fleet_admiral, new_ship_tasks);
+        let admiral_mutex = Arc::new(Mutex::new(fleet_admiral));
+        // TODO: refactor db_model_manager and introduce trait for all db-functions
+        // FleetRunner::run_fleets(Arc::clone(&admiral_mutex), Arc::new(mock_client), db_model_manager ).unwrap()
     }
 }
