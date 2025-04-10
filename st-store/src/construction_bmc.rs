@@ -1,16 +1,27 @@
 use crate::ctx::Ctx;
-use crate::{DbConstructionSiteEntry, DbMarketEntry, DbModelManager, DbShipEntry};
+use crate::{DbConstructionSiteEntry, DbModelManager};
 use anyhow::*;
-use chrono::{DateTime, Utc};
+use async_trait::async_trait;
 use itertools::Itertools;
+use mockall::automock;
 use sqlx::types::Json;
-use sqlx::{Pool, Postgres};
-use st_domain::{GetConstructionResponse, MarketData, Ship, StStatusResponse, SystemSymbol};
+use st_domain::{GetConstructionResponse, SystemSymbol};
+use std::fmt::Debug;
 
-pub struct ConstructionBmc;
+#[derive(Debug)]
+pub struct DbConstructionBmc {
+    pub(crate) mm: DbModelManager,
+}
 
-impl ConstructionBmc {
-    pub async fn get_construction_site_for_system(ctx: &Ctx, mm: &DbModelManager, system_symbol: SystemSymbol) -> Result<Option<GetConstructionResponse>> {
+#[automock]
+#[async_trait]
+pub trait ConstructionBmcTrait: Send + Sync + Debug {
+    async fn get_construction_site_for_system(&self, ctx: &Ctx, system_symbol: SystemSymbol) -> Result<Option<GetConstructionResponse>>;
+}
+
+#[async_trait]
+impl ConstructionBmcTrait for DbConstructionBmc {
+    async fn get_construction_site_for_system(&self, ctx: &Ctx, system_symbol: SystemSymbol) -> Result<Option<GetConstructionResponse>> {
         let waypoint_symbol_pattern = format!("{}%", system_symbol.0);
 
         let maybe_construction_entry: Option<DbConstructionSiteEntry> = sqlx::query_as!(
@@ -26,7 +37,7 @@ SELECT waypoint_symbol
         "#,
             waypoint_symbol_pattern
         )
-        .fetch_optional(mm.pool())
+        .fetch_optional(self.mm.pool())
         .await?;
 
         Ok(maybe_construction_entry.map(|db_entry| db_entry.entry.0))

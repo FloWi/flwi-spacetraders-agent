@@ -3,7 +3,7 @@ use futures::StreamExt;
 use itertools::Itertools;
 use pathfinding::prelude::astar;
 use serde::{Deserialize, Serialize};
-use st_domain::{distance_to, FlightMode, LabelledCoordinate, TradeGoodSymbol};
+use st_domain::{distance_to, FlightMode, LabelledCoordinate, TradeGoodSymbol, TravelAction};
 use st_domain::{MarketData, Waypoint, WaypointSymbol};
 use strum_macros::Display;
 
@@ -97,39 +97,6 @@ struct State {
 impl State {
     fn waypoint<'a>(&self, waypoints: &'a Vec<PathfindingWaypoint>) -> &'a PathfindingWaypoint {
         waypoints.get(self.waypoint_idx).unwrap()
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Display)]
-pub enum TravelAction {
-    Navigate {
-        from: WaypointSymbol,
-        to: WaypointSymbol,
-        distance: u32,
-        travel_time: u32,
-        fuel_consumption: u32,
-        mode: FlightMode,
-        total_time: u32,
-    },
-    Refuel {
-        at: WaypointSymbol,
-        total_time: u32,
-    },
-}
-
-impl TravelAction {
-    fn total_time(&self) -> u32 {
-        match self {
-            TravelAction::Navigate { total_time, .. } => *total_time,
-            TravelAction::Refuel { total_time, .. } => *total_time,
-        }
-    }
-
-    pub fn waypoint_and_time(&self) -> (&WaypointSymbol, &u32) {
-        match self {
-            TravelAction::Navigate { to, total_time, .. } => (to, total_time),
-            TravelAction::Refuel { at, total_time } => (at, total_time),
-        }
     }
 }
 

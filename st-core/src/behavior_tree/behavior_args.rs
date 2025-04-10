@@ -1,58 +1,21 @@
-use crate::exploration::exploration::get_exploration_tasks_for_waypoint;
 use crate::pathfinder::pathfinder;
-use crate::pathfinder::pathfinder::TravelAction;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::Local;
 use itertools::Itertools;
-use mockall::automock;
-use st_domain::{ExplorationTask, JumpGate, LabelledCoordinate, MarketData, Shipyard, TicketId, TradeTicket, Waypoint, WaypointSymbol};
-use st_store::trade_bmc::TradeBmc;
+use sqlx::{Pool, Postgres};
+use st_domain::blackboard_ops::BlackboardOps;
+use st_domain::{JumpGate, LabelledCoordinate, MarketData, Shipyard, TicketId, TradeTicket, TravelAction, Waypoint, WaypointSymbol};
+use st_store::bmc::{Bmc, DbBmc};
 use st_store::{
     insert_jump_gates, insert_market_data, insert_shipyards, select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints, Ctx,
     DbModelManager,
 };
 use std::sync::Arc;
 
-#[automock]
-#[async_trait]
-pub trait BlackboardOps: Send + Sync {
-    async fn compute_path(
-        &self,
-        from: WaypointSymbol,
-        to: WaypointSymbol,
-        engine_speed: u32,
-        current_fuel: u32,
-        fuel_capacity: u32,
-    ) -> Result<Vec<TravelAction>>;
-    async fn insert_waypoint(&self, waypoint: &Waypoint) -> Result<()>;
-    async fn insert_market(&self, market_data: MarketData) -> Result<()>;
-    async fn insert_jump_gate(&self, jump_gate: JumpGate) -> Result<()>;
-    async fn insert_shipyard(&self, shipyard: Shipyard) -> Result<()>;
-    async fn get_closest_waypoint(&self, current_waypoint: &WaypointSymbol, candidates: &[WaypointSymbol]) -> Result<Option<WaypointSymbol>>;
-    async fn get_waypoint(&self, waypoint_symbol: &WaypointSymbol) -> Result<Waypoint>;
-
-    async fn get_ticket_by_id(&self, ticket_id: TicketId) -> Result<TradeTicket>;
-
-    // async fn report_purchase(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &PurchaseTradeGoodResponse) -> Result<()>;
-    // async fn report_sale(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &SellTradeGoodResponse) -> Result<()>;
-    // async fn report_delivery(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &SupplyConstructionSiteResponse) -> Result<()>;
-    // async fn report_ship_purchase(&self, ticket_id: &TicketId, ticket: &PurchaseShipTicketDetails, response: PurchaseShipResponse) -> Result<()>;
-
-    async fn get_exploration_tasks_waypoint(&self, waypoint_symbol: &WaypointSymbol) -> Result<Vec<ExplorationTask>> {
-        let waypoint = self.get_waypoint(waypoint_symbol).await?;
-        Ok(get_exploration_tasks_for_waypoint(&waypoint))
-    }
-}
-
 #[derive(Clone)]
 pub struct BehaviorArgs {
     pub blackboard: Arc<dyn BlackboardOps>,
-}
-
-#[derive(Debug, Clone)]
-pub struct DbBlackboard {
-    pub model_manager: DbModelManager,
 }
 
 // Implement Deref for BehaviorArgs to allow transparent access to BlackboardOps methods
@@ -61,6 +24,22 @@ impl std::ops::Deref for BehaviorArgs {
 
     fn deref(&self) -> &Self::Target {
         &*self.blackboard
+    }
+}
+
+// FIXME: This might be obsolete, if all db accessor functions are moved to their specific bmc implementations
+#[derive(Debug, Clone)]
+pub struct DbBlackboard {
+    pub bmc: DbBmc,
+}
+
+impl DbBlackboard {
+    fn model_manager(&self) -> DbModelManager {
+        self.bmc.db_model_manager.clone()
+    }
+
+    fn pool(&self) -> &Pool<Postgres> {
+        self.bmc.db_model_manager.pool()
     }
 }
 
@@ -76,13 +55,10 @@ impl BlackboardOps for DbBlackboard {
     ) -> Result<Vec<TravelAction>> {
         assert_eq!(from.system_symbol(), to.system_symbol(), "Pathfinder currently only works in same system");
 
-        let waypoints_of_system: Vec<Waypoint> = select_waypoints_of_system(&self.model_manager.pool(), &from.system_symbol()).await?;
+        let waypoints_of_system: Vec<Waypoint> = select_waypoints_of_system(&self.pool(), &from.system_symbol()).await?;
 
-        let market_entries_of_system: Vec<MarketData> = select_latest_marketplace_entry_of_system(&self.model_manager.pool(), &from.system_symbol())
-            .await?
-            .into_iter()
-            .map(|db_wp| db_wp.entry.0.clone())
-            .collect();
+        let market_entries_of_system: Vec<MarketData> =
+            select_latest_marketplace_entry_of_system(&self.pool(), &from.system_symbol()).await?.into_iter().map(|db_wp| db_wp.entry.0.clone()).collect();
 
         match pathfinder::compute_path(
             from.clone(),
@@ -100,23 +76,23 @@ impl BlackboardOps for DbBlackboard {
 
     async fn insert_waypoint(&self, waypoint: &Waypoint) -> Result<()> {
         let now = Local::now().to_utc();
-        upsert_waypoints(&self.model_manager.pool(), vec![waypoint.clone()], now).await
+        upsert_waypoints(&self.pool(), vec![waypoint.clone()], now).await
     }
     async fn insert_market(&self, market_data: MarketData) -> Result<()> {
         let now = Local::now().to_utc();
-        insert_market_data(&self.model_manager.pool(), vec![market_data], now).await
+        insert_market_data(&self.pool(), vec![market_data], now).await
     }
     async fn insert_jump_gate(&self, jump_gate: JumpGate) -> Result<()> {
         let now = Local::now().to_utc();
-        insert_jump_gates(&self.model_manager.pool(), vec![jump_gate], now).await
+        insert_jump_gates(&self.pool(), vec![jump_gate], now).await
     }
     async fn insert_shipyard(&self, shipyard: Shipyard) -> Result<()> {
         let now = Local::now().to_utc();
-        insert_shipyards(&self.model_manager.pool(), vec![shipyard], now).await
+        insert_shipyards(&self.pool(), vec![shipyard], now).await
     }
     async fn get_closest_waypoint(&self, current_location: &WaypointSymbol, candidates: &[WaypointSymbol]) -> Result<Option<WaypointSymbol>> {
         //TODO: improve by caching a waypoint_map
-        let waypoints = select_waypoints_of_system(&self.model_manager.pool(), &current_location.system_symbol()).await?;
+        let waypoints = select_waypoints_of_system(&self.pool(), &current_location.system_symbol()).await?;
         let current_waypoint = waypoints.iter().find(|wp| wp.symbol == *current_location).expect("Current location waypoint");
 
         Ok(candidates
@@ -132,13 +108,13 @@ impl BlackboardOps for DbBlackboard {
     }
 
     async fn get_waypoint(&self, waypoint_symbol: &WaypointSymbol) -> Result<Waypoint> {
-        let waypoints = select_waypoints_of_system(&self.model_manager.pool(), &waypoint_symbol.system_symbol()).await?;
+        let waypoints = select_waypoints_of_system(&self.pool(), &waypoint_symbol.system_symbol()).await?;
         let waypoint = waypoints.into_iter().find(|wp| wp.symbol == *waypoint_symbol).expect("waypoint");
 
         Ok(waypoint)
     }
 
     async fn get_ticket_by_id(&self, ticket_id: TicketId) -> Result<TradeTicket> {
-        TradeBmc::get_ticket_by_id(&Ctx::Anonymous, &self.model_manager, ticket_id).await
+        self.bmc.trade_bmc().get_ticket_by_id(&Ctx::Anonymous, ticket_id).await
     }
 }

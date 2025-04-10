@@ -1,7 +1,6 @@
 use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
 use crate::behavior_tree::ship_behaviors::{ship_behaviors, ShipAction};
-use crate::exploration::exploration::get_exploration_tasks_for_waypoint;
 use crate::fleet::construction_fleet::{ConstructJumpGateFleet, PotentialTradingTask};
 use crate::fleet::fleet_runner::FleetRunner;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
@@ -18,23 +17,24 @@ use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use sqlx::__rt::JoinHandle;
 use sqlx::{Pool, Postgres};
+use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{
     CollectMarketInfosOnce, ConstructJumpGate, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably,
 };
 use st_domain::FleetUpdateMessage::FleetTaskCompleted;
 use st_domain::{
-    Agent, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase,
-    FleetPhaseName, FleetTask, FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketData, MarketObservationFleetConfig, MaterializedSupplyChain,
-    MiningFleetConfig, PurchaseGoodTicketDetails, PurchaseReason, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipPriceInfo,
-    ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol,
-    TradeTicket, TradingFleetConfig, Transaction, TransactionActionEvent, Waypoint, WaypointSymbol,
+    get_exploration_tasks_for_waypoint, Agent, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, ExplorationTask, Fleet, FleetConfig,
+    FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketData,
+    MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, PurchaseGoodTicketDetails, PurchaseReason, PurchaseShipTicketDetails,
+    SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig, StationaryProbeLocation,
+    SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket, TradingFleetConfig, Transaction, TransactionActionEvent, Waypoint,
+    WaypointSymbol,
 };
-use st_store::shipyard_bmc::ShipyardBmc;
-use st_store::trade_bmc::TradeBmc;
+use st_store::bmc::Bmc;
 use st_store::{
-    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, AgentBmc, ConstructionBmc, Ctx, DbModelManager, FleetBmc, MarketBmc,
-    ShipBmc, SystemBmc,
+    db, load_fleet_overview, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, store_fleets_data, Ctx, DbConstructionBmc,
+    DbModelManager,
 };
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
@@ -148,22 +148,27 @@ impl FleetAdmiral {
         Self::sum_allocated_tickets(self.active_trades.values())
     }
 
-    pub async fn run_fleets(fleet_admiral: Arc<Mutex<FleetAdmiral>>, client: Arc<dyn StClientTrait>, db_model_manager: &DbModelManager) -> Result<()> {
+    pub async fn run_fleets(
+        fleet_admiral: Arc<Mutex<FleetAdmiral>>,
+        client: Arc<dyn StClientTrait>,
+        bmc: Arc<dyn Bmc>,
+        blackboard: Arc<dyn BlackboardOps>,
+    ) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
-        FleetRunner::run_fleets(Arc::clone(&fleet_admiral), Arc::clone(&client), db_model_manager.clone()).await?;
+        FleetRunner::run_fleets(Arc::clone(&fleet_admiral), Arc::clone(&client), bmc, blackboard).await?;
 
         Ok(())
     }
 
-    pub async fn report_ship_action_completed(&mut self, ship_status_report: &ShipStatusReport, mm: &DbModelManager) -> Result<()> {
+    pub async fn report_ship_action_completed(&mut self, ship_status_report: &ShipStatusReport, bmc: Arc<dyn Bmc>) -> Result<()> {
         match ship_status_report {
             ShipStatusReport::ShipActionCompleted(ship, ship_action) => {
                 let maybe_fleet = self.get_fleet_of_ship(&ship.symbol);
                 let fleet_tasks: Vec<FleetTask> = maybe_fleet.map(|fleet_id| self.get_tasks_of_fleet(&fleet_id.id)).unwrap_or_default();
                 let maybe_ship_task = self.get_task_of_ship(&ship.symbol);
                 if let Some((fleet, ship_task)) = maybe_fleet.zip(maybe_ship_task) {
-                    let fleet_decision_facts: FleetDecisionFacts = collect_fleet_decision_facts(mm, &ship.nav.system_symbol).await?;
+                    let fleet_decision_facts: FleetDecisionFacts = collect_fleet_decision_facts(Arc::clone(&bmc), &ship.nav.system_symbol).await?;
                     match &fleet.cfg {
                         SystemSpawningCfg(cfg) => {
                             if let Some(task_complete) =
@@ -179,7 +184,7 @@ impl FleetAdmiral {
                                     task = task_complete.task.to_string()
                                 );
                                 self.fleet_tasks.insert(fleet.id.clone(), uncompleted_tasks);
-                                FleetBmc::save_completed_fleet_tasks(&Ctx::Anonymous, mm, vec![task_complete.clone()]).await?;
+                                bmc.fleet_bmc().save_completed_fleet_tasks(&Ctx::Anonymous, vec![task_complete.clone()]).await?;
                             };
                         }
                         FleetConfig::MarketObservationCfg(_) => {}
@@ -201,9 +206,10 @@ impl FleetAdmiral {
                 };
 
                 let is_complete = updated_trade_ticket.is_complete();
-                TradeBmc::upsert_ticket(&Ctx::Anonymous, mm, &ship.symbol, ticket_id, &updated_trade_ticket, is_complete).await?;
+                bmc.trade_bmc().upsert_ticket(&Ctx::Anonymous, &ship.symbol, ticket_id, &updated_trade_ticket, is_complete).await?;
 
-                let tx_summary = TradingManager::log_transaction_completed(Ctx::Anonymous, mm, &ship, &transaction_event, &updated_trade_ticket).await?;
+                let tx_summary =
+                    TradingManager::log_transaction_completed(Ctx::Anonymous, bmc.trade_bmc(), &ship, &transaction_event, &updated_trade_ticket).await?;
 
                 let maybe_updated_agent_credits = tx_summary.transaction_action_event.maybe_updated_agent_credits();
                 let old_credits = self.agent_info.credits;
@@ -223,7 +229,7 @@ impl FleetAdmiral {
                     }
                 };
 
-                AgentBmc::store_agent(&Ctx::Anonymous, mm, &self.agent_info).await?;
+                bmc.agent_bmc().store_agent(&Ctx::Anonymous, &self.agent_info).await?;
 
                 if is_complete {
                     event!(
@@ -274,17 +280,17 @@ impl FleetAdmiral {
         self.fleet_tasks.get(fleet_id).cloned().unwrap_or_default()
     }
 
-    pub async fn load_or_create(mm: &DbModelManager, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
+    pub async fn load_or_create(bmc: Arc<dyn Bmc>, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
         //make sure we have up-to-date agent info
         let agent = client.get_agent().await?;
-        AgentBmc::store_agent(&Ctx::Anonymous, mm, &agent.data).await?;
+        bmc.agent_bmc().store_agent(&Ctx::Anonymous, &agent.data).await?;
 
-        match Self::load_admiral(mm).await? {
+        match Self::load_admiral(Arc::clone(&bmc)).await? {
             None => {
-                let admiral = Self::create(mm, system_symbol, Arc::clone(&client)).await?;
-                let _ = FleetBmc::store_fleets_data(
+                let admiral = Self::create(Arc::clone(&bmc), system_symbol, Arc::clone(&client)).await?;
+                let _ = st_store::fleet_bmc::store_fleets_data(
+                    Arc::clone(&bmc),
                     &Ctx::Anonymous,
-                    mm,
                     &admiral.fleets,
                     &admiral.fleet_tasks,
                     &admiral.ship_fleet_assignment,
@@ -298,8 +304,8 @@ impl FleetAdmiral {
         }
     }
 
-    async fn load_admiral(mm: &DbModelManager) -> Result<Option<Self>> {
-        let overview = FleetBmc::load_overview(&Ctx::Anonymous, mm).await?;
+    async fn load_admiral(bmc: Arc<dyn Bmc>) -> Result<Option<Self>> {
+        let overview = load_fleet_overview(Arc::clone(&bmc), &Ctx::Anonymous).await?;
 
         if overview.fleets.is_empty() || overview.all_ships.is_empty() {
             Ok(None)
@@ -311,14 +317,14 @@ impl FleetAdmiral {
             let system_symbol = all_ships.first().cloned().unwrap().nav.system_symbol;
 
             // recompute ship-tasks and persist them. Might have been outdated since last agent restart
-            let facts = collect_fleet_decision_facts(mm, &system_symbol).await?;
+            let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
             let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(system_symbol, &overview.completed_fleet_tasks, &facts);
             let mut fleet_map: HashMap<FleetId, Fleet> = fleets.iter().map(|f| (f.id.clone(), f.clone())).collect();
             let fleet_task_map: HashMap<FleetId, Vec<FleetTask>> = fleet_tasks.iter().map(|(fleet_id, task)| (fleet_id.clone(), vec![task.clone()])).collect();
 
             let ship_fleet_assignment = Self::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
 
-            let agent_info = AgentBmc::load_agent(&Ctx::Anonymous, mm).await?;
+            let agent_info = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?;
 
             let ships = overview
                 .all_ships
@@ -339,12 +345,12 @@ impl FleetAdmiral {
                 stationary_probe_locations: overview.stationary_probe_locations,
             };
 
-            let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
+            let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
             Self::assign_ship_tasks_and_potential_requirements(&mut admiral, new_ship_tasks);
 
-            let _ = FleetBmc::store_fleets_data(
+            let _ = store_fleets_data(
+                Arc::clone(&bmc),
                 &Ctx::Anonymous,
-                mm,
                 &admiral.fleets,
                 &admiral.fleet_tasks,
                 &admiral.ship_fleet_assignment,
@@ -357,15 +363,15 @@ impl FleetAdmiral {
         }
     }
 
-    pub async fn create(mm: &DbModelManager, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
-        let ships = ShipBmc::get_ships(&Ctx::Anonymous, mm, None).await?;
-        let stationary_probe_locations = ShipBmc::get_stationary_probes(&Ctx::Anonymous, mm).await?;
+    pub async fn create(bmc: Arc<dyn Bmc>, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
+        let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await?;
+        let stationary_probe_locations = bmc.ship_bmc().get_stationary_probes(&Ctx::Anonymous).await?;
 
-        let facts = collect_fleet_decision_facts(mm, &system_symbol).await?;
+        let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
 
         let ships = if ships.is_empty() {
             let ships: Vec<Ship> = fetch_all_pages(|p| client.list_ships(p)).await?;
-            db::upsert_ships(mm.pool(), &ships, Utc::now()).await?;
+            bmc.ship_bmc().upsert_ships(&Ctx::Anonymous, &ships, Utc::now()).await?;
             ships
         } else {
             ships
@@ -376,7 +382,7 @@ impl FleetAdmiral {
 
         let ship_map: HashMap<ShipSymbol, Ship> = non_probe_ships.into_iter().map(|s| (s.symbol.clone(), s)).collect();
 
-        let completed_tasks = FleetBmc::load_completed_fleet_tasks(&Ctx::Anonymous, mm).await?;
+        let completed_tasks = bmc.fleet_bmc().load_completed_fleet_tasks(&Ctx::Anonymous).await?;
 
         let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(system_symbol, &completed_tasks, &facts);
 
@@ -386,7 +392,7 @@ impl FleetAdmiral {
         let fleet_task_map: HashMap<FleetId, Vec<FleetTask>> = fleet_tasks.into_iter().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
 
         let agent_info = client.get_agent().await?.data;
-        AgentBmc::store_agent(&Ctx::Anonymous, mm, &agent_info).await?;
+        bmc.agent_bmc().store_agent(&Ctx::Anonymous, &agent_info).await?;
 
         let mut admiral = Self {
             completed_fleet_tasks: completed_tasks,
@@ -401,12 +407,12 @@ impl FleetAdmiral {
             stationary_probe_locations,
         };
 
-        let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
+        let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
         Self::assign_ship_tasks_and_potential_requirements(&mut admiral, new_ship_tasks);
 
-        FleetBmc::store_fleets_data(
+        store_fleets_data(
+            Arc::clone(&bmc),
             &Ctx::Anonymous,
-            mm,
             &admiral.fleets,
             &admiral.fleet_tasks,
             &admiral.ship_fleet_assignment,
@@ -465,13 +471,13 @@ impl FleetAdmiral {
     pub(crate) async fn compute_ship_tasks(
         admiral: &FleetAdmiral,
         facts: &FleetDecisionFacts,
-        mm: &DbModelManager,
+        bmc: Arc<dyn Bmc>,
     ) -> Result<Vec<(ShipSymbol, ShipTask, ShipTaskRequirement)>> {
         let system_symbol = facts.agent_info.headquarters.system_symbol();
 
-        let waypoints = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &system_symbol).await?;
-        let ship_prices = ShipyardBmc::get_latest_ship_prices(&Ctx::Anonymous, mm, &system_symbol).await?;
-        let latest_market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, mm, &system_symbol).await?;
+        let waypoints = bmc.system_bmc().get_waypoints_of_system(&Ctx::Anonymous, &system_symbol).await?;
+        let ship_prices = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
+        let latest_market_data = bmc.market_bmc().get_latest_market_data_for_system(&Ctx::Anonymous, &system_symbol).await?;
 
         Self::pure_compute_ship_tasks(admiral, facts, latest_market_data, ship_prices, waypoints)
     }
@@ -603,7 +609,7 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
     admiral: &FleetAdmiral,
     ship: &Ship,
     finished_task: &ShipTask,
-    mm: &DbModelManager,
+    bmc: Arc<dyn Bmc>,
 ) -> Result<NewTaskResult> {
     match finished_task {
         ShipTask::MineMaterialsAtWaypoint { .. } => {
@@ -613,7 +619,7 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
             unreachable!("this behavior should run forever")
         }
         ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
-            let waypoints = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &waypoint_symbol.system_symbol()).await?;
+            let waypoints = bmc.system_bmc().get_waypoints_of_system(&Ctx::Anonymous, &waypoint_symbol.system_symbol()).await?;
             let waypoint = waypoints.iter().find(|wp| &wp.symbol == waypoint_symbol).unwrap();
             Ok(NewTaskResult::RegisterWaypointForPermanentObservation {
                 ship_symbol: ship.symbol.clone(),
@@ -625,8 +631,8 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
             fleets_to_dismantle: vec![admiral.ship_fleet_assignment.get(&ship.symbol).unwrap().clone()],
         }),
         ShipTask::Trade { .. } => {
-            let facts = collect_fleet_decision_facts(mm, &ship.nav.system_symbol).await?;
-            let new_tasks = FleetAdmiral::compute_ship_tasks(admiral, &facts, mm).await?;
+            let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &ship.nav.system_symbol).await?;
+            let new_tasks = FleetAdmiral::compute_ship_tasks(admiral, &facts, Arc::clone(&bmc)).await?;
             if let Some((ss, new_task_for_ship, ship_task_requirement)) = new_tasks.iter().find(|(ss, task, _)| ss == &ship.symbol) {
                 Ok(NewTaskResult::AssignNewTaskToShip {
                     ship_symbol: ss.clone(),
@@ -923,22 +929,22 @@ fn compute_ship_shopping_list(
      */
 }
 
-pub async fn collect_fleet_decision_facts(mm: &DbModelManager, system_symbol: &SystemSymbol) -> Result<FleetDecisionFacts> {
-    let ships = ShipBmc::get_ships(&Ctx::Anonymous, mm, None).await?;
-    let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &system_symbol).await?;
+pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &SystemSymbol) -> Result<FleetDecisionFacts> {
+    let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await?;
+    let waypoints_of_system = bmc.system_bmc().get_waypoints_of_system(&Ctx::Anonymous, &system_symbol).await?;
+    let agent_info = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await.expect("agent");
 
-    let agent_info = AgentBmc::load_agent(&Ctx::Anonymous, &mm).await.expect("agent");
+    let marketplaces_of_interest = bmc.system_bmc().select_latest_marketplace_entry_of_system(&Ctx::Anonymous, &system_symbol).await?;
+    let shipyards_of_interest = bmc.system_bmc().select_latest_shipyard_entry_of_system(&Ctx::Anonymous, &system_symbol).await?;
 
-    let marketplaces_of_interest = select_latest_marketplace_entry_of_system(mm.pool(), &system_symbol).await?;
     let marketplace_symbols_of_interest = marketplaces_of_interest.iter().map(|db_entry| WaypointSymbol(db_entry.waypoint_symbol.clone())).collect_vec();
     let marketplaces_to_explore = find_marketplaces_for_exploration(marketplaces_of_interest.clone());
 
-    let shipyards_of_interest = select_latest_shipyard_entry_of_system(mm.pool(), &system_symbol).await?;
     let shipyard_symbols_of_interest = shipyards_of_interest.iter().map(|db_entry| WaypointSymbol(db_entry.waypoint_symbol.clone())).collect_vec();
     let shipyards_to_explore = find_shipyards_for_exploration(shipyards_of_interest.clone());
 
     let maybe_construction_site: Option<GetConstructionResponse> =
-        ConstructionBmc::get_construction_site_for_system(&Ctx::Anonymous, mm, system_symbol.clone()).await?;
+        bmc.construction_bmc().get_construction_site_for_system(&Ctx::Anonymous, system_symbol.clone()).await?;
 
     Ok(FleetDecisionFacts {
         marketplaces_of_interest: marketplace_symbols_of_interest.clone(),

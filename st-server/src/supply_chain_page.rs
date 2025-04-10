@@ -37,7 +37,7 @@ async fn get_supply_chain_data(
     use st_store::db;
     use st_store::ShipBmc;
 
-    use st_store::{AgentBmc, ConstructionBmc, Ctx, MarketBmc, SystemBmc};
+    use st_store::{AgentBmc, Ctx, DbConstructionBmc, MarketBmc, SystemBmc};
 
     let state = expect_context::<crate::app::AppState>();
     let mm = state.db_model_manager;
@@ -52,7 +52,7 @@ async fn get_supply_chain_data(
     let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
 
     let maybe_construction_site =
-        ConstructionBmc::get_construction_site_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol()).await.expect("construction_site");
+        DbConstructionBmc::get_construction_site_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol()).await.expect("construction_site");
 
     let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, &mm, &headquarters_waypoint.system_symbol()).await.expect("waypoints");
 

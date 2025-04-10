@@ -1,7 +1,7 @@
 use crate::behavior_tree::behavior_tree::Actionable;
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, select_waypoints_of_system, upsert_systems_from_receiver,
-    upsert_waypoints_from_receiver, AgentBmc, Ctx, DbModelManager, DbSystemCoordinateData, DbWaypointEntry,
+    upsert_waypoints_from_receiver, Ctx, DbModelManager, DbSystemCoordinateData, DbWaypointEntry,
 };
 
 use anyhow::Result;
@@ -31,16 +31,24 @@ use crate::pathfinder::pathfinder;
 use crate::reqwest_helpers::create_client;
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
+use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
     FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship, ShipSymbol, StStatusResponse, SupplyChain, SystemSymbol, Waypoint,
     WaypointSymbol, WaypointType,
 };
+use st_store::bmc::{Bmc, DbBmc};
 
 pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authenticated_client: StClient, pool: Pool<Postgres>) -> Result<()> {
     let my_agent = authenticated_client.get_agent().await?;
     dbg!(my_agent.clone());
 
     let model_manager = DbModelManager::new(pool.clone());
+
+    let db_bmc = DbBmc::new(model_manager);
+    let db_blackboard = DbBlackboard { bmc: db_bmc.clone() };
+
+    let bmc = Arc::new(db_bmc) as Arc<dyn Bmc>;
+    let blackboard = Arc::new(db_blackboard) as Arc<dyn BlackboardOps>;
 
     let headquarters_waypoint_symbol = my_agent.data.headquarters.clone();
     let headquarters_system_symbol = headquarters_waypoint_symbol.system_symbol();
@@ -111,11 +119,11 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
         let waypoint_entries_of_home_system_clone = waypoint_entries_of_home_system.clone();
         let ship_updated_tx_clone = ship_updated_tx.clone();
         let admiral = Arc::new(Mutex::new(
-            FleetAdmiral::load_or_create(&model_manager, hq_system_clone, Arc::clone(&client_clone)).await?,
+            FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_clone, Arc::clone(&client_clone)).await?,
         ));
 
         async move {
-            if let Err(e) = FleetAdmiral::run_fleets(Arc::clone(&admiral), Arc::clone(&client_clone), &model_manager).await {
+            if let Err(e) = FleetAdmiral::run_fleets(Arc::clone(&admiral), Arc::clone(&client_clone), Arc::clone(&bmc), Arc::clone(&blackboard)).await {
                 eprintln!("Error on FleetAdmiral::start_fleets: {}", e);
             }
         }

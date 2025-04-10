@@ -1,9 +1,7 @@
-use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps};
+use crate::behavior_tree::behavior_args::BehaviorArgs;
 use crate::behavior_tree::behavior_tree::Response::Success;
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
-use crate::exploration::exploration::get_exploration_tasks_for_waypoint;
-use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
 use anyhow::Result;
 use anyhow::{anyhow, Error};
@@ -13,10 +11,10 @@ use core::time::Duration;
 use itertools::Itertools;
 use st_domain::TransactionActionEvent::{PurchasedTradeGoods, ShipPurchased, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
-    Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, ExplorationTask, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavOnlyResponse,
-    NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol,
-    ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, TradeTicket, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointTrait, WaypointTraitSymbol,
-    WaypointType,
+    get_exploration_tasks_for_waypoint, Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, ExplorationTask, FlightMode, Frame, Fuel, FuelConsumed, MarketData,
+    Nav, NavOnlyResponse, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship,
+    ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, TradeTicket, Transaction, TransactionType, TravelAction, Waypoint, WaypointSymbol,
+    WaypointTrait, WaypointTraitSymbol, WaypointType,
 };
 use std::future::Future;
 use std::ops::{Add, Not};
@@ -645,10 +643,9 @@ impl Actionable for ShipAction {
 
 #[cfg(test)]
 mod tests {
-    use crate::behavior_tree::behavior_args::{BehaviorArgs, MockBlackboardOps};
+    use crate::behavior_tree::behavior_args::BehaviorArgs;
     use crate::behavior_tree::behavior_tree::{ActionEvent, Behavior, Response};
     use crate::behavior_tree::ship_behaviors::{ship_behaviors, ShipAction};
-    use crate::pathfinder::pathfinder::TravelAction;
     use crate::ship::ShipOperations;
 
     use core::time::Duration;
@@ -656,7 +653,7 @@ mod tests {
     use std::collections::HashMap;
 
     use st_domain::{
-        DockShipResponse, FlightMode, GetMarketResponse, NavAndFuelResponse, NavStatus, NavigateShipResponse, SetFlightModeResponse, ShipSymbol,
+        DockShipResponse, FlightMode, GetMarketResponse, NavAndFuelResponse, NavStatus, NavigateShipResponse, SetFlightModeResponse, ShipSymbol, TravelAction,
         WaypointSymbol, WaypointTraitSymbol,
     };
 
@@ -669,6 +666,7 @@ mod tests {
     use tokio::sync::mpsc::{Receiver, Sender};
 
     use crate::test_objects::TestObjects;
+    use st_domain::blackboard_ops::MockBlackboardOps;
     use test_log::test;
 
     async fn test_run_ship_behavior(

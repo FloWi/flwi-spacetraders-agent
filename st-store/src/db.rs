@@ -680,7 +680,7 @@ from systems s
     Ok(count.unwrap_or(0))
 }
 
-pub async fn upsert_ships(pool: &Pool<Postgres>, ships: &Vec<Ship>, now: DateTime<Utc>) -> Result<()> {
+pub async fn upsert_ships(pool: &Pool<Postgres>, ships: &[Ship], now: DateTime<Utc>) -> Result<()> {
     let db_entries: Vec<DbShipEntry> = ships
         .iter()
         .map(|ship| DbShipEntry {

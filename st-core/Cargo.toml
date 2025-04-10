@@ -10,7 +10,7 @@ st-store = { path = "../st-store" }
 
 
 itertools = { workspace = true }
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
 tokio = { workspace = true }
 strum_macros = { workspace = true }
 futures = { workspace = true }
@@ -21,7 +21,7 @@ reqwest = { version = "0.12.4", features = ["json"] }
 serde = { version = "1.0.197", features = ["derive"] }
 reqwest-middleware = { version = "0.3.1", features = ["json"] }
 governor = "0.6.3"
-async-trait = "0.1.78"
+async-trait = { workspace = true }
 task-local-extensions = "0.1.0"
 anyhow = { workspace = true, features = ["backtrace"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "std"] }
@@ -45,6 +45,6 @@ petgraph = "0.6.5"
 rand = "0.8.5"
 pathfinding = "4.11.0"
 tracing-core = "0.1.32"
-mockall = "0.13.0"
+mockall = { workspace = true }
 ordered-float = { version = "4.2.2", features = ["serde"] }
 uuid = { version = "1.16.0", features = ["v4", "serde"] }

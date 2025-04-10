@@ -3980,8 +3980,10 @@ name = "st-domain"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "itertools 0.14.0",
+ "mockall",
  "ordered-float 5.0.0",
  "serde",
  "serde_json",
@@ -4029,9 +4031,11 @@ name = "st-store"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "futures",
  "itertools 0.14.0",
+ "mockall",
  "serde",
  "serde_json",
  "sqlx",

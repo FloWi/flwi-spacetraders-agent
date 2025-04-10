@@ -1,15 +1,31 @@
 use crate::ctx::Ctx;
 use crate::{DbModelManager, DbShipTaskEntry};
 use anyhow::*;
+use async_trait::async_trait;
 use chrono::Utc;
+use mockall::automock;
 use sqlx::types::Json;
 use st_domain::{ShipSymbol, TicketId, TradeTicket, TransactionSummary, TransactionTicketId};
 use std::collections::HashMap;
+use std::fmt::Debug;
 
-pub struct TradeBmc;
+#[automock]
+#[async_trait]
+pub trait TradeBmcTrait: Send + Sync + Debug {
+    async fn get_ticket_by_id(&self, _ctx: &Ctx, ticket_id: TicketId) -> Result<TradeTicket>;
+    async fn upsert_ticket(&self, _ctx: &Ctx, ship_symbol: &ShipSymbol, ticket_id: &TicketId, trade_ticket: &TradeTicket, is_complete: bool) -> Result<()>;
+    async fn load_uncompleted_tickets(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, TradeTicket>>;
+    async fn save_transaction_completed(&self, _ctx: Ctx, tx_summary: &TransactionSummary) -> Result<()>;
+}
 
-impl TradeBmc {
-    pub async fn get_ticket_by_id(_ctx: &Ctx, mm: &DbModelManager, ticket_id: TicketId) -> Result<TradeTicket> {
+#[derive(Debug)]
+pub struct DbTradeBmc {
+    pub mm: DbModelManager,
+}
+
+#[async_trait]
+impl TradeBmcTrait for DbTradeBmc {
+    async fn get_ticket_by_id(&self, _ctx: &Ctx, ticket_id: TicketId) -> Result<TradeTicket> {
         let db_entry: DbTradeTicket = sqlx::query_as!(
             DbTradeTicket,
             r#"
@@ -20,20 +36,13 @@ select ship_symbol
         "#,
             ticket_id.0,
         )
-        .fetch_one(mm.pool())
+        .fetch_one(self.mm.pool())
         .await?;
 
         Ok(db_entry.entry.0)
     }
 
-    pub async fn upsert_ticket(
-        _ctx: &Ctx,
-        mm: &DbModelManager,
-        ship_symbol: &ShipSymbol,
-        ticket_id: &TicketId,
-        trade_ticket: &TradeTicket,
-        is_complete: bool,
-    ) -> Result<()> {
+    async fn upsert_ticket(&self, _ctx: &Ctx, ship_symbol: &ShipSymbol, ticket_id: &TicketId, trade_ticket: &TradeTicket, is_complete: bool) -> Result<()> {
         let now = Utc::now();
         sqlx::query!(
             r#"
@@ -50,13 +59,13 @@ on conflict (ticket_id) do update set entry = excluded.entry
             now,
             is_complete.then_some(now),
         )
-        .execute(mm.pool())
+        .execute(self.mm.pool())
         .await?;
 
         Ok(())
     }
 
-    pub async fn load_uncompleted_tickets(_ctx: &Ctx, mm: &DbModelManager) -> Result<HashMap<ShipSymbol, TradeTicket>> {
+    async fn load_uncompleted_tickets(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, TradeTicket>> {
         let entries: Vec<DbTradeTicket> = sqlx::query_as!(
             DbTradeTicket,
             r#"
@@ -66,13 +75,13 @@ select ship_symbol
  where completed_at is null
         "#,
         )
-        .fetch_all(mm.pool())
+        .fetch_all(self.mm.pool())
         .await?;
 
         Ok(entries.into_iter().map(|db_entry| (ShipSymbol(db_entry.ship_symbol), db_entry.entry.0)).collect())
     }
 
-    pub async fn save_transaction_completed(_ctx: Ctx, mm: &DbModelManager, tx_summary: &TransactionSummary) -> Result<()> {
+    async fn save_transaction_completed(&self, _ctx: Ctx, tx_summary: &TransactionSummary) -> Result<()> {
         let now = Utc::now();
         let transaction_ticket_id: TransactionTicketId = tx_summary.transaction_ticket_id.clone();
         let ticket_id = tx_summary.trade_ticket.ticket_id();
@@ -94,7 +103,7 @@ where ticket_id = $4
                 Json(tx_summary.trade_ticket.clone()) as _,
                 ticket_id.0,
             )
-            .execute(mm.pool())
+            .execute(self.mm.pool())
             .await?;
         }
 
@@ -115,7 +124,7 @@ values ($1, $2, $3, $4, $5, $6)
             Json(tx_summary.clone()) as _,
             now,
         )
-        .execute(mm.pool())
+        .execute(self.mm.pool())
         .await?;
 
         Ok(())

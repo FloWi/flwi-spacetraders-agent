@@ -1,18 +1,14 @@
-use crate::pathfinder::pathfinder::TravelAction;
 use crate::st_client::StClientTrait;
 use anyhow::*;
 use chrono::{DateTime, Utc};
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use st_domain::{
     CreateChartBody, DeliverConstructionMaterialTicketDetails, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseGoodTicketDetails,
     PurchaseShipResponse, PurchaseShipTicketDetails, PurchaseTradeGoodResponse, RefuelShipResponse, SellGoodTicketDetails, SellTradeGoodResponse, Ship,
-    Shipyard, SupplyConstructionSiteResponse, TradeTicket, TransactionTicketId, Waypoint, WaypointSymbol,
+    Shipyard, SupplyConstructionSiteResponse, TradeTicket, TransactionTicketId, TravelAction, WaypointSymbol,
 };
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use uuid::Uuid;
 
 #[derive(Clone, Debug)]
 pub struct ShipOperations {

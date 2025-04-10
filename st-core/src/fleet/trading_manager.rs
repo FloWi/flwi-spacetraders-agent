@@ -1,13 +1,15 @@
 use st_domain::{Ship, TradeTicket, TransactionActionEvent, TransactionSummary};
-use st_store::trade_bmc::TradeBmc;
+use st_store::bmc::Bmc;
+use st_store::trade_bmc::TradeBmcTrait;
 use st_store::{Ctx, DbModelManager};
+use std::sync::Arc;
 
 pub struct TradingManager;
 
 impl TradingManager {
     pub async fn log_transaction_completed(
         ctx: Ctx,
-        mm: &DbModelManager,
+        trade_bmc: Arc<dyn TradeBmcTrait>,
         ship: &Ship,
         transaction_action_event: &TransactionActionEvent,
         trade_ticket: &TradeTicket,
@@ -40,7 +42,7 @@ impl TradingManager {
             transaction_ticket_id,
         };
 
-        TradeBmc::save_transaction_completed(ctx, mm, &tx_summary).await?;
+        trade_bmc.save_transaction_completed(ctx, &tx_summary).await?;
         anyhow::Ok(tx_summary)
     }
 }

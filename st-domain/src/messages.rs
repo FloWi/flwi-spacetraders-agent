@@ -1,6 +1,6 @@
 use crate::{
-    Agent, Construction, EvaluatedTradingOpportunity, MaterializedSupplyChain, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Ship,
-    ShipSymbol, ShipType, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol, TradeGoodSymbol, WaypointSymbol,
+    Agent, Construction, EvaluatedTradingOpportunity, FlightMode, MaterializedSupplyChain, PurchaseShipResponse, PurchaseTradeGoodResponse,
+    SellTradeGoodResponse, Ship, ShipSymbol, ShipType, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol, TradeGoodSymbol, WaypointSymbol,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -471,4 +471,37 @@ pub struct StationaryProbeLocation {
     pub waypoint_symbol: WaypointSymbol,
     pub probe_ship_symbol: ShipSymbol,
     pub exploration_tasks: Vec<ExplorationTask>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Display)]
+pub enum TravelAction {
+    Navigate {
+        from: WaypointSymbol,
+        to: WaypointSymbol,
+        distance: u32,
+        travel_time: u32,
+        fuel_consumption: u32,
+        mode: FlightMode,
+        total_time: u32,
+    },
+    Refuel {
+        at: WaypointSymbol,
+        total_time: u32,
+    },
+}
+
+impl TravelAction {
+    pub fn total_time(&self) -> u32 {
+        match self {
+            TravelAction::Navigate { total_time, .. } => *total_time,
+            TravelAction::Refuel { total_time, .. } => *total_time,
+        }
+    }
+
+    pub fn waypoint_and_time(&self) -> (&WaypointSymbol, &u32) {
+        match self {
+            TravelAction::Navigate { to, total_time, .. } => (to, total_time),
+            TravelAction::Refuel { at, total_time } => (at, total_time),
+        }
+    }
 }

@@ -44,6 +44,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, registry::Registry, EnvFilter};
 
+use st_store::bmc::Bmc;
 use tracing_subscriber::fmt::time::UtcTime;
 
 /// SpaceTraders CLI utility
@@ -275,7 +276,7 @@ enum CliShipBehavior {
 }
 
 async fn run_behavior(
-    mm: DbModelManager,
+    bmc: Arc<dyn Bmc>,
     authenticated_client: Arc<dyn StClientTrait>,
     ship_symbol: ShipSymbol,
     cli_ship_behavior: CliShipBehavior,
@@ -562,7 +563,7 @@ pub async fn listen_to_ship_action_update_messages(
     Ok(())
 }
 
-pub async fn listen_to_ship_status_report_messages(db_model_manager: DbModelManager, mut ship_status_report_rx: Receiver<ShipStatusReport>) -> Result<()> {
+pub async fn listen_to_ship_status_report_messages(bmc: Arc<dyn Bmc>, mut ship_status_report_rx: Receiver<ShipStatusReport>) -> Result<()> {
     event!(Level::INFO, "listen_to_ship_status_report_messages - starting");
 
     while let Some(msg) = ship_status_report_rx.recv().await {
@@ -577,7 +578,7 @@ pub async fn listen_to_ship_status_report_messages(db_model_manager: DbModelMana
                 );
                 st_core::fleet::trading_manager::TradingManager::log_transaction_completed(
                     Ctx::Anonymous,
-                    &db_model_manager,
+                    bmc.trade_bmc(),
                     &ship,
                     &transaction_action_event,
                     &trading_ticket,
