@@ -1,5 +1,5 @@
 use petgraph::prelude::{NodeIndex, UnGraph};
-use st_domain::{LabelledCoordinate, Waypoint, WaypointTraitSymbol, WaypointType};
+use st_domain::{ExplorationTask, LabelledCoordinate, Waypoint, WaypointTraitSymbol, WaypointType};
 use strum_macros::Display;
 
 pub fn rotate_to_entry_point<T>(slice: &[T], start: &T) -> Option<Vec<T>>
@@ -98,15 +98,6 @@ where
     }
 
     tour.iter().map(|&idx| waypoints[idx].clone()).collect()
-}
-
-/// What observation to do once a ship is present at this waypoint
-#[derive(Eq, PartialEq, Clone, Debug, Display)]
-pub enum ExplorationTask {
-    GetMarket,
-    GetJumpGate,
-    CreateChart,
-    GetShipyard,
 }
 
 pub fn get_exploration_tasks_for_waypoint(wp: &Waypoint) -> Vec<ExplorationTask> {

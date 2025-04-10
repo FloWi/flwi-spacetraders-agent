@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into stationary_probe_locations ( waypoint_symbol, probe_ship_symbol, exploration_tasks )\nvalues ($1, $2, $3)\non conflict (waypoint_symbol) do update\n    set probe_ship_symbol = excluded.probe_ship_symbol\n      , exploration_tasks = excluded.exploration_tasks\n\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9b6dbbc5f6fe29fae0a1c828f75b84654bba7936a60c7e3a39f9b34d31e06356"
+}

@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use sqlx::types::Json;
 use sqlx::{Pool, Postgres};
-use st_domain::{Ship, ShipSymbol, ShipTask, StStatusResponse};
+use st_domain::{ExplorationTask, Ship, ShipSymbol, ShipTask, StStatusResponse, StationaryProbeLocation, WaypointSymbol};
 use std::collections::HashMap;
 
 pub struct ShipBmc;
@@ -84,4 +84,53 @@ on conflict (ship_symbol) do update set task = excluded.task
         }
         Ok(())
     }
+
+    pub async fn get_stationary_probes(ctx: &Ctx, mm: &DbModelManager) -> Result<Vec<StationaryProbeLocation>> {
+        let entries: Vec<DbStationaryProbeLocation> = sqlx::query_as!(
+            DbStationaryProbeLocation,
+            r#"
+select waypoint_symbol
+     , probe_ship_symbol
+     , exploration_tasks as "exploration_tasks: Json<Vec<ExplorationTask>>"
+  from stationary_probe_locations
+        "#,
+        )
+        .fetch_all(mm.pool())
+        .await?;
+
+        Ok(entries
+            .into_iter()
+            .map(|db_entry| StationaryProbeLocation {
+                waypoint_symbol: WaypointSymbol(db_entry.waypoint_symbol),
+                probe_ship_symbol: ShipSymbol(db_entry.probe_ship_symbol),
+                exploration_tasks: db_entry.exploration_tasks.0,
+            })
+            .collect_vec())
+    }
+
+    pub async fn insert_stationary_probe(ctx: &Ctx, mm: &DbModelManager, location: StationaryProbeLocation) -> Result<()> {
+        sqlx::query!(
+            r#"
+insert into stationary_probe_locations ( waypoint_symbol, probe_ship_symbol, exploration_tasks )
+values ($1, $2, $3)
+on conflict (waypoint_symbol) do update
+    set probe_ship_symbol = excluded.probe_ship_symbol
+      , exploration_tasks = excluded.exploration_tasks
+
+        "#,
+            location.waypoint_symbol.0,
+            location.probe_ship_symbol.0,
+            Json(location.exploration_tasks.clone()) as _
+        )
+        .execute(mm.pool())
+        .await?;
+
+        Ok(())
+    }
+}
+
+pub struct DbStationaryProbeLocation {
+    pub waypoint_symbol: String,
+    pub probe_ship_symbol: String,
+    pub exploration_tasks: Json<Vec<ExplorationTask>>,
 }

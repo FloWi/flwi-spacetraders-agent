@@ -43,6 +43,14 @@ impl ShipOperations {
         }
     }
 
+    pub(crate) fn remove_trade_ticket_if_complete(&mut self) {
+        if let Some(trade) = self.maybe_trade.clone() {
+            if trade.is_complete() {
+                self.maybe_trade = None;
+            }
+        }
+    }
+
     pub(crate) fn current_travel_action(&self) -> Option<&TravelAction> {
         self.travel_action_queue.front()
     }

@@ -2,7 +2,6 @@ use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps};
 use crate::behavior_tree::behavior_tree::Response::Success;
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
-use crate::exploration::exploration::ExplorationTask;
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
 use anyhow::anyhow;
@@ -12,9 +11,9 @@ use core::time::Duration;
 use itertools::Itertools;
 use st_domain::TransactionActionEvent::{PurchasedTradeGoods, ShipPurchased, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
-    Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus, Reactor,
-    RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol,
-    TradeTicket, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
+    Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, ExplorationTask, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus,
+    Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol,
+    TradeGoodSymbol, TradeTicket, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
 };
 use std::ops::{Add, Not};
 use tokio::sync::mpsc::Sender;
@@ -508,6 +507,7 @@ impl Actionable for ShipAction {
                                     ))
                                     .await?;
                             }
+                            state.remove_trade_ticket_if_complete();
                         }
                         TradeTicket::DeliverConstructionMaterials {
                             ticket_id,
@@ -553,7 +553,10 @@ impl Actionable for ShipAction {
                                         state.maybe_trade.clone().unwrap(),
                                     ))
                                     .await?;
+                                state.remove_trade_ticket_if_complete();
                             }
+
+                            state.remove_trade_ticket_if_complete();
                         }
                         TradeTicket::PurchaseShipTicket { ticket_id, details } => {
                             let result = state.purchase_ship(details).await?;
@@ -568,6 +571,7 @@ impl Actionable for ShipAction {
                                     state.maybe_trade.clone().unwrap(),
                                 ))
                                 .await?;
+                            state.remove_trade_ticket_if_complete();
                         }
                     }
                     Ok(Success)

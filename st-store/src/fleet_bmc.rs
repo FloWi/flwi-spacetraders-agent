@@ -132,6 +132,7 @@ SELECT id
         let fleet_task_assignments = Self::load_fleet_tasks(ctx, mm).await?;
         let ship_task_assignments = ShipBmc::load_ship_tasks(ctx, mm).await?;
         let open_trade_tickets = TradeBmc::load_uncompleted_tickets(ctx, mm).await?;
+        let stationary_probe_locations = ShipBmc::get_stationary_probes(ctx, mm).await?;
 
         Ok(FleetsOverview {
             completed_fleet_tasks,
@@ -141,6 +142,7 @@ SELECT id
             ship_fleet_assignment,
             ship_tasks: ship_task_assignments,
             open_trade_tickets,
+            stationary_probe_locations,
         })
     }
 

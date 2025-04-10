@@ -341,7 +341,7 @@ where
 
                 let capacity = state_changed_tx.capacity();
                 event!(
-                    Level::INFO,
+                    Level::DEBUG,
                     message = format!("Finished action and msg sent. Capacity of state_changed_tx {capacity}"),
                     index = self.index(),
                     actionable = actionable_label,

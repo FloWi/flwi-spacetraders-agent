@@ -8,8 +8,8 @@ use crate::st_client::StClientTrait;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use fleet::fleet::recompute_tasks_after_ship_finishing_behavior_tree;
-use st_domain::{Fleet, Ship, ShipSymbol, ShipTask, TradeTicket, TransactionActionEvent};
-use st_store::{db, DbModelManager, FleetBmc};
+use st_domain::{Fleet, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket, TransactionActionEvent};
+use st_store::{db, Ctx, DbModelManager, FleetBmc, ShipBmc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -252,10 +252,10 @@ impl FleetRunner {
             match maybe_old_ship {
                 Some(old_ship) if old_ship == updated_ship.ship => {
                     // no need to update
-                    event!(Level::INFO, "No need to update ship {}. No change detected", updated_ship.symbol.0);
+                    //event!(Level::DEBUG, "No need to update ship {}. No change detected", updated_ship.symbol.0);
                 }
                 _ => {
-                    event!(Level::INFO, "Ship {} updated", updated_ship.symbol.0);
+                    //event!(Level::DEBUG, "Ship {} updated", updated_ship.symbol.0);
                     let _ = st_store::upsert_ships(db_model_manager.pool(), &vec![updated_ship.ship.clone()], Utc::now()).await?;
                     admiral.all_ships.insert(updated_ship.symbol.clone(), updated_ship.ship);
                 }
@@ -279,9 +279,32 @@ impl FleetRunner {
                     let mut admiral_guard = fleet_admiral.lock().await;
                     admiral_guard.ship_tasks.remove(&ship.symbol);
                     let result = recompute_tasks_after_ship_finishing_behavior_tree(&admiral_guard, &ship, &task, &db_model_manager).await?;
+                    event!(
+                        Level::INFO,
+                        message = "ShipFinishedBehaviorTree",
+                        ship = ship.symbol.0,
+                        recompute_result = result.to_string()
+                    );
                     match result {
-                        NewTaskResult::DismantleFleets { .. } => {}
-                        NewTaskResult::RegisterWaypointForPermanentObservation { .. } => {}
+                        NewTaskResult::DismantleFleets { fleets_to_dismantle } => {
+                            FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle);
+                        }
+                        NewTaskResult::RegisterWaypointForPermanentObservation {
+                            ship_symbol,
+                            waypoint_symbol,
+                            exploration_tasks,
+                        } => {
+                            let location = StationaryProbeLocation {
+                                waypoint_symbol,
+                                probe_ship_symbol: ship_symbol.clone(),
+                                exploration_tasks,
+                            };
+                            ShipBmc::insert_stationary_probe(&Ctx::Anonymous, &db_model_manager, location.clone()).await?;
+                            FleetAdmiral::add_stationary_probe_location(&mut admiral_guard, location);
+                            FleetAdmiral::remove_ship_from_fleet(&mut admiral_guard, &ship_symbol);
+                            FleetAdmiral::remove_ship_task(&mut admiral_guard, &ship_symbol);
+                            Self::stop_ship(Arc::clone(&runner), &ship_symbol).await?;
+                        }
                         NewTaskResult::AssignNewTaskToShip {
                             ship_symbol,
                             task,
@@ -395,5 +418,16 @@ impl FleetRunner {
         );
 
         unreachable!()
+    }
+
+    async fn stop_ship(fleet_runner: Arc<Mutex<FleetRunner>>, ship_symbol: &ShipSymbol) -> Result<()> {
+        let mut guard = fleet_runner.lock().await;
+        if let Some(join_handle) = guard.ship_fibers.get(ship_symbol) {
+            join_handle.abort();
+        };
+        guard.ship_fibers.remove(ship_symbol);
+        guard.ship_ops.remove(ship_symbol);
+
+        Ok(())
     }
 }

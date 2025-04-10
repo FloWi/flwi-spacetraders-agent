@@ -1,7 +1,7 @@
 use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
 use crate::behavior_tree::ship_behaviors::{ship_behaviors, ShipAction};
-use crate::exploration::exploration::{get_exploration_tasks_for_waypoint, ExplorationTask};
+use crate::exploration::exploration::get_exploration_tasks_for_waypoint;
 use crate::fleet::construction_fleet::{ConstructJumpGateFleet, PotentialTradingTask};
 use crate::fleet::fleet_runner::FleetRunner;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
@@ -24,11 +24,11 @@ use st_domain::FleetTask::{
 };
 use st_domain::FleetUpdateMessage::FleetTaskCompleted;
 use st_domain::{
-    Agent, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask,
-    FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig,
-    PurchaseGoodTicketDetails, PurchaseReason, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, ShipType,
-    SiphoningFleetConfig, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket, TradingFleetConfig, Transaction,
-    TransactionActionEvent, WaypointSymbol,
+    Agent, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase,
+    FleetPhaseName, FleetTask, FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketObservationFleetConfig, MaterializedSupplyChain,
+    MiningFleetConfig, PurchaseGoodTicketDetails, PurchaseReason, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipSymbol,
+    ShipTask, ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket,
+    TradingFleetConfig, Transaction, TransactionActionEvent, WaypointSymbol,
 };
 use st_store::trade_bmc::TradeBmc;
 use st_store::{
@@ -37,12 +37,13 @@ use st_store::{
 };
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::ops::Not;
 use std::slice::Iter;
 use std::sync::Arc;
 use std::time::Duration;
 use strum_macros::Display;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, MutexGuard};
 use tracing::{event, span, Level};
 use uuid::Uuid;
 
@@ -63,6 +64,7 @@ pub struct FleetAdmiral {
     pub agent_info: Agent,
     pub fleet_phase: FleetPhase,
     pub active_trades: HashMap<ShipSymbol, TradeTicket>,
+    pub stationary_probe_locations: Vec<StationaryProbeLocation>,
 }
 
 impl FleetAdmiral {
@@ -317,16 +319,23 @@ impl FleetAdmiral {
 
             let agent_info = AgentBmc::load_agent(&Ctx::Anonymous, mm).await?;
 
+            let ships = overview
+                .all_ships
+                .into_iter()
+                .filter(|(ss, ship)| overview.stationary_probe_locations.iter().any(|spl| ss == &spl.probe_ship_symbol).not())
+                .collect();
+
             let mut admiral = Self {
                 completed_fleet_tasks: overview.completed_fleet_tasks.clone(),
                 fleets: fleet_map,
-                all_ships: overview.all_ships,
+                all_ships: ships,
                 ship_tasks: overview.ship_tasks,
                 fleet_tasks: fleet_task_map,
                 ship_fleet_assignment,
                 agent_info,
                 fleet_phase,
                 active_trades: overview.open_trade_tickets,
+                stationary_probe_locations: overview.stationary_probe_locations,
             };
 
             let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
@@ -349,6 +358,9 @@ impl FleetAdmiral {
 
     async fn create(mm: &DbModelManager, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
         let ships = ShipBmc::get_ships(&Ctx::Anonymous, mm, None).await?;
+        let stationary_probe_locations = ShipBmc::get_stationary_probes(&Ctx::Anonymous, mm).await?;
+
+        let facts = collect_fleet_decision_facts(mm, &system_symbol).await?;
 
         let ships = if ships.is_empty() {
             let ships: Vec<Ship> = fetch_all_pages(|p| client.list_ships(p)).await?;
@@ -358,10 +370,12 @@ impl FleetAdmiral {
             ships
         };
 
-        let ship_map: HashMap<ShipSymbol, Ship> = ships.into_iter().map(|s| (s.symbol.clone(), s)).collect();
+        let non_probe_ships =
+            ships.iter().filter(|ship| stationary_probe_locations.iter().any(|spl| ship.symbol == spl.probe_ship_symbol).not()).cloned().collect_vec();
+
+        let ship_map: HashMap<ShipSymbol, Ship> = non_probe_ships.into_iter().map(|s| (s.symbol.clone(), s)).collect();
 
         let completed_tasks = FleetBmc::load_completed_fleet_tasks(&Ctx::Anonymous, mm).await?;
-        let facts = collect_fleet_decision_facts(mm, &system_symbol).await?;
 
         let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(system_symbol, &completed_tasks, &facts);
 
@@ -383,6 +397,7 @@ impl FleetAdmiral {
             agent_info,
             fleet_phase,
             active_trades: Default::default(),
+            stationary_probe_locations,
         };
 
         let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, mm).await?;
@@ -474,6 +489,25 @@ impl FleetAdmiral {
         }
     }
 
+    pub(crate) fn dismantle_fleets(admiral: &mut FleetAdmiral, fleets_to_dismantle: Vec<FleetId>) {
+        for fleet_id in fleets_to_dismantle {
+            admiral.mark_fleet_tasks_as_complete(&fleet_id);
+            admiral.remove_ships_from_fleet(&fleet_id);
+        }
+    }
+
+    pub(crate) fn remove_ship_from_fleet(admiral: &mut FleetAdmiral, ship_symbol: &ShipSymbol) {
+        admiral.ship_fleet_assignment.remove(ship_symbol);
+    }
+
+    pub(crate) fn add_stationary_probe_location(admiral: &mut FleetAdmiral, stationary_probe_location: StationaryProbeLocation) {
+        admiral.stationary_probe_locations.push(stationary_probe_location);
+    }
+
+    pub(crate) fn remove_ship_task(admiral: &mut FleetAdmiral, ship_symbol: &ShipSymbol) {
+        admiral.ship_tasks.remove(ship_symbol);
+    }
+
     pub fn assign_ships(
         fleet_tasks: &Vec<(FleetId, FleetTask)>,
         all_ships: &HashMap<ShipSymbol, Ship>,
@@ -503,8 +537,34 @@ impl FleetAdmiral {
             })
             .collect_vec()
     }
+
+    fn mark_fleet_tasks_as_complete(&mut self, fleet_id: &FleetId) {
+        let fleet_tasks = self.fleet_tasks.clone();
+        if let Some(tasks) = fleet_tasks.get(fleet_id) {
+            for task in tasks {
+                self.completed_fleet_tasks.push(FleetTaskCompletion {
+                    task: task.clone(),
+                    completed_at: Utc::now(),
+                })
+            }
+        }
+        self.fleet_tasks.remove(fleet_id);
+    }
+
+    fn remove_ships_from_fleet(&mut self, fleet_id: &FleetId) {
+        let maybe_fleet = self.fleets.get(fleet_id).cloned();
+        // borrow checker made me do this
+        if let Some(fleet) = maybe_fleet {
+            let ship_symbols: Vec<_> = self.get_ships_of_fleet(&fleet).iter().map(|ship| ship.symbol.clone()).collect();
+
+            for symbol in ship_symbols {
+                self.ship_fleet_assignment.remove(&symbol);
+            }
+        }
+    }
 }
 
+#[derive(Serialize, Deserialize, Debug, Display)]
 pub enum NewTaskResult {
     DismantleFleets {
         fleets_to_dismantle: Vec<FleetId>,
@@ -920,7 +980,7 @@ pub fn create_fleet(super_fleet_config: FleetConfig, fleet_task: FleetTask, id: 
     Ok((fleet, (id, fleet_task)))
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Display)]
 pub enum ShipTaskRequirement {
     TradeTicket { trade_ticket: TradeTicket },
     None,

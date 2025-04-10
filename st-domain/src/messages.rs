@@ -362,6 +362,7 @@ pub struct FleetsOverview {
     pub ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
     pub ship_tasks: HashMap<ShipSymbol, ShipTask>,
     pub open_trade_tickets: HashMap<ShipSymbol, TradeTicket>,
+    pub stationary_probe_locations: Vec<StationaryProbeLocation>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Display, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -454,4 +455,20 @@ pub struct TransactionSummary {
     pub trade_ticket: TradeTicket,
     pub total_price: i64,
     pub transaction_ticket_id: TransactionTicketId,
+}
+
+/// What observation to do once a ship is present at this waypoint
+#[derive(Eq, PartialEq, Clone, Debug, Display, Serialize, Deserialize)]
+pub enum ExplorationTask {
+    GetMarket,
+    GetJumpGate,
+    CreateChart,
+    GetShipyard,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct StationaryProbeLocation {
+    pub waypoint_symbol: WaypointSymbol,
+    pub probe_ship_symbol: ShipSymbol,
+    pub exploration_tasks: Vec<ExplorationTask>,
 }

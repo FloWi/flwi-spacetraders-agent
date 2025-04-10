@@ -1,11 +1,11 @@
-use crate::exploration::exploration::{get_exploration_tasks_for_waypoint, ExplorationTask};
+use crate::exploration::exploration::get_exploration_tasks_for_waypoint;
 use crate::pathfinder::pathfinder;
 use crate::pathfinder::pathfinder::TravelAction;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::Local;
 use itertools::Itertools;
-use st_domain::{JumpGate, LabelledCoordinate, MarketData, Shipyard, TicketId, TradeTicket, Waypoint, WaypointSymbol};
+use st_domain::{ExplorationTask, JumpGate, LabelledCoordinate, MarketData, Shipyard, TicketId, TradeTicket, Waypoint, WaypointSymbol};
 use st_store::trade_bmc::TradeBmc;
 use st_store::{
     insert_jump_gates, insert_market_data, insert_shipyards, select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints, Ctx,

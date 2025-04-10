@@ -71,7 +71,7 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
 
                 arrival_time - now
             })
-            .and_then(|delta| (delta.num_seconds() < 0).then_some(delta)) // ship nav status might not have been fixed after we've arrived
+            .and_then(|delta| (delta.num_seconds() >= 0).then_some(delta)) // ship nav status might not have been fixed after we've arrived
     };
 
     view! {
@@ -98,6 +98,7 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
                                 }
                             })
                     }}
+                    // <pre>{serde_json::to_string_pretty(&ship.nav)}</pre>
                 </div>
 
                 <div class="flex flex-row items-center gap-2">
