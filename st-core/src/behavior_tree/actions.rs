@@ -842,30 +842,24 @@ impl TestObjects {
 #[cfg(test)]
 mod tests {
     use crate::behavior_tree::actions::TestObjects;
-    use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps, MockBlackboardOps};
-    use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
+    use crate::behavior_tree::behavior_args::{BehaviorArgs, MockBlackboardOps};
+    use crate::behavior_tree::behavior_tree::{ActionEvent, Behavior, Response};
     use crate::behavior_tree::ship_behaviors::{ship_behaviors, ShipAction};
-    use crate::pagination::{PaginatedResponse, PaginationInput};
     use crate::pathfinder::pathfinder::TravelAction;
     use crate::ship::ShipOperations;
-    use async_trait::async_trait;
 
     use core::time::Duration;
-    use mockall::mock;
     use mockall::predicate::*;
     use std::collections::HashMap;
 
     use st_domain::{
-        AgentResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse,
-        GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, JumpGate, ListAgentsResponse, MarketData, NavAndFuelResponse, NavStatus,
-        NavigateShipResponse, OrbitShipResponse, PatchShipNavResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse,
-        RegistrationRequest, RegistrationResponse, SellTradeGoodResponse, SetFlightModeResponse, Ship, ShipSymbol, ShipType, Shipyard, StStatusResponse,
-        SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TicketId, TradeGoodSymbol, TradeTicket, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+        DockShipResponse, FlightMode, GetMarketResponse, NavAndFuelResponse, NavStatus, NavigateShipResponse, SetFlightModeResponse, ShipSymbol,
+        WaypointSymbol, WaypointTraitSymbol,
     };
 
     use crate::behavior_tree::behavior_tree::Response::Success;
     use crate::fleet::ship_runner::ship_behavior_runner;
-    use crate::st_client::{MockStClientTrait, StClientTrait};
+    use crate::st_client::MockStClientTrait;
     use anyhow::anyhow;
     use itertools::Itertools;
     use std::sync::Arc;
