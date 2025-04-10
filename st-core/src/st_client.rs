@@ -2,6 +2,7 @@ use crate::pagination::{PaginatedResponse, PaginationInput};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use log::{log, Level};
+use mockall::automock;
 use reqwest_middleware::ClientWithMiddleware;
 use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
@@ -257,6 +258,7 @@ impl StClientTrait for StClient {
     }
 }
 
+#[automock]
 #[async_trait]
 pub trait StClientTrait: Send + Sync + Debug {
     async fn register(&self, registration_request: RegistrationRequest) -> Result<Data<RegistrationResponse>>;

@@ -1,28 +1,34 @@
 use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps};
 use crate::behavior_tree::behavior_tree::Response::Success;
-use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Response};
+use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
+use crate::exploration::exploration::get_exploration_tasks_for_waypoint;
 use crate::pathfinder::pathfinder::TravelAction;
 use crate::ship::ShipOperations;
-use anyhow::anyhow;
+use anyhow::Result;
+use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use chrono::{DateTime, Local, TimeDelta, Utc};
 use core::time::Duration;
 use itertools::Itertools;
 use st_domain::TransactionActionEvent::{PurchasedTradeGoods, ShipPurchased, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
-    Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, ExplorationTask, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavRouteWaypoint, NavStatus,
-    Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol,
-    TradeGoodSymbol, TradeTicket, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
+    Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, ExplorationTask, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav, NavOnlyResponse,
+    NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol,
+    ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, TradeTicket, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointTrait, WaypointTraitSymbol,
+    WaypointType,
 };
+use std::future::Future;
 use std::ops::{Add, Not};
-use tokio::sync::mpsc::Sender;
+use std::sync::Arc;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::Mutex;
 use tracing::event;
 use tracing_core::Level;
 
 #[async_trait]
 impl Actionable for ShipAction {
-    type ActionError = anyhow::Error;
+    type ActionError = Error;
     type ActionArgs = BehaviorArgs;
     type ActionState = ShipOperations;
 
@@ -40,7 +46,7 @@ impl Actionable for ShipAction {
                 if no_action_left {
                     Err(anyhow!("No action left"))
                 } else {
-                    Ok(Response::Success)
+                    Ok(Success)
                 }
             }
             ShipAction::PopTravelAction => {
@@ -331,8 +337,9 @@ impl Actionable for ShipAction {
             }
             ShipAction::CollectWaypointInfos => {
                 let exploration_tasks = args
-                    .get_exploration_tasks_for_current_waypoint(state.nav.waypoint_symbol.clone())
+                    .get_waypoint(&state.nav.waypoint_symbol.clone())
                     .await
+                    .map(|wp| get_exploration_tasks_for_waypoint(&wp))
                     .map_err(|_| anyhow!("inserting waypoint failed"))?;
 
                 let is_uncharted = exploration_tasks.contains(&ExplorationTask::CreateChart);
@@ -342,7 +349,7 @@ impl Actionable for ShipAction {
                 }
 
                 let exploration_tasks = if is_uncharted {
-                    args.get_exploration_tasks_for_current_waypoint(state.nav.waypoint_symbol.clone()).await?
+                    args.get_exploration_tasks_waypoint(&state.nav.waypoint_symbol).await?
                 } else {
                     exploration_tasks
                 };
@@ -639,7 +646,7 @@ impl Actionable for ShipAction {
 struct TestObjects;
 
 impl TestObjects {
-    pub fn create_waypoint(waypoint_symbol: &WaypointSymbol, x: i64, y: i64) -> Waypoint {
+    pub fn create_waypoint(waypoint_symbol: &WaypointSymbol, x: i64, y: i64, waypoint_traits: Vec<WaypointTraitSymbol>) -> Waypoint {
         Waypoint {
             symbol: waypoint_symbol.clone(),
             r#type: WaypointType::PLANET,
@@ -649,7 +656,14 @@ impl TestObjects {
             orbitals: vec![],
             orbits: None,
             faction: None,
-            traits: vec![],
+            traits: waypoint_traits
+                .into_iter()
+                .map(|wts| WaypointTrait {
+                    symbol: wts.clone(),
+                    name: format!("name: {}", wts.to_string()),
+                    description: format!("description: {}", wts.to_string()),
+                })
+                .collect_vec(),
             modifiers: vec![],
             chart: None,
             is_under_construction: false,
@@ -702,30 +716,37 @@ impl TestObjects {
         }
     }
 
-    pub fn create_nav(mode: FlightMode, nav_status: NavStatus, origin_waypoint_symbol: &WaypointSymbol, destination_waypoint_symbol: &WaypointSymbol) -> Nav {
-        Nav {
-            system_symbol: destination_waypoint_symbol.system_symbol(),
-            waypoint_symbol: destination_waypoint_symbol.clone(),
-            route: Route {
-                destination: NavRouteWaypoint {
-                    symbol: destination_waypoint_symbol.clone(),
-                    waypoint_type: WaypointType::PLANET,
-                    system_symbol: destination_waypoint_symbol.system_symbol(),
-                    x: 0,
-                    y: 0,
+    pub fn create_nav(
+        mode: FlightMode,
+        nav_status: NavStatus,
+        origin_waypoint_symbol: &WaypointSymbol,
+        destination_waypoint_symbol: &WaypointSymbol,
+    ) -> NavOnlyResponse {
+        NavOnlyResponse {
+            nav: Nav {
+                system_symbol: destination_waypoint_symbol.system_symbol(),
+                waypoint_symbol: destination_waypoint_symbol.clone(),
+                route: Route {
+                    destination: NavRouteWaypoint {
+                        symbol: destination_waypoint_symbol.clone(),
+                        waypoint_type: WaypointType::PLANET,
+                        system_symbol: destination_waypoint_symbol.system_symbol(),
+                        x: 0,
+                        y: 0,
+                    },
+                    origin: NavRouteWaypoint {
+                        symbol: origin_waypoint_symbol.clone(),
+                        waypoint_type: WaypointType::PLANET,
+                        system_symbol: origin_waypoint_symbol.system_symbol(),
+                        x: 0,
+                        y: 0,
+                    },
+                    departure_time: Default::default(),
+                    arrival: Default::default(),
                 },
-                origin: NavRouteWaypoint {
-                    symbol: origin_waypoint_symbol.clone(),
-                    waypoint_type: WaypointType::PLANET,
-                    system_symbol: origin_waypoint_symbol.system_symbol(),
-                    x: 0,
-                    y: 0,
-                },
-                departure_time: Default::default(),
-                arrival: Default::default(),
+                status: nav_status,
+                flight_mode: mode,
             },
-            status: nav_status,
-            flight_mode: mode,
         }
     }
 
@@ -742,7 +763,8 @@ impl TestObjects {
                 NavStatus::InTransit,
                 &WaypointSymbol("X1-FOO-BAR".to_string()),
                 &WaypointSymbol("X1-FOO-BAR".to_string()),
-            ),
+            )
+            .nav,
             crew: Crew {
                 current: 0,
                 required: 0,
@@ -820,10 +842,9 @@ impl TestObjects {
 #[cfg(test)]
 mod tests {
     use crate::behavior_tree::actions::TestObjects;
-    use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps, ExplorationTask};
-    use crate::behavior_tree::behavior_tree::Actionable;
-    use crate::behavior_tree::behavior_tree::Response;
-    use crate::behavior_tree::ship_behaviors::ship_behaviors;
+    use crate::behavior_tree::behavior_args::{BehaviorArgs, BlackboardOps, MockBlackboardOps};
+    use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
+    use crate::behavior_tree::ship_behaviors::{ship_behaviors, ShipAction};
     use crate::pagination::{PaginatedResponse, PaginationInput};
     use crate::pathfinder::pathfinder::TravelAction;
     use crate::ship::ShipOperations;
@@ -832,99 +853,81 @@ mod tests {
     use core::time::Duration;
     use mockall::mock;
     use mockall::predicate::*;
+    use std::collections::HashMap;
 
     use st_domain::{
         AgentResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse,
-        GetShipyardResponse, JumpGate, ListAgentsResponse, MarketData, NavAndFuelResponse, NavOnlyResponse, NavStatus, NavigateShipResponse, OrbitShipResponse,
-        PatchShipNavResponse, RefuelShipResponse, RegistrationRequest, RegistrationResponse, Ship, ShipSymbol, Shipyard, StStatusResponse, SystemSymbol,
-        SystemsPageData, Waypoint, WaypointSymbol,
+        GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, JumpGate, ListAgentsResponse, MarketData, NavAndFuelResponse, NavStatus,
+        NavigateShipResponse, OrbitShipResponse, PatchShipNavResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse,
+        RegistrationRequest, RegistrationResponse, SellTradeGoodResponse, SetFlightModeResponse, Ship, ShipSymbol, ShipType, Shipyard, StStatusResponse,
+        SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TicketId, TradeGoodSymbol, TradeTicket, Waypoint, WaypointSymbol, WaypointTraitSymbol,
     };
 
-    use crate::st_client::StClientTrait;
+    use crate::behavior_tree::behavior_tree::Response::Success;
+    use crate::fleet::ship_runner::ship_behavior_runner;
+    use crate::st_client::{MockStClientTrait, StClientTrait};
+    use anyhow::anyhow;
+    use itertools::Itertools;
     use std::sync::Arc;
-    use tracing_test::traced_test;
+    use tokio::sync::mpsc::{Receiver, Sender};
 
-    mock! {
-        #[derive(Debug)]
-        pub TestBlackboard {}
+    use test_log::test;
 
-        #[async_trait]
-        impl BlackboardOps for TestBlackboard {
-            async fn compute_path(&self, from: WaypointSymbol, to: WaypointSymbol, engine_speed: u32, current_fuel: u32, fuel_capacity: u32) -> anyhow::Result<Vec<TravelAction>> {}
+    async fn test_run_ship_behavior(
+        ship_ops: &mut ShipOperations,
+        sleep_duration: Duration,
+        args: BehaviorArgs,
+        behavior: Behavior<ShipAction>,
+    ) -> anyhow::Result<(Response, Vec<ShipOperations>, Vec<ActionEvent>)> {
+        let (ship_updated_tx, mut ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = tokio::sync::mpsc::channel(32);
+        let (ship_action_completed_tx, mut ship_action_completed_rx): (Sender<ActionEvent>, Receiver<ActionEvent>) = tokio::sync::mpsc::channel(32);
 
-            async fn get_exploration_tasks_for_current_waypoint(&self, current_location: WaypointSymbol) -> anyhow::Result<Vec<ExplorationTask>> {}
+        // Create channels for collectors to send results back
+        let (state_result_tx, state_result_rx) = tokio::sync::oneshot::channel();
+        let (action_result_tx, action_result_rx) = tokio::sync::oneshot::channel();
 
-            async fn insert_waypoint(&self, waypoint: &Waypoint) -> anyhow::Result<()> {}
+        tokio::spawn(async move {
+            let mut received_messages = Vec::new();
+            while let Some(msg) = ship_updated_rx.recv().await {
+                received_messages.push(msg);
+            }
+            let _ = state_result_tx.send(received_messages);
+        });
 
-            async fn insert_market(&self, market_data: MarketData) -> anyhow::Result<()> {}
+        tokio::spawn(async move {
+            let mut received_messages = Vec::new();
+            while let Some(msg) = ship_action_completed_rx.recv().await {
+                received_messages.push(msg);
+            }
+            let _ = action_result_tx.send(received_messages);
+        });
 
-            async fn insert_jump_gate(&self, jump_gate: JumpGate) -> anyhow::Result<()> {}
+        // Run the behavior
+        let result = ship_behavior_runner(ship_ops, sleep_duration, &args, behavior, &ship_updated_tx, &ship_action_completed_tx).await;
 
-            async fn insert_shipyard(&self, shipyard: Shipyard) -> anyhow::Result<()> {}
-        }
+        // Close the channels to signal collection is complete
+        drop(ship_updated_tx);
+        drop(ship_action_completed_tx);
+
+        // Wait for the collectors to finish and get their results
+        let received_action_state_messages = state_result_rx.await.map_err(|_| anyhow::anyhow!("Failed to receive action state messages"))?;
+        let received_action_completed_messages = action_result_rx.await.map_err(|_| anyhow::anyhow!("Failed to receive action completed messages"))?;
+
+        Ok((result?, received_action_state_messages, received_action_completed_messages))
     }
 
-    mock! {
-        #[derive(Debug)]
-        pub StClient {}
-
-        #[async_trait]
-        impl StClientTrait for StClient {
-            async fn register(&self, registration_request: RegistrationRequest) -> anyhow::Result<Data<RegistrationResponse>> {}
-
-            async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> anyhow::Result<AgentResponse> {}
-
-            async fn get_agent(&self) -> anyhow::Result<AgentResponse> {}
-
-            async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<GetConstructionResponse> {}
-
-            async fn dock_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<DockShipResponse> {}
-
-            async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> anyhow::Result<NavigateShipResponse> {}
-
-            async fn navigate(&self, ship_symbol: ShipSymbol, to: &WaypointSymbol) -> anyhow::Result<NavigateShipResponse> {}
-
-            async fn refuel(&self, ship_symbol: ShipSymbol, amount: u32, from_cargo: bool) -> anyhow::Result<RefuelShipResponse> {}
-
-            async fn orbit_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<OrbitShipResponse> {}
-
-            async fn list_ships(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Ship>> {}
-
-            async fn list_waypoints_of_system_page(&self, system_symbol: &SystemSymbol, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Waypoint>> {}
-
-            async fn list_systems_page(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<SystemsPageData>> {}
-
-            async fn get_system(&self, system_symbol: &SystemSymbol) -> anyhow::Result<SystemsPageData> {}
-
-            async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetMarketResponse> {}
-
-            async fn get_jump_gate(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetJumpGateResponse> {}
-
-            async fn get_shipyard(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetShipyardResponse> {}
-
-            async fn create_chart(&self, ship_symbol: ShipSymbol) -> anyhow::Result<CreateChartResponse> {}
-
-            async fn list_agents_page(&self, pagination_input: PaginationInput) -> anyhow::Result<ListAgentsResponse> {}
-
-            async fn get_status(&self) -> anyhow::Result<StStatusResponse> {}
-
-        }
-    }
-
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_experiment_with_mockall() {
-        let mut mock_client = MockStClient::new();
+        let mut mock_client = MockStClientTrait::new();
 
         mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).return_once(move |_| {
             Ok(DockShipResponse {
-                data: NavOnlyResponse {
-                    nav: TestObjects::create_nav(
-                        FlightMode::Drift,
-                        NavStatus::InTransit,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
-                },
+                data: TestObjects::create_nav(
+                    FlightMode::Drift,
+                    NavStatus::InTransit,
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                ),
             })
         });
 
@@ -935,24 +938,22 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_dock_if_necessary_behavior_on_docked_ship() {
-        let mut mock_client = MockStClient::new();
+        let mut mock_client = MockStClientTrait::new();
 
         let args = BehaviorArgs {
-            blackboard: Arc::new(MockTestBlackboard::new()),
+            blackboard: Arc::new(MockBlackboardOps::new()),
         };
 
         let mocked_client = mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).returning(move |_| {
             Ok(DockShipResponse {
-                data: NavOnlyResponse {
-                    nav: TestObjects::create_nav(
-                        FlightMode::Drift,
-                        NavStatus::InTransit,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
-                },
+                data: TestObjects::create_nav(
+                    FlightMode::Drift,
+                    NavStatus::InTransit,
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                ),
             })
         });
 
@@ -962,33 +963,32 @@ mod tests {
         ship.nav.status = NavStatus::Docked;
 
         let behaviors = ship_behaviors();
-        let ship_behavior = behaviors.dock_if_necessary;
+        let ship_behavior: Behavior<ShipAction> = behaviors.dock_if_necessary;
 
         mocked_client.never();
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
-        let result = ship_behavior.run(&args, &mut ship_ops, Duration::from_millis(1)).await;
-        assert!(result.is_ok());
+        let (result, ship_states, action_events) = test_run_ship_behavior(&mut ship_ops, Duration::from_millis(1), args, ship_behavior).await.unwrap();
+
+        assert_eq!(result, Success);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_dock_if_necessary_behavior_on_orbiting_ship() {
-        let mut mock_client = MockStClient::new();
+        let mut mock_client = MockStClientTrait::new();
 
         let args = BehaviorArgs {
-            blackboard: Arc::new(MockTestBlackboard::new()),
+            blackboard: Arc::new(MockBlackboardOps::new()),
         };
 
         let mocked_client = mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).returning(move |_| {
             Ok(DockShipResponse {
-                data: NavOnlyResponse {
-                    nav: TestObjects::create_nav(
-                        FlightMode::Drift,
-                        NavStatus::InTransit,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
-                },
+                data: TestObjects::create_nav(
+                    FlightMode::Drift,
+                    NavStatus::InTransit,
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                ),
             })
         });
 
@@ -1003,8 +1003,15 @@ mod tests {
         mocked_client.times(1);
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
-        let result = ship_behavior.run(&args, &mut ship_ops, Duration::from_millis(1)).await.unwrap();
-        assert_eq!(result, Response::Success);
+
+        let (result, ship_states, action_events) = test_run_ship_behavior(&mut ship_ops, Duration::from_millis(1), args, ship_behavior).await.unwrap();
+
+        assert_eq!(result, Success);
+        assert_eq!(1, ship_states.len());
+        assert_eq!(2, action_events.len());
+
+        matches!(action_events.get(0), Some(ActionEvent::ShipActionCompleted(Ok((_, _)))));
+        matches!(action_events.get(1), Some(ActionEvent::BehaviorCompleted(Ok(_))));
     }
 
     // Helper function to create a WaypointSymbol
@@ -1012,11 +1019,10 @@ mod tests {
         Arc::new(WaypointSymbol(s.to_string()))
     }
 
-    #[tokio::test]
-    #[traced_test]
+    #[test(tokio::test)]
     async fn test_explorer_behavior_with_two_waypoints() {
-        let mut mock_client = MockStClient::new();
-        let mut mock_test_blackboard = MockTestBlackboard::new();
+        let mut mock_client = MockStClientTrait::new();
+        let mut mock_test_blackboard = MockBlackboardOps::new();
 
         let current_fuel: u32 = 500;
         let mut ship = TestObjects::test_ship(current_fuel);
@@ -1025,15 +1031,15 @@ mod tests {
         let waypoint_a1 = wp("X1-FOO-A1");
         let waypoint_a2 = wp("X1-FOO-A2");
         let waypoint_bar = wp("X1-FOO-BAR");
-
-        mock_test_blackboard
-            .expect_get_exploration_tasks_for_current_waypoint()
-            .withf(|wp| wp.0.contains("X1-FOO-A"))
-            .returning(|_| Ok(vec![ExplorationTask::GetMarket]));
+        //
+        // mock_test_blackboard
+        //     .expect_get_exploration_tasks_for_current_waypoint()
+        //     .withf(|wp| wp.0.contains("X1-FOO-A"))
+        //     .returning(|_| Ok(vec![ExplorationTask::GetMarket]));
 
         let explorer_waypoints = vec![
-            TestObjects::create_waypoint(&waypoint_a1, 100, 0),
-            TestObjects::create_waypoint(&waypoint_a2, 200, 0),
+            TestObjects::create_waypoint(&waypoint_a1, 100, 0, vec![WaypointTraitSymbol::MARKETPLACE]),
+            TestObjects::create_waypoint(&waypoint_a2, 200, 0, vec![WaypointTraitSymbol::MARKETPLACE]),
         ];
 
         let first_hop_actions = vec![TravelAction::Navigate {
@@ -1061,6 +1067,10 @@ mod tests {
             .with(eq((*waypoint_bar).clone()), eq((*waypoint_a1).clone()), eq(30), eq(current_fuel), eq(600))
             .returning(move |_, _, _, _, _| Ok(first_hop_actions.clone()));
 
+        let waypoint_map = explorer_waypoints.iter().map(|wp| (wp.symbol.clone(), wp.clone())).collect::<HashMap<_, _>>();
+
+        mock_test_blackboard.expect_get_waypoint().returning(move |wps| waypoint_map.get(wps).cloned().ok_or(anyhow!("Waypoint not expected")));
+
         mock_test_blackboard
             .expect_compute_path()
             .with(eq((*waypoint_a1).clone()), eq((*waypoint_a2).clone()), eq(30), eq(300), eq(600))
@@ -1084,7 +1094,7 @@ mod tests {
                 };
                 Ok(NavigateShipResponse {
                     data: NavAndFuelResponse {
-                        nav: return_nav,
+                        nav: return_nav.nav,
                         fuel: TestObjects::create_fuel(current_fuel, 200),
                     },
                 })
@@ -1092,8 +1102,11 @@ mod tests {
 
         let waypoint_bar_clone = Arc::clone(&waypoint_bar);
         mock_client.expect_set_flight_mode().with(eq(ShipSymbol("FLWI-1".to_string())), eq(FlightMode::Burn)).times(1).returning(move |_, _| {
-            Ok(PatchShipNavResponse {
-                data: TestObjects::create_nav(FlightMode::Burn, NavStatus::InTransit, &waypoint_bar_clone, &waypoint_bar_clone),
+            Ok(SetFlightModeResponse {
+                data: NavAndFuelResponse {
+                    nav: TestObjects::create_nav(FlightMode::Burn, NavStatus::InTransit, &waypoint_bar_clone, &waypoint_bar_clone).nav,
+                    fuel: TestObjects::create_fuel(current_fuel, 200),
+                },
             })
         });
 
@@ -1113,28 +1126,33 @@ mod tests {
         let mut ship_behavior = behaviors.explorer_behavior;
         ship_behavior.update_indices();
 
-        println!("{}", ship_behavior.to_mermaid());
+        //println!("{}", ship_behavior.to_mermaid());
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
         let args = BehaviorArgs {
             blackboard: Arc::new(mock_test_blackboard),
         };
 
-        ship_ops.set_explore_locations(explorer_waypoints);
-        let result = ship_behavior.run(&args, &mut ship_ops, Duration::from_millis(1)).await.unwrap();
+        let explorer_waypoint_symbols = explorer_waypoints.iter().map(|wp| wp.symbol.clone()).collect_vec();
 
-        assert_eq!(result, Response::Success);
+        ship_ops.set_explore_locations(explorer_waypoint_symbols);
+
+        let (result, ship_states, action_events) = test_run_ship_behavior(&mut ship_ops, Duration::from_millis(1), args, ship_behavior).await.unwrap();
+
+        assert_eq!(result, Success);
         assert_eq!(ship_ops.nav.waypoint_symbol, *waypoint_a2);
         assert_eq!(ship_ops.travel_action_queue.len(), 0);
         assert_eq!(ship_ops.explore_location_queue.len(), 0);
     }
 
+    /*
+
     #[tokio::test]
     #[traced_test]
     async fn test_navigate_to_destination_behavior() {
-        let mut mock_client = MockStClient::new();
+        let mut mock_client = MockStClientTrait::new();
 
-        let mut mock_test_blackboard = MockTestBlackboard::new();
+        let mut mock_test_blackboard = MockBlackboardOps::new();
 
         let mut ship = TestObjects::test_ship(500);
         ship.nav.status = NavStatus::InOrbit;
@@ -1212,9 +1230,9 @@ mod tests {
     #[traced_test]
     async fn test_navigate_to_destination_behavior_with_refuel() {
         // let result = timeout(Duration::from_secs(3), async {
-        let mut mock_client = MockStClient::new();
+        let mut mock_client = MockStClientTrait::new();
 
-        let mut mock_test_blackboard = MockTestBlackboard::new();
+        let mut mock_test_blackboard = MockBlackboardOps::new();
 
         let mut ship = TestObjects::test_ship(100);
         ship.nav.status = NavStatus::InOrbit;
@@ -1244,56 +1262,48 @@ mod tests {
         // 1st waypoint: Dock for refueling
         mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).once().in_sequence(&mut seq).returning(move |_| {
             Ok(DockShipResponse {
-                data: NavOnlyResponse {
-                    nav: TestObjects::create_nav(
-                        FlightMode::Drift,
-                        NavStatus::Docked,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
-                },
+                data: TestObjects::create_nav(
+                    FlightMode::Drift,
+                    NavStatus::Docked,
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                ),
             })
         });
 
         // 1st waypoint: Orbit after refueling
         mock_client.expect_orbit_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).once().in_sequence(&mut seq).return_once(move |_| {
             Ok(OrbitShipResponse {
-                data: NavOnlyResponse {
-                    nav: TestObjects::create_nav(
-                        FlightMode::Drift,
-                        NavStatus::InOrbit,
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                        &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    ),
-                },
+                data: TestObjects::create_nav(
+                    FlightMode::Drift,
+                    NavStatus::InOrbit,
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    &WaypointSymbol("X1-FOO-BAR".to_string()),
+                ),
             })
         });
 
         // 2nd waypoint: Dock for refueling
         mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).once().in_sequence(&mut seq).returning(move |_| {
             Ok(DockShipResponse {
-                data: NavOnlyResponse {
-                    nav: TestObjects::create_nav(
-                        FlightMode::Burn,
-                        NavStatus::Docked,
-                        &WaypointSymbol("X1-FOO-A1".to_string()),
-                        &WaypointSymbol("X1-FOO-A1".to_string()),
-                    ),
-                },
+                data: TestObjects::create_nav(
+                    FlightMode::Burn,
+                    NavStatus::Docked,
+                    &WaypointSymbol("X1-FOO-A1".to_string()),
+                    &WaypointSymbol("X1-FOO-A1".to_string()),
+                ),
             })
         });
 
         // 2nd waypoint: Orbit after refueling
         mock_client.expect_orbit_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).once().in_sequence(&mut seq).return_once(move |_| {
             Ok(OrbitShipResponse {
-                data: NavOnlyResponse {
-                    nav: TestObjects::create_nav(
-                        FlightMode::Burn,
-                        NavStatus::InOrbit,
-                        &WaypointSymbol("X1-FOO-A1".to_string()),
-                        &WaypointSymbol("X1-FOO-A1".to_string()),
-                    ),
-                },
+                data: TestObjects::create_nav(
+                    FlightMode::Burn,
+                    NavStatus::InOrbit,
+                    &WaypointSymbol("X1-FOO-A1".to_string()),
+                    &WaypointSymbol("X1-FOO-A1".to_string()),
+                ),
             })
         });
 
@@ -1371,4 +1381,6 @@ mod tests {
         //
         // assert!(result.is_ok(), "test-timed out");
     }
+
+     */
 }

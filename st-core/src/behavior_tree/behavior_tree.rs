@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Arc;
 use std::time::Duration;
 use strum_macros::Display;
 use tokio::sync::mpsc::Sender;
@@ -227,10 +228,10 @@ pub enum Response {
 }
 
 // Create a common message enum that both ShipAction and Behavior<ShipAction> can use
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ActionEvent {
-    ShipActionCompleted(Result<(ShipOperations, ShipAction), anyhow::Error>),
-    BehaviorCompleted(Result<Behavior<ShipAction>, anyhow::Error>),
+    ShipActionCompleted(Result<(ShipOperations, ShipAction), Arc<anyhow::Error>>),
+    BehaviorCompleted(Result<Behavior<ShipAction>, String>),
     TransactionCompleted(ShipOperations, TransactionActionEvent, TradeTicket),
 }
 
@@ -418,7 +419,7 @@ mod tests {
         }
     }
 
-    #[derive(Debug, Eq, PartialEq)]
+    #[derive(Debug, Eq, PartialEq, Clone)]
     struct MyState(i32);
 
     #[tokio::test]
@@ -429,10 +430,10 @@ mod tests {
         ]);
 
         let mut my_state = MyState(0);
-        let (tx, mut sender) = mpsc::channel(32);
-        let (tx2, mut sender2) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(32);
+        let (tx2, rx2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2).await.unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2).await.unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(1));
     }
@@ -445,10 +446,10 @@ mod tests {
         ]);
 
         let mut my_state = MyState(0);
-        let (tx, mut sender) = mpsc::channel(32);
-        let (tx2, mut sender2) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(32);
+        let (tx2, rx2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2).await.unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2).await.unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(0));
     }
@@ -462,10 +463,10 @@ mod tests {
         ]);
 
         let mut my_state = MyState(0);
-        let (tx, mut sender) = mpsc::channel(32);
-        let (tx2, mut sender2) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(32);
+        let (tx2, rx2) = mpsc::channel(32);
 
-        let result = bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2).await.unwrap();
+        let result = bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2).await.unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(1));
         assert_eq!(result, Running)
@@ -476,10 +477,11 @@ mod tests {
         let bt: Behavior<MyAction> = Behavior::new_while(Behavior::new_action(MyAction::IsLowerThan2), Behavior::new_action(MyAction::Increase));
 
         let mut my_state = MyState(0);
-        let (tx, mut sender) = mpsc::channel(32);
-        let (tx2, mut sender2) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(32);
+        let (tx2, rx2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2).await.unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2).await.unwrap();
+
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(2));
     }
@@ -488,11 +490,11 @@ mod tests {
     async fn test_while_terminating_immediately() {
         let bt: Behavior<MyAction> = Behavior::new_while(Behavior::new_action(MyAction::IsLowerThan2), Behavior::new_action(MyAction::Increase));
 
-        let mut my_state = MyState(42);
-        let (tx, mut sender) = mpsc::channel(32);
-        let (tx2, mut sender2) = mpsc::channel(32);
+        let mut my_state = MyState(0);
+        let (tx, rx) = mpsc::channel(32);
+        let (tx2, rx2) = mpsc::channel(32);
 
-        let result = bt.run(&(), &mut my_state, Duration::from_millis(1), &sender, &sender2).await;
+        let result = bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2).await;
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(42));
         result.is_ok();

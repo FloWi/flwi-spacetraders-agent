@@ -5,6 +5,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::Local;
 use itertools::Itertools;
+use mockall::automock;
 use st_domain::{ExplorationTask, JumpGate, LabelledCoordinate, MarketData, Shipyard, TicketId, TradeTicket, Waypoint, WaypointSymbol};
 use st_store::trade_bmc::TradeBmc;
 use st_store::{
@@ -13,6 +14,7 @@ use st_store::{
 };
 use std::sync::Arc;
 
+#[automock]
 #[async_trait]
 pub trait BlackboardOps: Send + Sync {
     async fn compute_path(
@@ -23,12 +25,12 @@ pub trait BlackboardOps: Send + Sync {
         current_fuel: u32,
         fuel_capacity: u32,
     ) -> Result<Vec<TravelAction>>;
-    async fn get_exploration_tasks_for_current_waypoint(&self, current_location: WaypointSymbol) -> Result<Vec<ExplorationTask>>;
     async fn insert_waypoint(&self, waypoint: &Waypoint) -> Result<()>;
     async fn insert_market(&self, market_data: MarketData) -> Result<()>;
     async fn insert_jump_gate(&self, jump_gate: JumpGate) -> Result<()>;
     async fn insert_shipyard(&self, shipyard: Shipyard) -> Result<()>;
     async fn get_closest_waypoint(&self, current_waypoint: &WaypointSymbol, candidates: &[WaypointSymbol]) -> Result<Option<WaypointSymbol>>;
+    async fn get_waypoint(&self, waypoint_symbol: &WaypointSymbol) -> Result<Waypoint>;
 
     async fn get_ticket_by_id(&self, ticket_id: TicketId) -> Result<TradeTicket>;
 
@@ -36,6 +38,11 @@ pub trait BlackboardOps: Send + Sync {
     // async fn report_sale(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &SellTradeGoodResponse) -> Result<()>;
     // async fn report_delivery(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &SupplyConstructionSiteResponse) -> Result<()>;
     // async fn report_ship_purchase(&self, ticket_id: &TicketId, ticket: &PurchaseShipTicketDetails, response: PurchaseShipResponse) -> Result<()>;
+
+    async fn get_exploration_tasks_waypoint(&self, waypoint_symbol: &WaypointSymbol) -> Result<Vec<ExplorationTask>> {
+        let waypoint = self.get_waypoint(waypoint_symbol).await?;
+        Ok(get_exploration_tasks_for_waypoint(&waypoint))
+    }
 }
 
 #[derive(Clone)]
@@ -91,21 +98,6 @@ impl BlackboardOps for DbBlackboard {
         }
     }
 
-    async fn get_exploration_tasks_for_current_waypoint(&self, current_location: WaypointSymbol) -> Result<Vec<ExplorationTask>> {
-        let waypoints = select_waypoints_of_system(&self.model_manager.pool(), &current_location.system_symbol()).await?;
-
-        //let maybe_jump_gate: Option<DbJumpGateData> = db::select_jump_gate(&self.db, &current_location).await?;
-
-        match waypoints.iter().find(|wp| wp.symbol == current_location) {
-            None => Err(anyhow::anyhow!("can't find waypoint in db")),
-            Some(wp) => {
-                let tasks = get_exploration_tasks_for_waypoint(wp);
-
-                Ok(tasks)
-            }
-        }
-    }
-
     async fn insert_waypoint(&self, waypoint: &Waypoint) -> Result<()> {
         let now = Local::now().to_utc();
         upsert_waypoints(&self.model_manager.pool(), vec![waypoint.clone()], now).await
@@ -137,6 +129,13 @@ impl BlackboardOps for DbBlackboard {
             .take(1)
             .next()
             .map(|(best, _)| best))
+    }
+
+    async fn get_waypoint(&self, waypoint_symbol: &WaypointSymbol) -> Result<Waypoint> {
+        let waypoints = select_waypoints_of_system(&self.model_manager.pool(), &waypoint_symbol.system_symbol()).await?;
+        let waypoint = waypoints.into_iter().find(|wp| wp.symbol == *waypoint_symbol).expect("waypoint");
+
+        Ok(waypoint)
     }
 
     async fn get_ticket_by_id(&self, ticket_id: TicketId) -> Result<TradeTicket> {

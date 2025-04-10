@@ -115,49 +115,49 @@ impl ShipOperations {
 
     pub async fn dock(&mut self) -> Result<Nav> {
         let response = self.client.dock_ship(self.ship.symbol.clone()).await?;
-        println!("{:?}", response);
+        //println!("{:?}", response);
         Ok(response.data.nav)
     }
 
     pub(crate) async fn get_market(&self) -> Result<MarketData> {
         let response = self.client.get_marketplace(self.nav.waypoint_symbol.clone()).await?;
-        println!("{:?}", response);
+        //println!("{:?}", response);
         Ok(response.data)
     }
 
     pub(crate) async fn get_jump_gate(&self) -> Result<JumpGate> {
         let response = self.client.get_jump_gate(self.nav.waypoint_symbol.clone()).await?;
-        println!("{:?}", response);
+        //println!("{:?}", response);
         Ok(response.data)
     }
 
     pub(crate) async fn get_shipyard(&self) -> Result<Shipyard> {
         let response = self.client.get_shipyard(self.nav.waypoint_symbol.clone()).await?;
-        println!("{:?}", response);
+        //println!("{:?}", response);
         Ok(response.data)
     }
 
     pub(crate) async fn chart_waypoint(&self) -> Result<CreateChartBody> {
         let response = self.client.create_chart(self.symbol.clone()).await?;
-        println!("{:?}", response);
+        //println!("{:?}", response);
         Ok(response.data)
     }
 
     pub(crate) async fn set_flight_mode(&self, mode: &FlightMode) -> Result<NavAndFuelResponse> {
         let response = self.client.set_flight_mode(self.ship.symbol.clone(), mode).await?;
-        println!("{:?}", response);
+        //println!("{:?}", response);
         Ok(response.data)
     }
 
     pub async fn orbit(&mut self) -> Result<Nav> {
         let response = self.client.orbit_ship(self.ship.symbol.clone()).await?;
-        println!("{:?}", response);
+        //println!("{:?}", response);
         Ok(response.data.nav)
     }
 
     pub async fn navigate(&self, to: &WaypointSymbol) -> Result<NavAndFuelResponse> {
         let response = self.client.navigate(self.ship.symbol.clone(), to).await?;
-        println!("{:?}", response);
+        //println!("{:?}", response);
         Ok(response.data)
     }
 
@@ -165,7 +165,7 @@ impl ShipOperations {
         let amount = self.fuel.capacity - self.fuel.current;
 
         let response = self.client.refuel(self.ship.symbol.clone(), amount as u32, from_cargo).await?;
-        println!("{:?}", response);
+        //println!("{:?}", response);
         Ok(response)
     }
 
@@ -173,7 +173,7 @@ impl ShipOperations {
         let response = self.client.sell_trade_good(self.symbol.clone(), ticket.quantity, ticket.trade_good.clone()).await?;
         self.cargo = response.data.cargo.clone();
 
-        println!("{:?}", response);
+        //println!("{:?}", response);
 
         Ok(response)
     }
@@ -181,7 +181,7 @@ impl ShipOperations {
     pub async fn purchase_trade_good(&mut self, ticket: &PurchaseGoodTicketDetails) -> Result<PurchaseTradeGoodResponse> {
         let response = self.client.purchase_trade_good(self.symbol.clone(), ticket.quantity, ticket.trade_good.clone()).await?;
         self.cargo = response.data.cargo.clone();
-        println!("{:?}", response);
+        //println!("{:?}", response);
 
         Ok(response)
     }
@@ -197,14 +197,14 @@ impl ShipOperations {
             )
             .await?;
         self.cargo = response.data.cargo.clone();
-        println!("{:?}", response);
+        //println!("{:?}", response);
 
         Ok(response)
     }
 
     pub async fn purchase_ship(&self, ticket: &PurchaseShipTicketDetails) -> Result<PurchaseShipResponse> {
         let response = self.client.purchase_ship(ticket.ship_type.clone(), ticket.waypoint_symbol.clone()).await?;
-        println!("{:?}", response);
+        //println!("{:?}", response);
 
         Ok(response)
     }

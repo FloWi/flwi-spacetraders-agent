@@ -3,6 +3,7 @@ use crate::behavior_tree::behavior_tree::ActionEvent;
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::fleet;
 use crate::fleet::fleet::{collect_fleet_decision_facts, compute_fleets_with_tasks, FleetAdmiral, NewTaskResult, ShipStatusReport};
+use crate::fleet::ship_runner::ship_behavior_runner;
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
 use anyhow::{anyhow, Result};
@@ -66,10 +67,6 @@ impl FleetRunner {
 
         let fleet_runner_mutex = Arc::new(Mutex::new(fleet_runner));
 
-        for (ss, ship) in all_ships_map {
-            Self::launch_and_register_ship(Arc::clone(&fleet_runner_mutex), &ss, ship).await?;
-        }
-
         Self::run_message_listeners(
             Arc::clone(&fleet_runner_mutex),
             ship_updated_rx,
@@ -77,6 +74,10 @@ impl FleetRunner {
             ship_status_report_rx,
         )
         .await;
+
+        for (ss, ship) in all_ships_map {
+            Self::launch_and_register_ship(Arc::clone(&fleet_runner_mutex), &ss, ship).await?;
+        }
 
         Ok(())
     }
@@ -206,16 +207,16 @@ impl FleetRunner {
             Some((ship_behavior, behavior_label)) => {
                 let ship_span = span!(Level::INFO, "ship_behavior", ship = format!("{}", ship.symbol.0), behavior = behavior_label);
 
-                let result: Result<Response, Error> = ship_behavior
-                    .run(
-                        &args,
-                        &mut ship,
-                        Duration::from_secs(5),
-                        &ship_updated_tx.clone(),
-                        &ship_action_completed_tx.clone(),
-                    )
-                    .instrument(ship_span)
-                    .await;
+                let result: Result<Response, Error> = ship_behavior_runner(
+                    &mut ship,
+                    Duration::from_secs(5),
+                    &args,
+                    ship_behavior,
+                    &ship_updated_tx.clone(),
+                    &ship_action_completed_tx.clone(),
+                )
+                .instrument(ship_span)
+                .await;
 
                 match &result {
                     Ok(o) => {
