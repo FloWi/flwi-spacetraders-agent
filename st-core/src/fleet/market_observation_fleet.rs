@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 pub struct MarketObservationFleet;
 
 impl MarketObservationFleet {
-    pub async fn compute_ship_tasks(
+    pub fn compute_ship_tasks(
         admiral: &FleetAdmiral,
         cfg: &MarketObservationFleetConfig,
         fleet: &Fleet,

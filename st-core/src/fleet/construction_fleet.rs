@@ -2,11 +2,9 @@ use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
 use st_domain::{
-    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, PurchaseGoodTicketDetails,
-    PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipSymbol, ShipTask, TicketId, TradeTicket, TransactionTicketId,
+    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, MarketData, PurchaseGoodTicketDetails,
+    PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipPriceInfo, ShipSymbol, ShipTask, TicketId, TradeTicket, TransactionTicketId, Waypoint,
 };
-use st_store::shipyard_bmc::ShipyardBmc;
-use st_store::{Ctx, DbModelManager, MarketBmc, SystemBmc};
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use uuid::Uuid;
@@ -14,12 +12,14 @@ use uuid::Uuid;
 pub struct ConstructJumpGateFleet;
 
 impl ConstructJumpGateFleet {
-    pub async fn compute_ship_tasks(
+    pub fn compute_ship_tasks(
         admiral: &FleetAdmiral,
         cfg: &ConstructJumpGateFleetConfig,
         fleet: &Fleet,
         facts: &FleetDecisionFacts,
-        mm: &DbModelManager,
+        latest_market_data: &Vec<MarketData>,
+        ship_prices: &ShipPriceInfo,
+        waypoints: &Vec<Waypoint>,
     ) -> Result<Vec<PotentialTradingTask>> {
         let fleet_ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
         let fleet_ship_symbols = fleet_ships.iter().map(|&s| s.symbol.clone()).collect_vec();
@@ -44,7 +44,6 @@ impl ConstructJumpGateFleet {
 
         // if we have enough budget for purchasing construction material, we do so
 
-        let waypoints = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &cfg.system_symbol).await?;
         let waypoint_map = waypoints.iter().map(|wp| (wp.symbol.clone(), wp)).collect::<HashMap<_, _>>();
 
         let maybe_next_ship_to_purchase = admiral.get_next_ship_purchase();
@@ -52,7 +51,6 @@ impl ConstructJumpGateFleet {
         let maybe_ship_purchase_location = match maybe_next_ship_to_purchase.clone() {
             None => None,
             Some(ship_type) => {
-                let ship_prices = ShipyardBmc::get_latest_ship_prices(&Ctx::Anonymous, mm, &cfg.system_symbol).await?;
                 let maybe_ship_purchase_location = ship_prices
                     .price_infos
                     .iter()
@@ -114,7 +112,6 @@ impl ConstructJumpGateFleet {
 
         let still_unassigned_ships_symbols = still_unassigned_ships.iter().map(|s| s.symbol.clone()).collect_vec();
 
-        let latest_market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, mm, &cfg.system_symbol).await?;
         let market_data = trading::to_trade_goods_with_locations(&latest_market_data);
         let trading_opportunities = trading::find_trading_opportunities(&market_data, &waypoint_map);
         let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =

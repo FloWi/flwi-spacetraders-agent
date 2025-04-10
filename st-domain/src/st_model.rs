@@ -18,6 +18,12 @@ pub struct AgentSymbol(pub String);
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct SystemSymbol(pub String);
 
+impl SystemSymbol {
+    pub fn with_waypoint_suffix(&self, suffix: &str) -> WaypointSymbol {
+        WaypointSymbol(format!("{}-{}", self.0, suffix))
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct WaypointSymbol(pub String);
 

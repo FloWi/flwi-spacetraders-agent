@@ -15,6 +15,8 @@ pub mod behavior_tree;
 pub mod exploration;
 pub mod marketplaces;
 pub mod pathfinder;
+#[cfg(test)]
+pub mod test_objects;
 
 pub use app_state::*;
 

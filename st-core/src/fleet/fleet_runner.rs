@@ -4,12 +4,17 @@ use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::fleet;
 use crate::fleet::fleet::{collect_fleet_decision_facts, compute_fleets_with_tasks, FleetAdmiral, NewTaskResult, ShipStatusReport};
 use crate::fleet::ship_runner::ship_behavior_runner;
+use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
+use crate::test_objects::TestObjects;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use fleet::fleet::recompute_tasks_after_ship_finishing_behavior_tree;
-use st_domain::{Fleet, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket, TransactionActionEvent};
+use st_domain::{
+    Agent, Fleet, FleetDecisionFacts, FleetPhaseName, FleetsOverview, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket,
+    TransactionActionEvent,
+};
 use st_store::{db, Ctx, DbModelManager, FleetBmc, ShipBmc};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -430,5 +435,107 @@ impl FleetRunner {
         guard.ship_ops.remove(ship_symbol);
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use itertools::Itertools;
+    use st_domain::{FleetDecisionFacts, FleetPhaseName, FleetsOverview, ShipFrameSymbol, ShipSymbol, WaypointTraitSymbol, WaypointType};
+    use std::collections::HashMap;
+
+    use crate::fleet::fleet::{compute_fleets_with_tasks, FleetAdmiral};
+    use crate::test_objects::TestObjects;
+    use test_log::test;
+
+    #[test(tokio::test)]
+    async fn create_fleet_admiral_from_startup_ship_config() {
+        let mut command_ship = TestObjects::test_ship(600);
+        command_ship.frame.symbol = ShipFrameSymbol::FRAME_FRIGATE;
+        command_ship.symbol = ShipSymbol("FLWI-1".to_string());
+
+        let mut probe = TestObjects::test_ship(0);
+        probe.frame.symbol = ShipFrameSymbol::FRAME_PROBE;
+        probe.fuel.capacity = 0;
+        probe.symbol = ShipSymbol("FLWI-2".to_string());
+
+        let ship_map = HashMap::from([(command_ship.symbol.clone(), command_ship), (probe.symbol.clone(), probe)]);
+
+        let overview = FleetsOverview {
+            completed_fleet_tasks: vec![],
+            fleets: Default::default(),
+            all_ships: ship_map.clone(),
+            fleet_task_assignments: Default::default(),
+            ship_fleet_assignment: Default::default(),
+            ship_tasks: Default::default(),
+            open_trade_tickets: Default::default(),
+            stationary_probe_locations: vec![],
+        };
+        let market_1 = TestObjects::create_waypoint(
+            &TestObjects::system_symbol().with_waypoint_suffix("MARKET1"),
+            100,
+            100,
+            vec![WaypointTraitSymbol::MARKETPLACE],
+        );
+        let mut jump_gate_1 = TestObjects::create_waypoint(
+            &TestObjects::system_symbol().with_waypoint_suffix("JUMP_GATE"),
+            100,
+            100,
+            vec![WaypointTraitSymbol::MARKETPLACE],
+        );
+        jump_gate_1.r#type == WaypointType::JUMP_GATE;
+        let shipyard_1 = TestObjects::create_waypoint(
+            &TestObjects::system_symbol().with_waypoint_suffix("SHIPYARD1"),
+            200,
+            200,
+            vec![WaypointTraitSymbol::MARKETPLACE, WaypointTraitSymbol::SHIPYARD],
+        );
+
+        let waypoints = vec![market_1.clone(), jump_gate_1.clone(), shipyard_1.clone()];
+
+        let facts = FleetDecisionFacts {
+            marketplaces_of_interest: vec![market_1.symbol.clone(), shipyard_1.symbol.clone()],
+            marketplaces_with_up_to_date_infos: vec![],
+            shipyards_of_interest: vec![shipyard_1.symbol.clone()],
+            shipyards_with_up_to_date_infos: vec![],
+            construction_site: Some(TestObjects::startup_construction(&jump_gate_1.symbol)),
+            ships: ship_map.values().cloned().collect_vec(),
+            materialized_supply_chain: None,
+            agent_info: TestObjects::agent(),
+        };
+
+        let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(TestObjects::system_symbol(), &overview.completed_fleet_tasks, &facts);
+
+        let fleets_map = fleets.iter().map(|f| (f.id.clone(), f.clone())).collect();
+
+        assert_eq!(2, fleets.len());
+        assert_eq!(2, fleet_tasks.len());
+        assert_eq!(FleetPhaseName::InitialExploration, fleet_phase.name);
+
+        let ship_fleet_assignment = FleetAdmiral::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
+
+        let mut fleet_admiral = FleetAdmiral {
+            completed_fleet_tasks: overview.completed_fleet_tasks.clone(),
+            fleets: fleets_map,
+            all_ships: ship_map,
+            ship_tasks: Default::default(),
+            fleet_tasks: fleet_tasks.into_iter().map(|(fleet_id, fleet_task)| (fleet_id, vec![fleet_task])).collect(),
+            ship_fleet_assignment,
+            agent_info: TestObjects::agent(),
+            fleet_phase,
+            active_trades: Default::default(),
+            stationary_probe_locations: vec![],
+        };
+
+        let new_ship_tasks = FleetAdmiral::pure_compute_ship_tasks(
+            &fleet_admiral,
+            &facts,
+            TestObjects::latest_market_data(&waypoints),
+            TestObjects::ship_prices(&waypoints),
+            waypoints,
+        )
+        .unwrap();
+
+        FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut fleet_admiral, new_ship_tasks);
     }
 }

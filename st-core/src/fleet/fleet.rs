@@ -25,15 +25,16 @@ use st_domain::FleetTask::{
 use st_domain::FleetUpdateMessage::FleetTaskCompleted;
 use st_domain::{
     Agent, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase,
-    FleetPhaseName, FleetTask, FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketObservationFleetConfig, MaterializedSupplyChain,
-    MiningFleetConfig, PurchaseGoodTicketDetails, PurchaseReason, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipSymbol,
-    ShipTask, ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket,
-    TradingFleetConfig, Transaction, TransactionActionEvent, WaypointSymbol,
+    FleetPhaseName, FleetTask, FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketData, MarketObservationFleetConfig, MaterializedSupplyChain,
+    MiningFleetConfig, PurchaseGoodTicketDetails, PurchaseReason, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipPriceInfo,
+    ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol,
+    TradeTicket, TradingFleetConfig, Transaction, TransactionActionEvent, Waypoint, WaypointSymbol,
 };
+use st_store::shipyard_bmc::ShipyardBmc;
 use st_store::trade_bmc::TradeBmc;
 use st_store::{
-    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, AgentBmc, ConstructionBmc, Ctx, DbModelManager, FleetBmc, ShipBmc,
-    SystemBmc,
+    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, AgentBmc, ConstructionBmc, Ctx, DbModelManager, FleetBmc, MarketBmc,
+    ShipBmc, SystemBmc,
 };
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
@@ -356,7 +357,7 @@ impl FleetAdmiral {
         }
     }
 
-    async fn create(mm: &DbModelManager, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
+    pub async fn create(mm: &DbModelManager, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
         let ships = ShipBmc::get_ships(&Ctx::Anonymous, mm, None).await?;
         let stationary_probe_locations = ShipBmc::get_stationary_probes(&Ctx::Anonymous, mm).await?;
 
@@ -417,28 +418,31 @@ impl FleetAdmiral {
         Ok(admiral)
     }
 
-    pub(crate) async fn compute_ship_tasks(
+    pub(crate) fn pure_compute_ship_tasks(
         admiral: &FleetAdmiral,
         facts: &FleetDecisionFacts,
-        mm: &DbModelManager,
+        latest_market_data: Vec<MarketData>,
+        ship_prices: ShipPriceInfo,
+        waypoints: Vec<Waypoint>,
     ) -> Result<Vec<(ShipSymbol, ShipTask, ShipTaskRequirement)>> {
         let mut new_fleet_tasks = Vec::new();
         for (fleet_id, fleet) in admiral.fleets.clone().iter() {
             match &fleet.cfg {
                 FleetConfig::SystemSpawningCfg(cfg) => {
-                    let ship_tasks = SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts).await?;
+                    let ship_tasks = SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts)?;
                     for (ss, task) in ship_tasks {
                         new_fleet_tasks.push((ss, task, ShipTaskRequirement::None));
                     }
                 }
                 FleetConfig::MarketObservationCfg(cfg) => {
-                    let ship_tasks = MarketObservationFleet::compute_ship_tasks(admiral, cfg, fleet, facts).await?;
+                    let ship_tasks = MarketObservationFleet::compute_ship_tasks(admiral, cfg, fleet, facts)?;
                     for (ss, task) in ship_tasks {
                         new_fleet_tasks.push((ss, task, ShipTaskRequirement::None));
                     }
                 }
                 FleetConfig::ConstructJumpGateCfg(cfg) => {
-                    let potential_trading_tasks = ConstructJumpGateFleet::compute_ship_tasks(admiral, cfg, fleet, facts, mm).await?;
+                    let potential_trading_tasks =
+                        ConstructJumpGateFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &latest_market_data, &ship_prices, &waypoints)?;
 
                     for PotentialTradingTask {
                         ship_symbol,
@@ -456,6 +460,20 @@ impl FleetAdmiral {
         }
 
         Ok(new_fleet_tasks)
+    }
+
+    pub(crate) async fn compute_ship_tasks(
+        admiral: &FleetAdmiral,
+        facts: &FleetDecisionFacts,
+        mm: &DbModelManager,
+    ) -> Result<Vec<(ShipSymbol, ShipTask, ShipTaskRequirement)>> {
+        let system_symbol = facts.agent_info.headquarters.system_symbol();
+
+        let waypoints = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, mm, &system_symbol).await?;
+        let ship_prices = ShipyardBmc::get_latest_ship_prices(&Ctx::Anonymous, mm, &system_symbol).await?;
+        let latest_market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, mm, &system_symbol).await?;
+
+        Self::pure_compute_ship_tasks(admiral, facts, latest_market_data, ship_prices, waypoints)
     }
 
     pub(crate) fn assign_ship_tasks_and_potential_requirements(admiral: &mut FleetAdmiral, ship_tasks: Vec<(ShipSymbol, ShipTask, ShipTaskRequirement)>) {
