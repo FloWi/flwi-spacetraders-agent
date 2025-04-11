@@ -85,3 +85,49 @@ impl Bmc for DbBmc {
         self.shipyard_bmc.clone() as Arc<dyn ShipyardBmcTrait>
     }
 }
+
+#[derive(Debug)]
+pub struct InMemoryBmc {
+    pub ship_bmc: Arc<dyn ShipBmcTrait>,
+    pub fleet_bmc: Arc<dyn FleetBmcTrait>,
+    pub trade_bmc: Arc<dyn TradeBmcTrait>,
+    pub system_bmc: Arc<dyn SystemBmcTrait>,
+    pub agent_bmc: Arc<dyn AgentBmcTrait>,
+    pub construction_bmc: Arc<dyn ConstructionBmcTrait>,
+    pub market_bmc: Arc<dyn MarketBmcTrait>,
+    pub shipyard_bmc: Arc<dyn ShipyardBmcTrait>,
+}
+
+impl Bmc for InMemoryBmc {
+    fn ship_bmc(&self) -> Arc<dyn ShipBmcTrait> {
+        self.ship_bmc.clone()
+    }
+
+    fn fleet_bmc(&self) -> Arc<dyn FleetBmcTrait> {
+        self.fleet_bmc.clone()
+    }
+
+    fn trade_bmc(&self) -> Arc<dyn TradeBmcTrait> {
+        self.trade_bmc.clone()
+    }
+
+    fn system_bmc(&self) -> Arc<dyn SystemBmcTrait> {
+        self.system_bmc.clone()
+    }
+
+    fn agent_bmc(&self) -> Arc<dyn AgentBmcTrait> {
+        self.agent_bmc.clone()
+    }
+
+    fn construction_bmc(&self) -> Arc<dyn ConstructionBmcTrait> {
+        self.construction_bmc.clone()
+    }
+
+    fn market_bmc(&self) -> Arc<dyn MarketBmcTrait> {
+        self.market_bmc.clone()
+    }
+
+    fn shipyard_bmc(&self) -> Arc<dyn ShipyardBmcTrait> {
+        self.shipyard_bmc.clone()
+    }
+}

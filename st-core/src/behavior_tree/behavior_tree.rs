@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use st_domain::{
     DeliverConstructionMaterialTicketDetails, PurchaseGoodTicketDetails, PurchaseShipResponse, PurchaseTradeGoodResponse, SellGoodTicketDetails,
-    SellTradeGoodResponse, Ship, ShipTaskMessage, SupplyConstructionSiteResponse, TradeTicket, TransactionActionEvent,
+    SellTradeGoodResponse, Ship, ShipSymbol, ShipTaskMessage, SupplyConstructionSiteResponse, TradeTicket, TransactionActionEvent,
 };
 use std::any::Any;
 use std::collections::HashMap;
@@ -230,9 +230,19 @@ pub enum Response {
 // Create a common message enum that both ShipAction and Behavior<ShipAction> can use
 #[derive(Debug, Clone)]
 pub enum ActionEvent {
-    ShipActionCompleted(Result<(ShipOperations, ShipAction), Arc<anyhow::Error>>),
-    BehaviorCompleted(Result<Behavior<ShipAction>, String>),
+    ShipActionCompleted(ShipOperations, ShipAction, Result<(), Arc<anyhow::Error>>),
+    BehaviorCompleted(ShipOperations, Behavior<ShipAction>, Result<(), String>),
     TransactionCompleted(ShipOperations, TransactionActionEvent, TradeTicket),
+}
+
+impl ActionEvent {
+    pub(crate) fn ship_symbol(&self) -> ShipSymbol {
+        match self {
+            ActionEvent::ShipActionCompleted(ship_ops, _, _) => ship_ops.symbol.clone(),
+            ActionEvent::BehaviorCompleted(ship_ops, _, _) => ship_ops.symbol.clone(),
+            ActionEvent::TransactionCompleted(ship_ops, _, _) => ship_ops.symbol.clone(),
+        }
+    }
 }
 
 #[async_trait]

@@ -24,7 +24,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tracing::{event, Instrument};
+use tracing::{event, span, Instrument};
 use tracing_core::Level;
 
 pub struct FleetRunner {
@@ -78,17 +78,18 @@ impl FleetRunner {
 
         let fleet_runner_mutex = Arc::new(Mutex::new(fleet_runner));
 
-        Self::run_message_listeners(
+        let msg_listeners_join_handle = tokio::spawn(Self::run_message_listeners(
             Arc::clone(&fleet_runner_mutex),
             ship_updated_rx,
             ship_action_completed_rx,
             ship_status_report_rx,
-        )
-        .await;
+        ));
 
         for (ss, ship) in all_ships_map {
             Self::launch_and_register_ship(Arc::clone(&fleet_runner_mutex), &ss, ship).await?;
         }
+
+        tokio::join!(msg_listeners_join_handle);
 
         Ok(())
     }
@@ -195,12 +196,12 @@ impl FleetRunner {
         let maybe_behavior = match ship_task.clone() {
             ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
                 ship.set_permanent_observation_location(waypoint_symbol);
-                println!("ship_loop: Ship {:?} is running stationary_probe_behavior", ship.symbol);
+                //println!("ship_loop: Ship {:?} is running stationary_probe_behavior", ship.symbol);
                 Some((behaviors.stationary_probe_behavior, "stationary_probe_behavior"))
             }
             ShipTask::ObserveAllWaypointsOnce { waypoint_symbols } => {
                 ship.set_explore_locations(waypoint_symbols);
-                println!("ship_loop: Ship {:?} is running explorer_behavior", ship.symbol);
+                //println!("ship_loop: Ship {:?} is running explorer_behavior", ship.symbol);
                 Some((behaviors.explorer_behavior, "explorer_behavior"))
             }
             ShipTask::MineMaterialsAtWaypoint { .. } => None,
@@ -208,7 +209,7 @@ impl FleetRunner {
             ShipTask::Trade { ticket_id } => {
                 let ticket: TradeTicket = args.blackboard.get_ticket_by_id(ticket_id).await?;
                 ship.set_trade_ticket(ticket);
-                println!("ship_loop: Ship {:?} is running trading_behavior", ship.symbol);
+                //println!("ship_loop: Ship {:?} is running trading_behavior", ship.symbol);
                 Some((behaviors.trading_behavior, "trading_behavior"))
             }
         };
@@ -228,6 +229,9 @@ impl FleetRunner {
                 )
                 .instrument(ship_span)
                 .await;
+
+                let ship_span = span!(Level::INFO, "fleet_runner", ship = format!("{}", ship.symbol.0), behavior = behavior_label);
+                let _enter = ship_span.enter();
 
                 match &result {
                     Ok(o) => {
@@ -283,6 +287,13 @@ impl FleetRunner {
         runner: Arc<Mutex<FleetRunner>>,
     ) -> Result<()> {
         while let Some(msg) = ship_status_report_rx.recv().await {
+            let ship_span = span!(
+                Level::INFO,
+                "fleet_runner::listen_to_ship_status_report_messages",
+                ship = format!("{}", msg.ship_symbol().0)
+            );
+            let _enter = ship_span.enter();
+
             let mut admiral_guard = fleet_admiral.lock().await;
             admiral_guard.report_ship_action_completed(&msg, Arc::clone(&bmc)).await?;
 
@@ -346,6 +357,7 @@ impl FleetRunner {
                     }
                 },
             }
+            drop(_enter);
         }
 
         Ok(())
@@ -356,14 +368,20 @@ impl FleetRunner {
         mut ship_action_completed_rx: Receiver<ActionEvent>,
     ) -> Result<()> {
         while let Some(msg) = ship_action_completed_rx.recv().await {
+            let ship_span = span!(
+                Level::INFO,
+                "fleet_runner::listen_to_ship_status_report_messages",
+                ship = format!("{}", msg.ship_symbol().0)
+            );
+            let _enter = ship_span.enter();
+
             match msg {
-                ActionEvent::ShipActionCompleted(result) => match result {
-                    Ok((ship_op, ship_action)) => {
-                        let ss = ship_op.symbol.0.clone();
+                ActionEvent::ShipActionCompleted(ship_op, ship_action, result) => match result {
+                    Ok(_) => {
                         event!(
                             Level::INFO,
                             message = "ShipActionCompleted",
-                            ship = ss,
+                            ship = ship_op.symbol.0,
                             action = %ship_action,
                         );
                         match ship_action {
@@ -374,12 +392,30 @@ impl FleetRunner {
                         }
                     }
                     Err(err) => {
-                        event!(Level::ERROR, message = "Error completing ShipAction", error = %err,);
+                        event!(Level::ERROR, message = "Error completing ShipAction", error = %err,
+                            ship = ship_op.symbol.0,
+                            action = %ship_action,
+                        );
                     }
                 },
-                ActionEvent::BehaviorCompleted(result) => match result {
-                    Ok(_) => {}
-                    Err(_) => {}
+                ActionEvent::BehaviorCompleted(ship_ops, ship_action, result) => match result {
+                    Ok(_) => {
+                        event!(
+                            Level::INFO,
+                            message = "BehaviorCompleted",
+                            ship = ship_ops.symbol.0,
+                            action = %ship_action,
+                        );
+                    }
+                    Err(error) => {
+                        event!(
+                            Level::ERROR,
+                            message = "BehaviorCompleted",
+                            ship = ship_ops.symbol.0,
+                            action = %ship_action,
+                            error
+                        );
+                    }
                 },
                 ActionEvent::TransactionCompleted(ship, transaction, ticket) => {
                     ship_status_report_tx.send(ShipStatusReport::TransactionCompleted(ship.ship, transaction, ticket)).await?;
@@ -445,11 +481,21 @@ mod tests {
     use crate::fleet::fleet::{compute_fleets_with_tasks, FleetAdmiral};
     use crate::fleet::fleet_runner::FleetRunner;
     use crate::st_client::MockStClientTrait;
-    use crate::test_objects::TestObjects;
+    use crate::test_objects::{setup_test_tracing, TestObjects};
     use itertools::Itertools;
     use st_domain::blackboard_ops::MockBlackboardOps;
-    use st_domain::{FleetDecisionFacts, FleetPhaseName, FleetsOverview, ShipFrameSymbol, ShipSymbol, WaypointTraitSymbol, WaypointType};
-    use st_store::bmc::MockBmc;
+    use st_domain::{
+        FleetDecisionFacts, FleetPhaseName, FleetsOverview, FlightMode, Fuel, FuelConsumed, GetMarketResponse, NavAndFuelResponse, NavStatus,
+        NavigateShipResponse, ShipFrameSymbol, ShipSymbol, TravelAction, WaypointTraitSymbol, WaypointType,
+    };
+    use st_store::bmc::ship_bmc::{MockShipBmcTrait, ShipBmcTrait};
+    use st_store::bmc::InMemoryBmc;
+    use st_store::shipyard_bmc::{MockShipyardBmcTrait, ShipyardBmcTrait};
+    use st_store::trade_bmc::{MockTradeBmcTrait, TradeBmcTrait};
+    use st_store::{
+        AgentBmcTrait, ConstructionBmcTrait, FleetBmcTrait, MarketBmcTrait, MockAgentBmcTrait, MockConstructionBmcTrait, MockFleetBmcTrait, MockMarketBmcTrait,
+        MockSystemBmcTrait, SystemBmcTrait,
+    };
     use std::collections::HashMap;
     use std::sync::Arc;
     use test_log::test;
@@ -457,16 +503,25 @@ mod tests {
 
     #[test(tokio::test)]
     async fn create_fleet_admiral_from_startup_ship_config() {
+        //setup_test_tracing();
+
+        let command_ship_symbol = ShipSymbol("FLWI-1".to_string());
+        let probe_ship_symbol = ShipSymbol("FLWI-2".to_string());
         let mut command_ship = TestObjects::test_ship(600);
         command_ship.frame.symbol = ShipFrameSymbol::FRAME_FRIGATE;
-        command_ship.symbol = ShipSymbol("FLWI-1".to_string());
+        command_ship.symbol = command_ship_symbol.clone();
+        command_ship.nav.flight_mode = FlightMode::Burn;
 
         let mut probe = TestObjects::test_ship(0);
         probe.frame.symbol = ShipFrameSymbol::FRAME_PROBE;
         probe.fuel.capacity = 0;
-        probe.symbol = ShipSymbol("FLWI-2".to_string());
+        probe.symbol = probe_ship_symbol;
+        probe.nav.flight_mode = FlightMode::Burn;
 
-        let ship_map = HashMap::from([(command_ship.symbol.clone(), command_ship), (probe.symbol.clone(), probe)]);
+        let ship_map = HashMap::from([
+            (command_ship.symbol.clone(), command_ship.clone()),
+            (probe.symbol.clone(), probe.clone()),
+        ]);
 
         let overview = FleetsOverview {
             completed_fleet_tasks: vec![],
@@ -499,6 +554,8 @@ mod tests {
         );
 
         let waypoints = vec![market_1.clone(), jump_gate_1.clone(), shipyard_1.clone()];
+
+        let marketplaces_data = waypoints.iter().map(|wp| (wp.symbol.clone(), TestObjects::create_market_data(&wp.symbol))).collect::<HashMap<_, _>>();
 
         let facts = FleetDecisionFacts {
             marketplaces_of_interest: vec![market_1.symbol.clone(), shipyard_1.symbol.clone()],
@@ -539,17 +596,78 @@ mod tests {
             &facts,
             TestObjects::latest_market_data(&waypoints),
             TestObjects::ship_prices(&waypoints),
-            waypoints,
+            waypoints.clone(),
         )
         .unwrap();
 
-        let mut mock_client = MockStClientTrait::new();
-        let mut mock_bmc = MockBmc::new();
+        let mut mock_ship_bmc = MockShipBmcTrait::new();
+        let mut mock_fleet_bmc = MockFleetBmcTrait::new();
+        let mut mock_trade_bmc = MockTradeBmcTrait::new();
+        let mut mock_system_bmc = MockSystemBmcTrait::new();
+        let mut mock_agent_bmc = MockAgentBmcTrait::new();
+        let mut mock_construction_bmc = MockConstructionBmcTrait::new();
+        let mut mock_market_bmc = MockMarketBmcTrait::new();
+        let mut mock_shipyard_bmc = MockShipyardBmcTrait::new();
+
+        mock_ship_bmc.expect_upsert_ships().returning(|_, _, _| Ok(()));
+
+        let mut mock_bmc = InMemoryBmc {
+            ship_bmc: Arc::new(mock_ship_bmc) as Arc<dyn ShipBmcTrait>,
+            fleet_bmc: Arc::new(mock_fleet_bmc) as Arc<dyn FleetBmcTrait>,
+            trade_bmc: Arc::new(mock_trade_bmc) as Arc<dyn TradeBmcTrait>,
+            system_bmc: Arc::new(mock_system_bmc) as Arc<dyn SystemBmcTrait>,
+            agent_bmc: Arc::new(mock_agent_bmc) as Arc<dyn AgentBmcTrait>,
+            construction_bmc: Arc::new(mock_construction_bmc) as Arc<dyn ConstructionBmcTrait>,
+            market_bmc: Arc::new(mock_market_bmc) as Arc<dyn MarketBmcTrait>,
+            shipyard_bmc: Arc::new(mock_shipyard_bmc) as Arc<dyn ShipyardBmcTrait>,
+        };
+
         let mut mock_blackboard = MockBlackboardOps::new();
+        mock_blackboard.expect_compute_path().returning(|from, to, _, _, _| {
+            Ok(vec![TravelAction::Navigate {
+                from,
+                to,
+                distance: 1,
+                travel_time: 1,
+                fuel_consumption: 1,
+                mode: FlightMode::Burn,
+                total_time: 1,
+            }])
+        });
+
+        mock_blackboard.expect_get_waypoint().returning(move |wps| Ok(waypoints.iter().find(|wp| wps == &wp.symbol).cloned().unwrap()));
+        mock_blackboard.expect_insert_market().returning(|_| Ok(()));
+
+        let mut mock_client = MockStClientTrait::new();
+        mock_client.expect_navigate().returning(move |ss, wps| {
+            let origin_wps = if ss == command_ship_symbol.clone() {
+                &command_ship.nav.waypoint_symbol
+            } else {
+                &probe.nav.waypoint_symbol
+            };
+            Ok(NavigateShipResponse {
+                data: NavAndFuelResponse {
+                    nav: TestObjects::create_nav(FlightMode::Burn, NavStatus::InTransit, &origin_wps, wps).nav,
+                    fuel: Fuel {
+                        current: 600,
+                        capacity: 600,
+                        consumed: FuelConsumed {
+                            amount: 0,
+                            timestamp: Default::default(),
+                        },
+                    },
+                },
+            })
+        });
+
+        mock_client.expect_get_marketplace().returning(move |wps| {
+            let data = marketplaces_data.get(&wps).cloned().unwrap();
+            Ok(GetMarketResponse { data })
+        });
 
         FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut fleet_admiral, new_ship_tasks);
         let admiral_mutex = Arc::new(Mutex::new(fleet_admiral));
 
-        //FleetRunner::run_fleets(Arc::clone(&admiral_mutex), Arc::new(mock_client), Arc::new(mock_bmc), Arc::new(mock_blackboard)).await.unwrap();
+        FleetRunner::run_fleets(Arc::clone(&admiral_mutex), Arc::new(mock_client), Arc::new(mock_bmc), Arc::new(mock_blackboard)).await.unwrap();
     }
 }

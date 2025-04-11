@@ -1,10 +1,20 @@
 use chrono::Local;
 use itertools::Itertools;
+
 use st_domain::{
     Agent, AgentSymbol, Cargo, Construction, ConstructionMaterial, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav,
     NavOnlyResponse, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipPriceInfo,
     ShipRegistrationRole, ShipSymbol, SystemSymbol, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointTrait,
     WaypointTraitSymbol, WaypointType,
+};
+
+use tracing::{subscriber::set_global_default, Level};
+use tracing_subscriber::{
+    fmt::Layer,
+    fmt::{format::FmtSpan, time::Uptime},
+    layer::SubscriberExt,
+    prelude::*,
+    EnvFilter, Registry,
 };
 
 pub struct TestObjects;
@@ -301,4 +311,21 @@ mod tests {
 
         Ok((result?, received_action_state_messages, received_action_completed_messages))
     }
+}
+
+pub fn setup_test_tracing() {
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("trace"));
+
+    // Format with timestamps, all span events, and include parent spans
+    let fmt_layer = Layer::new()
+        .with_timer(Uptime::default())
+        .with_span_events(FmtSpan::FULL) // This will show new, enter, exit, close events
+        .with_thread_ids(true)
+        .with_target(true);
+
+    // Register the subscriber
+    let subscriber = Registry::default().with(env_filter).with(fmt_layer);
+
+    // Set as global default
+    set_global_default(subscriber).expect("Failed to set tracing subscriber");
 }

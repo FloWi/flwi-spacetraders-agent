@@ -630,7 +630,7 @@ impl Actionable for ShipAction {
 
         match result {
             Ok(_res) => {
-                action_completed_tx.send(ActionEvent::ShipActionCompleted(Ok((state.clone(), self.clone())))).await?;
+                action_completed_tx.send(ActionEvent::ShipActionCompleted(state.clone(), self.clone(), Ok(()))).await?;
             }
             Err(err) => {
                 action_completed_tx.send(anyhow::bail!("Action failed {}", err)).await?;
@@ -806,8 +806,8 @@ mod tests {
         assert_eq!(1, ship_states.len());
         assert_eq!(2, action_events.len());
 
-        matches!(action_events.get(0), Some(ActionEvent::ShipActionCompleted(Ok((_, _)))));
-        matches!(action_events.get(1), Some(ActionEvent::BehaviorCompleted(Ok(_))));
+        matches!(action_events.get(0), Some(ActionEvent::ShipActionCompleted(_, _, Ok(_))));
+        matches!(action_events.get(1), Some(ActionEvent::BehaviorCompleted(_, _, Ok(_))));
     }
 
     // Helper function to create a WaypointSymbol

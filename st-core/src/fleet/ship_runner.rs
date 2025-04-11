@@ -18,11 +18,11 @@ pub async fn ship_behavior_runner(
 
     match result {
         Ok(resp) => {
-            ship_action_completed_tx.send(ActionEvent::BehaviorCompleted(Ok(behavior))).await?;
+            ship_action_completed_tx.send(ActionEvent::BehaviorCompleted(ship_ops.clone(), behavior, Ok(()))).await?;
             Ok(resp)
         }
         Err(err) => {
-            ship_action_completed_tx.send(ActionEvent::BehaviorCompleted(Err(err.to_string()))).await?;
+            ship_action_completed_tx.send(ActionEvent::BehaviorCompleted(ship_ops.clone(), behavior, Err(err.to_string()))).await?;
             Err(err)
         }
     }

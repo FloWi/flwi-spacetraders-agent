@@ -54,6 +54,17 @@ pub enum ShipStatusReport {
     TransactionCompleted(Ship, TransactionActionEvent, TradeTicket),
     ShipFinishedBehaviorTree(Ship, ShipTask),
 }
+
+impl ShipStatusReport {
+    pub(crate) fn ship_symbol(&self) -> ShipSymbol {
+        match self {
+            ShipStatusReport::ShipActionCompleted(s, _) => s.symbol.clone(),
+            ShipStatusReport::TransactionCompleted(s, _, _) => s.symbol.clone(),
+            ShipStatusReport::ShipFinishedBehaviorTree(s, _) => s.symbol.clone(),
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct FleetAdmiral {
     pub completed_fleet_tasks: Vec<FleetTaskCompletion>,
