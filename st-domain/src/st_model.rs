@@ -264,7 +264,7 @@ pub struct ConstructionMaterial {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Construction {
-    pub symbol: String,
+    pub symbol: WaypointSymbol,
     pub materials: Vec<ConstructionMaterial>,
     pub is_complete: bool,
 }

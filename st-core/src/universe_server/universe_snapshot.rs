@@ -76,14 +76,7 @@ impl UniverseSnapshot {
             })
             .collect();
 
-        let construction_sites = self
-            .construction_sites
-            .into_iter()
-            .map(|construction| {
-                let symbol = WaypointSymbol(construction.symbol.clone());
-                (symbol, construction)
-            })
-            .collect();
+        let construction_sites = self.construction_sites.into_iter().map(|construction| (construction.symbol.clone(), construction)).collect();
 
         let agent = self.agent;
 

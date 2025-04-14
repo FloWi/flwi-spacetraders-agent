@@ -30,7 +30,7 @@ impl TestObjects {
 
     pub(crate) fn startup_construction(waypoint_symbol: &WaypointSymbol) -> Construction {
         Construction {
-            symbol: waypoint_symbol.0.to_string(),
+            symbol: WaypointSymbol(waypoint_symbol.0.to_string()),
             materials: vec![
                 ConstructionMaterial {
                     trade_symbol: TradeGoodSymbol::ADVANCED_CIRCUITRY.to_string(),

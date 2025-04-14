@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use itertools::Itertools;
 use mockall::automock;
 use sqlx::types::Json;
-use st_domain::Agent;
+use st_domain::{Agent, AgentResponse};
 use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::sync::RwLock;

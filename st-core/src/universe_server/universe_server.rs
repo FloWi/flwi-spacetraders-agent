@@ -2,7 +2,7 @@ use crate::pagination::{PaginatedResponse, PaginationInput};
 use crate::st_client::StClientTrait;
 use crate::universe_server::universe_snapshot::load_universe;
 use crate::{calculate_fuel_consumption, calculate_time};
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{TimeDelta, Utc};
 use itertools::Itertools;
@@ -97,7 +97,12 @@ impl StClientTrait for InMemoryUniverseClient {
     }
 
     async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<GetConstructionResponse> {
-        todo!()
+        match self.universe.read().await.construction_sites.get(&waypoint_symbol) {
+            None => {
+                anyhow::bail!("Marketplace not found")
+            }
+            Some(cs) => Ok(GetConstructionResponse { data: cs.clone() }),
+        }
     }
 
     async fn get_supply_chain(&self) -> anyhow::Result<GetSupplyChainResponse> {
@@ -244,7 +249,27 @@ impl StClientTrait for InMemoryUniverseClient {
         system_symbol: &SystemSymbol,
         pagination_input: PaginationInput,
     ) -> anyhow::Result<PaginatedResponse<Waypoint>> {
-        todo!()
+        let guard = self.universe.read().await;
+        //let mut _universe = self.universe.write().await;
+
+        let start_idx = pagination_input.limit * (pagination_input.page - 1);
+        let num_skip = u32::try_from(start_idx as i32 - 1).unwrap_or(0);
+
+        let system_waypoints = guard.systems.get(system_symbol).map(|s| s.waypoints.clone()).unwrap_or_default();
+        let waypoints =
+            system_waypoints.into_iter().filter_map(|s_wp| guard.waypoints.get(&s_wp.symbol).cloned()).sorted_by_key(|wp| wp.symbol.clone()).collect_vec();
+
+        let all_waypoints = waypoints.iter().skip(num_skip as usize).take(pagination_input.limit as usize);
+
+        let resp = PaginatedResponse {
+            data: all_waypoints.cloned().collect_vec(),
+            meta: Meta {
+                total: waypoints.len() as u32,
+                page: pagination_input.page,
+                limit: pagination_input.limit,
+            },
+        };
+        Ok(resp)
     }
 
     async fn list_systems_page(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<SystemsPageData>> {
@@ -256,7 +281,25 @@ impl StClientTrait for InMemoryUniverseClient {
     }
 
     async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetMarketResponse> {
-        todo!()
+        let guard = self.universe.read().await;
+
+        match { guard.marketplaces.get(&waypoint_symbol) } {
+            None => {
+                anyhow::bail!("Marketplace not found")
+            }
+            Some(mp) => {
+                let is_ship_present = guard.ships.iter().any(|(_, s)| s.nav.waypoint_symbol == waypoint_symbol);
+                if is_ship_present {
+                    Ok(GetMarketResponse { data: mp.clone() })
+                } else {
+                    let mut reduced_market_infos = mp.clone();
+                    reduced_market_infos.transactions = None;
+                    reduced_market_infos.trade_goods = None;
+
+                    Ok(GetMarketResponse { data: reduced_market_infos })
+                }
+            }
+        }
     }
 
     async fn get_jump_gate(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetJumpGateResponse> {
@@ -264,7 +307,12 @@ impl StClientTrait for InMemoryUniverseClient {
     }
 
     async fn get_shipyard(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetShipyardResponse> {
-        todo!()
+        match self.universe.read().await.shipyards.get(&waypoint_symbol) {
+            None => {
+                anyhow::bail!("Marketplace not found")
+            }
+            Some(sy) => Ok(GetShipyardResponse { data: sy.clone() }),
+        }
     }
 
     async fn create_chart(&self, ship_symbol: ShipSymbol) -> anyhow::Result<CreateChartResponse> {

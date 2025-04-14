@@ -741,7 +741,7 @@ on conflict (ship_symbol) do UPDATE set entry = excluded.entry, updated_at = exc
 
 pub async fn upsert_construction_site(pool: &Pool<Postgres>, construction: GetConstructionResponse, now: DateTime<Utc>) -> Result<()> {
     let db_entry: DbConstructionSiteEntry = DbConstructionSiteEntry {
-        waypoint_symbol: construction.data.symbol.clone(),
+        waypoint_symbol: construction.data.symbol.0.clone(),
         entry: Json(construction.clone()),
         created_at: now,
         updated_at: now,

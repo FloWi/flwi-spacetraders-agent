@@ -1,12 +1,16 @@
 use crate::ctx::Ctx;
-use crate::{DbMarketEntry, DbModelManager};
+use crate::{db, DbMarketEntry, DbModelManager};
 use anyhow::*;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use mockall::automock;
 use sqlx::types::Json;
-use st_domain::{MarketData, SystemSymbol};
+use st_domain::{MarketData, SystemSymbol, WaypointSymbol};
+use std::collections::HashMap;
 use std::fmt::Debug;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[derive(Debug)]
 pub struct DbMarketBmc {
@@ -17,6 +21,7 @@ pub struct DbMarketBmc {
 #[async_trait]
 pub trait MarketBmcTrait: Send + Sync + Debug {
     async fn get_latest_market_data_for_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketData>>;
+    async fn save_market_data(&self, ctx: &Ctx, market_entries: Vec<MarketData>, now: DateTime<Utc>) -> Result<()>;
 }
 
 #[async_trait]
@@ -44,5 +49,45 @@ ORDER BY waypoint_symbol, created_at DESC
         let market_data = market_entriy.into_iter().map(|me| me.entry.0).collect_vec();
 
         Ok(market_data)
+    }
+
+    async fn save_market_data(&self, ctx: &Ctx, market_entries: Vec<MarketData>, now: DateTime<Utc>) -> Result<()> {
+        db::insert_market_data(self.mm.pool(), market_entries, now).await
+    }
+}
+
+#[derive(Debug)]
+pub struct InMemoryMarket {
+    latest_market_data: HashMap<SystemSymbol, HashMap<WaypointSymbol, MarketData>>,
+}
+
+#[derive(Debug)]
+pub struct InMemoryMarketBmc {
+    in_memory_market: Arc<RwLock<InMemoryMarket>>,
+}
+
+#[async_trait]
+impl MarketBmcTrait for InMemoryMarketBmc {
+    async fn get_latest_market_data_for_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketData>> {
+        Ok(self.in_memory_market.read().await.latest_market_data.get(system_symbol).cloned().unwrap_or_default().values().cloned().collect_vec())
+    }
+
+    async fn save_market_data(&self, ctx: &Ctx, market_entries: Vec<MarketData>, now: DateTime<Utc>) -> Result<()> {
+        let mut guard = self.in_memory_market.write().await;
+
+        for me in market_entries {
+            guard.latest_market_data.entry(me.symbol.system_symbol()).or_default().insert(me.symbol.clone(), me.clone());
+        }
+        Ok(())
+    }
+}
+
+impl InMemoryMarketBmc {
+    pub fn new() -> Self {
+        Self {
+            in_memory_market: Arc::new(RwLock::new(InMemoryMarket {
+                latest_market_data: Default::default(),
+            })),
+        }
     }
 }

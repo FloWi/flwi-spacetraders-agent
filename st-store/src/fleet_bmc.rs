@@ -10,6 +10,7 @@ use st_domain::{Fleet, FleetConfig, FleetId, FleetTask, FleetTaskCompletion, Fle
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 struct DbFleetTaskCompletion {
     pub task: Json<FleetTask>,
@@ -42,7 +43,6 @@ pub trait FleetBmcTrait: Send + Sync + Debug {
     async fn upsert_fleets(&self, _ctx: &Ctx, fleets: &HashMap<FleetId, Fleet>) -> Result<()>;
     async fn upsert_fleet_tasks(&self, _ctx: &Ctx, fleet_tasks: &HashMap<FleetId, Vec<FleetTask>>) -> Result<()>;
     async fn upsert_ship_fleet_assignment(&self, _ctx: &Ctx, ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>) -> Result<()>;
-    async fn upsert_ship_task_assignment(&self, _ctx: &Ctx, ship_task_assignment: &HashMap<ShipSymbol, ShipTask>) -> Result<()>;
 }
 
 #[derive(Debug)]
@@ -228,23 +228,23 @@ on conflict (ship_symbol) do update SET fleet_id = excluded.fleet_id
         Ok(())
     }
 
-    async fn upsert_ship_task_assignment(&self, _ctx: &Ctx, ship_task_assignment: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
-        for (ship_symbol, ship_task) in ship_task_assignment {
-            sqlx::query!(
-                r#"
-insert into ship_task_assignments(ship_symbol, task)
-values ($1, $2)
-on conflict (ship_symbol) do update SET task = excluded.task
-"#,
-                ship_symbol.0,
-                Json(ship_task.clone()) as _,
-            )
-            .execute(self.mm.pool())
-            .await?;
-        }
-
-        Ok(())
-    }
+    //     async fn upsert_ship_task_assignment(&self, _ctx: &Ctx, ship_task_assignment: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
+    //         for (ship_symbol, ship_task) in ship_task_assignment {
+    //             sqlx::query!(
+    //                 r#"
+    // insert into ship_task_assignments(ship_symbol, task)
+    // values ($1, $2)
+    // on conflict (ship_symbol) do update SET task = excluded.task
+    // "#,
+    //                 ship_symbol.0,
+    //                 Json(ship_task.clone()) as _,
+    //             )
+    //             .execute(self.mm.pool())
+    //             .await?;
+    //         }
+    //
+    //         Ok(())
+    //     }
 }
 
 pub async fn store_fleets_data(
@@ -261,7 +261,8 @@ pub async fn store_fleets_data(
     fleet_bmc.upsert_fleets(_ctx, &fleets).await?;
     fleet_bmc.upsert_fleet_tasks(_ctx, &fleet_tasks).await?;
     fleet_bmc.upsert_ship_fleet_assignment(_ctx, &ship_fleet_assignment).await?;
-    fleet_bmc.upsert_ship_task_assignment(_ctx, &ship_task_assignment).await?;
+    bmc.ship_bmc().save_ship_tasks(_ctx, ship_task_assignment).await?;
+    // fleet_bmc.upsert_ship_task_assignment(_ctx, &ship_task_assignment).await?;
 
     let trade_bmc = bmc.trade_bmc();
 
@@ -300,4 +301,77 @@ pub async fn load_fleet_overview(bmc: Arc<dyn Bmc>, ctx: &Ctx) -> Result<FleetsO
         open_trade_tickets,
         stationary_probe_locations,
     })
+}
+
+#[derive(Debug)]
+pub struct InMemoryFleet {
+    fleet_tasks: HashMap<FleetId, Vec<FleetTask>>,
+    fleet_ship_assignments: HashMap<ShipSymbol, FleetId>,
+    fleets: HashMap<FleetId, Fleet>,
+    completed_fleet_tasks: Vec<FleetTaskCompletion>,
+}
+#[derive(Debug)]
+pub struct InMemoryFleetBmc {
+    in_memory_fleet: Arc<RwLock<InMemoryFleet>>,
+}
+
+impl InMemoryFleetBmc {
+    pub fn new() -> Self {
+        Self {
+            in_memory_fleet: Arc::new(RwLock::new(InMemoryFleet {
+                fleet_tasks: Default::default(),
+                fleet_ship_assignments: Default::default(),
+                fleets: Default::default(),
+                completed_fleet_tasks: vec![],
+            })),
+        }
+    }
+}
+
+#[async_trait]
+impl FleetBmcTrait for InMemoryFleetBmc {
+    async fn load_fleet_tasks(&self, ctx: &Ctx) -> Result<HashMap<FleetId, Vec<FleetTask>>> {
+        Ok(self.in_memory_fleet.read().await.fleet_tasks.clone())
+    }
+
+    async fn load_ship_fleet_assignment(&self, ctx: &Ctx) -> Result<HashMap<ShipSymbol, FleetId>> {
+        Ok(self.in_memory_fleet.read().await.fleet_ship_assignments.clone())
+    }
+
+    async fn load_fleets(&self, ctx: &Ctx) -> Result<Vec<Fleet>> {
+        Ok(self.in_memory_fleet.read().await.fleets.values().cloned().collect_vec())
+    }
+
+    async fn load_completed_fleet_tasks(&self, _ctx: &Ctx) -> Result<Vec<FleetTaskCompletion>> {
+        Ok(self.in_memory_fleet.read().await.completed_fleet_tasks.clone())
+    }
+
+    async fn save_completed_fleet_tasks(&self, _ctx: &Ctx, tasks: Vec<FleetTaskCompletion>) -> Result<()> {
+        todo!()
+    }
+
+    async fn upsert_fleets(&self, _ctx: &Ctx, fleets: &HashMap<FleetId, Fleet>) -> Result<()> {
+        let mut guard = self.in_memory_fleet.write().await;
+        for (fleet_id, fleet) in fleets.iter() {
+            guard.fleets.insert(fleet_id.clone(), fleet.clone());
+        }
+
+        Ok(())
+    }
+
+    async fn upsert_fleet_tasks(&self, _ctx: &Ctx, fleet_tasks: &HashMap<FleetId, Vec<FleetTask>>) -> Result<()> {
+        let mut guard = self.in_memory_fleet.write().await;
+        for (fleet_id, fleet_tasks) in fleet_tasks.iter() {
+            guard.fleet_tasks.insert(fleet_id.clone(), fleet_tasks.clone());
+        }
+        Ok(())
+    }
+
+    async fn upsert_ship_fleet_assignment(&self, _ctx: &Ctx, ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>) -> Result<()> {
+        let mut guard = self.in_memory_fleet.write().await;
+        for (ship_symbol, fleet_id) in ship_fleet_assignment.iter() {
+            guard.fleet_ship_assignments.insert(ship_symbol.clone(), fleet_id.clone());
+        }
+        Ok(())
+    }
 }

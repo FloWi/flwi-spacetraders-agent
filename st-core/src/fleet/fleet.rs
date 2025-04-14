@@ -687,7 +687,7 @@ pub fn compute_fleet_configs(
                 }
                 FleetTask::ConstructJumpGate { system_symbol } => Some(FleetConfig::ConstructJumpGateCfg(ConstructJumpGateFleetConfig {
                     system_symbol: system_symbol.clone(),
-                    jump_gate_waypoint: WaypointSymbol(fleet_decision_facts.construction_site.clone().expect("construction_site").symbol),
+                    jump_gate_waypoint: fleet_decision_facts.construction_site.clone().expect("construction_site").symbol,
                     materialized_supply_chain: None,
                     desired_fleet_config,
                 })),

@@ -210,7 +210,9 @@ impl ShipBmcTrait for InMemoryShipsBmc {
     }
 
     async fn save_ship_tasks(&self, ctx: &Ctx, ship_task_assignments: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
-        todo!()
+        self.in_memory_ships.write().await.ship_tasks = ship_task_assignments.clone();
+
+        Ok(())
     }
 
     async fn get_stationary_probes(&self, ctx: &Ctx) -> Result<Vec<StationaryProbeLocation>> {
@@ -222,6 +224,11 @@ impl ShipBmcTrait for InMemoryShipsBmc {
     }
 
     async fn upsert_ships(&self, ctx: &Ctx, ships: &[Ship], now: DateTime<Utc>) -> Result<()> {
-        todo!()
+        let mut guard = self.in_memory_ships.write().await;
+        for ship in ships {
+            guard.ships.insert(ship.symbol.clone(), ship.clone());
+        }
+
+        Ok(())
     }
 }
