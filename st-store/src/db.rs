@@ -12,8 +12,8 @@ use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
 use st_domain::{
-    distance_to, Data, GetConstructionResponse, JumpGate, MarketData, RegistrationResponse, Ship, ShipTask, Shipyard, StStatusResponse, SupplyChain,
-    SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    distance_to, Data, GetConstructionResponse, JumpGate, MarketData, MarketEntry, RegistrationResponse, Ship, ShipTask, Shipyard, ShipyardData,
+    StStatusResponse, SupplyChain, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
 #[derive(Clone)]
@@ -216,12 +216,6 @@ pub struct DbShipyardData {
     pub waypoint_symbol: String,
     pub entry: Json<Shipyard>,
     pub created_at: DateTime<Utc>,
-}
-
-impl DbShipyardData {
-    pub fn has_detailed_price_information(&self) -> bool {
-        !self.entry.0.ships.is_none()
-    }
 }
 
 #[derive(Serialize, Clone, Debug, Deserialize)]
@@ -467,7 +461,7 @@ pub async fn select_waypoints_of_system_with_trait(
     Ok(waypoint_symbols.into_iter().map(WaypointSymbol).collect())
 }
 
-pub async fn select_latest_marketplace_entry_of_system(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Vec<DbMarketEntry>> {
+pub async fn select_latest_marketplace_entry_of_system(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>> {
     let market_data_entries: Vec<DbMarketEntry> = sqlx::query_as!(
         DbMarketEntry,
         r#"
@@ -491,16 +485,23 @@ where system_symbol = $1
     .fetch_all(pool)
     .await?;
 
-    Ok(market_data_entries)
+    Ok(market_data_entries
+        .into_iter()
+        .map(|db_entry| MarketEntry {
+            waypoint_symbol: WaypointSymbol(db_entry.waypoint_symbol),
+            market_data: db_entry.entry.0,
+            created_at: db_entry.created_at,
+        })
+        .collect_vec())
 }
 
-pub async fn select_latest_shipyard_entry_of_system(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Vec<DbShipyardData>> {
+pub async fn select_latest_shipyard_entry_of_system(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Vec<ShipyardData>> {
     let db_entries: Vec<DbShipyardData> = sqlx::query_as!(
         DbShipyardData,
         r#"
-with latest_shipyards as (select DISTINCT ON (system_symbol, waypoint_symbol) system_symbol, waypoint_symbol, entry, created_at
+with latest_shipyards as (select DISTINCT ON (waypoint_symbol) system_symbol, waypoint_symbol, entry, created_at
                         from shipyards s
-                        order by system_symbol, waypoint_symbol, created_at desc, entry)
+                        order by waypoint_symbol, created_at desc, entry)
 select system_symbol
      , waypoint_symbol
      , entry as "entry: Json<Shipyard>"
@@ -513,7 +514,14 @@ where system_symbol = $1
     .fetch_all(pool)
     .await?;
 
-    Ok(db_entries)
+    Ok(db_entries
+        .into_iter()
+        .map(|db_entry| ShipyardData {
+            waypoint_symbol: WaypointSymbol(db_entry.waypoint_symbol),
+            shipyard: db_entry.entry.0,
+            created_at: db_entry.created_at,
+        })
+        .collect_vec())
 }
 
 pub async fn select_systems_with_waypoint_details_to_be_loaded(pool: &Pool<Postgres>) -> Result<Vec<DbSystemCoordinateData>> {

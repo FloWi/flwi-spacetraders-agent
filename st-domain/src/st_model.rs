@@ -50,6 +50,12 @@ pub struct Shipyard {
     pub modifications_fee: i32,
 }
 
+impl Shipyard {
+    pub fn has_detailed_price_information(&self) -> bool {
+        !self.ships.is_none()
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct ShipTransaction {

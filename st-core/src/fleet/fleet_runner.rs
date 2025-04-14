@@ -485,16 +485,16 @@ mod tests {
     use itertools::Itertools;
     use st_domain::blackboard_ops::MockBlackboardOps;
     use st_domain::{
-        FleetDecisionFacts, FleetPhaseName, FleetsOverview, FlightMode, Fuel, FuelConsumed, GetMarketResponse, NavAndFuelResponse, NavStatus,
-        NavigateShipResponse, ShipFrameSymbol, ShipSymbol, TravelAction, WaypointTraitSymbol, WaypointType,
+        FleetDecisionFacts, FleetPhaseName, FleetsOverview, FlightMode, Fuel, FuelConsumed, GetMarketResponse, MarketData, MarketEntry, NavAndFuelResponse,
+        NavStatus, NavigateShipResponse, ShipFrameSymbol, ShipSymbol, TravelAction, WaypointSymbol, WaypointTraitSymbol, WaypointType,
     };
     use st_store::bmc::ship_bmc::{MockShipBmcTrait, ShipBmcTrait};
     use st_store::bmc::InMemoryBmc;
     use st_store::shipyard_bmc::{MockShipyardBmcTrait, ShipyardBmcTrait};
     use st_store::trade_bmc::{MockTradeBmcTrait, TradeBmcTrait};
     use st_store::{
-        AgentBmcTrait, ConstructionBmcTrait, FleetBmcTrait, MarketBmcTrait, MockAgentBmcTrait, MockConstructionBmcTrait, MockFleetBmcTrait, MockMarketBmcTrait,
-        MockSystemBmcTrait, SystemBmcTrait,
+        AgentBmcTrait, ConstructionBmcTrait, DbMarketEntry, FleetBmcTrait, MarketBmcTrait, MockAgentBmcTrait, MockConstructionBmcTrait, MockFleetBmcTrait,
+        MockMarketBmcTrait, MockSystemBmcTrait, SystemBmcTrait,
     };
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -555,7 +555,8 @@ mod tests {
 
         let waypoints = vec![market_1.clone(), jump_gate_1.clone(), shipyard_1.clone()];
 
-        let marketplaces_data = waypoints.iter().map(|wp| (wp.symbol.clone(), TestObjects::create_market_data(&wp.symbol))).collect::<HashMap<_, _>>();
+        let marketplaces_data: HashMap<WaypointSymbol, MarketData> =
+            waypoints.iter().map(|wp| (wp.symbol.clone(), TestObjects::create_market_data(&wp.symbol))).collect::<HashMap<_, _>>();
 
         let facts = FleetDecisionFacts {
             marketplaces_of_interest: vec![market_1.symbol.clone(), shipyard_1.symbol.clone()],
@@ -581,7 +582,7 @@ mod tests {
         let mut fleet_admiral = FleetAdmiral {
             completed_fleet_tasks: overview.completed_fleet_tasks.clone(),
             fleets: fleets_map,
-            all_ships: ship_map,
+            all_ships: ship_map.clone(),
             ship_tasks: Default::default(),
             fleet_tasks: fleet_tasks.into_iter().map(|(fleet_id, fleet_task)| (fleet_id, vec![fleet_task])).collect(),
             ship_fleet_assignment,
@@ -610,6 +611,12 @@ mod tests {
         let mut mock_shipyard_bmc = MockShipyardBmcTrait::new();
 
         mock_ship_bmc.expect_upsert_ships().returning(|_, _, _| Ok(()));
+        mock_ship_bmc.expect_get_ships().returning(move |_, _| Ok(ship_map.values().cloned().collect_vec()));
+
+        mock_agent_bmc.expect_load_agent().returning(move |_| Ok(TestObjects::agent()));
+
+        mock_system_bmc.expect_select_latest_marketplace_entry_of_system().returning(|_, _| Ok(vec![]));
+        mock_system_bmc.expect_select_latest_shipyard_entry_of_system().returning(|_, _| Ok(vec![]));
 
         let mut mock_bmc = InMemoryBmc {
             ship_bmc: Arc::new(mock_ship_bmc) as Arc<dyn ShipBmcTrait>,

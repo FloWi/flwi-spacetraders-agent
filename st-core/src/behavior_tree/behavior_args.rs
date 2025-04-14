@@ -58,7 +58,7 @@ impl BlackboardOps for DbBlackboard {
         let waypoints_of_system: Vec<Waypoint> = select_waypoints_of_system(&self.pool(), &from.system_symbol()).await?;
 
         let market_entries_of_system: Vec<MarketData> =
-            select_latest_marketplace_entry_of_system(&self.pool(), &from.system_symbol()).await?.into_iter().map(|db_wp| db_wp.entry.0.clone()).collect();
+            select_latest_marketplace_entry_of_system(&self.pool(), &from.system_symbol()).await?.into_iter().map(|me| me.market_data.clone()).collect();
 
         match pathfinder::compute_path(
             from.clone(),

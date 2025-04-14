@@ -924,34 +924,17 @@ fn assign_matching_ships(desired_fleet_config: &[ShipType], available_ships: &mu
     ships
 }
 
-fn compute_ship_shopping_list(
-    all_ships: HashMap<ShipSymbol, Ship>,
-    ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
-    fleets: &[Fleet],
-    fleet_task_map: HashMap<FleetId, Vec<FleetTask>>,
-) {
-    /*
-    purchase list
-
-    - buy probe for at every shipyard
-    - get one additional trader for construction fleet
-    - place rest of probes
-    -
-     */
-}
-
 pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &SystemSymbol) -> Result<FleetDecisionFacts> {
     let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await?;
-    let waypoints_of_system = bmc.system_bmc().get_waypoints_of_system(&Ctx::Anonymous, &system_symbol).await?;
     let agent_info = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await.expect("agent");
 
     let marketplaces_of_interest = bmc.system_bmc().select_latest_marketplace_entry_of_system(&Ctx::Anonymous, &system_symbol).await?;
     let shipyards_of_interest = bmc.system_bmc().select_latest_shipyard_entry_of_system(&Ctx::Anonymous, &system_symbol).await?;
 
-    let marketplace_symbols_of_interest = marketplaces_of_interest.iter().map(|db_entry| WaypointSymbol(db_entry.waypoint_symbol.clone())).collect_vec();
+    let marketplace_symbols_of_interest = marketplaces_of_interest.iter().map(|me| me.waypoint_symbol.clone()).collect_vec();
     let marketplaces_to_explore = find_marketplaces_for_exploration(marketplaces_of_interest.clone());
 
-    let shipyard_symbols_of_interest = shipyards_of_interest.iter().map(|db_entry| WaypointSymbol(db_entry.waypoint_symbol.clone())).collect_vec();
+    let shipyard_symbols_of_interest = shipyards_of_interest.iter().map(|db_entry| db_entry.waypoint_symbol.clone()).collect_vec();
     let shipyards_to_explore = find_shipyards_for_exploration(shipyards_of_interest.clone());
 
     let maybe_construction_site: Option<GetConstructionResponse> =

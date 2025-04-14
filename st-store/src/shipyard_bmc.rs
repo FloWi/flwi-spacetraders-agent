@@ -25,7 +25,7 @@ impl ShipyardBmcTrait for DbShipyardBmc {
         let price_infos = result
             .iter()
             .filter_map(|entry| {
-                entry.has_detailed_price_information().then(|| (WaypointSymbol(entry.waypoint_symbol.clone()), entry.entry.ships.clone().unwrap_or_default()))
+                entry.shipyard.has_detailed_price_information().then(|| (entry.waypoint_symbol.clone(), entry.shipyard.ships.clone().unwrap_or_default()))
             })
             .collect_vec();
         Ok(ShipPriceInfo { price_infos })

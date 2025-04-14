@@ -1,6 +1,6 @@
 use crate::{
-    Agent, Construction, EvaluatedTradingOpportunity, FlightMode, MaterializedSupplyChain, PurchaseShipResponse, PurchaseTradeGoodResponse,
-    SellTradeGoodResponse, Ship, ShipSymbol, ShipType, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol, TradeGoodSymbol, WaypointSymbol,
+    Agent, Construction, EvaluatedTradingOpportunity, FlightMode, MarketData, MaterializedSupplyChain, PurchaseShipResponse, PurchaseTradeGoodResponse,
+    SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol, TradeGoodSymbol, WaypointSymbol,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -504,4 +504,18 @@ impl TravelAction {
             TravelAction::Refuel { at, total_time } => (at, total_time),
         }
     }
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct MarketEntry {
+    pub waypoint_symbol: WaypointSymbol,
+    pub market_data: MarketData,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct ShipyardData {
+    pub waypoint_symbol: WaypointSymbol,
+    pub shipyard: Shipyard,
+    pub created_at: DateTime<Utc>,
 }
