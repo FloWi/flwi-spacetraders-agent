@@ -7552,5 +7552,13 @@
       ],
       "isComplete": false
     }
-  ]
+  ],
+  "agent": {
+    "symbol": "FLWI_TEST",
+    "credits": 175000,
+    "accountId": "cm7a88c50000nwm0j42vn1k0k",
+    "shipCount": 2,
+    "headquarters": "X1-AD75-A1",
+    "startingFaction": "LORDS"
+  }
 }

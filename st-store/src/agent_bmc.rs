@@ -7,6 +7,8 @@ use mockall::automock;
 use sqlx::types::Json;
 use st_domain::Agent;
 use std::fmt::Debug;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub struct DbAgentEntry {
     entry: Json<Agent>,
@@ -63,5 +65,38 @@ on conflict (agent_symbol) do update set entry = excluded.entry
         .await?;
 
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct InMemoryAgentBmc {
+    in_memory_agent: Arc<RwLock<Agent>>,
+}
+
+#[async_trait]
+impl AgentBmcTrait for InMemoryAgentBmc {
+    async fn get_initial_agent(&self, ctx: &Ctx) -> Result<Agent> {
+        Ok(self.in_memory_agent.read().await.clone())
+    }
+
+    async fn load_agent(&self, ctx: &Ctx) -> Result<Agent> {
+        Ok(self.in_memory_agent.read().await.clone())
+    }
+
+    async fn store_agent(&self, ctx: &Ctx, agent: &Agent) -> Result<()> {
+        println!("Storing agent");
+        let mut a = self.in_memory_agent.write().await;
+        *a = agent.clone();
+
+        println!("Stored agent");
+        Ok(())
+    }
+}
+
+impl InMemoryAgentBmc {
+    pub fn new(agent: Agent) -> Self {
+        Self {
+            in_memory_agent: Arc::new(RwLock::new(agent)),
+        }
     }
 }

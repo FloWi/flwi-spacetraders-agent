@@ -5,10 +5,11 @@ use crate::{calculate_fuel_consumption, calculate_time};
 use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
 use chrono::{TimeDelta, Utc};
+use itertools::Itertools;
 use st_domain::{
-    AgentResponse, AgentSymbol, Construction, CreateChartResponse, Data, DockShipResponse, FlightMode, FuelConsumed, GetConstructionResponse,
+    Agent, AgentResponse, AgentSymbol, Construction, CreateChartResponse, Data, DockShipResponse, FlightMode, FuelConsumed, GetConstructionResponse,
     GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, LabelledCoordinate, ListAgentsResponse, MarketData,
-    NavAndFuelResponse, NavRouteWaypoint, NavStatus, NavigateShipResponse, OrbitShipResponse, PurchaseShipResponse, PurchaseTradeGoodResponse,
+    Meta, NavAndFuelResponse, NavRouteWaypoint, NavStatus, NavigateShipResponse, OrbitShipResponse, PurchaseShipResponse, PurchaseTradeGoodResponse,
     RefuelShipResponse, RegistrationRequest, RegistrationResponse, Route, SellTradeGoodResponse, SetFlightModeResponse, Ship, ShipSymbol, ShipType, Shipyard,
     StStatusResponse, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, Waypoint, WaypointSymbol,
 };
@@ -26,6 +27,7 @@ pub struct InMemoryUniverse {
     pub(crate) marketplaces: HashMap<WaypointSymbol, MarketData>,
     pub(crate) shipyards: HashMap<WaypointSymbol, Shipyard>,
     pub(crate) construction_sites: HashMap<WaypointSymbol, Construction>,
+    pub(crate) agent: Agent,
 }
 
 impl InMemoryUniverse {
@@ -89,7 +91,9 @@ impl StClientTrait for InMemoryUniverseClient {
     }
 
     async fn get_agent(&self) -> anyhow::Result<AgentResponse> {
-        todo!()
+        Ok(AgentResponse {
+            data: self.universe.read().await.agent.clone(),
+        })
     }
 
     async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<GetConstructionResponse> {
@@ -213,7 +217,22 @@ impl StClientTrait for InMemoryUniverseClient {
     }
 
     async fn list_ships(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<Ship>> {
-        todo!()
+        let read_universe = self.universe.read().await;
+        //let mut _universe = self.universe.write().await;
+
+        let start_idx = pagination_input.limit * (pagination_input.page - 1);
+        let num_skip = u32::try_from(start_idx as i32 - 1).unwrap_or(0);
+        let all_ships = read_universe.ships.values().sorted_by_key(|s| s.symbol.0.clone()).skip(num_skip as usize).take(pagination_input.limit as usize);
+
+        let resp = PaginatedResponse {
+            data: all_ships.cloned().collect_vec(),
+            meta: Meta {
+                total: read_universe.ships.len() as u32,
+                page: pagination_input.page,
+                limit: pagination_input.limit,
+            },
+        };
+        Ok(resp)
     }
 
     async fn get_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<Data<Ship>> {

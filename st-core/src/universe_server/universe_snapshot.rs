@@ -1,6 +1,6 @@
 use crate::universe_server::universe_server::InMemoryUniverse;
 use serde::{Deserialize, Serialize};
-use st_domain::{Construction, MarketData, MarketEntry, Ship, Shipyard, ShipyardData, SystemsPageData, Waypoint, WaypointSymbol};
+use st_domain::{Agent, Construction, MarketData, MarketEntry, Ship, Shipyard, ShipyardData, SystemsPageData, Waypoint, WaypointSymbol};
 
 use std::fs::File;
 use std::io::BufReader;
@@ -14,6 +14,7 @@ pub struct UniverseSnapshot {
     marketplaces: Vec<MarketData>,
     shipyards: Vec<Shipyard>,
     construction_sites: Vec<Construction>,
+    agent: Agent,
 }
 
 impl UniverseSnapshot {
@@ -84,6 +85,8 @@ impl UniverseSnapshot {
             })
             .collect();
 
+        let agent = self.agent;
+
         InMemoryUniverse {
             systems,
             waypoints,
@@ -91,6 +94,7 @@ impl UniverseSnapshot {
             marketplaces,
             shipyards,
             construction_sites,
+            agent,
         }
     }
 }
@@ -139,7 +143,8 @@ SELECT jsonb_build_object(
                'ships', (SELECT COALESCE(jsonb_agg(entry), '[]'::jsonb)
                          FROM ships),
                'construction_sites', (SELECT COALESCE(jsonb_agg(entry -> 'data'), '[]'::jsonb)
-                                      FROM hq_construction_site)
+                                      FROM hq_construction_site),
+
        ) AS aggregated_data;
 
 

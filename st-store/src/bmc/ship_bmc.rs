@@ -1,13 +1,15 @@
 use crate::{db, Ctx, DbModelManager, DbShipEntry, DbShipTaskEntry};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use mockall::automock;
 use sqlx::types::Json;
-use st_domain::{ExplorationTask, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, WaypointSymbol};
+use st_domain::{Data, ExplorationTask, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, WaypointSymbol};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[automock]
 #[async_trait]
@@ -158,4 +160,68 @@ pub struct DbStationaryProbeLocation {
     pub waypoint_symbol: String,
     pub probe_ship_symbol: String,
     pub exploration_tasks: Json<Vec<ExplorationTask>>,
+}
+
+#[derive(Debug)]
+pub struct InMemoryShips {
+    ships: HashMap<ShipSymbol, Ship>,
+    ship_tasks: HashMap<ShipSymbol, ShipTask>,
+    stationary_probe_locations: HashMap<WaypointSymbol, StationaryProbeLocation>,
+}
+
+impl InMemoryShips {
+    pub fn new() -> Self {
+        Self {
+            ships: Default::default(),
+            ship_tasks: Default::default(),
+            stationary_probe_locations: Default::default(),
+        }
+    }
+}
+
+/// Client implementation using InMemoryUniverse with interior mutability
+#[derive(Debug)]
+pub struct InMemoryShipsBmc {
+    in_memory_ships: Arc<RwLock<InMemoryShips>>,
+}
+
+impl InMemoryShipsBmc {
+    pub fn new(in_memory_ships: InMemoryShips) -> Self {
+        Self {
+            in_memory_ships: Arc::new(RwLock::new(in_memory_ships)),
+        }
+    }
+}
+
+#[async_trait]
+impl ShipBmcTrait for InMemoryShipsBmc {
+    async fn get_ships(&self, ctx: &Ctx, timestamp_filter_gte: Option<DateTime<Utc>>) -> Result<Vec<Ship>> {
+        Ok(self.in_memory_ships.read().await.ships.values().cloned().collect_vec())
+    }
+
+    async fn get_ship(&self, ctx: &Ctx, ship_symbol: ShipSymbol) -> Result<Ship> {
+        let read_data = self.in_memory_ships.read().await;
+
+        read_data.ships.get(&ship_symbol).cloned().ok_or(anyhow!("Ship not found"))
+    }
+
+    async fn load_ship_tasks(&self, ctx: &Ctx) -> Result<HashMap<ShipSymbol, ShipTask>> {
+        Ok(self.in_memory_ships.read().await.ship_tasks.clone())
+    }
+
+    async fn save_ship_tasks(&self, ctx: &Ctx, ship_task_assignments: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
+        todo!()
+    }
+
+    async fn get_stationary_probes(&self, ctx: &Ctx) -> Result<Vec<StationaryProbeLocation>> {
+        Ok(self.in_memory_ships.read().await.stationary_probe_locations.values().cloned().collect_vec())
+    }
+
+    async fn insert_stationary_probe(&self, ctx: &Ctx, location: StationaryProbeLocation) -> Result<()> {
+        todo!()
+    }
+
+    async fn upsert_ships(&self, ctx: &Ctx, ships: &[Ship], now: DateTime<Utc>) -> Result<()> {
+        todo!()
+    }
 }

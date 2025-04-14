@@ -5,6 +5,7 @@ use anyhow::Result;
 use chrono::{DateTime, Local, Utc};
 use futures::future::{self, TryFutureExt};
 use serde::Deserialize;
+use st_domain::Meta;
 use tracing::log::trace;
 use tracing::{event, trace_span, Instrument, Level};
 
@@ -17,14 +18,7 @@ pub struct PaginationInput {
 #[derive(Deserialize)]
 pub struct PaginatedResponse<T> {
     pub data: Vec<T>,
-    meta: Meta,
-}
-
-#[derive(Deserialize)]
-struct Meta {
-    total: u64,
-    page: u64,
-    limit: u64,
+    pub meta: Meta,
 }
 
 pub async fn fetch_all_pages<T, F, Fut>(mut fetch_page: F) -> Result<Vec<T>>

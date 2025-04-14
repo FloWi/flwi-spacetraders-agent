@@ -8,6 +8,8 @@ use sqlx::types::Json;
 use st_domain::{ShipSymbol, TicketId, TradeTicket, TransactionSummary, TransactionTicketId};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[automock]
 #[async_trait]
@@ -134,4 +136,43 @@ values ($1, $2, $3, $4, $5, $6)
 struct DbTradeTicket {
     ship_symbol: String,
     entry: Json<TradeTicket>,
+}
+
+#[derive(Debug)]
+pub struct InMemoryTrades {
+    active_trades: HashMap<ShipSymbol, TradeTicket>,
+}
+
+#[derive(Debug)]
+pub struct InMemoryTradeBmc {
+    in_memory_trades: Arc<RwLock<InMemoryTrades>>,
+}
+
+impl InMemoryTradeBmc {
+    pub fn new() -> Self {
+        Self {
+            in_memory_trades: Arc::new(RwLock::new(InMemoryTrades {
+                active_trades: Default::default(),
+            })),
+        }
+    }
+}
+
+#[async_trait]
+impl TradeBmcTrait for InMemoryTradeBmc {
+    async fn get_ticket_by_id(&self, _ctx: &Ctx, ticket_id: TicketId) -> Result<TradeTicket> {
+        todo!()
+    }
+
+    async fn upsert_ticket(&self, _ctx: &Ctx, ship_symbol: &ShipSymbol, ticket_id: &TicketId, trade_ticket: &TradeTicket, is_complete: bool) -> Result<()> {
+        todo!()
+    }
+
+    async fn load_uncompleted_tickets(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, TradeTicket>> {
+        Ok(self.in_memory_trades.read().await.active_trades.clone())
+    }
+
+    async fn save_transaction_completed(&self, _ctx: Ctx, tx_summary: &TransactionSummary) -> Result<()> {
+        todo!()
+    }
 }

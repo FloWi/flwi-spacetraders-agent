@@ -489,21 +489,19 @@ impl FleetRunner {
 mod tests {
     use crate::fleet::fleet::{compute_fleets_with_tasks, FleetAdmiral};
     use crate::fleet::fleet_runner::FleetRunner;
-    use crate::st_client::MockStClientTrait;
-    use crate::test_objects::{setup_test_tracing, TestObjects};
+    use crate::pagination::fetch_all_pages;
+    use crate::st_client::StClientTrait;
+    use crate::test_objects::TestObjects;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
     use itertools::Itertools;
-    use st_domain::blackboard_ops::MockBlackboardOps;
-    use st_domain::{
-        FleetDecisionFacts, FleetPhaseName, FleetsOverview, FlightMode, Fuel, FuelConsumed, GetMarketResponse, MarketData, MarketEntry, NavAndFuelResponse,
-        NavStatus, NavigateShipResponse, ShipFrameSymbol, ShipSymbol, TravelAction, WaypointSymbol, WaypointTraitSymbol, WaypointType,
-    };
-    use st_store::bmc::ship_bmc::{MockShipBmcTrait, ShipBmcTrait};
-    use st_store::bmc::InMemoryBmc;
+    use st_domain::blackboard_ops::{BlackboardOps, MockBlackboardOps};
+    use st_domain::{FleetDecisionFacts, FleetPhaseName, FleetsOverview, Ship, ShipPriceInfo, ShipSymbol, SystemSymbol};
+    use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc, ShipBmcTrait};
+    use st_store::bmc::{Bmc, InMemoryBmc};
     use st_store::shipyard_bmc::{MockShipyardBmcTrait, ShipyardBmcTrait};
-    use st_store::trade_bmc::{MockTradeBmcTrait, TradeBmcTrait};
+    use st_store::trade_bmc::{InMemoryTradeBmc, MockTradeBmcTrait, TradeBmcTrait};
     use st_store::{
-        AgentBmcTrait, ConstructionBmcTrait, DbMarketEntry, FleetBmcTrait, MarketBmcTrait, MockAgentBmcTrait, MockConstructionBmcTrait, MockFleetBmcTrait,
+        AgentBmcTrait, ConstructionBmcTrait, FleetBmcTrait, InMemoryAgentBmc, MarketBmcTrait, MockAgentBmcTrait, MockConstructionBmcTrait, MockFleetBmcTrait,
         MockMarketBmcTrait, MockSystemBmcTrait, SystemBmcTrait,
     };
     use std::collections::HashMap;
@@ -514,189 +512,62 @@ mod tests {
 
     #[test(tokio::test)]
     async fn create_fleet_admiral_from_startup_ship_config() {
-        //setup_test_tracing();
+        // uncomment for displaying tasks with `tokio-console` in terminal
+        // also don't use test-tracing-subscriber `#[test(tokio::test)]` but rather #[tokio::test]
+        // console_subscriber::init();
 
-        let command_ship_symbol = ShipSymbol("FLWI-1".to_string());
-        let probe_ship_symbol = ShipSymbol("FLWI-2".to_string());
-        let mut command_ship = TestObjects::test_ship(600);
-        command_ship.frame.symbol = ShipFrameSymbol::FRAME_FRIGATE;
-        command_ship.symbol = command_ship_symbol.clone();
-        command_ship.nav.flight_mode = FlightMode::Burn;
+        let in_memory_universe = InMemoryUniverse::from_snapshot("tests/assets/universe_snapshot.json").expect("InMemoryUniverse::from_snapshot");
+        let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
 
-        let mut probe = TestObjects::test_ship(0);
-        probe.frame.symbol = ShipFrameSymbol::FRAME_PROBE;
-        probe.fuel.capacity = 0;
-        probe.symbol = probe_ship_symbol;
-        probe.nav.flight_mode = FlightMode::Burn;
+        let agent = in_memory_client.get_agent().await.expect("agent").data;
+        let hq_system_symbol = agent.headquarters.system_symbol();
 
-        let ship_map = HashMap::from([
-            (command_ship.symbol.clone(), command_ship.clone()),
-            (probe.symbol.clone(), probe.clone()),
-        ]);
-
-        let overview = FleetsOverview {
-            completed_fleet_tasks: vec![],
-            fleets: Default::default(),
-            all_ships: ship_map.clone(),
-            fleet_task_assignments: Default::default(),
-            ship_fleet_assignment: Default::default(),
-            ship_tasks: Default::default(),
-            open_trade_tickets: Default::default(),
-            stationary_probe_locations: vec![],
-        };
-        let market_1 = TestObjects::create_waypoint(
-            &TestObjects::system_symbol().with_waypoint_suffix("MARKET1"),
-            100,
-            100,
-            vec![WaypointTraitSymbol::MARKETPLACE],
-        );
-        let mut jump_gate_1 = TestObjects::create_waypoint(
-            &TestObjects::system_symbol().with_waypoint_suffix("JUMP_GATE"),
-            100,
-            100,
-            vec![WaypointTraitSymbol::MARKETPLACE],
-        );
-        jump_gate_1.r#type == WaypointType::JUMP_GATE;
-        let shipyard_1 = TestObjects::create_waypoint(
-            &TestObjects::system_symbol().with_waypoint_suffix("SHIPYARD1"),
-            200,
-            200,
-            vec![WaypointTraitSymbol::MARKETPLACE, WaypointTraitSymbol::SHIPYARD],
-        );
-
-        let waypoints = vec![market_1.clone(), jump_gate_1.clone(), shipyard_1.clone()];
-
-        let marketplaces_data: HashMap<WaypointSymbol, MarketData> =
-            waypoints.iter().map(|wp| (wp.symbol.clone(), TestObjects::create_market_data(&wp.symbol))).collect::<HashMap<_, _>>();
-
-        let facts = FleetDecisionFacts {
-            marketplaces_of_interest: vec![market_1.symbol.clone(), shipyard_1.symbol.clone()],
-            marketplaces_with_up_to_date_infos: vec![],
-            shipyards_of_interest: vec![shipyard_1.symbol.clone()],
-            shipyards_with_up_to_date_infos: vec![],
-            construction_site: Some(TestObjects::startup_construction(&jump_gate_1.symbol)),
-            ships: ship_map.values().cloned().collect_vec(),
-            materialized_supply_chain: None,
-            agent_info: TestObjects::agent(),
-        };
-
-        let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(TestObjects::system_symbol(), &overview.completed_fleet_tasks, &facts);
-
-        let fleets_map = fleets.iter().map(|f| (f.id.clone(), f.clone())).collect();
-
-        assert_eq!(2, fleets.len());
-        assert_eq!(2, fleet_tasks.len());
-        assert_eq!(FleetPhaseName::InitialExploration, fleet_phase.name);
-
-        let ship_fleet_assignment = FleetAdmiral::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
-
-        let mut fleet_admiral = FleetAdmiral {
-            completed_fleet_tasks: overview.completed_fleet_tasks.clone(),
-            fleets: fleets_map,
-            all_ships: ship_map.clone(),
-            ship_tasks: Default::default(),
-            fleet_tasks: fleet_tasks.into_iter().map(|(fleet_id, fleet_task)| (fleet_id, vec![fleet_task])).collect(),
-            ship_fleet_assignment,
-            agent_info: TestObjects::agent(),
-            fleet_phase,
-            active_trades: Default::default(),
-            stationary_probe_locations: vec![],
-        };
-
-        let new_ship_tasks = FleetAdmiral::pure_compute_ship_tasks(
-            &fleet_admiral,
-            &facts,
-            TestObjects::latest_market_data(&waypoints),
-            TestObjects::ship_prices(&waypoints),
-            waypoints.clone(),
-        )
-        .unwrap();
-
-        let mut mock_ship_bmc = MockShipBmcTrait::new();
+        let mut ship_bmc = InMemoryShipsBmc::new(InMemoryShips::new());
+        let mut agent_bmc = InMemoryAgentBmc::new(agent);
+        let mut trade_bmc = InMemoryTradeBmc::new();
         let mut mock_fleet_bmc = MockFleetBmcTrait::new();
-        let mut mock_trade_bmc = MockTradeBmcTrait::new();
         let mut mock_system_bmc = MockSystemBmcTrait::new();
-        let mut mock_agent_bmc = MockAgentBmcTrait::new();
         let mut mock_construction_bmc = MockConstructionBmcTrait::new();
         let mut mock_market_bmc = MockMarketBmcTrait::new();
         let mut mock_shipyard_bmc = MockShipyardBmcTrait::new();
 
-        mock_ship_bmc.expect_upsert_ships().returning(|_, _, _| Ok(()));
-        mock_ship_bmc.expect_get_ships().returning(move |_, _| Ok(ship_map.values().cloned().collect_vec()));
-
-        mock_agent_bmc.expect_load_agent().returning(move |_| Ok(TestObjects::agent()));
-
-        mock_system_bmc.expect_select_latest_marketplace_entry_of_system().returning(|_, _| Ok(vec![]));
-        mock_system_bmc.expect_select_latest_shipyard_entry_of_system().returning(|_, _| Ok(vec![]));
-
         let mut mock_bmc = InMemoryBmc {
-            ship_bmc: Arc::new(mock_ship_bmc) as Arc<dyn ShipBmcTrait>,
+            ship_bmc: Arc::new(ship_bmc) as Arc<dyn ShipBmcTrait>,
             fleet_bmc: Arc::new(mock_fleet_bmc) as Arc<dyn FleetBmcTrait>,
-            trade_bmc: Arc::new(mock_trade_bmc) as Arc<dyn TradeBmcTrait>,
+            trade_bmc: Arc::new(trade_bmc) as Arc<dyn TradeBmcTrait>,
             system_bmc: Arc::new(mock_system_bmc) as Arc<dyn SystemBmcTrait>,
-            agent_bmc: Arc::new(mock_agent_bmc) as Arc<dyn AgentBmcTrait>,
+            agent_bmc: Arc::new(agent_bmc) as Arc<dyn AgentBmcTrait>,
             construction_bmc: Arc::new(mock_construction_bmc) as Arc<dyn ConstructionBmcTrait>,
             market_bmc: Arc::new(mock_market_bmc) as Arc<dyn MarketBmcTrait>,
             shipyard_bmc: Arc::new(mock_shipyard_bmc) as Arc<dyn ShipyardBmcTrait>,
         };
 
-        let mut mock_blackboard = MockBlackboardOps::new();
-        mock_blackboard.expect_compute_path().returning(|from, to, _, _, _| {
-            Ok(vec![TravelAction::Navigate {
-                from,
-                to,
-                distance: 1,
-                travel_time: 1,
-                fuel_consumption: 1,
-                mode: FlightMode::Burn,
-                total_time: 1,
-            }])
-        });
+        let mock_blackboard = MockBlackboardOps::new();
 
-        mock_blackboard.expect_get_waypoint().returning(move |wps| Ok(waypoints.iter().find(|wp| wps == &wp.symbol).cloned().unwrap()));
-        mock_blackboard.expect_insert_market().returning(|_| Ok(()));
+        let client = Arc::new(in_memory_client) as Arc<dyn StClientTrait>;
+        let bmc = Arc::new(mock_bmc) as Arc<dyn Bmc>;
+        println!("Creating fleet admiral");
 
-        let mut mock_client = MockStClientTrait::new();
-        mock_client.expect_navigate().returning(move |ss, wps| {
-            let origin_wps = if ss == command_ship_symbol.clone() {
-                &command_ship.nav.waypoint_symbol
-            } else {
-                &probe.nav.waypoint_symbol
-            };
-            Ok(NavigateShipResponse {
-                data: NavAndFuelResponse {
-                    nav: TestObjects::create_nav(FlightMode::Burn, NavStatus::InTransit, &origin_wps, wps).nav,
-                    fuel: Fuel {
-                        current: 600,
-                        capacity: 600,
-                        consumed: FuelConsumed {
-                            amount: 0,
-                            timestamp: Default::default(),
-                        },
-                    },
-                },
-            })
-        });
+        tokio::time::timeout(std::time::Duration::from_secs(120), async {
+            let mut fleet_admiral =
+                FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_symbol, Arc::clone(&client)).await.expect("FleetAdmiral::load_or_create");
 
-        mock_client.expect_get_marketplace().returning(move |wps| {
-            let data = marketplaces_data.get(&wps).cloned().unwrap();
-            Ok(GetMarketResponse { data })
-        });
+            println!("Created fleet admiral");
 
-        FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut fleet_admiral, new_ship_tasks);
-        let admiral_mutex = Arc::new(Mutex::new(fleet_admiral));
+            let admiral_mutex = Arc::new(Mutex::new(fleet_admiral));
 
-        let in_memory_universe = InMemoryUniverse::from_snapshot("tests/assets/universe_snapshot.json").unwrap();
-        let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
-
-        FleetRunner::run_fleets(
-            Arc::clone(&admiral_mutex),
-            Arc::new(in_memory_client),
-            Arc::new(mock_bmc),
-            Arc::new(mock_blackboard),
-            Duration::from_millis(1),
-        )
+            println!("Running fleets");
+            FleetRunner::run_fleets(
+                Arc::clone(&admiral_mutex),
+                Arc::clone(&client),
+                Arc::clone(&bmc),
+                Arc::new(mock_blackboard),
+                Duration::from_millis(1),
+            )
+            .await
+            .unwrap();
+        })
         .await
-        .unwrap();
+        .expect("Test timed out");
     }
 }

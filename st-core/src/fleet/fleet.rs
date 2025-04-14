@@ -298,6 +298,7 @@ impl FleetAdmiral {
 
         match Self::load_admiral(Arc::clone(&bmc)).await? {
             None => {
+                println!("loading admiral failed - creating a new one");
                 let admiral = Self::create(Arc::clone(&bmc), system_symbol, Arc::clone(&client)).await?;
                 let _ = st_store::fleet_bmc::store_fleets_data(
                     Arc::clone(&bmc),
