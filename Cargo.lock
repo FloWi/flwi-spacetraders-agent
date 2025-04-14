@@ -3962,6 +3962,7 @@ dependencies = [
  "strum_macros",
  "task-local-extensions",
  "test-log",
+ "thiserror 2.0.11",
  "tokio",
  "tokio-cron-scheduler",
  "tower-http 0.5.2",

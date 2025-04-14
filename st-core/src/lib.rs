@@ -17,6 +17,7 @@ pub mod marketplaces;
 pub mod pathfinder;
 #[cfg(test)]
 pub mod test_objects;
+pub mod universe_server;
 
 pub use app_state::*;
 

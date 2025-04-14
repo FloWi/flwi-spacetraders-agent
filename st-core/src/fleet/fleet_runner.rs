@@ -21,6 +21,7 @@ use st_store::bmc::{ship_bmc, Bmc};
 use st_store::{db, Ctx, DbModelManager};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -46,6 +47,7 @@ impl FleetRunner {
         client: Arc<dyn StClientTrait>,
         bmc: Arc<dyn Bmc>,
         blackboard: Arc<dyn BlackboardOps>,
+        sleep_duration: Duration,
     ) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
@@ -83,10 +85,11 @@ impl FleetRunner {
             ship_updated_rx,
             ship_action_completed_rx,
             ship_status_report_rx,
+            sleep_duration,
         ));
 
         for (ss, ship) in all_ships_map {
-            Self::launch_and_register_ship(Arc::clone(&fleet_runner_mutex), &ss, ship).await?;
+            Self::launch_and_register_ship(Arc::clone(&fleet_runner_mutex), &ss, ship, sleep_duration).await?;
         }
 
         tokio::join!(msg_listeners_join_handle);
@@ -94,7 +97,7 @@ impl FleetRunner {
         Ok(())
     }
 
-    pub async fn launch_and_register_ship(runner: Arc<Mutex<FleetRunner>>, ss: &ShipSymbol, ship: Ship) -> Result<()> {
+    pub async fn launch_and_register_ship(runner: Arc<Mutex<FleetRunner>>, ss: &ShipSymbol, ship: Ship, sleep_duration: Duration) -> Result<()> {
         // if ss.0 != "FLWI-26" {
         //     return Ok(());
         // }
@@ -121,6 +124,7 @@ impl FleetRunner {
                     ship_updated_tx_clone,
                     ship_action_completed_tx_clone,
                     ship_task_clone,
+                    sleep_duration,
                 )
                 .await?;
 
@@ -162,6 +166,7 @@ impl FleetRunner {
                     ship_updated_tx_clone,
                     ship_action_completed_tx_clone,
                     ship_task_clone,
+                    Duration::from_secs(5),
                 )
                 .await?;
 
@@ -183,6 +188,7 @@ impl FleetRunner {
         ship_updated_tx: Sender<ShipOperations>,
         ship_action_completed_tx: Sender<ActionEvent>,
         ship_task: ShipTask,
+        sleep_duration: Duration,
     ) -> Result<Option<(Ship, ShipTask)>> {
         use crate::behavior_tree::behavior_tree::{Actionable, Response};
         use crate::behavior_tree::ship_behaviors::ship_behaviors;
@@ -221,7 +227,7 @@ impl FleetRunner {
 
                 let result: Result<Response, Error> = ship_behavior_runner(
                     &mut ship,
-                    Duration::from_secs(5),
+                    sleep_duration,
                     &args,
                     ship_behavior,
                     &ship_updated_tx.clone(),
@@ -285,6 +291,7 @@ impl FleetRunner {
         bmc: Arc<dyn Bmc>,
         mut ship_status_report_rx: Receiver<ShipStatusReport>,
         runner: Arc<Mutex<FleetRunner>>,
+        sleep_duration: Duration,
     ) -> Result<()> {
         while let Some(msg) = ship_status_report_rx.recv().await {
             let ship_span = span!(
@@ -353,7 +360,7 @@ impl FleetRunner {
                         let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &new_ship.nav.system_symbol).await?;
                         let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
                         FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut admiral_guard, new_ship_tasks);
-                        Self::launch_and_register_ship(Arc::clone(&runner), &new_ship.symbol, new_ship.clone()).await?
+                        Self::launch_and_register_ship(Arc::clone(&runner), &new_ship.symbol, new_ship.clone(), sleep_duration).await?
                     }
                 },
             }
@@ -431,6 +438,7 @@ impl FleetRunner {
         ship_updated_rx: Receiver<ShipOperations>,
         ship_action_completed_rx: Receiver<ActionEvent>,
         ship_status_report_rx: Receiver<ShipStatusReport>,
+        sleep_duration: Duration,
     ) {
         // Extract all needed data with a single lock acquisition
         let (bmc, fleet_admiral, ship_status_report_tx) = {
@@ -452,6 +460,7 @@ impl FleetRunner {
             bmc,
             ship_status_report_rx,
             Arc::clone(&runner),
+            sleep_duration,
         ));
 
         // run forever
@@ -482,6 +491,7 @@ mod tests {
     use crate::fleet::fleet_runner::FleetRunner;
     use crate::st_client::MockStClientTrait;
     use crate::test_objects::{setup_test_tracing, TestObjects};
+    use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
     use itertools::Itertools;
     use st_domain::blackboard_ops::MockBlackboardOps;
     use st_domain::{
@@ -498,6 +508,7 @@ mod tests {
     };
     use std::collections::HashMap;
     use std::sync::Arc;
+    use std::time::Duration;
     use test_log::test;
     use tokio::sync::Mutex;
 
@@ -675,6 +686,17 @@ mod tests {
         FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut fleet_admiral, new_ship_tasks);
         let admiral_mutex = Arc::new(Mutex::new(fleet_admiral));
 
-        FleetRunner::run_fleets(Arc::clone(&admiral_mutex), Arc::new(mock_client), Arc::new(mock_bmc), Arc::new(mock_blackboard)).await.unwrap();
+        let in_memory_universe = InMemoryUniverse::from_snapshot("tests/assets/universe_snapshot.json").unwrap();
+        let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
+
+        FleetRunner::run_fleets(
+            Arc::clone(&admiral_mutex),
+            Arc::new(in_memory_client),
+            Arc::new(mock_bmc),
+            Arc::new(mock_blackboard),
+            Duration::from_millis(1),
+        )
+        .await
+        .unwrap();
     }
 }

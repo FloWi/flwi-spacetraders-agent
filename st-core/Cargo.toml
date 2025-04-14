@@ -3,6 +3,10 @@ name = "st-core"
 version = "0.1.0"
 edition = "2021"
 
+exclude = [
+    "src/**/test_assets/",
+]
+
 [dependencies]
 
 st-domain = { path = "../st-domain", default-features = false }
@@ -48,3 +52,4 @@ tracing-core = "0.1.32"
 mockall = { workspace = true }
 ordered-float = { version = "4.2.2", features = ["serde"] }
 uuid = { version = "1.16.0", features = ["v4", "serde"] }
+thiserror = "2.0.11"

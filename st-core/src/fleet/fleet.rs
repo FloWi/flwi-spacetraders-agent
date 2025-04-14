@@ -167,7 +167,7 @@ impl FleetAdmiral {
     ) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
-        FleetRunner::run_fleets(Arc::clone(&fleet_admiral), Arc::clone(&client), bmc, blackboard).await?;
+        FleetRunner::run_fleets(Arc::clone(&fleet_admiral), Arc::clone(&client), bmc, blackboard, Duration::from_secs(5)).await?;
 
         Ok(())
     }
