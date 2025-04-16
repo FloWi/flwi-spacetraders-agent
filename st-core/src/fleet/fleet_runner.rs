@@ -561,7 +561,7 @@ mod tests {
     use crate::fleet::fleet_runner::FleetRunner;
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
-    use st_domain::{FleetId, FleetTask};
+    use st_domain::{FleetId, FleetPhaseName, FleetTask};
     use st_store::bmc::jump_gate_bmc::{InMemoryJumpGateBmc, JumpGateBmcTrait};
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc, ShipBmcTrait};
     use st_store::bmc::{Bmc, InMemoryBmc};
@@ -663,8 +663,13 @@ mod tests {
 
                 let condition_met = {
                     let admiral = admiral_clone.lock().await;
-                    println!("completed_fleet_tasks.len(): {}", admiral.completed_fleet_tasks.len());
-                    admiral.completed_fleet_tasks.is_empty().not()
+                    let has_finished_initial_observation =
+                        admiral.completed_fleet_tasks.iter().any(|t| matches!(t.task, FleetTask::CollectMarketInfosOnce { .. }));
+                    let is_in_construction_phase = admiral.fleet_phase.name == FleetPhaseName::ConstructJumpGate;
+
+                    println!("has_finished_initial_observation: {has_finished_initial_observation}; is_in_construction_phase: {is_in_construction_phase}");
+
+                    has_finished_initial_observation && is_in_construction_phase
                 };
 
                 if condition_met {
@@ -682,13 +687,13 @@ mod tests {
             _ = condition_checker => {
                 println!("Condition met, stopping early");
             }
-        };
+        }
 
         // Your validation code remains the same
         let completed_tasks = bmc.fleet_bmc().load_completed_fleet_tasks(&Ctx::Anonymous).await.unwrap();
         let fleets = bmc.fleet_bmc().load_fleets(&Ctx::Anonymous).await.unwrap();
 
         assert_eq!(1, completed_tasks.len());
-        assert_eq!(1, fleets.len());
+        assert_eq!(2, fleets.len());
     }
 }
