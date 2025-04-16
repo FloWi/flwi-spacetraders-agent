@@ -267,7 +267,7 @@ pub enum ShipTask {
     Trade { ticket_id: TicketId },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct SystemSpawningFleetConfig {
     pub system_symbol: SystemSymbol,
     pub marketplace_waypoints_of_interest: Vec<WaypointSymbol>,
@@ -275,7 +275,7 @@ pub struct SystemSpawningFleetConfig {
     pub desired_fleet_config: Vec<ShipType>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct MarketObservationFleetConfig {
     pub system_symbol: SystemSymbol,
     pub marketplace_waypoints_of_interest: Vec<WaypointSymbol>,
@@ -283,14 +283,14 @@ pub struct MarketObservationFleetConfig {
     pub desired_fleet_config: Vec<ShipType>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct TradingFleetConfig {
     pub system_symbol: SystemSymbol,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
     pub desired_fleet_config: Vec<ShipType>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct ConstructJumpGateFleetConfig {
     pub system_symbol: SystemSymbol,
     pub jump_gate_waypoint: WaypointSymbol,
@@ -298,7 +298,7 @@ pub struct ConstructJumpGateFleetConfig {
     pub desired_fleet_config: Vec<ShipType>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct MiningFleetConfig {
     pub system_symbol: SystemSymbol,
     pub mining_waypoint: WaypointSymbol,
@@ -308,7 +308,7 @@ pub struct MiningFleetConfig {
     pub desired_fleet_config: Vec<ShipType>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct SiphoningFleetConfig {
     pub system_symbol: SystemSymbol,
     pub siphoning_waypoint: WaypointSymbol,
@@ -318,7 +318,7 @@ pub struct SiphoningFleetConfig {
     pub desired_fleet_config: Vec<ShipType>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum FleetConfig {
     SystemSpawningCfg(SystemSpawningFleetConfig),
     MarketObservationCfg(MarketObservationFleetConfig),

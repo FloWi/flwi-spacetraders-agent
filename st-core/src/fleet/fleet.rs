@@ -331,7 +331,13 @@ impl FleetAdmiral {
 
             // recompute ship-tasks and persist them. Might have been outdated since last agent restart
             let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
-            let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(system_symbol, &overview.completed_fleet_tasks, &facts);
+            let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(
+                system_symbol,
+                &overview.completed_fleet_tasks,
+                &facts,
+                &overview.fleets,
+                &overview.fleet_task_assignments,
+            );
             let mut fleet_map: HashMap<FleetId, Fleet> = fleets.iter().map(|f| (f.id.clone(), f.clone())).collect();
             let fleet_task_map: HashMap<FleetId, Vec<FleetTask>> = fleet_tasks.iter().map(|(fleet_id, task)| (fleet_id.clone(), vec![task.clone()])).collect();
 
@@ -397,7 +403,7 @@ impl FleetAdmiral {
 
         let completed_tasks = bmc.fleet_bmc().load_completed_fleet_tasks(&Ctx::Anonymous).await?;
 
-        let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(system_symbol, &completed_tasks, &facts);
+        let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(system_symbol, &completed_tasks, &facts, &HashMap::new(), &HashMap::new());
 
         let ship_fleet_assignment = Self::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
 
@@ -977,17 +983,37 @@ pub fn compute_fleets_with_tasks(
     system_symbol: SystemSymbol,
     completed_tasks: &Vec<FleetTaskCompletion>,
     facts: &FleetDecisionFacts,
+    active_fleets: &HashMap<FleetId, Fleet>,
+    active_fleet_task_assignments: &HashMap<FleetId, Vec<FleetTask>>,
 ) -> (Vec<Fleet>, Vec<(FleetId, FleetTask)>, FleetPhase) {
     let fleet_phase = compute_fleet_phase_with_tasks(system_symbol, &facts, &completed_tasks);
 
-    let fleet_configs = compute_fleet_configs(&fleet_phase.tasks, &facts, &fleet_phase.shopping_list_in_order);
-    let fleets_with_tasks: Vec<(Fleet, (FleetId, FleetTask))> = fleet_configs
+    let active_fleets_and_tasks: Vec<(Fleet, (FleetId, FleetTask))> = active_fleets
         .into_iter()
-        .enumerate()
-        .map(|(idx, (cfg, task))| create_fleet(cfg.clone(), task.clone(), (completed_tasks.len() + idx) as i32).unwrap())
+        .map(|(fleet_id, fleet)| {
+            let task = active_fleet_task_assignments.get(&fleet_id).cloned().unwrap_or_default().first().cloned().unwrap();
+            (fleet.clone(), (fleet_id.clone(), task))
+        })
         .collect_vec();
 
-    let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) = fleets_with_tasks.into_iter().unzip();
+    let new_fleet_configs = compute_fleet_configs(&fleet_phase.tasks, &facts, &fleet_phase.shopping_list_in_order)
+        .iter()
+        .filter(|(fleet_cfg, fleet_task)| {
+            // if we have a fleet already doing the same task, we ignore it
+            active_fleets_and_tasks.iter().any(|(_, (_, active_fleet_task))| active_fleet_task == fleet_task).not()
+        })
+        .cloned()
+        .collect_vec();
+
+    let next_fleet_id = active_fleets.keys().into_iter().map(|id| id.0).max().map(|max_id| max_id + 1).unwrap_or(0);
+
+    let new_fleets_with_tasks: Vec<(Fleet, (FleetId, FleetTask))> = new_fleet_configs
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (cfg, task))| create_fleet(cfg.clone(), task.clone(), next_fleet_id + idx as i32).unwrap())
+        .collect_vec();
+
+    let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) = new_fleets_with_tasks.into_iter().chain(active_fleets_and_tasks.into_iter()).unzip();
     (fleets, fleet_tasks, fleet_phase)
 }
 

@@ -35,7 +35,7 @@ pub struct SupplyChainNode {
     pub dependencies: Vec<TradeGoodSymbol>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct MaterializedSupplyChain {
     pub explanation: String,
     pub trading_opportunities: Vec<TradingOpportunity>,
@@ -415,7 +415,7 @@ pub struct RawMaterialSource {
     source_waypoint: WaypointSymbol,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct TradingOpportunity {
     pub purchase_waypoint_symbol: WaypointSymbol,
     pub purchase_market_trade_good_entry: MarketTradeGood,

@@ -3,7 +3,8 @@ use crate::behavior_tree::behavior_tree::ActionEvent;
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::fleet;
 use crate::fleet::fleet::{
-    collect_fleet_decision_facts, compute_fleets_with_tasks, recompute_tasks_after_ship_finishing_behavior_tree, FleetAdmiral, NewTaskResult, ShipStatusReport,
+    collect_fleet_decision_facts, compute_fleet_phase_with_tasks, compute_fleets_with_tasks, recompute_tasks_after_ship_finishing_behavior_tree, FleetAdmiral,
+    NewTaskResult, ShipStatusReport,
 };
 use crate::fleet::ship_runner::ship_behavior_runner;
 use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
@@ -324,6 +325,26 @@ impl FleetRunner {
                         NewTaskResult::DismantleFleets { fleets_to_dismantle } => {
                             FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle.clone());
                             bmc.fleet_bmc().delete_fleets(&Ctx::Anonymous, &fleets_to_dismantle).await?;
+
+                            let system_symbol = ship.nav.system_symbol;
+                            let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
+
+                            let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(
+                                system_symbol,
+                                &admiral_guard.completed_fleet_tasks,
+                                &facts,
+                                &admiral_guard.fleets,
+                                &admiral_guard.fleet_tasks,
+                            );
+                            // println!("Computed new fleets after dismantling the fleets: {:?}", fleets_to_dismantle);
+                            // dbg!(&fleets);
+                            // dbg!(&fleet_tasks);
+                            // dbg!(&fleet_phase);
+
+                            admiral_guard.fleets = fleets.into_iter().map(|f| (f.id.clone(), f)).collect();
+                            admiral_guard.fleet_tasks = fleet_tasks.into_iter().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
+                            admiral_guard.fleet_phase = fleet_phase;
+
                             let _ = upsert_fleets_data(
                                 Arc::clone(&bmc),
                                 &Ctx::Anonymous,
@@ -561,7 +582,7 @@ mod tests {
     use crate::fleet::fleet_runner::FleetRunner;
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
-    use st_domain::{FleetId, FleetPhaseName, FleetTask};
+    use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask};
     use st_store::bmc::jump_gate_bmc::{InMemoryJumpGateBmc, JumpGateBmcTrait};
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc, ShipBmcTrait};
     use st_store::bmc::{Bmc, InMemoryBmc};
@@ -694,6 +715,11 @@ mod tests {
         let fleets = bmc.fleet_bmc().load_fleets(&Ctx::Anonymous).await.unwrap();
 
         assert_eq!(1, completed_tasks.len());
-        assert_eq!(2, fleets.len());
+        assert_eq!(FleetPhaseName::ConstructJumpGate, admiral_mutex.lock().await.fleet_phase.name);
+        assert_eq!(4, fleets.len());
+        fleets.iter().any(|f| matches!(f.cfg, FleetConfig::SiphoningCfg(..)));
+        fleets.iter().any(|f| matches!(f.cfg, FleetConfig::MiningCfg(..)));
+        fleets.iter().any(|f| matches!(f.cfg, FleetConfig::MarketObservationCfg(..)));
+        fleets.iter().any(|f| matches!(f.cfg, FleetConfig::ConstructJumpGateCfg(..)));
     }
 }
