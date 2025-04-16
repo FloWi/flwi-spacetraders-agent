@@ -39,7 +39,7 @@ pub trait FleetBmcTrait: Send + Sync + Debug {
     async fn load_ship_fleet_assignment(&self, ctx: &Ctx) -> Result<HashMap<ShipSymbol, FleetId>>;
     async fn load_fleets(&self, ctx: &Ctx) -> Result<Vec<Fleet>>;
     async fn load_completed_fleet_tasks(&self, _ctx: &Ctx) -> Result<Vec<FleetTaskCompletion>>;
-    async fn save_completed_fleet_tasks(&self, _ctx: &Ctx, tasks: Vec<FleetTaskCompletion>) -> Result<()>;
+    async fn save_completed_fleet_task(&self, _ctx: &Ctx, task: &FleetTaskCompletion) -> Result<()>;
     async fn upsert_fleets(&self, _ctx: &Ctx, fleets: &HashMap<FleetId, Fleet>) -> Result<()>;
     async fn upsert_fleet_tasks(&self, _ctx: &Ctx, fleet_tasks: &HashMap<FleetId, Vec<FleetTask>>) -> Result<()>;
     async fn upsert_ship_fleet_assignment(&self, _ctx: &Ctx, ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>) -> Result<()>;
@@ -139,19 +139,17 @@ SELECT task as "task: Json<FleetTask>"
             .collect_vec())
     }
 
-    async fn save_completed_fleet_tasks(&self, _ctx: &Ctx, tasks: Vec<FleetTaskCompletion>) -> Result<()> {
-        for task in tasks {
-            sqlx::query!(
-                r#"
+    async fn save_completed_fleet_task(&self, _ctx: &Ctx, task: &FleetTaskCompletion) -> Result<()> {
+        sqlx::query!(
+            r#"
 insert into completed_fleet_tasks (task, completed_at)
 values ($1, $2)
         "#,
-                Json(task.task.clone()) as _,
-                task.completed_at
-            )
-            .execute(self.mm.pool())
-            .await?;
-        }
+            Json(task.task.clone()) as _,
+            task.completed_at
+        )
+        .execute(self.mm.pool())
+        .await?;
 
         Ok(())
     }
@@ -297,6 +295,7 @@ pub async fn upsert_fleets_data(
     fleet_bmc.upsert_fleet_tasks(_ctx, &fleet_tasks).await?;
     fleet_bmc.upsert_ship_fleet_assignment(_ctx, &ship_fleet_assignment).await?;
     bmc.ship_bmc().save_ship_tasks(_ctx, ship_task_assignment).await?;
+
     // fleet_bmc.upsert_ship_task_assignment(_ctx, &ship_task_assignment).await?;
 
     let trade_bmc = bmc.trade_bmc();
@@ -381,11 +380,10 @@ impl FleetBmcTrait for InMemoryFleetBmc {
         Ok(self.in_memory_fleet.read().await.completed_fleet_tasks.clone())
     }
 
-    async fn save_completed_fleet_tasks(&self, _ctx: &Ctx, tasks: Vec<FleetTaskCompletion>) -> Result<()> {
+    async fn save_completed_fleet_task(&self, _ctx: &Ctx, completed_task: &FleetTaskCompletion) -> Result<()> {
         let mut guard = self.in_memory_fleet.write().await;
-        for completed_task in tasks {
-            guard.completed_fleet_tasks.push(completed_task);
-        }
+        guard.completed_fleet_tasks.push(completed_task.clone());
+
         Ok(())
     }
 

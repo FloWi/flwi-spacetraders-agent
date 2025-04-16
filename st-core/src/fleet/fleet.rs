@@ -195,7 +195,8 @@ impl FleetAdmiral {
                                     task = task_complete.task.to_string()
                                 );
                                 self.fleet_tasks.insert(fleet.id.clone(), uncompleted_tasks);
-                                bmc.fleet_bmc().save_completed_fleet_tasks(&Ctx::Anonymous, vec![task_complete.clone()]).await?;
+                                self.completed_fleet_tasks.push(task_complete.clone());
+                                bmc.fleet_bmc().save_completed_fleet_task(&Ctx::Anonymous, &task_complete).await?;
                             };
                         }
                         FleetConfig::MarketObservationCfg(_) => {}

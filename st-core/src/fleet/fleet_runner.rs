@@ -561,17 +561,17 @@ mod tests {
     use crate::fleet::fleet_runner::FleetRunner;
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
-    use st_domain::blackboard_ops::MockBlackboardOps;
     use st_domain::{FleetId, FleetTask};
     use st_store::bmc::jump_gate_bmc::{InMemoryJumpGateBmc, JumpGateBmcTrait};
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc, ShipBmcTrait};
     use st_store::bmc::{Bmc, InMemoryBmc};
-    use st_store::shipyard_bmc::{InMemoryShipyardBmc, MockShipyardBmcTrait, ShipyardBmcTrait};
+    use st_store::shipyard_bmc::{InMemoryShipyardBmc, ShipyardBmcTrait};
     use st_store::trade_bmc::{InMemoryTradeBmc, TradeBmcTrait};
     use st_store::{
         AgentBmcTrait, ConstructionBmcTrait, Ctx, FleetBmcTrait, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc,
-        InMemorySystemsBmc, MarketBmcTrait, MockMarketBmcTrait, SystemBmcTrait,
+        InMemorySystemsBmc, MarketBmcTrait, SystemBmcTrait,
     };
+    use std::ops::Not;
     use std::sync::Arc;
     use std::time::Duration;
     use test_log::test;
@@ -636,11 +636,11 @@ mod tests {
             Some(FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. })
         ));
 
-        let either_timeout = tokio::time::timeout(std::time::Duration::from_secs(10), async {
-            println!("Created fleet admiral");
+        let admiral_mutex = Arc::new(Mutex::new(fleet_admiral));
+        let admiral_clone = Arc::clone(&admiral_mutex);
 
-            let admiral_mutex = Arc::new(Mutex::new(fleet_admiral));
-
+        // This task runs your fleets
+        let fleet_task = async {
             println!("Running fleets");
             FleetRunner::run_fleets(
                 Arc::clone(&admiral_mutex),
@@ -651,9 +651,40 @@ mod tests {
             )
             .await
             .unwrap();
-        })
-        .await;
+        };
 
+        // This task periodically checks if the condition is met
+        let condition_checker = async {
+            let check_interval = Duration::from_millis(500); // Adjust as needed
+
+            loop {
+                // Sleep first to give the fleet a chance to start
+                tokio::time::sleep(check_interval).await;
+
+                let condition_met = {
+                    let admiral = admiral_clone.lock().await;
+                    println!("completed_fleet_tasks.len(): {}", admiral.completed_fleet_tasks.len());
+                    admiral.completed_fleet_tasks.is_empty().not()
+                };
+
+                if condition_met {
+                    break;
+                }
+            }
+        };
+
+        // Use select to race between the fleet task and your condition checker
+        // Add a timeout as a fallback
+        tokio::select! {
+            _ = tokio::time::timeout(Duration::from_secs(10), fleet_task) => {
+                println!("Fleet task completed or timed out");
+            }
+            _ = condition_checker => {
+                println!("Condition met, stopping early");
+            }
+        };
+
+        // Your validation code remains the same
         let completed_tasks = bmc.fleet_bmc().load_completed_fleet_tasks(&Ctx::Anonymous).await.unwrap();
         let fleets = bmc.fleet_bmc().load_fleets(&Ctx::Anonymous).await.unwrap();
 
