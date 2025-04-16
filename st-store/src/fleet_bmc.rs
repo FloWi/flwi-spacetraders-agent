@@ -43,6 +43,17 @@ pub trait FleetBmcTrait: Send + Sync + Debug {
     async fn upsert_fleets(&self, _ctx: &Ctx, fleets: &HashMap<FleetId, Fleet>) -> Result<()>;
     async fn upsert_fleet_tasks(&self, _ctx: &Ctx, fleet_tasks: &HashMap<FleetId, Vec<FleetTask>>) -> Result<()>;
     async fn upsert_ship_fleet_assignment(&self, _ctx: &Ctx, ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>) -> Result<()>;
+    async fn delete_fleet_ship_assignments_for_fleet(&self, _ctx: &Ctx, fleet_id: &FleetId) -> Result<()>;
+    async fn delete_fleet_task_assignments_for_fleet(&self, _ctx: &Ctx, fleet_id: &FleetId) -> Result<()>;
+    async fn delete_fleet(&self, _ctx: &Ctx, fleet_id: &FleetId) -> Result<()>;
+    async fn delete_fleets(&self, ctx: &Ctx, fleets: &[FleetId]) -> Result<()> {
+        for fleet_id in fleets {
+            self.delete_fleet_ship_assignments_for_fleet(ctx, fleet_id).await?;
+            self.delete_fleet_task_assignments_for_fleet(ctx, fleet_id).await?;
+            self.delete_fleet(ctx, fleet_id).await?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -228,26 +239,50 @@ on conflict (ship_symbol) do update SET fleet_id = excluded.fleet_id
         Ok(())
     }
 
-    //     async fn upsert_ship_task_assignment(&self, _ctx: &Ctx, ship_task_assignment: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
-    //         for (ship_symbol, ship_task) in ship_task_assignment {
-    //             sqlx::query!(
-    //                 r#"
-    // insert into ship_task_assignments(ship_symbol, task)
-    // values ($1, $2)
-    // on conflict (ship_symbol) do update SET task = excluded.task
-    // "#,
-    //                 ship_symbol.0,
-    //                 Json(ship_task.clone()) as _,
-    //             )
-    //             .execute(self.mm.pool())
-    //             .await?;
-    //         }
-    //
-    //         Ok(())
-    //     }
+    async fn delete_fleet_ship_assignments_for_fleet(&self, _ctx: &Ctx, fleet_id: &FleetId) -> Result<()> {
+        sqlx::query!(
+            r#"
+delete from fleet_ship_assignment
+where fleet_id = $1
+"#,
+            fleet_id.0,
+        )
+        .execute(self.mm.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    async fn delete_fleet_task_assignments_for_fleet(&self, _ctx: &Ctx, fleet_id: &FleetId) -> Result<()> {
+        sqlx::query!(
+            r#"
+delete from fleet_task_assignments
+where fleet_id = $1
+"#,
+            fleet_id.0,
+        )
+        .execute(self.mm.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    async fn delete_fleet(&self, _ctx: &Ctx, fleet_id: &FleetId) -> Result<()> {
+        sqlx::query!(
+            r#"
+delete from fleets
+where id = $1
+"#,
+            fleet_id.0,
+        )
+        .execute(self.mm.pool())
+        .await?;
+
+        Ok(())
+    }
 }
 
-pub async fn store_fleets_data(
+pub async fn upsert_fleets_data(
     bmc: Arc<dyn Bmc>,
     _ctx: &Ctx,
     fleets: &HashMap<FleetId, Fleet>,
@@ -376,6 +411,24 @@ impl FleetBmcTrait for InMemoryFleetBmc {
         for (ship_symbol, fleet_id) in ship_fleet_assignment.iter() {
             guard.fleet_ship_assignments.insert(ship_symbol.clone(), fleet_id.clone());
         }
+        Ok(())
+    }
+
+    async fn delete_fleet_ship_assignments_for_fleet(&self, _ctx: &Ctx, fleet_id: &FleetId) -> Result<()> {
+        let mut guard = self.in_memory_fleet.write().await;
+        guard.fleet_ship_assignments.retain(|_, id| id != fleet_id);
+        Ok(())
+    }
+
+    async fn delete_fleet_task_assignments_for_fleet(&self, _ctx: &Ctx, fleet_id: &FleetId) -> Result<()> {
+        let mut guard = self.in_memory_fleet.write().await;
+        guard.fleet_tasks.remove(fleet_id);
+        Ok(())
+    }
+
+    async fn delete_fleet(&self, _ctx: &Ctx, fleet_id: &FleetId) -> Result<()> {
+        let mut guard = self.in_memory_fleet.write().await;
+        guard.fleets.remove(fleet_id);
         Ok(())
     }
 }

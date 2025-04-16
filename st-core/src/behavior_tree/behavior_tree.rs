@@ -282,7 +282,7 @@ where
         let hash = self.calculate_hash();
 
         let actionable_label = format!("{} ({:x})", &self, hash);
-        event!(Level::INFO, message = "Starting run", index = self.index(), actionable = actionable_label,);
+        event!(Level::DEBUG, message = "Starting run", index = self.index(), actionable = actionable_label,);
 
         let result = match self {
             Behavior::Action(a, _) => a.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await,
@@ -340,14 +340,6 @@ where
         };
         match &result {
             Ok(o) => {
-                event!(
-                    Level::DEBUG,
-                    message = format!(
-                        "Finished action - trying to send msg to state_changed_tx. Capacity: {}",
-                        state_changed_tx.capacity()
-                    )
-                );
-
                 state_changed_tx.send(state.clone()).await.expect("send");
 
                 let capacity = state_changed_tx.capacity();
@@ -361,7 +353,7 @@ where
             }
             Err(e) => {
                 event!(
-                    Level::WARN,
+                    Level::DEBUG,
                     message = "Finished action with Error",
                     index = self.index(),
                     actionable = actionable_label,

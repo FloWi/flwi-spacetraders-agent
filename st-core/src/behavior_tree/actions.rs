@@ -86,7 +86,7 @@ impl Actionable for ShipAction {
 
                     if is_still_travelling {
                         let duration = arrival_time - now;
-                        event!(Level::INFO, "WaitForArrival: {duration:?}");
+                        event!(Level::DEBUG, "WaitForArrival: {duration:?}");
                         tokio::time::sleep(Duration::from_millis(u64::try_from(duration.num_milliseconds()).unwrap_or(0))).await;
                         Ok(Response::Success)
                     } else {
@@ -106,7 +106,7 @@ impl Actionable for ShipAction {
                         state.nav.status = NavStatus::InOrbit;
                     } else {
                         event!(
-                            Level::INFO,
+                            Level::DEBUG,
                             "FixNavStatusIfNecessary: ship is InTransit, but arrival_time {:?} hasn't been reached yet",
                             arrival_time
                         );
@@ -151,7 +151,7 @@ impl Actionable for ShipAction {
                         TravelAction::Navigate { to, .. } => {
                             let is_arrived = state.nav.waypoint_symbol == *to && state.nav.status != NavStatus::InTransit;
                             if !is_arrived {
-                                event!(Level::INFO, "MarkTravelActionAsCompleteIfPossible: ship has not arrived yet");
+                                event!(Level::DEBUG, "MarkTravelActionAsCompleteIfPossible: ship has not arrived yet");
                             }
                             is_arrived
                         }
@@ -159,7 +159,7 @@ impl Actionable for ShipAction {
                             let has_refueled =
                                 state.nav.waypoint_symbol == *at && state.nav.status != NavStatus::InTransit && state.fuel.current == state.fuel.capacity;
                             if !has_refueled {
-                                event!(Level::INFO, "MarkTravelActionAsCompleteIfPossible: ship has not refueled yet");
+                                event!(Level::DEBUG, "MarkTravelActionAsCompleteIfPossible: ship has not refueled yet");
                             }
 
                             has_refueled
@@ -262,7 +262,7 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::PrintTravelActions => {
-                event!(Level::INFO, "travel_action queue: {:?}", state.travel_action_queue);
+                event!(Level::DEBUG, "travel_action queue: {:?}", state.travel_action_queue);
                 Ok(Success)
             }
             ShipAction::HasExploreLocationEntry => {
@@ -279,11 +279,11 @@ impl Actionable for ShipAction {
             }
 
             ShipAction::PrintExploreLocations => {
-                event!(Level::INFO, "explore_location_queue: {:?}", state.explore_location_queue);
+                event!(Level::DEBUG, "explore_location_queue: {:?}", state.explore_location_queue);
                 Ok(Success)
             }
             ShipAction::PrintDestination => {
-                event!(Level::INFO, "current_navigation_destination: {:?}", state.current_navigation_destination);
+                event!(Level::DEBUG, "current_navigation_destination: {:?}", state.current_navigation_destination);
                 Ok(Success)
             }
 
@@ -646,7 +646,7 @@ impl Actionable for ShipAction {
                 None => Ok(Success),
                 Some(next_time) => {
                     let duration = next_time - Utc::now();
-                    event!(Level::INFO, "SleepUntilNextObservationTime: {duration:?}");
+                    event!(Level::DEBUG, "SleepUntilNextObservationTime: {duration:?}");
                     tokio::time::sleep(Duration::from_millis(u64::try_from(duration.num_milliseconds()).unwrap_or(0))).await;
                     Ok(Success)
                 }

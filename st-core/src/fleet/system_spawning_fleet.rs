@@ -4,6 +4,8 @@ use chrono::Utc;
 use itertools::Itertools;
 use st_domain::{Fleet, FleetDecisionFacts, FleetTask, FleetTaskCompletion, Ship, ShipSymbol, ShipTask, SystemSpawningFleetConfig};
 use std::collections::HashMap;
+use tracing::{event, span};
+use tracing_core::Level;
 
 pub struct SystemSpawningFleet;
 
@@ -15,12 +17,23 @@ impl SystemSpawningFleet {
         cfg: &SystemSpawningFleetConfig,
         facts: &FleetDecisionFacts,
     ) -> Option<FleetTaskCompletion> {
-        match ship_task {
+        let ship_span = span!(
+            Level::INFO,
+            "SystemSpawningFleet",
+            fleet_id = &fleet.id.0,
+            fleet = "SystemSpawningFleet",
+            ship_task = ship_task.to_string()
+        );
+
+        let _enter = ship_span.enter();
+
+        let result = match ship_task {
             ShipTask::ObserveAllWaypointsOnce { waypoint_symbols } => {
                 let marketplaces_to_explore = diff_waypoint_symbols(&cfg.marketplace_waypoints_of_interest, &facts.marketplaces_with_up_to_date_infos);
                 let shipyards_to_explore = diff_waypoint_symbols(&cfg.shipyard_waypoints_of_interest, &facts.shipyards_with_up_to_date_infos);
 
-                println!(
+                event!(
+                    Level::DEBUG,
                     r#"SystemSpawningFleet::check_for_task_completion:
 {} marketplace_waypoints_of_interest: {:?}
 {} marketplaces_with_up_to_date_infos: {:?}
@@ -54,7 +67,21 @@ impl SystemSpawningFleet {
                 }
             }
             _ => None,
+        };
+        match &result {
+            None => {
+                event!(Level::DEBUG, "FleetTask not finished yet");
+            }
+            Some(completed_task) => {
+                event!(
+                    Level::INFO,
+                    message = "FleetTask completed by finishing this ShipTask",
+                    fleet_task = completed_task.task.to_string()
+                );
+            }
         }
+
+        result
     }
 
     pub fn compute_ship_tasks(

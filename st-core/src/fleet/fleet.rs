@@ -33,7 +33,7 @@ use st_domain::{
 };
 use st_store::bmc::Bmc;
 use st_store::{
-    db, load_fleet_overview, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, store_fleets_data, Ctx, DbConstructionBmc,
+    db, load_fleet_overview, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, upsert_fleets_data, Ctx, DbConstructionBmc,
     DbModelManager,
 };
 use std::collections::{HashMap, HashSet};
@@ -300,7 +300,7 @@ impl FleetAdmiral {
             None => {
                 println!("loading admiral failed - creating a new one");
                 let admiral = Self::create(Arc::clone(&bmc), system_symbol, Arc::clone(&client)).await?;
-                let _ = st_store::fleet_bmc::store_fleets_data(
+                let _ = st_store::fleet_bmc::upsert_fleets_data(
                     Arc::clone(&bmc),
                     &Ctx::Anonymous,
                     &admiral.fleets,
@@ -360,7 +360,7 @@ impl FleetAdmiral {
             let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
             Self::assign_ship_tasks_and_potential_requirements(&mut admiral, new_ship_tasks);
 
-            let _ = store_fleets_data(
+            let _ = upsert_fleets_data(
                 Arc::clone(&bmc),
                 &Ctx::Anonymous,
                 &admiral.fleets,
@@ -422,7 +422,7 @@ impl FleetAdmiral {
         let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
         Self::assign_ship_tasks_and_potential_requirements(&mut admiral, new_ship_tasks);
 
-        store_fleets_data(
+        upsert_fleets_data(
             Arc::clone(&bmc),
             &Ctx::Anonymous,
             &admiral.fleets,
@@ -529,6 +529,7 @@ impl FleetAdmiral {
         for fleet_id in fleets_to_dismantle {
             admiral.mark_fleet_tasks_as_complete(&fleet_id);
             admiral.remove_ships_from_fleet(&fleet_id);
+            admiral.fleets.remove(&fleet_id);
         }
     }
 

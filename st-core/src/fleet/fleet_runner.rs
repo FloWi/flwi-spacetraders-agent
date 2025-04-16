@@ -23,7 +23,7 @@ use st_domain::{
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
 use st_store::bmc::{ship_bmc, Bmc};
-use st_store::{db, upsert_waypoints, Ctx, DbModelManager};
+use st_store::{db, upsert_fleets_data, upsert_waypoints, Ctx, DbModelManager};
 use std::collections::HashMap;
 use std::ops::Not;
 use std::sync::Arc;
@@ -312,7 +312,6 @@ impl FleetRunner {
 
             match msg {
                 ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
-                    let mut admiral_guard = fleet_admiral.lock().await;
                     admiral_guard.ship_tasks.remove(&ship.symbol);
                     let result = recompute_tasks_after_ship_finishing_behavior_tree(&admiral_guard, &ship, &task, Arc::clone(&bmc)).await?;
                     event!(
@@ -323,7 +322,18 @@ impl FleetRunner {
                     );
                     match result {
                         NewTaskResult::DismantleFleets { fleets_to_dismantle } => {
-                            FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle);
+                            FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle.clone());
+                            bmc.fleet_bmc().delete_fleets(&Ctx::Anonymous, &fleets_to_dismantle).await?;
+                            let _ = upsert_fleets_data(
+                                Arc::clone(&bmc),
+                                &Ctx::Anonymous,
+                                &admiral_guard.fleets,
+                                &admiral_guard.fleet_tasks,
+                                &admiral_guard.ship_fleet_assignment,
+                                &admiral_guard.ship_tasks,
+                                &admiral_guard.active_trades,
+                            )
+                            .await?;
                         }
                         NewTaskResult::RegisterWaypointForPermanentObservation {
                             ship_symbol,
@@ -382,7 +392,7 @@ impl FleetRunner {
     ) -> Result<()> {
         while let Some(msg) = ship_action_completed_rx.recv().await {
             let ship_span = span!(
-                Level::INFO,
+                Level::DEBUG,
                 "fleet_runner::listen_to_ship_status_report_messages",
                 ship = format!("{}", msg.ship_symbol().0)
             );
@@ -392,7 +402,7 @@ impl FleetRunner {
                 ActionEvent::ShipActionCompleted(ship_op, ship_action, result) => match result {
                     Ok(_) => {
                         event!(
-                            Level::INFO,
+                            Level::DEBUG,
                             message = "ShipActionCompleted",
                             ship = ship_op.symbol.0,
                             action = %ship_action,
@@ -552,14 +562,15 @@ mod tests {
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
     use st_domain::blackboard_ops::MockBlackboardOps;
+    use st_domain::{FleetId, FleetTask};
     use st_store::bmc::jump_gate_bmc::{InMemoryJumpGateBmc, JumpGateBmcTrait};
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc, ShipBmcTrait};
     use st_store::bmc::{Bmc, InMemoryBmc};
     use st_store::shipyard_bmc::{InMemoryShipyardBmc, MockShipyardBmcTrait, ShipyardBmcTrait};
     use st_store::trade_bmc::{InMemoryTradeBmc, TradeBmcTrait};
     use st_store::{
-        AgentBmcTrait, ConstructionBmcTrait, FleetBmcTrait, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemorySystemsBmc,
-        MarketBmcTrait, MockMarketBmcTrait, SystemBmcTrait,
+        AgentBmcTrait, ConstructionBmcTrait, Ctx, FleetBmcTrait, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc,
+        InMemorySystemsBmc, MarketBmcTrait, MockMarketBmcTrait, SystemBmcTrait,
     };
     use std::sync::Arc;
     use std::time::Duration;
@@ -613,10 +624,19 @@ mod tests {
 
         println!("Creating fleet admiral");
 
-        tokio::time::timeout(std::time::Duration::from_secs(120), async {
-            let mut fleet_admiral =
-                FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_symbol, Arc::clone(&client)).await.expect("FleetAdmiral::load_or_create");
+        let mut fleet_admiral =
+            FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_symbol, Arc::clone(&client)).await.expect("FleetAdmiral::load_or_create");
 
+        assert!(matches!(
+            fleet_admiral.fleet_tasks.get(&FleetId(0)).cloned().unwrap_or_default().get(0),
+            Some(FleetTask::CollectMarketInfosOnce { .. })
+        ));
+        assert!(matches!(
+            fleet_admiral.fleet_tasks.get(&FleetId(1)).cloned().unwrap_or_default().get(0),
+            Some(FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. })
+        ));
+
+        let either_timeout = tokio::time::timeout(std::time::Duration::from_secs(10), async {
             println!("Created fleet admiral");
 
             let admiral_mutex = Arc::new(Mutex::new(fleet_admiral));
@@ -632,7 +652,12 @@ mod tests {
             .await
             .unwrap();
         })
-        .await
-        .expect("Test timed out");
+        .await;
+
+        let completed_tasks = bmc.fleet_bmc().load_completed_fleet_tasks(&Ctx::Anonymous).await.unwrap();
+        let fleets = bmc.fleet_bmc().load_fleets(&Ctx::Anonymous).await.unwrap();
+
+        assert_eq!(1, completed_tasks.len());
+        assert_eq!(1, fleets.len());
     }
 }
