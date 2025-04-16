@@ -1,7 +1,6 @@
 use chrono::{TimeDelta, Utc};
 use itertools::Itertools;
 use st_domain::{MarketEntry, ShipyardData, Waypoint, WaypointSymbol, WaypointTraitSymbol};
-use st_store::{DbMarketEntry, DbShipyardData};
 
 pub fn find_marketplaces_for_exploration(all_marketplaces: Vec<MarketEntry>) -> Vec<WaypointSymbol> {
     let waypoint_symbols: Vec<_> = all_marketplaces

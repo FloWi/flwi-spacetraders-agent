@@ -25,7 +25,7 @@ use st_domain::FleetTask::{
 use st_domain::FleetUpdateMessage::FleetTaskCompleted;
 use st_domain::{
     get_exploration_tasks_for_waypoint, Agent, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, ExplorationTask, Fleet, FleetConfig,
-    FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketData,
+    FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketData, MarketEntry,
     MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, PurchaseGoodTicketDetails, PurchaseReason, PurchaseShipTicketDetails,
     SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig, StationaryProbeLocation,
     SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket, TradingFleetConfig, Transaction, TransactionActionEvent, Waypoint,
@@ -439,7 +439,7 @@ impl FleetAdmiral {
     pub(crate) fn pure_compute_ship_tasks(
         admiral: &FleetAdmiral,
         facts: &FleetDecisionFacts,
-        latest_market_data: Vec<MarketData>,
+        latest_market_data: Vec<MarketEntry>,
         ship_prices: ShipPriceInfo,
         waypoints: Vec<Waypoint>,
     ) -> Result<Vec<(ShipSymbol, ShipTask, ShipTaskRequirement)>> {
@@ -929,8 +929,8 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
     let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await?;
     let agent_info = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await.expect("agent");
 
-    let marketplaces_of_interest = bmc.system_bmc().select_latest_marketplace_entry_of_system(&Ctx::Anonymous, &system_symbol).await?;
-    let shipyards_of_interest = bmc.system_bmc().select_latest_shipyard_entry_of_system(&Ctx::Anonymous, &system_symbol).await?;
+    let marketplaces_of_interest: Vec<MarketEntry> = bmc.market_bmc().get_latest_market_data_for_system(&Ctx::Anonymous, &system_symbol).await?;
+    let shipyards_of_interest = bmc.shipyard_bmc().get_latest_shipyard_entries_of_system(&Ctx::Anonymous, &system_symbol).await?;
 
     let marketplace_symbols_of_interest = marketplaces_of_interest.iter().map(|me| me.waypoint_symbol.clone()).collect_vec();
     let marketplaces_to_explore = find_marketplaces_for_exploration(marketplaces_of_interest.clone());

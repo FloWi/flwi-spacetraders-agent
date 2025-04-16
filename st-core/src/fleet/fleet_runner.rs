@@ -14,11 +14,12 @@ use crate::test_objects::TestObjects;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 
-use crate::marketplaces::marketplaces::{find_marketplaces_to_collect_remotely, find_shipyards_to_collect_remotely};
+use crate::marketplaces::marketplaces::{filter_waypoints_with_trait, find_marketplaces_to_collect_remotely, find_shipyards_to_collect_remotely};
+use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
     Agent, Fleet, FleetDecisionFacts, FleetPhaseName, FleetsOverview, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket,
-    TransactionActionEvent, WaypointType,
+    TransactionActionEvent, WaypointTraitSymbol, WaypointType,
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
 use st_store::bmc::{ship_bmc, Bmc};
@@ -511,17 +512,21 @@ impl FleetRunner {
             }
         };
 
-        let marketplace_entries = bmc.system_bmc().select_latest_marketplace_entry_of_system(ctx, &headquarters_system_symbol).await?;
-        let shipyard_entries = bmc.system_bmc().select_latest_shipyard_entry_of_system(ctx, &headquarters_system_symbol).await?;
-        let marketplaces_to_collect_remotely = find_marketplaces_to_collect_remotely(marketplace_entries.clone(), &waypoint_entries_of_home_system);
-        let shipyards_to_collect_remotely = find_shipyards_to_collect_remotely(shipyard_entries.clone(), &waypoint_entries_of_home_system);
+        let marketplaces_to_collect_remotely = filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::MARKETPLACE)
+            .into_iter()
+            .map(|wp| wp.symbol.clone())
+            .collect_vec();
+
+        let shipyards_to_collect_remotely =
+            filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::SHIPYARD).into_iter().map(|wp| wp.symbol.clone()).collect_vec();
+
         for wps in marketplaces_to_collect_remotely {
             let market = client.get_marketplace(wps).await?;
             bmc.market_bmc().save_market_data(ctx, vec![market.data], Utc::now()).await?;
         }
         for wps in shipyards_to_collect_remotely {
             let shipyard = client.get_shipyard(wps).await?;
-            bmc.shipyard_bmc().save_shipyard_data(ctx, shipyard.data).await?;
+            bmc.shipyard_bmc().save_shipyard_data(ctx, shipyard.data, Utc::now()).await?;
         }
         let jump_gate_wp_of_home_system =
             waypoint_entries_of_home_system.iter().find(|wp| wp.r#type == WaypointType::JUMP_GATE).expect("home system should have a jump-gate");
@@ -541,11 +546,13 @@ impl FleetRunner {
 
 #[cfg(test)]
 mod tests {
+    use crate::bmc_blackboard::BmcBlackboard;
     use crate::fleet::fleet::FleetAdmiral;
     use crate::fleet::fleet_runner::FleetRunner;
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
     use st_domain::blackboard_ops::MockBlackboardOps;
+    use st_store::bmc::jump_gate_bmc::{InMemoryJumpGateBmc, JumpGateBmcTrait};
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc, ShipBmcTrait};
     use st_store::bmc::{Bmc, InMemoryBmc};
     use st_store::shipyard_bmc::{InMemoryShipyardBmc, MockShipyardBmcTrait, ShipyardBmcTrait};
@@ -560,6 +567,7 @@ mod tests {
     use tokio::sync::Mutex;
 
     #[test(tokio::test)]
+    //#[tokio::test] // for accessing runtime-infos with tokio-console
     async fn create_fleet_admiral_from_startup_ship_config() {
         // uncomment for displaying tasks with `tokio-console` in terminal
         // also don't use test-tracing-subscriber `#[test(tokio::test)]` but rather #[tokio::test]
@@ -583,6 +591,7 @@ mod tests {
 
         let market_bmc = InMemoryMarketBmc::new();
         let shipyard_bmc = InMemoryShipyardBmc::new();
+        let jump_gate_bmc = InMemoryJumpGateBmc::new();
 
         let bmc = InMemoryBmc {
             ship_bmc: Arc::new(ship_bmc) as Arc<dyn ShipBmcTrait>,
@@ -592,13 +601,13 @@ mod tests {
             agent_bmc: Arc::new(agent_bmc) as Arc<dyn AgentBmcTrait>,
             construction_bmc: Arc::new(construction_bmc) as Arc<dyn ConstructionBmcTrait>,
             market_bmc: Arc::new(market_bmc) as Arc<dyn MarketBmcTrait>,
+            jump_gate_bmc: Arc::new(jump_gate_bmc) as Arc<dyn JumpGateBmcTrait>,
             shipyard_bmc: Arc::new(shipyard_bmc) as Arc<dyn ShipyardBmcTrait>,
         };
 
-        let mock_blackboard = MockBlackboardOps::new();
-
         let client = Arc::new(in_memory_client) as Arc<dyn StClientTrait>;
         let bmc = Arc::new(bmc) as Arc<dyn Bmc>;
+        let blackboard = BmcBlackboard::new(Arc::clone(&bmc));
 
         FleetRunner::load_and_store_initial_data(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
 
@@ -617,7 +626,7 @@ mod tests {
                 Arc::clone(&admiral_mutex),
                 Arc::clone(&client),
                 Arc::clone(&bmc),
-                Arc::new(mock_blackboard),
+                Arc::new(blackboard),
                 Duration::from_millis(1),
             )
             .await

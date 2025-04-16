@@ -7553,6 +7553,18 @@
       "isComplete": false
     }
   ],
+  "jump_gates": [
+    {
+      "symbol": "X1-AD75-I55",
+      "connections": [
+        "X1-P34-XX8A",
+        "X1-XZ87-I55",
+        "X1-XT4-CD7Z",
+        "X1-CH16-DB9A",
+        "X1-RC85-A10D"
+      ]
+    }
+  ],
   "agent": {
     "symbol": "FLWI_TEST",
     "credits": 175000,

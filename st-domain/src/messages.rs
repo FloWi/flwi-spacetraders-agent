@@ -1,6 +1,7 @@
 use crate::{
-    Agent, Construction, EvaluatedTradingOpportunity, FlightMode, MarketData, MaterializedSupplyChain, PurchaseShipResponse, PurchaseTradeGoodResponse,
-    SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol, TradeGoodSymbol, WaypointSymbol,
+    Agent, Construction, EvaluatedTradingOpportunity, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse,
+    PurchaseTradeGoodResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol,
+    TradeGoodSymbol, WaypointSymbol,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -518,4 +519,13 @@ pub struct ShipyardData {
     pub waypoint_symbol: WaypointSymbol,
     pub shipyard: Shipyard,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct JumpGateEntry {
+    pub system_symbol: SystemSymbol,
+    pub waypoint_symbol: WaypointSymbol,
+    pub jump_gate: JumpGate,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }

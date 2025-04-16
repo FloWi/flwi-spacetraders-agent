@@ -1,14 +1,16 @@
+use crate::bmc::jump_gate_bmc::{DbJumpGateBmc, JumpGateBmcTrait};
 use crate::bmc::ship_bmc::{DbShipBmc, ShipBmcTrait};
 use crate::shipyard_bmc::{DbShipyardBmc, ShipyardBmcTrait};
 use crate::trade_bmc::{DbTradeBmc, TradeBmcTrait};
 use crate::{
-    AgentBmcTrait, ConstructionBmcTrait, DbAgentBmc, DbConstructionBmc, DbFleetBmc, DbMarketBmc, DbModelManager, DbSystemBmc, FleetBmcTrait, MarketBmcTrait,
-    SystemBmcTrait,
+    AgentBmcTrait, ConstructionBmcTrait, DbAgentBmc, DbConstructionBmc, DbFleetBmc, DbJumpGateData, DbMarketBmc, DbModelManager, DbSystemBmc, FleetBmcTrait,
+    MarketBmcTrait, SystemBmcTrait,
 };
 use mockall::automock;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+pub mod jump_gate_bmc;
 pub mod ship_bmc;
 
 #[automock]
@@ -20,6 +22,7 @@ pub trait Bmc: Send + Sync + Debug {
     fn agent_bmc(&self) -> Arc<dyn AgentBmcTrait>;
     fn construction_bmc(&self) -> Arc<dyn ConstructionBmcTrait>;
     fn market_bmc(&self) -> Arc<dyn MarketBmcTrait>;
+    fn jump_gate_bmc(&self) -> Arc<dyn JumpGateBmcTrait>;
     fn shipyard_bmc(&self) -> Arc<dyn ShipyardBmcTrait>;
 }
 
@@ -33,6 +36,7 @@ pub struct DbBmc {
     agent_bmc: Arc<DbAgentBmc>,
     construction_bmc: Arc<DbConstructionBmc>,
     market_bmc: Arc<DbMarketBmc>,
+    jump_gate_bmc: Arc<DbJumpGateBmc>,
     shipyard_bmc: Arc<DbShipyardBmc>,
 }
 
@@ -47,6 +51,7 @@ impl DbBmc {
             agent_bmc: Arc::new(DbAgentBmc { mm: mm.clone() }),
             construction_bmc: Arc::new(DbConstructionBmc { mm: mm.clone() }),
             market_bmc: Arc::new(DbMarketBmc { mm: mm.clone() }),
+            jump_gate_bmc: Arc::new(DbJumpGateBmc { mm: mm.clone() }),
             shipyard_bmc: Arc::new(DbShipyardBmc { mm: mm.clone() }),
         }
     }
@@ -81,6 +86,10 @@ impl Bmc for DbBmc {
         self.market_bmc.clone() as Arc<dyn MarketBmcTrait>
     }
 
+    fn jump_gate_bmc(&self) -> Arc<dyn JumpGateBmcTrait> {
+        self.jump_gate_bmc.clone() as Arc<dyn JumpGateBmcTrait>
+    }
+
     fn shipyard_bmc(&self) -> Arc<dyn ShipyardBmcTrait> {
         self.shipyard_bmc.clone() as Arc<dyn ShipyardBmcTrait>
     }
@@ -95,39 +104,44 @@ pub struct InMemoryBmc {
     pub agent_bmc: Arc<dyn AgentBmcTrait>,
     pub construction_bmc: Arc<dyn ConstructionBmcTrait>,
     pub market_bmc: Arc<dyn MarketBmcTrait>,
+    pub jump_gate_bmc: Arc<dyn JumpGateBmcTrait>,
     pub shipyard_bmc: Arc<dyn ShipyardBmcTrait>,
 }
 
 impl Bmc for InMemoryBmc {
     fn ship_bmc(&self) -> Arc<dyn ShipBmcTrait> {
-        self.ship_bmc.clone()
+        Arc::clone(&self.ship_bmc)
     }
 
     fn fleet_bmc(&self) -> Arc<dyn FleetBmcTrait> {
-        self.fleet_bmc.clone()
+        Arc::clone(&self.fleet_bmc)
     }
 
     fn trade_bmc(&self) -> Arc<dyn TradeBmcTrait> {
-        self.trade_bmc.clone()
+        Arc::clone(&self.trade_bmc)
     }
 
     fn system_bmc(&self) -> Arc<dyn SystemBmcTrait> {
-        self.system_bmc.clone()
+        Arc::clone(&self.system_bmc)
     }
 
     fn agent_bmc(&self) -> Arc<dyn AgentBmcTrait> {
-        self.agent_bmc.clone()
+        Arc::clone(&self.agent_bmc)
     }
 
     fn construction_bmc(&self) -> Arc<dyn ConstructionBmcTrait> {
-        self.construction_bmc.clone()
+        Arc::clone(&self.construction_bmc)
     }
 
     fn market_bmc(&self) -> Arc<dyn MarketBmcTrait> {
-        self.market_bmc.clone()
+        Arc::clone(&self.market_bmc)
+    }
+
+    fn jump_gate_bmc(&self) -> Arc<dyn JumpGateBmcTrait> {
+        Arc::clone(&self.jump_gate_bmc)
     }
 
     fn shipyard_bmc(&self) -> Arc<dyn ShipyardBmcTrait> {
-        self.shipyard_bmc.clone()
+        Arc::clone(&self.shipyard_bmc)
     }
 }

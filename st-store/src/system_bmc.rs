@@ -1,11 +1,11 @@
 use crate::ctx::Ctx;
-use crate::{db, DbMarketEntry, DbModelManager, DbShipyardData};
+use crate::{db, DbModelManager};
 use anyhow::*;
 use async_trait::async_trait;
 use chrono::Utc;
 use itertools::Itertools;
 use mockall::automock;
-use st_domain::{Agent, MarketEntry, ShipyardData, SystemSymbol, Waypoint};
+use st_domain::{SystemSymbol, Waypoint, WaypointSymbol};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -21,8 +21,7 @@ pub struct DbSystemBmc {
 pub trait SystemBmcTrait: Send + Sync + Debug {
     async fn get_waypoints_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<Waypoint>>;
     async fn save_waypoints_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol, waypoints: Vec<Waypoint>) -> Result<()>;
-    async fn select_latest_marketplace_entry_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>>;
-    async fn select_latest_shipyard_entry_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<ShipyardData>>;
+    async fn upsert_waypoint(&self, ctx: &Ctx, waypoint: Waypoint) -> Result<()>;
 }
 
 #[async_trait]
@@ -35,20 +34,14 @@ impl SystemBmcTrait for DbSystemBmc {
         db::upsert_waypoints(self.mm.pool(), waypoints, Utc::now()).await
     }
 
-    async fn select_latest_marketplace_entry_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>> {
-        db::select_latest_marketplace_entry_of_system(self.mm.pool(), system_symbol).await
-    }
-
-    async fn select_latest_shipyard_entry_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<ShipyardData>> {
-        db::select_latest_shipyard_entry_of_system(self.mm.pool(), system_symbol).await
+    async fn upsert_waypoint(&self, ctx: &Ctx, waypoint: Waypoint) -> Result<()> {
+        db::upsert_waypoints(self.mm.pool(), vec![waypoint], Utc::now()).await
     }
 }
 
 #[derive(Debug)]
 pub struct InMemorySystems {
-    waypoints_per_system: HashMap<SystemSymbol, Vec<Waypoint>>,
-    latest_marketplace_entries: HashMap<SystemSymbol, Vec<MarketEntry>>,
-    latest_shipyard_entries: HashMap<SystemSymbol, Vec<ShipyardData>>,
+    waypoints_per_system: HashMap<SystemSymbol, HashMap<WaypointSymbol, Waypoint>>,
 }
 
 #[derive(Debug)]
@@ -61,8 +54,6 @@ impl InMemorySystemsBmc {
         Self {
             in_memory_systems: Arc::new(RwLock::new(InMemorySystems {
                 waypoints_per_system: Default::default(),
-                latest_marketplace_entries: Default::default(),
-                latest_shipyard_entries: Default::default(),
             })),
         }
     }
@@ -71,19 +62,19 @@ impl InMemorySystemsBmc {
 #[async_trait]
 impl SystemBmcTrait for InMemorySystemsBmc {
     async fn get_waypoints_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<Waypoint>> {
-        Ok(self.in_memory_systems.read().await.waypoints_per_system.get(system_symbol).cloned().unwrap_or_default())
+        Ok(self.in_memory_systems.read().await.waypoints_per_system.get(system_symbol).cloned().unwrap_or_default().values().cloned().collect_vec())
     }
 
     async fn save_waypoints_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol, waypoints: Vec<Waypoint>) -> Result<()> {
-        self.in_memory_systems.write().await.waypoints_per_system.insert(system_symbol.clone(), waypoints);
+        let waypoint_map = waypoints.into_iter().map(|wp| (wp.symbol.clone(), wp)).collect();
+        self.in_memory_systems.write().await.waypoints_per_system.insert(system_symbol.clone(), waypoint_map);
         Ok(())
     }
 
-    async fn select_latest_marketplace_entry_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>> {
-        Ok(self.in_memory_systems.read().await.latest_marketplace_entries.get(system_symbol).cloned().unwrap_or_default())
-    }
+    async fn upsert_waypoint(&self, ctx: &Ctx, waypoint: Waypoint) -> Result<()> {
+        let mut guard = self.in_memory_systems.write().await;
 
-    async fn select_latest_shipyard_entry_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<ShipyardData>> {
-        Ok(self.in_memory_systems.read().await.latest_shipyard_entries.get(system_symbol).cloned().unwrap_or_default())
+        guard.waypoints_per_system.entry(waypoint.system_symbol.clone()).or_default().insert(waypoint.symbol.clone(), waypoint.clone());
+        Ok(())
     }
 }

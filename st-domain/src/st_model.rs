@@ -1,4 +1,4 @@
-use crate::TransactionSummary;
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
@@ -975,6 +975,44 @@ pub struct Cargo {
     pub inventory: Vec<Inventory>,
 }
 
+impl Cargo {
+    pub fn with_units_removed(&self, trade_good_symbol: TradeGoodSymbol, units: u32) -> Result<Cargo, NotEnoughFuelInCargoError> {
+        let mut cargo = self.clone();
+
+        // Find the index of the inventory item with the matching symbol
+        let maybe_item_index = cargo.inventory.iter().position(|item| item.symbol == trade_good_symbol);
+
+        // If the item exists in inventory
+        if let Some(index) = maybe_item_index {
+            let item = &mut cargo.inventory[index];
+
+            // Check if we have enough units to remove
+            if item.units < units {
+                return Err(NotEnoughFuelInCargoError {
+                    required: units,
+                    current: item.units,
+                });
+            }
+
+            // Update the item units
+            item.units -= units;
+
+            // If units became 0, remove the item from inventory
+            if item.units == 0 {
+                cargo.inventory.remove(index);
+            }
+
+            // Update the total cargo units
+            cargo.units -= units as i32;
+
+            Ok(cargo)
+        } else {
+            // Item not found in inventory
+            Err(NotEnoughFuelInCargoError { required: units, current: 0 })
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct Inventory {
@@ -1177,4 +1215,9 @@ pub enum TradeGoodSymbol {
     SHIP_REFINING_FREIGHTER,
     SHIP_SURVEYOR,
     SHIP_BULK_FREIGHTER,
+}
+
+pub struct NotEnoughFuelInCargoError {
+    pub required: u32,
+    pub current: u32,
 }

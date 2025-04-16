@@ -1,6 +1,6 @@
 use crate::universe_server::universe_server::InMemoryUniverse;
 use serde::{Deserialize, Serialize};
-use st_domain::{Agent, Construction, MarketData, MarketEntry, Ship, Shipyard, ShipyardData, SystemsPageData, Waypoint, WaypointSymbol};
+use st_domain::{Agent, Construction, JumpGate, MarketData, MarketEntry, Ship, Shipyard, ShipyardData, SystemsPageData, Waypoint, WaypointSymbol};
 
 use std::fs::File;
 use std::io::BufReader;
@@ -15,6 +15,7 @@ pub struct UniverseSnapshot {
     shipyards: Vec<Shipyard>,
     construction_sites: Vec<Construction>,
     agent: Agent,
+    jump_gates: Vec<JumpGate>,
 }
 
 impl UniverseSnapshot {
@@ -80,6 +81,8 @@ impl UniverseSnapshot {
 
         let agent = self.agent;
 
+        let jump_gates = self.jump_gates.into_iter().map(|jg| (jg.symbol.clone(), jg.clone())).collect();
+
         InMemoryUniverse {
             systems,
             waypoints,
@@ -88,6 +91,8 @@ impl UniverseSnapshot {
             shipyards,
             construction_sites,
             agent,
+            transactions: vec![],
+            jump_gates,
         }
     }
 }
@@ -120,6 +125,8 @@ with headquarters as (select regexp_replace(entry ->> 'headquarters', '-[^-]*$',
                               from construction_sites
                               where regexp_replace(waypoint_symbol, '-[^-]*$', '') = (select headquarters_system_symbol from headquarters)
                               order by waypoint_symbol, updated_at desc)
+   , hq_jump_gate as (select system_symbol, waypoint_symbol, entry, created_at, updated_at
+                      from jump_gates)
    , ships as (select *
                from ships
                where ship_symbol like '%-1'
@@ -137,7 +144,9 @@ SELECT jsonb_build_object(
                          FROM ships),
                'construction_sites', (SELECT COALESCE(jsonb_agg(entry -> 'data'), '[]'::jsonb)
                                       FROM hq_construction_site),
-
+               'jump_gates', (SELECT COALESCE(jsonb_agg(entry), '[]'::jsonb)
+                              FROM hq_jump_gate),
+               'agent', (select entry from agent limit 1)
        ) AS aggregated_data;
 
 

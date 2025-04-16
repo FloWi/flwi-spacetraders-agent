@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use mockall::automock;
 use sqlx::types::Json;
-use st_domain::{MarketData, SystemSymbol, WaypointSymbol};
+use st_domain::{MarketData, MarketEntry, SystemSymbol, WaypointSymbol};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -20,16 +20,16 @@ pub struct DbMarketBmc {
 #[automock]
 #[async_trait]
 pub trait MarketBmcTrait: Send + Sync + Debug {
-    async fn get_latest_market_data_for_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketData>>;
+    async fn get_latest_market_data_for_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>>;
     async fn save_market_data(&self, ctx: &Ctx, market_entries: Vec<MarketData>, now: DateTime<Utc>) -> Result<()>;
 }
 
 #[async_trait]
 impl MarketBmcTrait for DbMarketBmc {
-    async fn get_latest_market_data_for_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketData>> {
+    async fn get_latest_market_data_for_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>> {
         let waypoint_symbol_pattern = format!("{}%", system_symbol.0);
 
-        let market_entriy: Vec<DbMarketEntry> = sqlx::query_as!(
+        let market_entries: Vec<DbMarketEntry> = sqlx::query_as!(
             DbMarketEntry,
             r#"
 SELECT DISTINCT ON (waypoint_symbol)
@@ -46,9 +46,16 @@ ORDER BY waypoint_symbol, created_at DESC
         .fetch_all(self.mm.pool())
         .await?;
 
-        let market_data = market_entriy.into_iter().map(|me| me.entry.0).collect_vec();
+        let result = market_entries
+            .into_iter()
+            .map(|db_entry| MarketEntry {
+                waypoint_symbol: WaypointSymbol(db_entry.waypoint_symbol.clone()),
+                market_data: db_entry.entry.0,
+                created_at: db_entry.created_at,
+            })
+            .collect_vec();
 
-        Ok(market_data)
+        Ok(result)
     }
 
     async fn save_market_data(&self, ctx: &Ctx, market_entries: Vec<MarketData>, now: DateTime<Utc>) -> Result<()> {
@@ -58,7 +65,7 @@ ORDER BY waypoint_symbol, created_at DESC
 
 #[derive(Debug)]
 pub struct InMemoryMarket {
-    latest_market_data: HashMap<SystemSymbol, HashMap<WaypointSymbol, MarketData>>,
+    latest_market_data: HashMap<SystemSymbol, HashMap<WaypointSymbol, MarketEntry>>,
 }
 
 #[derive(Debug)]
@@ -68,7 +75,7 @@ pub struct InMemoryMarketBmc {
 
 #[async_trait]
 impl MarketBmcTrait for InMemoryMarketBmc {
-    async fn get_latest_market_data_for_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketData>> {
+    async fn get_latest_market_data_for_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>> {
         Ok(self.in_memory_market.read().await.latest_market_data.get(system_symbol).cloned().unwrap_or_default().values().cloned().collect_vec())
     }
 
@@ -76,7 +83,14 @@ impl MarketBmcTrait for InMemoryMarketBmc {
         let mut guard = self.in_memory_market.write().await;
 
         for me in market_entries {
-            guard.latest_market_data.entry(me.symbol.system_symbol()).or_default().insert(me.symbol.clone(), me.clone());
+            guard.latest_market_data.entry(me.symbol.system_symbol()).or_default().insert(
+                me.symbol.clone(),
+                MarketEntry {
+                    waypoint_symbol: me.symbol.clone(),
+                    market_data: me.clone(),
+                    created_at: now,
+                },
+            );
         }
         Ok(())
     }

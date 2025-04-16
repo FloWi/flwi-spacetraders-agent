@@ -1,5 +1,6 @@
 use crate::{
-    EvaluatedTradingOpportunity, LabelledCoordinate, MarketData, MarketTradeGood, Ship, ShipSymbol, TradeGoodType, TradingOpportunity, Waypoint, WaypointSymbol,
+    EvaluatedTradingOpportunity, LabelledCoordinate, MarketData, MarketEntry, MarketTradeGood, Ship, ShipSymbol, TradeGoodType, TradingOpportunity, Waypoint,
+    WaypointSymbol,
 };
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
@@ -47,12 +48,12 @@ pub fn find_trading_opportunities(
     trades_by_profit
 }
 
-pub fn to_trade_goods_with_locations(market_data: &Vec<MarketData>) -> Vec<(WaypointSymbol, Vec<MarketTradeGood>)> {
+pub fn to_trade_goods_with_locations(market_data: &Vec<MarketEntry>) -> Vec<(WaypointSymbol, Vec<MarketTradeGood>)> {
     market_data
         .iter()
-        .filter_map(|md| match &md.trade_goods {
+        .filter_map(|md| match &md.market_data.trade_goods {
             None => None,
-            Some(trade_goods) => Some((md.symbol.clone(), trade_goods.clone())),
+            Some(trade_goods) => Some((md.waypoint_symbol.clone(), trade_goods.clone())),
         })
         .collect_vec()
 }

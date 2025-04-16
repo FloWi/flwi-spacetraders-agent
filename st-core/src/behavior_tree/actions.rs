@@ -74,6 +74,7 @@ impl Actionable for ShipAction {
                 NavStatus::InTransit => {
                     let now: DateTime<Utc> = Utc::now();
                     let arrival_time: DateTime<Utc> = state.nav.route.arrival;
+
                     let is_still_travelling: bool = now < arrival_time;
                     event!(
                         Level::DEBUG,
@@ -84,7 +85,10 @@ impl Actionable for ShipAction {
                     );
 
                     if is_still_travelling {
-                        Ok(Response::Running)
+                        let duration = arrival_time - now;
+                        event!(Level::INFO, "WaitForArrival: {duration:?}");
+                        tokio::time::sleep(Duration::from_millis(u64::try_from(duration.num_milliseconds()).unwrap_or(0))).await;
+                        Ok(Response::Success)
                     } else {
                         Ok(Success)
                     }
@@ -100,6 +104,12 @@ impl Actionable for ShipAction {
 
                     if !is_still_travelling {
                         state.nav.status = NavStatus::InOrbit;
+                    } else {
+                        event!(
+                            Level::INFO,
+                            "FixNavStatusIfNecessary: ship is InTransit, but arrival_time {:?} hasn't been reached yet",
+                            arrival_time
+                        );
                     }
                     Ok(Success)
                 }
@@ -118,7 +128,7 @@ impl Actionable for ShipAction {
             },
 
             ShipAction::IsCorrectFlightMode => {
-                if let Some(action) = &state.current_travel_action() {
+                if let Some(action) = state.current_travel_action() {
                     match action {
                         TravelAction::Navigate { mode, .. } => {
                             let current_mode = &state.get_ship().nav.flight_mode;
@@ -134,13 +144,25 @@ impl Actionable for ShipAction {
                     Err(anyhow!("Failed - no current action"))
                 }
             }
-            ShipAction::MarkTravelActionAsCompleteIfPossible => match &state.current_travel_action() {
+            ShipAction::MarkTravelActionAsCompleteIfPossible => match state.current_travel_action() {
                 None => Ok(Success),
                 Some(action) => {
                     let is_done = match action {
-                        TravelAction::Navigate { to, .. } => state.nav.waypoint_symbol == *to && state.nav.status != NavStatus::InTransit,
+                        TravelAction::Navigate { to, .. } => {
+                            let is_arrived = state.nav.waypoint_symbol == *to && state.nav.status != NavStatus::InTransit;
+                            if !is_arrived {
+                                event!(Level::INFO, "MarkTravelActionAsCompleteIfPossible: ship has not arrived yet");
+                            }
+                            is_arrived
+                        }
                         TravelAction::Refuel { at, .. } => {
-                            state.nav.waypoint_symbol == *at && state.nav.status != NavStatus::InTransit && state.fuel.current == state.fuel.capacity
+                            let has_refueled =
+                                state.nav.waypoint_symbol == *at && state.nav.status != NavStatus::InTransit && state.fuel.current == state.fuel.capacity;
+                            if !has_refueled {
+                                event!(Level::INFO, "MarkTravelActionAsCompleteIfPossible: ship has not refueled yet");
+                            }
+
+                            has_refueled
                         }
                     };
 
@@ -150,7 +172,7 @@ impl Actionable for ShipAction {
                     Ok(Success)
                 }
             },
-            ShipAction::CanSkipRefueling => match &state.current_travel_action() {
+            ShipAction::CanSkipRefueling => match state.current_travel_action() {
                 None => Err(anyhow!("Called CanSkipRefueling, but current action is None",)),
                 Some(TravelAction::Navigate { .. }) => Err(anyhow!("Called CanSkipRefueling, but current action is Navigate",)),
                 Some(TravelAction::Refuel { at, .. }) => {
@@ -210,7 +232,7 @@ impl Actionable for ShipAction {
             }
 
             ShipAction::SetFlightMode => {
-                if let Some(action) = &state.current_travel_action() {
+                if let Some(action) = state.current_travel_action() {
                     match action {
                         TravelAction::Navigate { mode, .. } => {
                             let response = state.set_flight_mode(mode).await?;
@@ -225,7 +247,7 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::NavigateToWaypoint => {
-                if let Some(action) = &state.current_travel_action() {
+                if let Some(action) = state.current_travel_action() {
                     match action {
                         TravelAction::Navigate { to, .. } => {
                             let nav_response = state.navigate(to).await?;
@@ -240,7 +262,7 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::PrintTravelActions => {
-                event!(Level::DEBUG, "travel_action queue: {:?}", state.travel_action_queue);
+                event!(Level::INFO, "travel_action queue: {:?}", state.travel_action_queue);
                 Ok(Success)
             }
             ShipAction::HasExploreLocationEntry => {
@@ -257,11 +279,11 @@ impl Actionable for ShipAction {
             }
 
             ShipAction::PrintExploreLocations => {
-                event!(Level::DEBUG, "explore_location_queue: {:?}", state.explore_location_queue);
+                event!(Level::INFO, "explore_location_queue: {:?}", state.explore_location_queue);
                 Ok(Success)
             }
             ShipAction::PrintDestination => {
-                event!(Level::DEBUG, "current_navigation_destination: {:?}", state.current_navigation_destination);
+                event!(Level::INFO, "current_navigation_destination: {:?}", state.current_navigation_destination);
                 Ok(Success)
             }
 
@@ -620,6 +642,15 @@ impl Actionable for ShipAction {
                     }
                 }
             }
+            ShipAction::SleepUntilNextObservationTime => match state.maybe_next_observation_time {
+                None => Ok(Success),
+                Some(next_time) => {
+                    let duration = next_time - Utc::now();
+                    event!(Level::INFO, "SleepUntilNextObservationTime: {duration:?}");
+                    tokio::time::sleep(Duration::from_millis(u64::try_from(duration.num_milliseconds()).unwrap_or(0))).await;
+                    Ok(Success)
+                }
+            },
         };
 
         let capacity = action_completed_tx.capacity();

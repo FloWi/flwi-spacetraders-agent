@@ -347,7 +347,11 @@ impl FleetBmcTrait for InMemoryFleetBmc {
     }
 
     async fn save_completed_fleet_tasks(&self, _ctx: &Ctx, tasks: Vec<FleetTaskCompletion>) -> Result<()> {
-        todo!()
+        let mut guard = self.in_memory_fleet.write().await;
+        for completed_task in tasks {
+            guard.completed_fleet_tasks.push(completed_task);
+        }
+        Ok(())
     }
 
     async fn upsert_fleets(&self, _ctx: &Ctx, fleets: &HashMap<FleetId, Fleet>) -> Result<()> {

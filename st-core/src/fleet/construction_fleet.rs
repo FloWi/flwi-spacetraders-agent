@@ -2,8 +2,9 @@ use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
 use st_domain::{
-    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, MarketData, PurchaseGoodTicketDetails,
-    PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipPriceInfo, ShipSymbol, ShipTask, TicketId, TradeTicket, TransactionTicketId, Waypoint,
+    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, MarketData, MarketEntry,
+    PurchaseGoodTicketDetails, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipPriceInfo, ShipSymbol, ShipTask, TicketId, TradeTicket,
+    TransactionTicketId, Waypoint,
 };
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -17,7 +18,7 @@ impl ConstructJumpGateFleet {
         cfg: &ConstructJumpGateFleetConfig,
         fleet: &Fleet,
         facts: &FleetDecisionFacts,
-        latest_market_data: &Vec<MarketData>,
+        latest_market_data: &Vec<MarketEntry>,
         ship_prices: &ShipPriceInfo,
         waypoints: &Vec<Waypoint>,
     ) -> Result<Vec<PotentialTradingTask>> {
