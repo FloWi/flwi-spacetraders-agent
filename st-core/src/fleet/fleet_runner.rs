@@ -25,7 +25,7 @@ use st_domain::{
 use st_store::bmc::ship_bmc::ShipBmcTrait;
 use st_store::bmc::{ship_bmc, Bmc};
 use st_store::{db, upsert_fleets_data, upsert_waypoints, Ctx, DbModelManager};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::sync::Arc;
 use std::time::Duration;
@@ -148,10 +148,42 @@ impl FleetRunner {
         Ok(())
     }
 
+    pub async fn launch_ship_fibers_of_idle_or_new_ships(
+        runner: Arc<Mutex<FleetRunner>>,
+        all_ships: HashSet<ShipSymbol>,
+        ship_tasks: HashMap<ShipSymbol, ShipTask>,
+    ) -> Result<()> {
+        let not_running_ships = {
+            let mut runner_guard = runner.lock().await;
+
+            let completed_fibers =
+                runner_guard.ship_fibers.iter().filter_map(|(ss, ship_fiber)| ship_fiber.is_finished().then_some(ss)).cloned().collect::<HashSet<_>>();
+            let running_fibers =
+                runner_guard.ship_fibers.iter().filter_map(|(ss, ship_fiber)| ship_fiber.is_finished().not().then_some(ss)).cloned().collect::<HashSet<_>>();
+
+            let not_running_ships = all_ships.difference(&running_fibers).cloned().collect::<HashSet<_>>().union(&completed_fibers).cloned().collect_vec();
+
+            event!(
+                Level::INFO,
+                "{} out of {} ships have running fibers. (Re-)Starting fibers for {} ships ({})",
+                running_fibers.len(),
+                all_ships.len(),
+                not_running_ships.len(),
+                not_running_ships.iter().map(|ss| ss.0.clone()).join(", ")
+            );
+            not_running_ships
+        };
+
+        for ss in not_running_ships {
+            Self::relaunch_ship(Arc::clone(&runner), &ss, ship_tasks.clone()).await?
+        }
+
+        Ok(())
+    }
+
     //TODO - refactor to DRY up with fn launch_and_register_ship
-    pub async fn relaunch_ship(runner: Arc<Mutex<FleetRunner>>, ss: &ShipSymbol) -> Result<()> {
+    pub async fn relaunch_ship(runner: Arc<Mutex<FleetRunner>>, ss: &ShipSymbol, ship_tasks: HashMap<ShipSymbol, ShipTask>) -> Result<()> {
         let mut guard = runner.lock().await;
-        let ship_tasks = guard.fleet_admiral.lock().await.ship_tasks.clone();
 
         let ship_op_mutex = guard.ship_ops.get(ss).unwrap();
         let maybe_ship_task = ship_tasks.get(&ss);
@@ -323,6 +355,12 @@ impl FleetRunner {
                     );
                     match result {
                         NewTaskResult::DismantleFleets { fleets_to_dismantle } => {
+                            event!(
+                                Level::INFO,
+                                "Dismantling fleets {}",
+                                fleets_to_dismantle.iter().map(|fleet_id| fleet_id.0.to_string()).join(", ")
+                            );
+
                             FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle.clone());
                             bmc.fleet_bmc().delete_fleets(&Ctx::Anonymous, &fleets_to_dismantle).await?;
 
@@ -344,6 +382,23 @@ impl FleetRunner {
                             admiral_guard.fleets = fleets.into_iter().map(|f| (f.id.clone(), f)).collect();
                             admiral_guard.fleet_tasks = fleet_tasks.into_iter().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
                             admiral_guard.fleet_phase = fleet_phase;
+
+                            //FIXME: assuming one fleet task per fleet
+                            let fleet_task_list =
+                                admiral_guard.fleet_tasks.iter().map(|(fleet_id, tasks)| (fleet_id.clone(), tasks.first().cloned().unwrap())).collect_vec();
+                            let ship_fleet_assignment =
+                                FleetAdmiral::assign_ships(&fleet_task_list, &admiral_guard.all_ships, &admiral_guard.fleet_phase.shopping_list_in_order);
+                            admiral_guard.ship_fleet_assignment = ship_fleet_assignment;
+
+                            let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
+                            FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut admiral_guard, new_ship_tasks);
+
+                            Self::launch_ship_fibers_of_idle_or_new_ships(
+                                Arc::clone(&runner),
+                                admiral_guard.all_ships.keys().cloned().collect::<HashSet<_>>(),
+                                admiral_guard.ship_tasks.clone(),
+                            )
+                            .await?;
 
                             let _ = upsert_fleets_data(
                                 Arc::clone(&bmc),
@@ -378,7 +433,7 @@ impl FleetRunner {
                             ship_task_requirement,
                         } => {
                             FleetAdmiral::assign_ship_task_and_potential_requirement(&mut admiral_guard, ship_symbol.clone(), task, ship_task_requirement);
-                            Self::relaunch_ship(runner.clone(), &ship_symbol).await?
+                            Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone()).await?
                         }
                     }
                 }
@@ -582,7 +637,8 @@ mod tests {
     use crate::fleet::fleet_runner::FleetRunner;
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
-    use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask};
+    use itertools::Itertools;
+    use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipRegistrationRole};
     use st_store::bmc::jump_gate_bmc::{InMemoryJumpGateBmc, JumpGateBmcTrait};
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc, ShipBmcTrait};
     use st_store::bmc::{Bmc, InMemoryBmc};
@@ -592,18 +648,17 @@ mod tests {
         AgentBmcTrait, ConstructionBmcTrait, Ctx, FleetBmcTrait, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc,
         InMemorySystemsBmc, MarketBmcTrait, SystemBmcTrait,
     };
-    use std::ops::Not;
     use std::sync::Arc;
     use std::time::Duration;
     use test_log::test;
     use tokio::sync::Mutex;
 
-    #[test(tokio::test)]
-    //#[tokio::test] // for accessing runtime-infos with tokio-console
+    //#[test(tokio::test)]
+    #[tokio::test] // for accessing runtime-infos with tokio-console
     async fn create_fleet_admiral_from_startup_ship_config() {
         // uncomment for displaying tasks with `tokio-console` in terminal
         // also don't use test-tracing-subscriber `#[test(tokio::test)]` but rather #[tokio::test]
-        // console_subscriber::init();
+        console_subscriber::init();
 
         let in_memory_universe = InMemoryUniverse::from_snapshot("tests/assets/universe_snapshot.json").expect("InMemoryUniverse::from_snapshot");
         let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
@@ -717,9 +772,55 @@ mod tests {
         assert_eq!(1, completed_tasks.len());
         assert_eq!(FleetPhaseName::ConstructJumpGate, admiral_mutex.lock().await.fleet_phase.name);
         assert_eq!(4, fleets.len());
-        fleets.iter().any(|f| matches!(f.cfg, FleetConfig::SiphoningCfg(..)));
-        fleets.iter().any(|f| matches!(f.cfg, FleetConfig::MiningCfg(..)));
-        fleets.iter().any(|f| matches!(f.cfg, FleetConfig::MarketObservationCfg(..)));
-        fleets.iter().any(|f| matches!(f.cfg, FleetConfig::ConstructJumpGateCfg(..)));
+
+        let siphoning_fleet = fleets
+            .iter()
+            .find_map(|f| match &f.cfg {
+                FleetConfig::SiphoningCfg(cfg) => Some((f.clone(), cfg.clone())),
+                _ => None,
+            })
+            .expect("One Siphoning Fleet");
+
+        let mining_fleet = fleets
+            .iter()
+            .find_map(|f| match &f.cfg {
+                FleetConfig::MiningCfg(cfg) => Some((f.clone(), cfg.clone())),
+                _ => None,
+            })
+            .expect("One Mining Fleet");
+
+        let market_observation_fleet = fleets
+            .iter()
+            .find_map(|f| match &f.cfg {
+                FleetConfig::MarketObservationCfg(cfg) => Some((f.clone(), cfg.clone())),
+                _ => None,
+            })
+            .expect("One MarketObservation Fleet");
+
+        let construct_jump_gate_fleet = fleets
+            .iter()
+            .find_map(|f| match &f.cfg {
+                FleetConfig::ConstructJumpGateCfg(cfg) => Some((f.clone(), cfg.clone())),
+                _ => None,
+            })
+            .expect("One ConstructJumpGate Fleet");
+
+        let siphoning_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&siphoning_fleet.0).into_iter().cloned().collect_vec();
+        let mining_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&mining_fleet.0).into_iter().cloned().collect_vec();
+        let construct_jump_gate_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&construct_jump_gate_fleet.0).into_iter().cloned().collect_vec();
+        let market_observation_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&market_observation_fleet.0).into_iter().cloned().collect_vec();
+
+        assert!(siphoning_fleet_ships.is_empty());
+        assert!(mining_fleet_ships.is_empty());
+
+        match construct_jump_gate_fleet_ships.as_slice() {
+            [ship] => assert_eq!(ship.registration.role, ShipRegistrationRole::Command),
+            _ => panic!("expected one ship, but got {}", construct_jump_gate_fleet_ships.len()),
+        }
+
+        match market_observation_fleet_ships.as_slice() {
+            [ship] => assert_eq!(ship.registration.role, ShipRegistrationRole::Satellite),
+            _ => panic!("expected one ship, but got {}", market_observation_fleet_ships.len()),
+        }
     }
 }

@@ -450,19 +450,19 @@ impl FleetAdmiral {
         ship_prices: ShipPriceInfo,
         waypoints: Vec<Waypoint>,
     ) -> Result<Vec<(ShipSymbol, ShipTask, ShipTaskRequirement)>> {
-        let mut new_fleet_tasks = Vec::new();
+        let mut new_ship_tasks: Vec<(ShipSymbol, ShipTask, ShipTaskRequirement)> = Vec::new();
         for (fleet_id, fleet) in admiral.fleets.clone().iter() {
             match &fleet.cfg {
                 FleetConfig::SystemSpawningCfg(cfg) => {
                     let ship_tasks = SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts)?;
                     for (ss, task) in ship_tasks {
-                        new_fleet_tasks.push((ss, task, ShipTaskRequirement::None));
+                        new_ship_tasks.push((ss, task, ShipTaskRequirement::None));
                     }
                 }
                 FleetConfig::MarketObservationCfg(cfg) => {
                     let ship_tasks = MarketObservationFleet::compute_ship_tasks(admiral, cfg, fleet, facts)?;
                     for (ss, task) in ship_tasks {
-                        new_fleet_tasks.push((ss, task, ShipTaskRequirement::None));
+                        new_ship_tasks.push((ss, task, ShipTaskRequirement::None));
                     }
                 }
                 FleetConfig::ConstructJumpGateCfg(cfg) => {
@@ -475,7 +475,7 @@ impl FleetAdmiral {
                         ship_task,
                     } in potential_trading_tasks
                     {
-                        new_fleet_tasks.push((ship_symbol, ship_task, ShipTaskRequirement::TradeTicket { trade_ticket }));
+                        new_ship_tasks.push((ship_symbol, ship_task, ShipTaskRequirement::TradeTicket { trade_ticket }));
                     }
                 }
                 FleetConfig::TradingCfg(cfg) => (),
@@ -484,7 +484,7 @@ impl FleetAdmiral {
             }
         }
 
-        Ok(new_fleet_tasks)
+        Ok(new_ship_tasks)
     }
 
     pub(crate) async fn compute_ship_tasks(
@@ -557,6 +557,7 @@ impl FleetAdmiral {
         all_ships: &HashMap<ShipSymbol, Ship>,
         fleet_shopping_list: &Vec<(ShipType, FleetTask)>,
     ) -> HashMap<ShipSymbol, FleetId> {
+        //TODO: I think this might assign a ship to two fleets if the types match. Make sure to test it
         fleet_tasks
             .iter()
             .flat_map(|(fleet_id, fleet_task)| {
