@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ndelete from fleets\nwhere id = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2e6879e397ae4e1302da83bbef15034989a33c57d73f3e602d15103c54ad2f44"
+}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ndelete from fleet_task_assignments\nwhere fleet_id = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "df8e38a3f77eb79c134b923635befec054e88cbb18d18d177bfd250f33e8f8d1"
+}
