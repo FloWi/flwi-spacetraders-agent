@@ -385,7 +385,7 @@ pub struct ShipPriceInfo {
     pub price_infos: Vec<(WaypointSymbol, Vec<ShipyardShip>)>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Display)]
 pub enum TransactionActionEvent {
     PurchasedTradeGoods {
         ticket_details: PurchaseGoodTicketDetails,

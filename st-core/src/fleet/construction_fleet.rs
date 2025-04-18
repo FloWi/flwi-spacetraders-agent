@@ -25,12 +25,12 @@ impl ConstructJumpGateFleet {
         let fleet_ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
         let fleet_ship_symbols = fleet_ships.iter().map(|&s| s.symbol.clone()).collect_vec();
         let budget: u64 = admiral.get_total_budget_for_fleet(fleet);
-        let my_ships = admiral.get_ships_of_fleet(fleet);
         let ship_tasks: Vec<(ShipSymbol, ShipTask)> = admiral.get_ship_tasks_of_fleet(fleet);
 
         let allocated_budget: u64 = admiral.get_allocated_budget_of_fleet(fleet);
 
         let ships_with_tasks = ship_tasks.iter().map(|(ss, _)| ss.clone()).collect::<HashSet<_>>();
+
         let unassigned_ships = fleet_ships.into_iter().filter(|s| ships_with_tasks.contains(&s.symbol).not()).collect_vec();
         let initial_unassigned_ships = unassigned_ships.iter().map(|s| s.symbol.clone()).collect_vec();
 
@@ -141,14 +141,14 @@ impl ConstructJumpGateFleet {
         // rest_budget = 175k - 75k = 75k
         // can_purchase_ship = rest_budget - ship_price > required_for_trading ==> true
 
-        dbg!(budget);
-        dbg!(fleet_ship_symbols);
-        dbg!(ship_tasks);
-        dbg!(allocated_budget);
-        dbg!(ships_with_tasks);
+        dbg!(&budget);
+        dbg!(&fleet_ship_symbols);
+        dbg!(&ship_tasks);
+        dbg!(&allocated_budget);
+        dbg!(&ships_with_tasks);
         dbg!(&still_unassigned_ships_symbols);
-        dbg!(reserved_for_trading);
-        dbg!(not_allocated_budget);
+        dbg!(&reserved_for_trading);
+        dbg!(&not_allocated_budget);
         //dbg!(evaluated_trading_opportunities);
         dbg!(&trades_for_ships);
         dbg!(&admiral.fleet_phase);

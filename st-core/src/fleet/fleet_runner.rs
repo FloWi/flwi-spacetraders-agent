@@ -197,7 +197,13 @@ impl FleetRunner {
     ) -> Result<()> {
         let mut guard = runner.lock().await;
 
-        let ship_op_mutex = guard.ship_ops.get(ss).unwrap();
+        let ship_op_mutex = match guard.ship_ops.get(ss) {
+            None => {
+                event!(Level::INFO, "relaunch_ship called for {}, but it has no ship_ops entry. This is probably a probe that has been taken off the behavior-trees is just passively sitting at the observation waypoint.", ss.0.clone());
+                return Ok(());
+            }
+            Some(ship_op) => ship_op,
+        };
         let maybe_ship_task = ship_tasks.get(&ss);
 
         if let Some(ship_task) = maybe_ship_task {
@@ -446,17 +452,35 @@ impl FleetRunner {
                             ship_task_requirement,
                         } => {
                             FleetAdmiral::assign_ship_task_and_potential_requirement(&mut admiral_guard, ship_symbol.clone(), task, ship_task_requirement);
-                            Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration).await?
+                            Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration).await?;
+                            let _ = upsert_fleets_data(
+                                Arc::clone(&bmc),
+                                &Ctx::Anonymous,
+                                &admiral_guard.fleets,
+                                &admiral_guard.fleet_tasks,
+                                &admiral_guard.ship_fleet_assignment,
+                                &admiral_guard.ship_tasks,
+                                &admiral_guard.active_trades,
+                            )
+                            .await?;
                         }
                     }
                 }
 
                 ShipStatusReport::ShipActionCompleted(_, _) => {}
                 ShipStatusReport::TransactionCompleted(_, transaction_event, _) => match &transaction_event {
-                    TransactionActionEvent::PurchasedTradeGoods { .. } => {}
-                    TransactionActionEvent::SoldTradeGoods { .. } => {}
-                    TransactionActionEvent::SuppliedConstructionSite { .. } => {}
+                    TransactionActionEvent::PurchasedTradeGoods { .. } => {
+                        event!(Level::INFO, "Ship reported TransactionActionEvent::PurchasedTradeGoods");
+                    }
+                    TransactionActionEvent::SoldTradeGoods { .. } => {
+                        event!(Level::INFO, "Ship reported TransactionActionEvent::SoldTradeGoods");
+                    }
+                    TransactionActionEvent::SuppliedConstructionSite { .. } => {
+                        event!(Level::INFO, "Ship reported TransactionActionEvent::SuppliedConstructionSite");
+                    }
                     TransactionActionEvent::ShipPurchased { ticket_details, response } => {
+                        event!(Level::INFO, "Ship reported TransactionActionEvent::ShipPurchased");
+
                         let new_ship = response.data.ship.clone();
                         bmc.ship_bmc().upsert_ships(&Ctx::Anonymous, &vec![new_ship.clone()], Utc::now()).await?;
                         admiral_guard.all_ships.insert(new_ship.symbol.clone(), new_ship.clone());
@@ -547,6 +571,12 @@ impl FleetRunner {
                     }
                 },
                 ActionEvent::TransactionCompleted(ship, transaction, ticket) => {
+                    event!(
+                        Level::INFO,
+                        message = "TransactionCompleted",
+                        ship = ship.symbol.0,
+                        transaction = %transaction.to_string(),
+                    );
                     ship_status_report_tx.send(ShipStatusReport::TransactionCompleted(ship.ship, transaction, ticket)).await?;
                 }
             }
@@ -678,19 +708,23 @@ mod tests {
         AgentBmcTrait, ConstructionBmcTrait, Ctx, FleetBmcTrait, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc,
         InMemorySystemsBmc, MarketBmcTrait, SystemBmcTrait,
     };
+    use std::collections::HashSet;
     use std::sync::Arc;
     use std::time::Duration;
     use test_log::test;
     use tokio::sync::Mutex;
 
-    //#[test(tokio::test)]
-    #[tokio::test] // for accessing runtime-infos with tokio-console
+    #[test(tokio::test)]
+    //#[tokio::test] // for accessing runtime-infos with tokio-console
     async fn create_fleet_admiral_from_startup_ship_config() {
         // uncomment for displaying tasks with `tokio-console` in terminal
         // also don't use test-tracing-subscriber `#[test(tokio::test)]` but rather #[tokio::test]
-        console_subscriber::init();
+        // console_subscriber::init();
 
         let in_memory_universe = InMemoryUniverse::from_snapshot("tests/assets/universe_snapshot.json").expect("InMemoryUniverse::from_snapshot");
+
+        let shipyard_waypoints = in_memory_universe.shipyards.keys().cloned().collect::<HashSet<_>>();
+
         let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
 
         let agent = in_memory_client.get_agent().await.expect("agent").data;
@@ -774,16 +808,26 @@ mod tests {
                     let is_in_construction_phase = admiral.fleet_phase.name == FleetPhaseName::ConstructJumpGate;
                     let num_ships = admiral.all_ships.len();
                     let has_bought_ships = num_ships > 2;
+                    let num_stationary_probes = admiral.stationary_probe_locations.len();
+                    let stationary_probe_locations = admiral.stationary_probe_locations.iter().map(|spl| spl.waypoint_symbol.clone()).collect::<HashSet<_>>();
+
+                    let has_probes_at_every_shipyard = stationary_probe_locations == shipyard_waypoints;
+                    let evaluation_result = has_finished_initial_observation && is_in_construction_phase && has_bought_ships && has_probes_at_every_shipyard;
 
                     println!(
                         r#"
 has_finished_initial_observation: {has_finished_initial_observation}
 is_in_construction_phase: {is_in_construction_phase}
 num_ships: {num_ships}
+num_stationary_probes: {num_stationary_probes}
+has_probes_at_every_shipyard: {has_probes_at_every_shipyard}
+stationary_probe_locations: {stationary_probe_locations:?}
+shipyard_waypoints: {shipyard_waypoints:?}
+evaluation_result: {evaluation_result}
 "#
                     );
 
-                    has_finished_initial_observation && is_in_construction_phase && has_bought_ships
+                    evaluation_result
                 };
 
                 if condition_met {
@@ -856,8 +900,7 @@ num_ships: {num_ships}
             _ => panic!("expected one ship, but got {}", construct_jump_gate_fleet_ships.len()),
         }
 
-        let probes = market_observation_fleet_ships.iter().filter(|ship| ship.registration.role == ShipRegistrationRole::Satellite).collect_vec();
-        assert!(probes.len() > 1, "more than one probe");
-        assert_eq!(probes.len(), market_observation_fleet_ships.len(), "only probes");
+        // After reaching their observation point, the probes will stay docked and idle at their observation waypoints and won't be part of the market observation fleet anymore.
+        assert_eq!(admiral_mutex.lock().await.stationary_probe_locations.len(), shipyard_waypoints.len());
     }
 }

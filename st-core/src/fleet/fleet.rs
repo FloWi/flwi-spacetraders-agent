@@ -103,7 +103,12 @@ impl FleetAdmiral {
     }
 
     pub(crate) fn get_ship_tasks_of_fleet(&self, fleet: &Fleet) -> Vec<(ShipSymbol, ShipTask)> {
-        self.get_ships_of_fleet(fleet).iter().flat_map(|ss| self.get_task_of_ship(&ss.symbol).map(|st| (ss.symbol.clone(), st.clone()))).collect_vec()
+        let tasks = self
+            .get_ships_of_fleet(fleet)
+            .iter()
+            .flat_map(|ss| self.get_task_of_ship(&ss.symbol).map(|st| (ss.symbol.clone(), st.clone())).into_iter())
+            .collect_vec();
+        tasks
     }
 
     pub(crate) fn get_total_budget_for_fleet(&self, fleet: &Fleet) -> u64 {

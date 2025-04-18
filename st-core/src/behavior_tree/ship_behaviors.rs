@@ -203,16 +203,8 @@ pub fn ship_behaviors() -> Behaviors {
         Behavior::new_select(vec![
             Behavior::new_action(ShipAction::IsAtDestination),
             navigate_to_destination.clone(),
+            dock_if_necessary.clone(),
         ]),
-        Behavior::new_while(
-            Behavior::new_action(ShipAction::IsAtDestination),
-            Behavior::new_sequence(vec![
-                Behavior::new_action(ShipAction::IsLateEnoughForWaypointObservation),
-                Behavior::new_action(ShipAction::CollectWaypointInfos),
-                Behavior::new_action(ShipAction::SetNextObservationTime),
-                Behavior::new_action(ShipAction::SleepUntilNextObservationTime),
-            ]),
-        ),
     ]);
 
     let while_condition_trader = Behavior::new_select(vec![

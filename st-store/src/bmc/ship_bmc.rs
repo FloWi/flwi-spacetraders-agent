@@ -220,7 +220,8 @@ impl ShipBmcTrait for InMemoryShipsBmc {
     }
 
     async fn insert_stationary_probe(&self, ctx: &Ctx, location: StationaryProbeLocation) -> Result<()> {
-        todo!()
+        self.in_memory_ships.write().await.stationary_probe_locations.insert(location.waypoint_symbol.clone(), location);
+        Ok(())
     }
 
     async fn upsert_ships(&self, ctx: &Ctx, ships: &[Ship], now: DateTime<Utc>) -> Result<()> {
