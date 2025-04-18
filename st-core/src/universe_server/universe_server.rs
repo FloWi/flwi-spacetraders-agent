@@ -495,6 +495,7 @@ impl StClientTrait for InMemoryUniverseClient {
                     } else {
                         let waypoint = universe.waypoints.get(&symbol).ok_or(anyhow!("Waypoint not found"))?;
                         let new_ship: Ship = create_ship_from_shipyard_ship(
+                            &ship_type,
                             sy_ship,
                             &universe.agent.symbol,
                             &universe.agent.starting_faction,
@@ -686,6 +687,7 @@ impl StClientTrait for InMemoryUniverseClient {
 }
 
 fn create_ship_from_shipyard_ship(
+    ship_type: &ShipType,
     shipyard_ship: &ShipyardShip,
     agent_symbol: &AgentSymbol,
     faction_symbol: &FactionSymbol,
@@ -718,7 +720,7 @@ fn create_ship_from_shipyard_ship(
         registration: Registration {
             name: ship_symbol.0.clone(),
             faction_symbol: faction_symbol.clone(),
-            role: ShipRegistrationRole::Fabricator,
+            role: ship_type_to_ship_registration_role(ship_type),
         },
         nav: Nav {
             system_symbol: current_waypoint.system_symbol.clone(),

@@ -858,6 +858,6 @@ num_ships: {num_ships}
 
         let probes = market_observation_fleet_ships.iter().filter(|ship| ship.registration.role == ShipRegistrationRole::Satellite).collect_vec();
         assert!(probes.len() > 1, "more than one probe");
-        assert!(probes.len() == market_observation_fleet_ships.len(), "only probes");
+        assert_eq!(probes.len(), market_observation_fleet_ships.len(), "only probes");
     }
 }
