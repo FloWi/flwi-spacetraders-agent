@@ -42,7 +42,7 @@ use std::ops::Not;
 use std::slice::Iter;
 use std::sync::Arc;
 use std::time::Duration;
-use strum_macros::Display;
+use strum::Display;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{Mutex, MutexGuard};
 use tracing::{event, span, Level};
@@ -80,7 +80,7 @@ pub struct FleetAdmiral {
 }
 
 impl FleetAdmiral {
-    pub fn get_next_ship_purchase(&self) -> Option<ShipType> {
+    pub fn get_next_ship_purchase(&self) -> Option<(ShipType, FleetTask)> {
         let mapping = role_to_ship_type_mapping();
 
         let mut current_ship_types: HashMap<ShipType, u32> = HashMap::new();
@@ -90,10 +90,10 @@ impl FleetAdmiral {
             current_ship_types.entry(*ship_type).and_modify(|counter| *counter += 1).or_insert(1);
         }
 
-        for (ship_type, _) in self.fleet_phase.shopping_list_in_order.iter() {
+        for (ship_type, fleet_task) in self.fleet_phase.shopping_list_in_order.iter() {
             let num_of_ships_left = current_ship_types.get(&ship_type).unwrap_or(&0);
             if num_of_ships_left.is_zero() {
-                return Some(*ship_type);
+                return Some((ship_type.clone(), fleet_task.clone()));
             } else {
                 // we already have this ship - continue
                 current_ship_types.entry(*ship_type).and_modify(|counter| *counter -= 1);
@@ -452,6 +452,8 @@ impl FleetAdmiral {
     ) -> Result<Vec<(ShipSymbol, ShipTask, ShipTaskRequirement)>> {
         let mut new_ship_tasks: Vec<(ShipSymbol, ShipTask, ShipTaskRequirement)> = Vec::new();
         for (fleet_id, fleet) in admiral.fleets.clone().iter() {
+            // FIXME: determine, if ship can be purchased by one of the stationary probes.
+            // only if not, then have another ship execute the ship-purchase
             match &fleet.cfg {
                 FleetConfig::SystemSpawningCfg(cfg) => {
                     let ship_tasks = SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts)?;

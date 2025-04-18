@@ -6,7 +6,7 @@ use crate::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use strum_macros::Display;
+use strum::Display;
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -54,7 +54,7 @@ pub enum RefuelingType {
     StoreFuelBarrelsInCargo,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct TicketId(pub Uuid);
 
 impl TicketId {

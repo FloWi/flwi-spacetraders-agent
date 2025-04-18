@@ -14,7 +14,7 @@ use std::fmt::{Display, Formatter};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 use std::time::Duration;
-use strum_macros::Display;
+use strum::Display;
 use tokio::sync::mpsc::Sender;
 use tokio::time::sleep;
 use tracing::{event, Level};
@@ -374,7 +374,7 @@ mod tests {
     use async_trait::async_trait;
     use core::time::Duration;
     use serde::Serialize;
-    use strum_macros::Display;
+    use strum::Display;
     use tokio::sync::mpsc;
     use tokio::sync::mpsc::Sender;
 

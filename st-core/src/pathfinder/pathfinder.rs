@@ -5,7 +5,7 @@ use pathfinding::prelude::astar;
 use serde::{Deserialize, Serialize};
 use st_domain::{distance_to, FlightMode, LabelledCoordinate, TradeGoodSymbol, TravelAction};
 use st_domain::{MarketData, Waypoint, WaypointSymbol};
-use strum_macros::Display;
+use strum::Display;
 
 pub fn all_trade_goods(market_data: &MarketData) -> Vec<TradeGoodSymbol> {
     market_data.imports.iter().chain(market_data.exports.iter()).chain(market_data.exchange.iter()).map(|tg| tg.symbol.clone()).collect()

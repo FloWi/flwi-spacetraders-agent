@@ -11,7 +11,9 @@ use sqlx::types::JsonValue;
 use sqlx::{Pool, Postgres};
 use st_domain::{FactionSymbol, RegistrationRequest};
 use st_store::db;
+use std::clone;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -168,9 +170,11 @@ pub async fn get_authenticated_client(cfg: &AgentConfiguration, pool: Pool<Postg
         None => {
             event!(Level::INFO, "No registration infos found in database. Registering new agent",);
 
+            let faction = FactionSymbol::from_str(&cfg.spacetraders_agent_faction)?;
+
             let registration_response = client_with_account_token
                 .register(RegistrationRequest {
-                    faction: FactionSymbol(cfg.spacetraders_agent_faction.clone()),
+                    faction,
                     symbol: cfg.spacetraders_agent_symbol.clone(),
                     email: cfg.spacetraders_registration_email.clone(),
                 })

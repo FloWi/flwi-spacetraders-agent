@@ -2,9 +2,9 @@ use chrono::Local;
 use itertools::Itertools;
 
 use st_domain::{
-    Agent, AgentSymbol, Cargo, Construction, ConstructionMaterial, Cooldown, Crew, Engine, FlightMode, Frame, Fuel, FuelConsumed, MarketData, Nav,
-    NavOnlyResponse, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipPriceInfo,
-    ShipRegistrationRole, ShipSymbol, SystemSymbol, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointTrait,
+    Agent, AgentSymbol, Cargo, Construction, ConstructionMaterial, Cooldown, Crew, Engine, FactionSymbol, FlightMode, Frame, Fuel, FuelConsumed, MarketData,
+    Nav, NavOnlyResponse, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol,
+    ShipPriceInfo, ShipRegistrationRole, ShipSymbol, SystemSymbol, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointTrait,
     WaypointTraitSymbol, WaypointType,
 };
 
@@ -55,7 +55,7 @@ impl TestObjects {
             symbol: AgentSymbol("FLWI".to_string()),
             headquarters: Self::system_symbol().with_waypoint_suffix("H53"),
             credits: 175_000,
-            starting_faction: "COSMIC".to_string(),
+            starting_faction: FactionSymbol::COSMIC,
             ship_count: 2,
         }
     }
@@ -121,7 +121,7 @@ impl TestObjects {
                 symbol: AgentSymbol("".to_string()),
                 headquarters: Self::waypoint_symbol(),
                 credits: 42,
-                starting_faction: "".to_string(),
+                starting_faction: FactionSymbol::COSMIC,
                 ship_count: 2,
             },
             fuel: Self::create_fuel(600, 0),
@@ -177,7 +177,7 @@ impl TestObjects {
             symbol: ShipSymbol("FLWI-1".to_string()),
             registration: Registration {
                 name: "FLWI".to_string(),
-                faction_symbol: "GALACTIC".to_string(),
+                faction_symbol: FactionSymbol::GALACTIC,
                 role: ShipRegistrationRole::Command,
             },
             nav: Self::create_nav(FlightMode::Drift, NavStatus::InOrbit, &Self::waypoint_symbol(), &Self::waypoint_symbol()).nav,

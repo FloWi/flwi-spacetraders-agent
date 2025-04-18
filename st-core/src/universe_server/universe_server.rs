@@ -8,17 +8,20 @@ use async_trait::async_trait;
 use chrono::{TimeDelta, Utc};
 use itertools::Itertools;
 use st_domain::{
-    Agent, AgentResponse, AgentSymbol, Cargo, Construction, CreateChartResponse, Data, DockShipResponse, FlightMode, FuelConsumed, GetConstructionResponse,
-    GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, JumpGate, LabelledCoordinate, ListAgentsResponse,
-    MarketData, Meta, NavAndFuelResponse, NavOnlyResponse, NavRouteWaypoint, NavStatus, NavigateShipResponse, NotEnoughFuelInCargoError, OrbitShipResponse,
-    PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse, RefuelShipResponseBody, RegistrationRequest, RegistrationResponse, Route,
-    SellTradeGoodResponse, SetFlightModeResponse, Ship, ShipSymbol, ShipType, Shipyard, StStatusResponse, SupplyConstructionSiteResponse, SystemSymbol,
-    SystemsPageData, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol,
+    Agent, AgentResponse, AgentSymbol, Cargo, Construction, Cooldown, CreateChartResponse, Crew, Data, DockShipResponse, Engine, FactionSymbol, FlightMode,
+    Frame, Fuel, FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse,
+    JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Nav, NavAndFuelResponse, NavOnlyResponse, NavRouteWaypoint, NavStatus,
+    NavigateShipResponse, NotEnoughFuelInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody, PurchaseTradeGoodResponse, Reactor,
+    RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest, RegistrationResponse, Route, SellTradeGoodResponse, SetFlightModeResponse,
+    Ship, ShipPurchaseTransaction, ShipRegistrationRole, ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, StStatusResponse,
+    SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
 };
+use std::clone;
 use std::collections::HashMap;
 use std::ops::Add;
 use std::path::Path;
 use std::sync::Arc;
+use std::thread::current;
 use tokio::sync::RwLock;
 use RefuelTaskAnalysisError::NotEnoughFuelInCargo;
 
@@ -36,6 +39,28 @@ pub struct InMemoryUniverse {
 }
 
 impl InMemoryUniverse {
+    pub(crate) fn ensure_any_ship_docked_at_waypoint(&self, waypoint_symbol: &WaypointSymbol) -> Result<()> {
+        self.ships
+            .iter()
+            .any(|(_, ship)| ship.nav.status == NavStatus::Docked && &ship.nav.waypoint_symbol == waypoint_symbol)
+            .then_some(())
+            .ok_or(anyhow!("No ship docked at waypoint {}", waypoint_symbol.0.clone()))
+    }
+
+    pub(crate) fn insert_shipyard_transaction(&mut self, waypoint_symbol: &WaypointSymbol, shipyard_tx: ShipTransaction) {
+        match self.shipyards.get_mut(waypoint_symbol) {
+            None => {}
+            Some(shipyard) => match &shipyard.transactions {
+                None => {}
+                Some(existing_transactions) => {
+                    let mut all_tx = existing_transactions.clone();
+                    all_tx.push(shipyard_tx.clone());
+                    shipyard.transactions = Some(all_tx);
+                }
+            },
+        };
+    }
+
     pub fn from_snapshot<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
         load_universe(path)
     }
@@ -350,15 +375,15 @@ impl StClientTrait for InMemoryUniverseClient {
                             symbol: from_wp.symbol.clone(),
                             waypoint_type: from_wp.r#type.clone(),
                             system_symbol: from_wp.system_symbol.clone(),
-                            x: from_wp.x as i32,
-                            y: from_wp.y as i32,
+                            x: from_wp.x,
+                            y: from_wp.y,
                         },
                         destination: NavRouteWaypoint {
                             symbol: to_wp.symbol.clone(),
                             waypoint_type: to_wp.r#type.clone(),
                             system_symbol: to_wp.system_symbol.clone(),
-                            x: to_wp.x as i32,
-                            y: to_wp.y as i32,
+                            x: to_wp.x,
+                            y: to_wp.y,
                         },
                         departure_time: Utc::now(),
                         arrival: Utc::now().add(TimeDelta::milliseconds(time as i64)),
@@ -448,7 +473,67 @@ impl StClientTrait for InMemoryUniverseClient {
     }
 
     async fn purchase_ship(&self, ship_type: ShipType, symbol: WaypointSymbol) -> anyhow::Result<PurchaseShipResponse> {
-        todo!()
+        let mut universe = self.universe.write().await;
+        universe.ensure_any_ship_docked_at_waypoint(&symbol).and_then(|_| match universe.shipyards.get(&symbol) {
+            None => {
+                anyhow::bail!("There's no shipyard at this waypoint")
+            }
+            Some(sy) => match sy.ships.clone().unwrap_or_default().iter().find(|sy_ship| sy_ship.r#type == ship_type) {
+                None => {
+                    anyhow::bail!("This ship_type {} is not being sold at this waypoint", ship_type.to_string())
+                }
+                Some(sy_ship) => {
+                    let ship_price = sy_ship.purchase_price as i64;
+
+                    if ship_price > universe.agent.credits {
+                        anyhow::bail!(
+                            "This ship_type {} is too expensive. Price: {}, credits: {}",
+                            ship_type.to_string(),
+                            sy_ship.purchase_price,
+                            universe.agent.credits
+                        )
+                    } else {
+                        let waypoint = universe.waypoints.get(&symbol).ok_or(anyhow!("Waypoint not found"))?;
+                        let new_ship: Ship = create_ship_from_shipyard_ship(
+                            sy_ship,
+                            &universe.agent.symbol,
+                            &universe.agent.starting_faction,
+                            waypoint,
+                            universe.ships.len(),
+                        );
+                        let shipyard_tx = ShipTransaction {
+                            waypoint_symbol: symbol.clone(),
+                            ship_type,
+                            price: ship_price as u32,
+                            agent_symbol: universe.agent.symbol.clone(),
+                            timestamp: Default::default(),
+                        };
+
+                        let tx = ShipPurchaseTransaction {
+                            ship_symbol: new_ship.symbol.clone(),
+                            waypoint_symbol: symbol.clone(),
+                            ship_type,
+                            price: ship_price as u64,
+                            agent_symbol: universe.agent.symbol.clone(),
+                            timestamp: Default::default(),
+                        };
+
+                        universe.agent.credits -= ship_price;
+                        universe.ships.insert(new_ship.symbol.clone(), new_ship.clone());
+                        universe.insert_shipyard_transaction(&symbol, shipyard_tx.clone());
+
+                        let response = PurchaseShipResponse {
+                            data: PurchaseShipResponseBody {
+                                ship: new_ship,
+                                transaction: tx,
+                                agent: universe.agent.clone(),
+                            },
+                        };
+                        Ok(response)
+                    }
+                }
+            },
+        })
     }
 
     async fn orbit_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<OrbitShipResponse> {
@@ -597,5 +682,105 @@ impl StClientTrait for InMemoryUniverseClient {
 
     async fn get_status(&self) -> anyhow::Result<StStatusResponse> {
         todo!()
+    }
+}
+
+fn create_ship_from_shipyard_ship(
+    shipyard_ship: &ShipyardShip,
+    agent_symbol: &AgentSymbol,
+    faction_symbol: &FactionSymbol,
+    current_waypoint: &Waypoint,
+    current_number_of_ships: usize,
+) -> Ship {
+    let ship_symbol = ShipSymbol(format!("{}-{:X}", agent_symbol.0, current_number_of_ships + 1));
+    let sy_crew = shipyard_ship.crew.clone();
+    let cargo_capacity = shipyard_ship
+        .modules
+        .iter()
+        .map(|module| match module.symbol {
+            ModuleType::MODULE_CARGO_HOLD_I => module.capacity.unwrap_or_default(),
+            ModuleType::MODULE_CARGO_HOLD_II => module.capacity.unwrap_or_default(),
+            ModuleType::MODULE_CARGO_HOLD_III => module.capacity.unwrap_or_default(),
+            _ => 0,
+        })
+        .sum();
+
+    let current_nav_route_waypoint = NavRouteWaypoint {
+        symbol: current_waypoint.symbol.clone(),
+        waypoint_type: current_waypoint.r#type.clone(),
+        system_symbol: current_waypoint.system_symbol.clone(),
+        x: current_waypoint.x,
+        y: current_waypoint.y,
+    };
+
+    Ship {
+        symbol: ship_symbol.clone(),
+        registration: Registration {
+            name: ship_symbol.0.clone(),
+            faction_symbol: faction_symbol.clone(),
+            role: ShipRegistrationRole::Fabricator,
+        },
+        nav: Nav {
+            system_symbol: current_waypoint.system_symbol.clone(),
+            waypoint_symbol: current_waypoint.symbol.clone(),
+            route: Route {
+                destination: current_nav_route_waypoint.clone(),
+                origin: current_nav_route_waypoint.clone(),
+                departure_time: Default::default(),
+                arrival: Default::default(),
+            },
+            status: NavStatus::Docked,
+            flight_mode: FlightMode::Cruise,
+        },
+        crew: Crew {
+            current: sy_crew.required,
+            required: sy_crew.required,
+            capacity: sy_crew.capacity,
+            rotation: "Rotation??".to_string(),
+            morale: 0,
+            wages: 0,
+        },
+        frame: shipyard_ship.frame.clone(),
+        reactor: shipyard_ship.reactor.clone(),
+        engine: shipyard_ship.engine.clone(),
+        cooldown: Cooldown {
+            ship_symbol: ship_symbol.0.clone(),
+            total_seconds: 0,
+            remaining_seconds: 0,
+            expiration: None,
+        },
+        modules: shipyard_ship.modules.clone(),
+        mounts: shipyard_ship.mounts.clone(),
+        cargo: Cargo {
+            capacity: cargo_capacity,
+            units: 0,
+            inventory: vec![],
+        },
+        fuel: Fuel {
+            current: shipyard_ship.frame.fuel_capacity,
+            capacity: shipyard_ship.frame.fuel_capacity,
+            consumed: FuelConsumed {
+                amount: 0,
+                timestamp: Default::default(),
+            },
+        },
+    }
+}
+
+fn ship_type_to_ship_registration_role(ship_type: &ShipType) -> ShipRegistrationRole {
+    match ship_type {
+        ShipType::SHIP_PROBE => ShipRegistrationRole::Satellite,
+        ShipType::SHIP_MINING_DRONE => ShipRegistrationRole::Excavator,
+        ShipType::SHIP_SIPHON_DRONE => ShipRegistrationRole::Excavator,
+        ShipType::SHIP_INTERCEPTOR => ShipRegistrationRole::Interceptor,
+        ShipType::SHIP_LIGHT_HAULER => ShipRegistrationRole::Hauler,
+        ShipType::SHIP_COMMAND_FRIGATE => ShipRegistrationRole::Command,
+        ShipType::SHIP_EXPLORER => ShipRegistrationRole::Explorer,
+        ShipType::SHIP_HEAVY_FREIGHTER => ShipRegistrationRole::Transport,
+        ShipType::SHIP_LIGHT_SHUTTLE => ShipRegistrationRole::Hauler,
+        ShipType::SHIP_ORE_HOUND => ShipRegistrationRole::Excavator,
+        ShipType::SHIP_REFINING_FREIGHTER => ShipRegistrationRole::Refinery,
+        ShipType::SHIP_SURVEYOR => ShipRegistrationRole::Surveyor,
+        ShipType::SHIP_BULK_FREIGHTER => ShipRegistrationRole::Transport,
     }
 }

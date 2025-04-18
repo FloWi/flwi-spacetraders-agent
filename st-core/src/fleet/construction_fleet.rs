@@ -51,15 +51,17 @@ impl ConstructJumpGateFleet {
 
         let maybe_ship_purchase_location = match maybe_next_ship_to_purchase.clone() {
             None => None,
-            Some(ship_type) => {
+            Some((ship_type, assigned_fleet_task)) => {
                 let maybe_ship_purchase_location = ship_prices
                     .price_infos
                     .iter()
                     .flat_map(|(wps, shipyard_ships)| {
-                        shipyard_ships.iter().filter_map(|shipyard_ship| (shipyard_ship.r#type == ship_type).then_some((wps.clone(), shipyard_ship.clone())))
+                        shipyard_ships.iter().filter_map(|shipyard_ship| {
+                            (shipyard_ship.r#type == ship_type).then_some((wps.clone(), shipyard_ship.clone(), assigned_fleet_task.clone()))
+                        })
                     })
-                    .sorted_by_key(|(_, s)| s.purchase_price as i64)
-                    .filter(|(_, s)| s.purchase_price as i64 <= budget_for_ship_purchase)
+                    .sorted_by_key(|(_, s, _)| s.purchase_price as i64)
+                    .filter(|(_, s, _)| s.purchase_price as i64 <= budget_for_ship_purchase)
                     .take(1)
                     .next();
 
@@ -67,33 +69,40 @@ impl ConstructJumpGateFleet {
             }
         };
 
-        let maybe_ship_purchase_ticket_details: Option<PurchaseShipTicketDetails> = maybe_ship_purchase_location.clone().and_then(|(wps, s)| {
-            let shipyard_waypoint = waypoint_map.get(&wps.clone()).expect("Waypoint of shipyard");
+        let maybe_ship_purchase_ticket_details: Option<PurchaseShipTicketDetails> =
+            maybe_ship_purchase_location.clone().and_then(|(wps, s, assigned_fleet_task)| {
+                let shipyard_waypoint = waypoint_map.get(&wps.clone()).expect("Waypoint of shipyard");
 
-            let maybe_closest_ship: Option<(ShipSymbol, u32)> = unassigned_ships
-                .iter()
-                .map(|s| {
-                    let ship_wp = waypoint_map.get(&s.nav.waypoint_symbol).expect("Ship Waypoint");
-                    let distance_to_shipyard = ship_wp.distance_to(shipyard_waypoint);
-                    (s.symbol.clone(), distance_to_shipyard)
-                })
-                .sorted_by_key(|(_, distance)| *distance)
-                .next();
+                let assigned_fleet_id = admiral
+                    .fleet_tasks
+                    .iter()
+                    .find_map(|(fleet_id, tasks)| (tasks.iter().any(|t| t == &assigned_fleet_task)).then_some(fleet_id.clone()))
+                    .expect("ship purchase should have an assigned_fleet_id");
 
-            match maybe_closest_ship {
-                None => None,
-                Some((closest_ship_symbol, _distance)) => Some(PurchaseShipTicketDetails {
-                    id: TransactionTicketId(Uuid::new_v4()),
-                    ship_symbol: closest_ship_symbol,
-                    waypoint_symbol: wps,
-                    ship_type: s.r#type,
-                    price: s.purchase_price as u64,
-                    allocated_credits: s.purchase_price as u64,
-                    assigned_fleet_id: fleet.id.clone(),
-                    is_complete: false,
-                }),
-            }
-        });
+                let maybe_closest_ship: Option<(ShipSymbol, u32)> = unassigned_ships
+                    .iter()
+                    .map(|s| {
+                        let ship_wp = waypoint_map.get(&s.nav.waypoint_symbol).expect("Ship Waypoint");
+                        let distance_to_shipyard = ship_wp.distance_to(shipyard_waypoint);
+                        (s.symbol.clone(), distance_to_shipyard)
+                    })
+                    .sorted_by_key(|(_, distance)| *distance)
+                    .next();
+
+                match maybe_closest_ship {
+                    None => None,
+                    Some((closest_ship_symbol, _distance)) => Some(PurchaseShipTicketDetails {
+                        id: TransactionTicketId(Uuid::new_v4()),
+                        ship_symbol: closest_ship_symbol,
+                        waypoint_symbol: wps,
+                        ship_type: s.r#type,
+                        price: s.purchase_price as u64,
+                        allocated_credits: s.purchase_price as u64,
+                        assigned_fleet_id,
+                        is_complete: false,
+                    }),
+                }
+            });
 
         // TODO: allow more trading budget if now ship gets purchased
         let _budget_used_for_ship_purchase = maybe_ship_purchase_ticket_details.clone().map(|t| t.allocated_credits).unwrap_or(0);

@@ -17,7 +17,7 @@ pub trait TradeBmcTrait: Send + Sync + Debug {
     async fn get_ticket_by_id(&self, _ctx: &Ctx, ticket_id: TicketId) -> Result<TradeTicket>;
     async fn upsert_ticket(&self, _ctx: &Ctx, ship_symbol: &ShipSymbol, ticket_id: &TicketId, trade_ticket: &TradeTicket, is_complete: bool) -> Result<()>;
     async fn load_uncompleted_tickets(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, TradeTicket>>;
-    async fn save_transaction_completed(&self, _ctx: Ctx, tx_summary: &TransactionSummary) -> Result<()>;
+    async fn save_transaction_completed(&self, _ctx: &Ctx, tx_summary: &TransactionSummary) -> Result<()>;
 }
 
 #[derive(Debug)]
@@ -83,7 +83,7 @@ select ship_symbol
         Ok(entries.into_iter().map(|db_entry| (ShipSymbol(db_entry.ship_symbol), db_entry.entry.0)).collect())
     }
 
-    async fn save_transaction_completed(&self, _ctx: Ctx, tx_summary: &TransactionSummary) -> Result<()> {
+    async fn save_transaction_completed(&self, _ctx: &Ctx, tx_summary: &TransactionSummary) -> Result<()> {
         let now = Utc::now();
         let transaction_ticket_id: TransactionTicketId = tx_summary.transaction_ticket_id.clone();
         let ticket_id = tx_summary.trade_ticket.ticket_id();
@@ -161,18 +161,36 @@ impl InMemoryTradeBmc {
 #[async_trait]
 impl TradeBmcTrait for InMemoryTradeBmc {
     async fn get_ticket_by_id(&self, _ctx: &Ctx, ticket_id: TicketId) -> Result<TradeTicket> {
-        todo!()
+        self.in_memory_trades
+            .read()
+            .await
+            .active_trades
+            .iter()
+            .find_map(|(_, ticket)| (ticket.ticket_id() == ticket_id).then(|| ticket.clone()))
+            .ok_or(anyhow!("Ticket not found"))
     }
 
-    async fn upsert_ticket(&self, _ctx: &Ctx, ship_symbol: &ShipSymbol, ticket_id: &TicketId, trade_ticket: &TradeTicket, is_complete: bool) -> Result<()> {
-        todo!()
+    async fn upsert_ticket(&self, _ctx: &Ctx, ship_symbol: &ShipSymbol, _ticket_id: &TicketId, trade_ticket: &TradeTicket, is_complete: bool) -> Result<()> {
+        if is_complete {
+            self.in_memory_trades.write().await.active_trades.remove(ship_symbol);
+        } else {
+            self.in_memory_trades.write().await.active_trades.insert(ship_symbol.clone(), trade_ticket.clone());
+        }
+        Ok(())
     }
 
     async fn load_uncompleted_tickets(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, TradeTicket>> {
         Ok(self.in_memory_trades.read().await.active_trades.clone())
     }
 
-    async fn save_transaction_completed(&self, _ctx: Ctx, tx_summary: &TransactionSummary) -> Result<()> {
-        todo!()
+    async fn save_transaction_completed(&self, _ctx: &Ctx, tx_summary: &TransactionSummary) -> Result<()> {
+        self.upsert_ticket(
+            _ctx,
+            &tx_summary.ship_symbol,
+            &tx_summary.trade_ticket.ticket_id(),
+            &tx_summary.trade_ticket,
+            tx_summary.trade_ticket.is_complete(),
+        )
+        .await
     }
 }

@@ -1,7 +1,7 @@
 use crate::behavior_tree::behavior_tree::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use strum_macros::Display;
+use strum::Display;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Display, Hash)]
 pub enum ShipAction {

@@ -16,7 +16,7 @@ use anyhow::{anyhow, Result};
 use chrono::Utc;
 
 use crate::marketplaces::marketplaces::{filter_waypoints_with_trait, find_marketplaces_to_collect_remotely, find_shipyards_to_collect_remotely};
-use itertools::Itertools;
+use itertools::{all, Itertools};
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
     Agent, Fleet, FleetDecisionFacts, FleetPhaseName, FleetsOverview, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket,
@@ -72,6 +72,7 @@ impl FleetRunner {
 
         // Clone fleet_admiral infos to avoid the lifetime issues
         let all_ships_map = fleet_admiral.lock().await.all_ships.clone();
+        let all_ship_tasks = fleet_admiral.lock().await.ship_tasks.clone();
 
         let mut fleet_runner = Self {
             ship_fibers,
@@ -96,7 +97,7 @@ impl FleetRunner {
         ));
 
         for (ss, ship) in all_ships_map {
-            Self::launch_and_register_ship(Arc::clone(&fleet_runner_mutex), &ss, ship, sleep_duration).await?;
+            Self::launch_and_register_ship(Arc::clone(&fleet_runner_mutex), &ss, ship, sleep_duration, &all_ship_tasks).await?;
         }
 
         tokio::join!(msg_listeners_join_handle);
@@ -104,15 +105,20 @@ impl FleetRunner {
         Ok(())
     }
 
-    pub async fn launch_and_register_ship(runner: Arc<Mutex<FleetRunner>>, ss: &ShipSymbol, ship: Ship, sleep_duration: Duration) -> Result<()> {
+    pub async fn launch_and_register_ship(
+        runner: Arc<Mutex<FleetRunner>>,
+        ss: &ShipSymbol,
+        ship: Ship,
+        sleep_duration: Duration,
+        all_ship_tasks: &HashMap<ShipSymbol, ShipTask>,
+    ) -> Result<()> {
         // if ss.0 != "FLWI-26" {
         //     return Ok(());
         // }
         let mut guard = runner.lock().await;
-        let ship_tasks = guard.fleet_admiral.lock().await.ship_tasks.clone();
 
         let ship_op_mutex = Arc::new(Mutex::new(ShipOperations::new(ship.clone(), Arc::clone(&guard.client))));
-        let maybe_ship_task = ship_tasks.get(&ss);
+        let maybe_ship_task = all_ship_tasks.get(&ss);
 
         if let Some(ship_task) = maybe_ship_task {
             // Clone all the values that need to be moved into the async task
@@ -152,6 +158,7 @@ impl FleetRunner {
         runner: Arc<Mutex<FleetRunner>>,
         all_ships: HashSet<ShipSymbol>,
         ship_tasks: HashMap<ShipSymbol, ShipTask>,
+        sleep_duration: Duration,
     ) -> Result<()> {
         let not_running_ships = {
             let mut runner_guard = runner.lock().await;
@@ -175,14 +182,19 @@ impl FleetRunner {
         };
 
         for ss in not_running_ships {
-            Self::relaunch_ship(Arc::clone(&runner), &ss, ship_tasks.clone()).await?
+            Self::relaunch_ship(Arc::clone(&runner), &ss, ship_tasks.clone(), sleep_duration).await?
         }
 
         Ok(())
     }
 
     //TODO - refactor to DRY up with fn launch_and_register_ship
-    pub async fn relaunch_ship(runner: Arc<Mutex<FleetRunner>>, ss: &ShipSymbol, ship_tasks: HashMap<ShipSymbol, ShipTask>) -> Result<()> {
+    pub async fn relaunch_ship(
+        runner: Arc<Mutex<FleetRunner>>,
+        ss: &ShipSymbol,
+        ship_tasks: HashMap<ShipSymbol, ShipTask>,
+        sleep_duration: Duration,
+    ) -> Result<()> {
         let mut guard = runner.lock().await;
 
         let ship_op_mutex = guard.ship_ops.get(ss).unwrap();
@@ -205,7 +217,7 @@ impl FleetRunner {
                     ship_updated_tx_clone,
                     ship_action_completed_tx_clone,
                     ship_task_clone,
-                    Duration::from_secs(5),
+                    sleep_duration,
                 )
                 .await?;
 
@@ -397,6 +409,7 @@ impl FleetRunner {
                                 Arc::clone(&runner),
                                 admiral_guard.all_ships.keys().cloned().collect::<HashSet<_>>(),
                                 admiral_guard.ship_tasks.clone(),
+                                sleep_duration,
                             )
                             .await?;
 
@@ -433,7 +446,7 @@ impl FleetRunner {
                             ship_task_requirement,
                         } => {
                             FleetAdmiral::assign_ship_task_and_potential_requirement(&mut admiral_guard, ship_symbol.clone(), task, ship_task_requirement);
-                            Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone()).await?
+                            Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration).await?
                         }
                     }
                 }
@@ -452,7 +465,24 @@ impl FleetRunner {
                         let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &new_ship.nav.system_symbol).await?;
                         let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
                         FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut admiral_guard, new_ship_tasks);
-                        Self::launch_and_register_ship(Arc::clone(&runner), &new_ship.symbol, new_ship.clone(), sleep_duration).await?
+                        let _ = upsert_fleets_data(
+                            Arc::clone(&bmc),
+                            &Ctx::Anonymous,
+                            &admiral_guard.fleets,
+                            &admiral_guard.fleet_tasks,
+                            &admiral_guard.ship_fleet_assignment,
+                            &admiral_guard.ship_tasks,
+                            &admiral_guard.active_trades,
+                        )
+                        .await?;
+                        Self::launch_and_register_ship(
+                            Arc::clone(&runner),
+                            &new_ship.symbol,
+                            new_ship.clone(),
+                            sleep_duration,
+                            &admiral_guard.ship_tasks,
+                        )
+                        .await?
                     }
                 },
             }
@@ -731,7 +761,7 @@ mod tests {
 
         // This task periodically checks if the condition is met
         let condition_checker = async {
-            let check_interval = Duration::from_millis(500); // Adjust as needed
+            let check_interval = Duration::from_millis(1000); // Adjust as needed
 
             loop {
                 // Sleep first to give the fleet a chance to start
@@ -742,10 +772,18 @@ mod tests {
                     let has_finished_initial_observation =
                         admiral.completed_fleet_tasks.iter().any(|t| matches!(t.task, FleetTask::CollectMarketInfosOnce { .. }));
                     let is_in_construction_phase = admiral.fleet_phase.name == FleetPhaseName::ConstructJumpGate;
+                    let num_ships = admiral.all_ships.len();
+                    let has_bought_ships = num_ships > 2;
 
-                    println!("has_finished_initial_observation: {has_finished_initial_observation}; is_in_construction_phase: {is_in_construction_phase}");
+                    println!(
+                        r#"
+has_finished_initial_observation: {has_finished_initial_observation}
+is_in_construction_phase: {is_in_construction_phase}
+num_ships: {num_ships}
+"#
+                    );
 
-                    has_finished_initial_observation && is_in_construction_phase
+                    has_finished_initial_observation && is_in_construction_phase && has_bought_ships
                 };
 
                 if condition_met {
@@ -757,7 +795,7 @@ mod tests {
         // Use select to race between the fleet task and your condition checker
         // Add a timeout as a fallback
         tokio::select! {
-            _ = tokio::time::timeout(Duration::from_secs(10), fleet_task) => {
+            _ = tokio::time::timeout(Duration::from_secs(60), fleet_task) => {
                 println!("Fleet task completed or timed out");
             }
             _ = condition_checker => {
@@ -818,9 +856,8 @@ mod tests {
             _ => panic!("expected one ship, but got {}", construct_jump_gate_fleet_ships.len()),
         }
 
-        match market_observation_fleet_ships.as_slice() {
-            [ship] => assert_eq!(ship.registration.role, ShipRegistrationRole::Satellite),
-            _ => panic!("expected one ship, but got {}", market_observation_fleet_ships.len()),
-        }
+        let probes = market_observation_fleet_ships.iter().filter(|ship| ship.registration.role == ShipRegistrationRole::Satellite).collect_vec();
+        assert!(probes.len() > 1, "more than one probe");
+        assert!(probes.len() == market_observation_fleet_ships.len(), "only probes");
     }
 }

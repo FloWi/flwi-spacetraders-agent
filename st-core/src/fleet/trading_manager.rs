@@ -42,7 +42,7 @@ impl TradingManager {
             transaction_ticket_id,
         };
 
-        trade_bmc.save_transaction_completed(ctx, &tx_summary).await?;
+        trade_bmc.save_transaction_completed(&ctx, &tx_summary).await?;
         anyhow::Ok(tx_summary)
     }
 }

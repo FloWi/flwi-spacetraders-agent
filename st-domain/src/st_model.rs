@@ -5,7 +5,7 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::Hash;
-use strum_macros::Display;
+use strum::{Display, EnumString};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Data<T> {
@@ -244,8 +244,30 @@ impl WaypointSymbol {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct FactionSymbol(pub String);
+#[derive(Deserialize, Serialize, Debug, EnumString, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[allow(non_camel_case_types)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+pub enum FactionSymbol {
+    COSMIC,
+    VOID,
+    GALACTIC,
+    QUANTUM,
+    DOMINION,
+    ASTRO,
+    CORSAIRS,
+    OBSIDIAN,
+    AEGIS,
+    UNITED,
+    SOLITARY,
+    COBALT,
+    OMEGA,
+    ECHO,
+    LORDS,
+    CULT,
+    ANCIENTS,
+    SHADOW,
+    ETHEREAL,
+}
 
 #[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -592,7 +614,7 @@ pub struct Agent {
     pub symbol: AgentSymbol,
     pub headquarters: WaypointSymbol,
     pub credits: i64,
-    pub starting_faction: String,
+    pub starting_faction: FactionSymbol,
     pub ship_count: i32,
 }
 
@@ -662,7 +684,7 @@ pub struct Ship {
 #[serde(rename_all = "camelCase")]
 pub struct Registration {
     pub name: String,
-    pub faction_symbol: String,
+    pub faction_symbol: FactionSymbol,
     pub role: ShipRegistrationRole,
 }
 
@@ -868,8 +890,8 @@ pub struct NavRouteWaypoint {
     #[serde(rename = "type")]
     pub waypoint_type: WaypointType,
     pub system_symbol: SystemSymbol,
-    pub x: i32,
-    pub y: i32,
+    pub x: i64,
+    pub y: i64,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -946,9 +968,34 @@ pub struct Cooldown {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[allow(non_camel_case_types)]
+pub enum ModuleType {
+    MODULE_MINERAL_PROCESSOR_I,
+    MODULE_GAS_PROCESSOR_I,
+    MODULE_CARGO_HOLD_I,
+    MODULE_CARGO_HOLD_II,
+    MODULE_CARGO_HOLD_III,
+    MODULE_CREW_QUARTERS_I,
+    MODULE_ENVOY_QUARTERS_I,
+    MODULE_PASSENGER_CABIN_I,
+    MODULE_MICRO_REFINERY_I,
+    MODULE_ORE_REFINERY_I,
+    MODULE_FUEL_REFINERY_I,
+    MODULE_SCIENCE_LAB_I,
+    MODULE_JUMP_DRIVE_I,
+    MODULE_JUMP_DRIVE_II,
+    MODULE_JUMP_DRIVE_III,
+    MODULE_WARP_DRIVE_I,
+    MODULE_WARP_DRIVE_II,
+    MODULE_WARP_DRIVE_III,
+    MODULE_SHIELD_GENERATOR_I,
+    MODULE_SHIELD_GENERATOR_II,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct Module {
-    pub symbol: String,
+    pub symbol: ModuleType,
     pub capacity: Option<i32>,
     pub range: Option<i32>,
     pub name: String,
