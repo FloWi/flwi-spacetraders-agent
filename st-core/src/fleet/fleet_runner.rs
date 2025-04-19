@@ -11,7 +11,6 @@ use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
 use crate::pagination::fetch_all_pages;
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
-use crate::test_objects::TestObjects;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 

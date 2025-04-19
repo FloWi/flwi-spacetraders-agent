@@ -1,7 +1,6 @@
 use crate::ctx::Ctx;
 use crate::DbModelManager;
 use anyhow::*;
-use sqlx::{Pool, Postgres};
 use st_domain::StStatusResponse;
 
 pub struct StatusBmc;

@@ -43,6 +43,12 @@ pub struct InMemoryJumpGateBmc {
     in_memory_jump_gates: Arc<RwLock<InMemoryJumpGates>>,
 }
 
+impl Default for InMemoryJumpGateBmc {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryJumpGateBmc {
     pub fn new() -> Self {
         Self {

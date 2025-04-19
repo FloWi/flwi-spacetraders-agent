@@ -49,6 +49,12 @@ pub struct InMemorySystemsBmc {
     in_memory_systems: Arc<RwLock<InMemorySystems>>,
 }
 
+impl Default for InMemorySystemsBmc {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemorySystemsBmc {
     pub fn new() -> Self {
         Self {

@@ -291,9 +291,9 @@ pub async fn upsert_fleets_data(
 ) -> Result<()> {
     let fleet_bmc = bmc.fleet_bmc();
 
-    fleet_bmc.upsert_fleets(_ctx, &fleets).await?;
-    fleet_bmc.upsert_fleet_tasks(_ctx, &fleet_tasks).await?;
-    fleet_bmc.upsert_ship_fleet_assignment(_ctx, &ship_fleet_assignment).await?;
+    fleet_bmc.upsert_fleets(_ctx, fleets).await?;
+    fleet_bmc.upsert_fleet_tasks(_ctx, fleet_tasks).await?;
+    fleet_bmc.upsert_ship_fleet_assignment(_ctx, ship_fleet_assignment).await?;
     bmc.ship_bmc().save_ship_tasks(_ctx, ship_task_assignment).await?;
 
     // fleet_bmc.upsert_ship_task_assignment(_ctx, &ship_task_assignment).await?;
@@ -301,7 +301,7 @@ pub async fn upsert_fleets_data(
     let trade_bmc = bmc.trade_bmc();
 
     for (ss, ticket) in active_trades {
-        trade_bmc.upsert_ticket(&Ctx::Anonymous, &ss, &ticket.ticket_id(), &ticket, ticket.is_complete()).await?
+        trade_bmc.upsert_ticket(&Ctx::Anonymous, ss, &ticket.ticket_id(), ticket, ticket.is_complete()).await?
     }
 
     Ok(())
@@ -318,7 +318,7 @@ pub async fn load_fleet_overview(bmc: Arc<dyn Bmc>, ctx: &Ctx) -> Result<FleetsO
 
     let open_trade_tickets = trade_bmc.load_uncompleted_tickets(ctx).await?;
 
-    let completed_fleet_tasks = fleet_bmc.load_completed_fleet_tasks(&ctx).await?;
+    let completed_fleet_tasks = fleet_bmc.load_completed_fleet_tasks(ctx).await?;
     let ship_fleet_assignment = fleet_bmc.load_ship_fleet_assignment(ctx).await?;
     let fleet_task_assignments = fleet_bmc.load_fleet_tasks(ctx).await?;
     let fleets = fleet_bmc.load_fleets(ctx).await?;
@@ -347,6 +347,12 @@ pub struct InMemoryFleet {
 #[derive(Debug)]
 pub struct InMemoryFleetBmc {
     in_memory_fleet: Arc<RwLock<InMemoryFleet>>,
+}
+
+impl Default for InMemoryFleetBmc {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InMemoryFleetBmc {

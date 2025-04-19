@@ -2,7 +2,7 @@ use leptos::leptos_dom::error;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{component, view, IntoView};
-use phosphor_leptos::{Icon, IconWeight, COPY_SIMPLE};
+use phosphor_leptos::{Icon, COPY_SIMPLE};
 
 async fn write_to_clipboard(text: String) {
     use wasm_bindgen_futures::JsFuture;

@@ -52,7 +52,7 @@ pub struct Shipyard {
 
 impl Shipyard {
     pub fn has_detailed_price_information(&self) -> bool {
-        !self.ships.is_none()
+        self.ships.is_some()
     }
 }
 

@@ -3,7 +3,6 @@ use crate::{
     ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, TradeGoodSymbol, TradeGoodType,
     Waypoint, WaypointSymbol, WaypointType,
 };
-use chrono::Duration;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -152,7 +151,7 @@ pub fn materialize_supply_chain(
 {completion_explanation}
 "#,
         ),
-        trading_opportunities: crate::trading::find_trading_opportunities(&market_data, waypoint_map),
+        trading_opportunities: crate::trading::find_trading_opportunities(market_data, waypoint_map),
         raw_delivery_routes,
     }
 }
@@ -389,7 +388,7 @@ pub fn get_sourcing_waypoints(waypoint_map: &HashMap<WaypointSymbol, &Waypoint>)
                 .cloned()
                 .cloned()
                 .collect_vec();
-            (source, relevant_waypoints.iter().cloned().collect())
+            (source, relevant_waypoints.to_vec())
         })
         .collect()
 }

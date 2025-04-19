@@ -3,7 +3,7 @@ use crate::bmc::ship_bmc::{DbShipBmc, ShipBmcTrait};
 use crate::shipyard_bmc::{DbShipyardBmc, ShipyardBmcTrait};
 use crate::trade_bmc::{DbTradeBmc, TradeBmcTrait};
 use crate::{
-    AgentBmcTrait, ConstructionBmcTrait, DbAgentBmc, DbConstructionBmc, DbFleetBmc, DbJumpGateData, DbMarketBmc, DbModelManager, DbSystemBmc, FleetBmcTrait,
+    AgentBmcTrait, ConstructionBmcTrait, DbAgentBmc, DbConstructionBmc, DbFleetBmc, DbMarketBmc, DbModelManager, DbSystemBmc, FleetBmcTrait,
     MarketBmcTrait, SystemBmcTrait,
 };
 use mockall::automock;

@@ -57,6 +57,12 @@ pub enum RefuelingType {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct TicketId(pub Uuid);
 
+impl Default for TicketId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TicketId {
     pub fn new() -> TicketId {
         Self(Uuid::new_v4())

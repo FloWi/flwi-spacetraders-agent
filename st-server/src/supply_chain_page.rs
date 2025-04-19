@@ -5,12 +5,10 @@ use leptos::prelude::*;
 use leptos_meta::Title;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
-use st_domain::trading::evaluate_trading_opportunities;
 use st_domain::{
     find_complete_supply_chain, trade_map, EvaluatedTradingOpportunity, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain,
-    SupplyChainNodeVecExt, TradeGoodSymbol, Waypoint, WaypointSymbol,
+    SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol,
 };
-use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RelevantMarketData {

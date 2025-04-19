@@ -1,14 +1,11 @@
 use crate::components::clipboard_button::ClipboardButton;
-use crate::format_duration;
 use chrono::{DateTime, Utc};
 use itertools::*;
-use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use leptos_use::{use_interval, UseIntervalReturn};
-use phosphor_leptos::{Icon, CLOCK, GAS_PUMP, PACKAGE, TRUCK};
 use serde::{Deserialize, Serialize};
-use st_domain::{Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase, FleetTask, FleetsOverview, NavStatus, Ship, ShipType, WaypointSymbol};
+use st_domain::{FleetDecisionFacts, FleetPhase, FleetsOverview, Ship};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {

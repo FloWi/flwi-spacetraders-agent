@@ -718,7 +718,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                 {format!(
                                                     "{} ({})",
                                                     node.waypoint_symbol.0.clone(),
-                                                    node.waypoint_type.to_string(),
+                                                    node.waypoint_type,
                                                 )}
 
                                             </tspan>

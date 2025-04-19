@@ -1,4 +1,3 @@
-use crate::trading_opportunity_table::TradingOpportunityRow;
 use itertools::Itertools;
 use leptos::prelude::*;
 use leptos_meta::Title;
@@ -6,7 +5,6 @@ use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components;
-use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MermaidString(String);
@@ -65,7 +63,7 @@ pub fn BehaviorTreePage() -> impl IntoView {
                                 .get()
                                 .map(|result| {
                                     match result {
-                                        Ok((behavior_trees)) => {
+                                        Ok(behavior_trees) => {
 
                                             view! {
                                                 <div class="flex flex-row gap-4">

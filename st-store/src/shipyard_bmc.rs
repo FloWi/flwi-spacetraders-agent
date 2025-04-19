@@ -58,6 +58,12 @@ pub struct InMemoryShipyardBmc {
     in_memory_shipyards: Arc<RwLock<InMemoryShipyards>>,
 }
 
+impl Default for InMemoryShipyardBmc {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryShipyardBmc {
     pub fn new() -> Self {
         Self {
@@ -96,10 +102,8 @@ impl ShipyardBmcTrait for InMemoryShipyardBmc {
 fn extract_ship_price_infos_from_shipyards(result: &[ShipyardData]) -> ShipPriceInfo {
     let price_infos = result
         .iter()
-        .filter_map(|entry| {
-            entry.shipyard.has_detailed_price_information().then(|| (entry.waypoint_symbol.clone(), entry.shipyard.ships.clone().unwrap_or_default()))
-        })
+        .filter(|&entry| entry.shipyard.has_detailed_price_information()).map(|entry| (entry.waypoint_symbol.clone(), entry.shipyard.ships.clone().unwrap_or_default()))
         .collect_vec();
-    let ship_price_info = ShipPriceInfo { price_infos };
-    ship_price_info
+    
+    ShipPriceInfo { price_infos }
 }

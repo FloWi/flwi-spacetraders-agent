@@ -96,6 +96,12 @@ impl MarketBmcTrait for InMemoryMarketBmc {
     }
 }
 
+impl Default for InMemoryMarketBmc {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryMarketBmc {
     pub fn new() -> Self {
         Self {

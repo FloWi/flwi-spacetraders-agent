@@ -58,6 +58,12 @@ pub struct InMemoryConstruction {
     construction_sites: HashMap<SystemSymbol, GetConstructionResponse>,
 }
 
+impl Default for InMemoryConstruction {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryConstruction {
     pub fn new() -> Self {
         Self {
@@ -69,6 +75,12 @@ impl InMemoryConstruction {
 #[derive(Debug)]
 pub struct InMemoryConstructionBmc {
     in_memory_construction: Arc<RwLock<InMemoryConstruction>>,
+}
+
+impl Default for InMemoryConstructionBmc {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InMemoryConstructionBmc {

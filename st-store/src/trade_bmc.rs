@@ -1,5 +1,5 @@
 use crate::ctx::Ctx;
-use crate::{DbModelManager, DbShipTaskEntry};
+use crate::DbModelManager;
 use anyhow::*;
 use async_trait::async_trait;
 use chrono::Utc;
@@ -146,6 +146,12 @@ pub struct InMemoryTrades {
 #[derive(Debug)]
 pub struct InMemoryTradeBmc {
     in_memory_trades: Arc<RwLock<InMemoryTrades>>,
+}
+
+impl Default for InMemoryTradeBmc {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InMemoryTradeBmc {

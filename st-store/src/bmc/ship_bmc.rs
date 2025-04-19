@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use mockall::automock;
 use sqlx::types::Json;
-use st_domain::{Data, ExplorationTask, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, WaypointSymbol};
+use st_domain::{ExplorationTask, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, WaypointSymbol};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -167,6 +167,12 @@ pub struct InMemoryShips {
     ships: HashMap<ShipSymbol, Ship>,
     ship_tasks: HashMap<ShipSymbol, ShipTask>,
     stationary_probe_locations: HashMap<WaypointSymbol, StationaryProbeLocation>,
+}
+
+impl Default for InMemoryShips {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InMemoryShips {
