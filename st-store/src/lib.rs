@@ -8,6 +8,7 @@ pub mod fleet_bmc;
 pub mod market_bmc;
 pub mod shipyard_bmc;
 pub mod status_bmc;
+pub mod supply_chain_bmc;
 pub mod system_bmc;
 pub mod trade_bmc;
 
@@ -19,4 +20,5 @@ pub use db_model_manager::*;
 pub use fleet_bmc::*;
 pub use market_bmc::*;
 pub use status_bmc::*;
+pub use supply_chain_bmc::*;
 pub use system_bmc::*;

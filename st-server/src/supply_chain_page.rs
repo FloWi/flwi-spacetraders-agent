@@ -7,8 +7,9 @@ use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
     find_complete_supply_chain, trade_map, EvaluatedTradingOpportunity, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain,
-    SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol,
+    SupplyChainNodeVecExt, TradeGoodSymbol, Waypoint, WaypointSymbol,
 };
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RelevantMarketData {
@@ -33,33 +34,30 @@ async fn get_supply_chain_data(
     use st_core;
     use st_domain::trading;
     use st_store::db;
-    use st_store::ShipBmc;
-
-    use st_store::{AgentBmc, Ctx, DbConstructionBmc, MarketBmc, SystemBmc};
+    use st_store::*;
 
     let state = expect_context::<crate::app::AppState>();
-    let mm = state.db_model_manager;
+    let bmc = state.bmc;
+    let supply_chain = bmc.supply_chain_bmc().get_supply_chain(&Ctx::Anonymous).await.unwrap().unwrap();
 
-    let supply_chain = db::load_supply_chain(mm.pool()).await.unwrap().unwrap();
-
-    let agent = AgentBmc::load_agent(&Ctx::Anonymous, &mm).await.expect("agent");
+    let agent = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await.expect("agent");
     let headquarters_waypoint = agent.headquarters;
 
-    let market_data = MarketBmc::get_latest_market_data_for_system(&Ctx::Anonymous, &mm, &headquarters_waypoint.system_symbol()).await.expect("status");
+    let market_data = bmc.market_bmc().get_latest_market_data_for_system(&Ctx::Anonymous, &headquarters_waypoint.system_symbol()).await.expect("status");
 
     let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
 
     let maybe_construction_site =
-        DbConstructionBmc::get_construction_site_for_system(&Ctx::Anonymous, &mm, headquarters_waypoint.system_symbol()).await.expect("construction_site");
+        bmc.construction_bmc().get_construction_site_for_system(&Ctx::Anonymous, headquarters_waypoint.system_symbol()).await.expect("construction_site");
 
-    let waypoints_of_system = SystemBmc::get_waypoints_of_system(&Ctx::Anonymous, &mm, &headquarters_waypoint.system_symbol()).await.expect("waypoints");
+    let waypoints_of_system = bmc.system_bmc().get_waypoints_of_system(&Ctx::Anonymous, &headquarters_waypoint.system_symbol()).await.expect("waypoints");
 
     let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints_of_system.iter().map(|wp| (wp.symbol.clone(), wp)).collect::<HashMap<_, _>>();
 
     let materialized_supply_chain =
         st_domain::supply_chain::materialize_supply_chain(&supply_chain, &market_data, &waypoint_map, &maybe_construction_site, &goods_of_interest);
 
-    let ships = ShipBmc::get_ships(&Ctx::Anonymous, &mm, None).await.expect("Ships");
+    let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await.expect("Ships");
 
     let trading_opportunities = trading::find_trading_opportunities(&market_data, &waypoint_map);
     let cargo_capable_ships = ships.iter().filter(|s| s.cargo.capacity > 0).collect_vec();

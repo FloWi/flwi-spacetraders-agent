@@ -1,47 +1,44 @@
 use crate::ctx::Ctx;
 use crate::DbModelManager;
 use anyhow::*;
+use async_trait::async_trait;
 use st_domain::StStatusResponse;
+use std::fmt::Debug;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub struct StatusBmc;
 
-/*
-use crate::ctx::Ctx;
-use crate::DbModelManager;
-use anyhow::Result;
-use st_domain::Fleet;
+#[async_trait]
+pub trait StatusBmcTrait: Send + Sync + Debug {
+    async fn get_status(&self, ctx: &Ctx) -> Result<Option<StStatusResponse>>;
+}
 
-pub struct FleetBmc;
- */
+#[derive(Debug)]
+pub struct DbStatusBmc {
+    pub(crate) mm: DbModelManager,
+}
 
-impl StatusBmc {
-    pub async fn get_num_waypoints(ctx: &Ctx, mm: &DbModelManager) -> Result<i64> {
-        let row = sqlx::query!(
-            r#"
-select count(*) as count
-  from waypoints
-        "#,
-        )
-        .fetch_one(mm.pool())
-        .await?;
-
-        row.count.ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
+#[async_trait]
+impl StatusBmcTrait for DbStatusBmc {
+    async fn get_status(&self, ctx: &Ctx) -> Result<Option<StStatusResponse>> {
+        Ok(crate::db::load_status(self.mm.pool()).await?.map(|db_status| db_status.entry.0))
     }
+}
 
-    pub async fn get_status(ctx: &Ctx, mm: &DbModelManager) -> Result<Option<StStatusResponse>> {
-        Ok(crate::db::load_status(mm.pool()).await?.map(|db_status| db_status.entry.0))
-    }
+#[derive(Debug)]
+pub struct InMemoryStatus {
+    status_response: Option<StStatusResponse>,
+}
 
-    pub async fn get_num_systems(ctx: &Ctx, mm: &DbModelManager) -> Result<i64> {
-        let row = sqlx::query!(
-            r#"
-select count(*) as count
-  from systems
-        "#,
-        )
-        .fetch_one(mm.pool())
-        .await?;
+#[derive(Debug)]
+pub struct InMemoryStatusBmc {
+    in_memory_status: Arc<RwLock<crate::InMemoryStatus>>,
+}
 
-        row.count.ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
+#[async_trait]
+impl StatusBmcTrait for InMemoryStatusBmc {
+    async fn get_status(&self, _ctx: &Ctx) -> Result<Option<StStatusResponse>> {
+        Ok(self.in_memory_status.read().await.status_response.clone())
     }
 }

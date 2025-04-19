@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 #[cfg(feature = "ssr")]
 #[tokio::main]
 async fn main() {
@@ -44,9 +46,10 @@ async fn main() {
     let pool = db::get_pg_connection_pool(cfg.pg_connection_string()).await.expect("should be able to get pool");
 
     let model_manager = DbModelManager::new(pool);
+    let db_bmc = Arc::new(DbBmc::new(model_manager));
 
     let app_state = st_server::app::AppState {
-        db_model_manager: model_manager.clone(),
+        bmc: Arc::clone(&db_bmc) as Arc<dyn Bmc>,
     };
 
     // Generate the list of routes in your Leptos App

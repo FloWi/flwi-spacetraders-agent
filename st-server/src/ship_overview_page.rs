@@ -22,17 +22,17 @@ pub enum GetShipsMode {
 
 #[server]
 async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOverview, ServerFnError> {
-    use st_store::{Ctx, ShipBmc};
+    use st_store::Ctx;
 
     let state = expect_context::<crate::app::AppState>();
-    let mm = state.db_model_manager;
+    let bmc = state.bmc;
 
     let filter_timestamp_gte = match get_ships_mode {
         GetShipsMode::AllShips => None,
         GetShipsMode::OnlyChangesSince { filter_timestamp_gte } => Some(filter_timestamp_gte),
     };
 
-    let ships = ShipBmc::get_ships(&Ctx::Anonymous, &mm, filter_timestamp_gte).await.expect("get_ships");
+    let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, filter_timestamp_gte).await.expect("get_ships");
 
     Ok(ShipsOverview {
         ships,

@@ -22,6 +22,9 @@ pub trait SystemBmcTrait: Send + Sync + Debug {
     async fn get_waypoints_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<Waypoint>>;
     async fn save_waypoints_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol, waypoints: Vec<Waypoint>) -> Result<()>;
     async fn upsert_waypoint(&self, ctx: &Ctx, waypoint: Waypoint) -> Result<()>;
+
+    async fn get_num_systems(&self, ctx: &Ctx) -> Result<i64>;
+    async fn get_num_waypoints(&self, ctx: &Ctx) -> Result<i64>;
 }
 
 #[async_trait]
@@ -36,6 +39,32 @@ impl SystemBmcTrait for DbSystemBmc {
 
     async fn upsert_waypoint(&self, ctx: &Ctx, waypoint: Waypoint) -> Result<()> {
         db::upsert_waypoints(self.mm.pool(), vec![waypoint], Utc::now()).await
+    }
+
+    async fn get_num_systems(&self, ctx: &Ctx) -> Result<i64> {
+        let row = sqlx::query!(
+            r#"
+select count(*) as count
+  from systems
+        "#,
+        )
+        .fetch_one(self.mm.pool())
+        .await?;
+
+        row.count.ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
+    }
+
+    async fn get_num_waypoints(&self, ctx: &Ctx) -> Result<i64> {
+        let row = sqlx::query!(
+            r#"
+select count(*) as count
+  from waypoints
+        "#,
+        )
+        .fetch_one(self.mm.pool())
+        .await?;
+
+        row.count.ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
     }
 }
 
@@ -82,5 +111,14 @@ impl SystemBmcTrait for InMemorySystemsBmc {
 
         guard.waypoints_per_system.entry(waypoint.system_symbol.clone()).or_default().insert(waypoint.symbol.clone(), waypoint.clone());
         Ok(())
+    }
+
+    async fn get_num_systems(&self, ctx: &Ctx) -> Result<i64> {
+        Ok(self.in_memory_systems.read().await.waypoints_per_system.len() as i64)
+    }
+
+    async fn get_num_waypoints(&self, ctx: &Ctx) -> Result<i64> {
+        let result = self.in_memory_systems.read().await.waypoints_per_system.iter().map(|(_ss, waypoints)| waypoints.len() as i64).sum();
+        Ok(result)
     }
 }

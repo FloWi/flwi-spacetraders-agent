@@ -5,7 +5,8 @@ use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use leptos_use::{use_interval, UseIntervalReturn};
 use serde::{Deserialize, Serialize};
-use st_domain::{FleetDecisionFacts, FleetPhase, FleetsOverview, Ship};
+use st_domain::{Agent, Fleet, FleetDecisionFacts, FleetPhase, FleetsOverview, Ship};
+use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
@@ -22,21 +23,25 @@ pub enum GetShipsMode {
 #[server]
 async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, FleetsOverview, FleetPhase), ServerFnError> {
     use st_core::fleet::fleet;
-    use st_store::AgentBmc;
     use st_store::Ctx;
-    use st_store::FleetBmc;
 
     let state = expect_context::<crate::app::AppState>();
-    let mm = state.db_model_manager;
+    let bmc = state.bmc;
 
-    let home_waypoint_symbol = AgentBmc::get_initial_agent(&Ctx::Anonymous, &mm).await.expect("get_initial_agent").headquarters;
+    let home_waypoint_symbol = bmc.agent_bmc().get_initial_agent(&Ctx::Anonymous).await.expect("get_initial_agent").headquarters;
     let home_system_symbol = home_waypoint_symbol.system_symbol();
 
-    let decision_facts = fleet::collect_fleet_decision_facts(&mm, &home_system_symbol).await.expect("collect_fleet_decision_facts");
+    let decision_facts = fleet::collect_fleet_decision_facts(Arc::clone(&bmc), &home_system_symbol).await.expect("collect_fleet_decision_facts");
 
-    let fleet_overview = FleetBmc::load_overview(&Ctx::Anonymous, &mm).await.expect("FleetBmc::load_overview");
+    let fleet_overview = st_store::load_fleet_overview(Arc::clone(&bmc), &Ctx::Anonymous).await.expect("load_overview");
 
-    let (_0, _1, fleet_phase) = fleet::compute_fleets_with_tasks(home_system_symbol.clone(), &fleet_overview.completed_fleet_tasks, &decision_facts);
+    let (_0, _1, fleet_phase) = fleet::compute_fleets_with_tasks(
+        home_system_symbol.clone(),
+        &fleet_overview.completed_fleet_tasks,
+        &decision_facts,
+        &fleet_overview.fleets,
+        &fleet_overview.fleet_task_assignments,
+    );
 
     Ok((decision_facts, fleet_overview, fleet_phase))
 }
