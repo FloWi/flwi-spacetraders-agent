@@ -19,8 +19,8 @@ use crate::marketplaces::marketplaces::{filter_waypoints_with_trait, find_market
 use itertools::{all, Itertools};
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
-    Agent, Fleet, FleetDecisionFacts, FleetPhaseName, FleetsOverview, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket,
-    TransactionActionEvent, WaypointTraitSymbol, WaypointType,
+    Agent, Fleet, FleetDecisionFacts, FleetPhaseName, FleetsOverview, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipSymbol, ShipTask,
+    StationaryProbeLocation, TradeTicket, TransactionActionEvent, WaypointTraitSymbol, WaypointType,
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
 use st_store::bmc::{ship_bmc, Bmc};
@@ -468,6 +468,11 @@ impl FleetRunner {
                 }
 
                 ShipStatusReport::ShipActionCompleted(_, _) => {}
+                ShipStatusReport::Expense(_, operation_expense) => match operation_expense {
+                    OperationExpenseEvent::RefueledShip { .. } => {
+                        event!(Level::INFO, "Ship reported TransactionActionEvent::PurchasedTradeGoods");
+                    }
+                },
                 ShipStatusReport::TransactionCompleted(_, transaction_event, _) => match &transaction_event {
                     TransactionActionEvent::PurchasedTradeGoods { .. } => {
                         event!(Level::INFO, "Ship reported TransactionActionEvent::PurchasedTradeGoods");
@@ -578,6 +583,10 @@ impl FleetRunner {
                         transaction = %transaction.to_string(),
                     );
                     ship_status_report_tx.send(ShipStatusReport::TransactionCompleted(ship.ship, transaction, ticket)).await?;
+                }
+
+                ActionEvent::Expense(ship, operation_expense) => {
+                    ship_status_report_tx.send(ShipStatusReport::Expense(ship.ship, operation_expense)).await?;
                 }
             }
         }

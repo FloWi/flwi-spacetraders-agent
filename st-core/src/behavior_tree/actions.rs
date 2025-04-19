@@ -12,9 +12,9 @@ use itertools::Itertools;
 use st_domain::TransactionActionEvent::{PurchasedTradeGoods, ShipPurchased, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
     get_exploration_tasks_for_waypoint, Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, ExplorationTask, FlightMode, Frame, Fuel, FuelConsumed, MarketData,
-    Nav, NavOnlyResponse, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements, Route, Ship,
-    ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, TradeTicket, Transaction, TransactionType, TravelAction, Waypoint, WaypointSymbol,
-    WaypointTrait, WaypointTraitSymbol, WaypointType,
+    Nav, NavOnlyResponse, NavRouteWaypoint, NavStatus, OperationExpenseEvent, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements,
+    Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, TradeTicket, Transaction, TransactionType, TravelAction, Waypoint,
+    WaypointSymbol, WaypointTrait, WaypointTraitSymbol, WaypointType,
 };
 use std::future::Future;
 use std::ops::{Add, Not};
@@ -212,10 +212,17 @@ impl Actionable for ShipAction {
             },
 
             ShipAction::Refuel => {
-                let RefuelShipResponse {
-                    data: RefuelShipResponseBody { fuel: new_fuel, .. },
+                let ref response @ RefuelShipResponse {
+                    data: RefuelShipResponseBody { fuel: ref new_fuel, .. },
                 } = state.refuel(false).await?;
-                state.set_fuel(new_fuel);
+                state.set_fuel(new_fuel.clone());
+                action_completed_tx
+                    .send(ActionEvent::Expense(
+                        state.clone(),
+                        OperationExpenseEvent::RefueledShip { response: response.clone() },
+                    ))
+                    .await?;
+
                 Ok(Success)
             }
 

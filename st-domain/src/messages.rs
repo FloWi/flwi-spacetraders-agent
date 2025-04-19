@@ -1,7 +1,7 @@
 use crate::{
     Agent, Construction, EvaluatedTradingOpportunity, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse,
-    PurchaseTradeGoodResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol,
-    TradeGoodSymbol, WaypointSymbol,
+    PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse,
+    SystemSymbol, TradeGoodSymbol, WaypointSymbol,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -403,6 +403,11 @@ pub enum TransactionActionEvent {
         ticket_details: PurchaseShipTicketDetails,
         response: PurchaseShipResponse,
     },
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, Display)]
+pub enum OperationExpenseEvent {
+    RefueledShip { response: RefuelShipResponse },
 }
 
 impl TransactionActionEvent {

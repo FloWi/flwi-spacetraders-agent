@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
@@ -678,6 +678,50 @@ pub struct Ship {
     pub mounts: Vec<Mount>,
     pub cargo: Cargo,
     pub fuel: Fuel,
+}
+
+impl Ship {
+    pub fn try_add_cargo(&mut self, units: u32, trade_good_symbol: &TradeGoodSymbol) -> Result<()> {
+        if self.cargo.units + units as i32 > self.cargo.capacity {
+            return Err(anyhow!("Not enough cargo space"));
+        }
+        if let Some(idx) = self.cargo.inventory.iter().position(|inv| &inv.symbol == trade_good_symbol) {
+            self.cargo.inventory.get_mut(idx).unwrap().units += units;
+            self.cargo.units += units as i32;
+        } else {
+            let new_entry = Inventory {
+                symbol: trade_good_symbol.clone(),
+                name: trade_good_symbol.clone().to_string(),
+                description: trade_good_symbol.to_string(),
+                units,
+            };
+            self.cargo.inventory.push(new_entry);
+            self.cargo.units += units as i32;
+        }
+        Ok(())
+    }
+
+    pub fn try_remove_cargo(&mut self, units: u32, trade_good_symbol: &TradeGoodSymbol) -> Result<()> {
+        if let Some((idx, inv)) = self.cargo.inventory.iter().find_position(|inv| &inv.symbol == trade_good_symbol) {
+            if inv.units < units {
+                return Err(anyhow!(
+                    "Cannot remove {} units of {} from cargo. Only {} units in inventory.",
+                    units,
+                    trade_good_symbol.to_string(),
+                    inv.units
+                ));
+            }
+            self.cargo.inventory.get_mut(idx).unwrap().units -= units;
+            self.cargo.units -= units as i32;
+
+            if self.cargo.inventory.get_mut(idx).unwrap().units == 0 {
+                self.cargo.inventory.remove(idx);
+            }
+        } else {
+            return Err(anyhow!("Cargo inventory entry for {} not found", trade_good_symbol.to_string()));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]

@@ -26,10 +26,10 @@ use st_domain::FleetUpdateMessage::FleetTaskCompleted;
 use st_domain::{
     get_exploration_tasks_for_waypoint, Agent, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, ExplorationTask, Fleet, FleetConfig,
     FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, FleetsOverview, GetConstructionResponse, MarketData, MarketEntry,
-    MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, PurchaseGoodTicketDetails, PurchaseReason, PurchaseShipTicketDetails,
-    SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig, StationaryProbeLocation,
-    SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket, TradingFleetConfig, Transaction, TransactionActionEvent, Waypoint,
-    WaypointSymbol,
+    MarketObservationFleetConfig, MaterializedSupplyChain, MiningFleetConfig, OperationExpenseEvent, PurchaseGoodTicketDetails, PurchaseReason,
+    PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipFrameSymbol, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
+    StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket, TradingFleetConfig, Transaction,
+    TransactionActionEvent, Waypoint, WaypointSymbol,
 };
 use st_store::bmc::Bmc;
 use st_store::{
@@ -53,6 +53,7 @@ pub enum ShipStatusReport {
     ShipActionCompleted(Ship, ShipAction),
     TransactionCompleted(Ship, TransactionActionEvent, TradeTicket),
     ShipFinishedBehaviorTree(Ship, ShipTask),
+    Expense(Ship, OperationExpenseEvent),
 }
 
 impl ShipStatusReport {
@@ -61,6 +62,7 @@ impl ShipStatusReport {
             ShipStatusReport::ShipActionCompleted(s, _) => s.symbol.clone(),
             ShipStatusReport::TransactionCompleted(s, _, _) => s.symbol.clone(),
             ShipStatusReport::ShipFinishedBehaviorTree(s, _) => s.symbol.clone(),
+            ShipStatusReport::Expense(s, _) => s.symbol.clone(),
         }
     }
 }
@@ -215,6 +217,36 @@ impl FleetAdmiral {
                     Ok(())
                 }
             }
+            ShipStatusReport::Expense(ship, operation_expense_event) => {
+                let agent_credits_from_response = match operation_expense_event {
+                    OperationExpenseEvent::RefueledShip { response } => response.data.agent.credits,
+                };
+                let total_price = match operation_expense_event {
+                    OperationExpenseEvent::RefueledShip { response } => response.data.transaction.total_price,
+                };
+                let old_credits = self.agent_info.credits;
+                let new_credits = self.agent_info.credits - total_price as i64;
+
+                if agent_credits_from_response != new_credits {
+                    event!(
+                        Level::WARN,
+                            "Agent Credits differ from our expectation!\nExpected Agent Credits: {new_credits}\n Actual Agent Credits: {agent_credits_from_response}"
+                              );
+                }
+                self.agent_info.credits = new_credits;
+                bmc.agent_bmc().store_agent(&Ctx::Anonymous, &self.agent_info).await?;
+
+                event!(
+                    Level::INFO,
+                    "Refueled ship. Total Price: {}\nOld Agent Credits: {}\nNew Agent Credits: {}",
+                    &total_price,
+                    old_credits,
+                    self.agent_info.credits,
+                );
+
+                Ok(())
+            }
+
             ShipStatusReport::TransactionCompleted(ship, transaction_event, updated_trade_ticket) => {
                 let ticket_id = match &updated_trade_ticket {
                     TradeTicket::TradeCargo { ticket_id, .. } => ticket_id,
