@@ -10,11 +10,12 @@ use itertools::Itertools;
 use st_domain::{
     Agent, AgentResponse, AgentSymbol, Cargo, Construction, Cooldown, CreateChartResponse, Crew, Data, DockShipResponse, Engine, FactionSymbol, FlightMode,
     Frame, Fuel, FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse,
-    JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Nav, NavAndFuelResponse, NavOnlyResponse, NavRouteWaypoint, NavStatus,
-    NavigateShipResponse, NotEnoughFuelInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody, PurchaseTradeGoodResponse, Reactor,
-    RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest, RegistrationResponse, Route, SellTradeGoodResponse, SetFlightModeResponse,
-    Ship, ShipPurchaseTransaction, ShipRegistrationRole, ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, StStatusResponse,
-    SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
+    JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, MarketTradeGood, Meta, ModuleType, Nav, NavAndFuelResponse, NavOnlyResponse,
+    NavRouteWaypoint, NavStatus, NavigateShipResponse, NotEnoughFuelInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody,
+    PurchaseTradeGoodResponse, PurchaseTradeGoodResponseBody, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest,
+    RegistrationResponse, Route, SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction, ShipRegistrationRole,
+    ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData,
+    TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
 };
 use std::clone;
 use std::collections::HashMap;
@@ -22,6 +23,7 @@ use std::ops::Add;
 use std::path::Path;
 use std::sync::Arc;
 use std::thread::current;
+use std::time::Duration;
 use tokio::sync::RwLock;
 use RefuelTaskAnalysisError::NotEnoughFuelInCargo;
 
@@ -155,6 +157,142 @@ impl InMemoryUniverse {
             }
         } else {
             Err(ShipNotFound)
+        }
+    }
+
+    pub fn perform_purchase_trade_good(&mut self, ship_symbol: ShipSymbol, units: u32, trade_good: TradeGoodSymbol) -> Result<PurchaseTradeGoodResponse> {
+        if let Some(mut ship) = self.ships.get_mut(&ship_symbol) {
+            // Ensure ship is docked
+            match ship.nav.status {
+                NavStatus::InTransit => Err(anyhow!("Ship is still in transit")),
+                NavStatus::InOrbit => Err(anyhow!("Ship is in orbit")),
+                NavStatus::Docked => Ok(()),
+            }?;
+
+            // ensure trade good can be purchased at this waypoint and get its market entry
+            let mtg = match self.marketplaces.get(&ship.nav.waypoint_symbol) {
+                None => Err(anyhow!("No marketplace found at waypoint.")),
+                Some(market_data) => {
+                    match market_data.trade_goods.clone().unwrap_or_default().iter().find(|mtg| {
+                        mtg.symbol == trade_good && (mtg.trade_good_type == TradeGoodType::Export || mtg.trade_good_type == TradeGoodType::Exchange)
+                    }) {
+                        None => Err(anyhow!("TradeGood cannot be purchased at waypoint.")),
+                        Some(mtg) => {
+                            if mtg.trade_volume < units as i32 {
+                                Err(anyhow!("TradeVolume is lower than requested units. Aborting purchase."))
+                            } else {
+                                Ok(mtg.clone())
+                            }
+                        }
+                    }
+                }
+            }?;
+
+            let total_price = mtg.purchase_price as i64 * units as i64;
+            if total_price > self.agent.credits {
+                return Err(anyhow!("TradeVolume is lower than requested units. Aborting purchase."));
+            }
+
+            // try adding cargo if there is enough space
+            ship.try_add_cargo(units, &trade_good)?;
+
+            let tx = Transaction {
+                waypoint_symbol: ship.nav.waypoint_symbol.clone(),
+                ship_symbol,
+                trade_symbol: mtg.symbol.clone(),
+                transaction_type: TransactionType::Purchase,
+                units: units as i32,
+                price_per_unit: mtg.purchase_price,
+                total_price: total_price as i32,
+                timestamp: Default::default(),
+            };
+
+            self.agent.credits -= total_price;
+            self.transactions.push(tx.clone());
+            if let Some(mp) = self.marketplaces.get_mut(&ship.nav.waypoint_symbol) {
+                match mp.transactions {
+                    None => mp.transactions = Some(vec![tx.clone()]),
+                    Some(ref mut transactions) => transactions.push(tx.clone()),
+                }
+            }
+
+            let result = PurchaseTradeGoodResponse {
+                data: PurchaseTradeGoodResponseBody {
+                    agent: self.agent.clone(),
+                    cargo: ship.cargo.clone(),
+                    transaction: tx,
+                },
+            };
+
+            Ok(result)
+        } else {
+            Err(anyhow!("Ship not found"))
+        }
+    }
+    pub fn perform_sell_trade_good(&mut self, ship_symbol: ShipSymbol, units: u32, trade_good: TradeGoodSymbol) -> Result<SellTradeGoodResponse> {
+        if let Some(mut ship) = self.ships.get_mut(&ship_symbol) {
+            // Ensure ship is docked
+            match ship.nav.status {
+                NavStatus::InTransit => Err(anyhow!("Ship is still in transit")),
+                NavStatus::InOrbit => Err(anyhow!("Ship is in orbit")),
+                NavStatus::Docked => Ok(()),
+            }?;
+
+            // ensure trade good can be purchased at this waypoint and get its market entry
+            let mtg = match self.marketplaces.get(&ship.nav.waypoint_symbol) {
+                None => Err(anyhow!("No marketplace found at waypoint.")),
+                Some(market_data) => {
+                    match market_data.trade_goods.clone().unwrap_or_default().iter().find(|mtg| {
+                        mtg.symbol == trade_good && (mtg.trade_good_type == TradeGoodType::Import || mtg.trade_good_type == TradeGoodType::Exchange)
+                    }) {
+                        None => Err(anyhow!("TradeGood cannot be sold at waypoint.")),
+                        Some(mtg) => {
+                            if mtg.trade_volume < units as i32 {
+                                Err(anyhow!("TradeVolume is lower than requested units. Aborting purchase."))
+                            } else {
+                                Ok(mtg.clone())
+                            }
+                        }
+                    }
+                }
+            }?;
+
+            let total_price = mtg.sell_price as i64 * units as i64;
+
+            // try adding cargo if there is enough space
+            ship.try_remove_cargo(units, &trade_good)?;
+
+            let tx = Transaction {
+                waypoint_symbol: ship.nav.waypoint_symbol.clone(),
+                ship_symbol,
+                trade_symbol: mtg.symbol.clone(),
+                transaction_type: TransactionType::Purchase,
+                units: units as i32,
+                price_per_unit: mtg.sell_price,
+                total_price: total_price as i32,
+                timestamp: Default::default(),
+            };
+
+            self.agent.credits += total_price;
+            self.transactions.push(tx.clone());
+            if let Some(mp) = self.marketplaces.get_mut(&ship.nav.waypoint_symbol) {
+                match mp.transactions {
+                    None => mp.transactions = Some(vec![tx.clone()]),
+                    Some(ref mut transactions) => transactions.push(tx.clone()),
+                }
+            }
+
+            let result = SellTradeGoodResponse {
+                data: SellTradeGoodResponseBody {
+                    agent: self.agent.clone(),
+                    cargo: ship.cargo.clone(),
+                    transaction: tx,
+                },
+            };
+
+            Ok(result)
+        } else {
+            Err(anyhow!("Ship not found"))
         }
     }
 
@@ -454,12 +592,16 @@ impl StClientTrait for InMemoryUniverseClient {
         }
     }
 
-    async fn sell_trade_good(&self, ship_symbol: ShipSymbol, units: u32, trade_good: TradeGoodSymbol) -> anyhow::Result<SellTradeGoodResponse> {
-        todo!()
+    async fn sell_trade_good(&self, ship_symbol: ShipSymbol, units: u32, trade_good: TradeGoodSymbol) -> Result<SellTradeGoodResponse> {
+        let mut guard = self.universe.write().await;
+
+        guard.perform_sell_trade_good(ship_symbol, units, trade_good)
     }
 
     async fn purchase_trade_good(&self, ship_symbol: ShipSymbol, units: u32, trade_good: TradeGoodSymbol) -> anyhow::Result<PurchaseTradeGoodResponse> {
-        todo!()
+        let mut guard = self.universe.write().await;
+
+        guard.perform_purchase_trade_good(ship_symbol, units, trade_good)
     }
 
     async fn supply_construction_site(
