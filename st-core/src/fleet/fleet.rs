@@ -270,13 +270,12 @@ impl FleetAdmiral {
                         if agent_credits_from_response != new_credits {
                             event!(
                         Level::WARN,
-                            "Agent Credits differ from our expectation!\nExpected Agent Credits: {new_credits}\n Actual Agent Credits: {agent_credits_from_response}\nApplying correct agent credits."
+                            "Agent Credits differ from our expectation!\nExpected Agent Credits: {new_credits}\n Actual Agent Credits: {agent_credits_from_response}"
                               );
-
-                            self.agent_info.credits = agent_credits_from_response;
                         }
                     }
                 };
+                self.agent_info.credits = new_credits;
 
                 bmc.agent_bmc().store_agent(&Ctx::Anonymous, &self.agent_info).await?;
 
