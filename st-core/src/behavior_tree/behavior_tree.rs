@@ -4,14 +4,15 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    DeliverConstructionMaterialTicketDetails, PurchaseGoodTicketDetails, PurchaseShipResponse, PurchaseTradeGoodResponse, SellGoodTicketDetails,
-    SellTradeGoodResponse, Ship, ShipSymbol, ShipTaskMessage, SupplyConstructionSiteResponse, TradeTicket, TransactionActionEvent,
+    DeliverConstructionMaterialTicketDetails, OperationExpenseEvent, PurchaseGoodTicketDetails, PurchaseShipResponse, PurchaseTradeGoodResponse,
+    SellGoodTicketDetails, SellTradeGoodResponse, Ship, ShipSymbol, ShipTaskMessage, SupplyConstructionSiteResponse, TradeTicket, TransactionActionEvent,
 };
 use std::any::Any;
 use std::collections::HashMap;
-use std::fmt::Write;
+use std::fmt::{Debug, Write};
 use std::fmt::{Display, Formatter};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::result;
 use std::sync::Arc;
 use std::time::Duration;
 use strum::Display;
@@ -233,6 +234,7 @@ pub enum ActionEvent {
     ShipActionCompleted(ShipOperations, ShipAction, Result<(), Arc<anyhow::Error>>),
     BehaviorCompleted(ShipOperations, Behavior<ShipAction>, Result<(), String>),
     TransactionCompleted(ShipOperations, TransactionActionEvent, TradeTicket),
+    Expense(ShipOperations, OperationExpenseEvent),
 }
 
 impl ActionEvent {
@@ -241,6 +243,7 @@ impl ActionEvent {
             ActionEvent::ShipActionCompleted(ship_ops, _, _) => ship_ops.symbol.clone(),
             ActionEvent::BehaviorCompleted(ship_ops, _, _) => ship_ops.symbol.clone(),
             ActionEvent::TransactionCompleted(ship_ops, _, _) => ship_ops.symbol.clone(),
+            ActionEvent::Expense(ship_ops, _) => ship_ops.symbol.clone(),
         }
     }
 }
@@ -296,7 +299,7 @@ where
                     Err(_) => Ok(Response::Success),
                 }
             }
-            Behavior::Select(behaviors, _) => {
+            Behavior::Select(behaviors, maybe_idx) => {
                 for b in behaviors {
                     let result = b.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await;
                     match result {
@@ -305,7 +308,7 @@ where
                         Err(_) => continue,
                     }
                 }
-                Err(Self::ActionError::from(anyhow!("No behavior successful")))
+                Err(Self::ActionError::from(anyhow!("No behavior successful. Idx: {maybe_idx:?}.")))
             } // Behavior::Sequence(_) => {}
             // Behavior::Success => {}
             // Behavior::While { .. } => {}
@@ -315,7 +318,10 @@ where
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(_) => continue,
-                        Err(_) => return Err(Self::ActionError::from(anyhow!("one behavior failed"))),
+                        Err(err) => {
+                            let maybe_idx = b.index();
+                            return Err(Self::ActionError::from(anyhow!("one behavior failed. Idx: {maybe_idx:?}. Error: {err}")));
+                        }
                     }
                 }
                 Ok(Response::Success)
@@ -328,7 +334,10 @@ where
                     Ok(_) => {
                         let action_result = action.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await;
                         match action_result {
-                            Err(err) => return Err(Self::ActionError::from(anyhow!("action failed: {}", err))),
+                            Err(err) => {
+                                let maybe_idx = action.index();
+                                return Err(Self::ActionError::from(anyhow!("action failedIdx: {maybe_idx:?}. Error: {err}")));
+                            }
                             Ok(Response::Running | Response::Success) => {
                                 sleep(sleep_duration).await;
                                 continue;
