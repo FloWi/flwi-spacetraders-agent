@@ -238,7 +238,7 @@ impl FleetAdmiral {
 
                 event!(
                     Level::INFO,
-                    "Refueled ship. Total Price: {}\nOld Agent Credits: {}\nNew Agent Credits: {}",
+                    "Refueled ship. Total Price: {}; Old Agent Credits: {}; New Agent Credits: {}",
                     &total_price,
                     old_credits,
                     self.agent_info.credits,
@@ -270,7 +270,7 @@ impl FleetAdmiral {
                         if agent_credits_from_response != new_credits {
                             event!(
                         Level::WARN,
-                            "Agent Credits differ from our expectation!\nExpected Agent Credits: {new_credits}\n Actual Agent Credits: {agent_credits_from_response}"
+                            "Agent Credits differ from our expectation! Expected Agent Credits: {new_credits}; Actual Agent Credits: {agent_credits_from_response}"
                               );
                         }
                     }

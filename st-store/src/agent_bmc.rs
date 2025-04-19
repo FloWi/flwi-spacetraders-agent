@@ -84,11 +84,11 @@ impl AgentBmcTrait for InMemoryAgentBmc {
     }
 
     async fn store_agent(&self, ctx: &Ctx, agent: &Agent) -> Result<()> {
-        println!("Storing agent");
+        // println!("Storing agent");
         let mut a = self.in_memory_agent.write().await;
         *a = agent.clone();
 
-        println!("Stored agent");
+        // println!("Stored agent");
         Ok(())
     }
 }

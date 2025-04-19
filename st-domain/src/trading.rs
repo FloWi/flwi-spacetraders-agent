@@ -104,30 +104,30 @@ pub fn evaluate_trading_opportunities(
                 "waypoint_symbol": "X1-FN42-D48"
 
                        */
-                println!(
-                    r#"
-trade_good: {}
-purchase_waypoint: {}
-sell_waypoint: {}
-let num_units_within_budget = budget_for_ship as u32 / trading_opp.purchase_market_trade_good_entry.purchase_price as u32;
-let units = (trading_opp.purchase_market_trade_good_entry.trade_volume.min(trading_opp.sell_market_trade_good_entry.trade_volume) as u32)
-            .min(num_units_within_budget);
-let {} = {} / {};
-let units = ({}.min({}) as u32)
-            .min({});
-units = {}
-                "#,
-                    trading_opp.purchase_market_trade_good_entry.symbol.to_string(),
-                    trading_opp.purchase_waypoint_symbol.0,
-                    trading_opp.sell_waypoint_symbol.0,
-                    num_units_within_budget,
-                    budget_for_ship as u32,
-                    trading_opp.purchase_market_trade_good_entry.purchase_price as u32,
-                    trading_opp.purchase_market_trade_good_entry.trade_volume,
-                    trading_opp.sell_market_trade_good_entry.trade_volume,
-                    num_units_within_budget,
-                    units
-                );
+                //                 println!(
+                //                     r#"
+                // trade_good: {}
+                // purchase_waypoint: {}
+                // sell_waypoint: {}
+                // let num_units_within_budget = budget_for_ship as u32 / trading_opp.purchase_market_trade_good_entry.purchase_price as u32;
+                // let units = (trading_opp.purchase_market_trade_good_entry.trade_volume.min(trading_opp.sell_market_trade_good_entry.trade_volume) as u32)
+                //             .min(num_units_within_budget);
+                // let {} = {} / {};
+                // let units = ({}.min({}) as u32)
+                //             .min({});
+                // units = {}
+                //                 "#,
+                //                     trading_opp.purchase_market_trade_good_entry.symbol.to_string(),
+                //                     trading_opp.purchase_waypoint_symbol.0,
+                //                     trading_opp.sell_waypoint_symbol.0,
+                //                     num_units_within_budget,
+                //                     budget_for_ship as u32,
+                //                     trading_opp.purchase_market_trade_good_entry.purchase_price as u32,
+                //                     trading_opp.purchase_market_trade_good_entry.trade_volume,
+                //                     trading_opp.sell_market_trade_good_entry.trade_volume,
+                //                     num_units_within_budget,
+                //                     units
+                //                 );
 
                 let total_profit = trading_opp.profit_per_unit * units as u64;
                 let profit_per_distance = (total_profit as f64 / total_distance as f64) as u64;
