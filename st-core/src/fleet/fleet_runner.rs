@@ -1,29 +1,27 @@
-use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
+use crate::behavior_tree::behavior_args::BehaviorArgs;
 use crate::behavior_tree::behavior_tree::ActionEvent;
 use crate::behavior_tree::ship_behaviors::ShipAction;
-use crate::fleet;
 use crate::fleet::fleet::{
-    collect_fleet_decision_facts, compute_fleet_phase_with_tasks, compute_fleets_with_tasks, recompute_tasks_after_ship_finishing_behavior_tree, FleetAdmiral,
+    collect_fleet_decision_facts, compute_fleets_with_tasks, recompute_tasks_after_ship_finishing_behavior_tree, FleetAdmiral,
     NewTaskResult, ShipStatusReport,
 };
 use crate::fleet::ship_runner::ship_behavior_runner;
-use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
 use crate::pagination::fetch_all_pages;
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 
-use crate::marketplaces::marketplaces::{filter_waypoints_with_trait, find_marketplaces_to_collect_remotely, find_shipyards_to_collect_remotely};
-use itertools::{all, Itertools};
+use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
+use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
-    Agent, Fleet, FleetDecisionFacts, FleetPhaseName, FleetsOverview, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipSymbol, ShipTask,
+    OperationExpenseEvent, Ship, ShipSymbol, ShipTask,
     StationaryProbeLocation, TradeTicket, TransactionActionEvent, WaypointTraitSymbol, WaypointType,
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
-use st_store::bmc::{ship_bmc, Bmc};
-use st_store::{db, upsert_fleets_data, upsert_waypoints, Ctx, DbModelManager};
+use st_store::bmc::Bmc;
+use st_store::{upsert_fleets_data, Ctx};
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::sync::Arc;
@@ -65,15 +63,15 @@ impl FleetRunner {
             blackboard: Arc::clone(&blackboard),
         };
 
-        let mut ship_fibers: HashMap<ShipSymbol, JoinHandle<Result<()>>> = HashMap::new();
+        let ship_fibers: HashMap<ShipSymbol, JoinHandle<Result<()>>> = HashMap::new();
 
-        let mut ship_ops: HashMap<ShipSymbol, Arc<Mutex<ShipOperations>>> = Default::default();
+        let ship_ops: HashMap<ShipSymbol, Arc<Mutex<ShipOperations>>> = Default::default();
 
         // Clone fleet_admiral infos to avoid the lifetime issues
         let all_ships_map = fleet_admiral.lock().await.all_ships.clone();
         let all_ship_tasks = fleet_admiral.lock().await.ship_tasks.clone();
 
-        let mut fleet_runner = Self {
+        let fleet_runner = Self {
             ship_fibers,
             ship_ops,
             ship_updated_tx,
@@ -117,7 +115,7 @@ impl FleetRunner {
         let mut guard = runner.lock().await;
 
         let ship_op_mutex = Arc::new(Mutex::new(ShipOperations::new(ship.clone(), Arc::clone(&guard.client))));
-        let maybe_ship_task = all_ship_tasks.get(&ss);
+        let maybe_ship_task = all_ship_tasks.get(ss);
 
         if let Some(ship_task) = maybe_ship_task {
             // Clone all the values that need to be moved into the async task
@@ -160,7 +158,7 @@ impl FleetRunner {
         sleep_duration: Duration,
     ) -> Result<()> {
         let not_running_ships = {
-            let mut runner_guard = runner.lock().await;
+            let runner_guard = runner.lock().await;
 
             let completed_fibers =
                 runner_guard.ship_fibers.iter().filter_map(|(ss, ship_fiber)| ship_fiber.is_finished().then_some(ss)).cloned().collect::<HashSet<_>>();
@@ -203,11 +201,11 @@ impl FleetRunner {
             }
             Some(ship_op) => ship_op,
         };
-        let maybe_ship_task = ship_tasks.get(&ss);
+        let maybe_ship_task = ship_tasks.get(ss);
 
         if let Some(ship_task) = maybe_ship_task {
             // Clone all the values that need to be moved into the async task
-            let ship_op_clone = Arc::clone(&ship_op_mutex);
+            let ship_op_clone = Arc::clone(ship_op_mutex);
             let args_clone = guard.args.clone();
             let ship_updated_tx_clone = guard.ship_updated_tx.clone();
             let ship_action_completed_tx_clone = guard.ship_action_completed_tx.clone();
@@ -246,10 +244,10 @@ impl FleetRunner {
         ship_task: ShipTask,
         sleep_duration: Duration,
     ) -> Result<Option<(Ship, ShipTask)>> {
-        use crate::behavior_tree::behavior_tree::{Actionable, Response};
+        use crate::behavior_tree::behavior_tree::Response;
         use crate::behavior_tree::ship_behaviors::ship_behaviors;
         use anyhow::Error;
-        use std::time::Duration;
+        
         use tracing::{span, Level};
         let behaviors = ship_behaviors();
 
@@ -334,7 +332,7 @@ impl FleetRunner {
                 }
                 _ => {
                     //event!(Level::DEBUG, "Ship {} updated", updated_ship.symbol.0);
-                    let _ = ship_bmc.upsert_ships(&Ctx::Anonymous, &vec![updated_ship.ship.clone()], Utc::now()).await?;
+                    ship_bmc.upsert_ships(&Ctx::Anonymous, &vec![updated_ship.ship.clone()], Utc::now()).await?;
                     admiral.all_ships.insert(updated_ship.symbol.clone(), updated_ship.ship);
                 }
             }
@@ -418,7 +416,7 @@ impl FleetRunner {
                             )
                             .await?;
 
-                            let _ = upsert_fleets_data(
+                            upsert_fleets_data(
                                 Arc::clone(&bmc),
                                 &Ctx::Anonymous,
                                 &admiral_guard.fleets,
@@ -452,7 +450,7 @@ impl FleetRunner {
                         } => {
                             FleetAdmiral::assign_ship_task_and_potential_requirement(&mut admiral_guard, ship_symbol.clone(), task, ship_task_requirement);
                             Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration).await?;
-                            let _ = upsert_fleets_data(
+                            upsert_fleets_data(
                                 Arc::clone(&bmc),
                                 &Ctx::Anonymous,
                                 &admiral_guard.fleets,
@@ -493,7 +491,7 @@ impl FleetRunner {
                         let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &new_ship.nav.system_symbol).await?;
                         let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
                         FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut admiral_guard, new_ship_tasks);
-                        let _ = upsert_fleets_data(
+                        upsert_fleets_data(
                             Arc::clone(&bmc),
                             &Ctx::Anonymous,
                             &admiral_guard.fleets,
@@ -541,11 +539,8 @@ impl FleetRunner {
                             ship = ship_op.symbol.0,
                             action = %ship_action,
                         );
-                        match ship_action {
-                            ShipAction::CollectWaypointInfos => {
-                                ship_status_report_tx.send(ShipStatusReport::ShipActionCompleted(ship_op.ship.clone(), ship_action)).await?;
-                            }
-                            _ => {}
+                        if ship_action == ShipAction::CollectWaypointInfos {
+                            ship_status_report_tx.send(ShipStatusReport::ShipActionCompleted(ship_op.ship.clone(), ship_action)).await?;
                         }
                     }
                     Err(err) => {
@@ -646,7 +641,7 @@ impl FleetRunner {
 
     async fn load_and_store_initial_data(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> Result<()> {
         let ctx = &Ctx::Anonymous;
-        let agent = match { bmc.agent_bmc().load_agent(ctx).await } {
+        let agent = match bmc.agent_bmc().load_agent(ctx).await {
             Ok(agent) => agent,
             Err(_) => {
                 let response = client.get_agent().await?;
@@ -667,12 +662,11 @@ impl FleetRunner {
         };
 
         let marketplaces_to_collect_remotely = filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::MARKETPLACE)
-            .into_iter()
             .map(|wp| wp.symbol.clone())
             .collect_vec();
 
         let shipyards_to_collect_remotely =
-            filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::SHIPYARD).into_iter().map(|wp| wp.symbol.clone()).collect_vec();
+            filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::SHIPYARD).map(|wp| wp.symbol.clone()).collect_vec();
 
         for wps in marketplaces_to_collect_remotely {
             let market = client.get_marketplace(wps).await?;
@@ -772,15 +766,15 @@ mod tests {
 
         println!("Creating fleet admiral");
 
-        let mut fleet_admiral =
+        let fleet_admiral =
             FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_symbol, Arc::clone(&client)).await.expect("FleetAdmiral::load_or_create");
 
         assert!(matches!(
-            fleet_admiral.fleet_tasks.get(&FleetId(0)).cloned().unwrap_or_default().get(0),
+            fleet_admiral.fleet_tasks.get(&FleetId(0)).cloned().unwrap_or_default().first(),
             Some(FleetTask::CollectMarketInfosOnce { .. })
         ));
         assert!(matches!(
-            fleet_admiral.fleet_tasks.get(&FleetId(1)).cloned().unwrap_or_default().get(0),
+            fleet_admiral.fleet_tasks.get(&FleetId(1)).cloned().unwrap_or_default().first(),
             Some(FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. })
         ));
 

@@ -8,7 +8,7 @@ use st_domain::{
     WaypointTraitSymbol, WaypointType,
 };
 
-use tracing::{subscriber::set_global_default, Level};
+use tracing::subscriber::set_global_default;
 use tracing_subscriber::{
     fmt::Layer,
     fmt::{format::FmtSpan, time::Uptime},
@@ -82,8 +82,8 @@ impl TestObjects {
                 .into_iter()
                 .map(|wts| WaypointTrait {
                     symbol: wts.clone(),
-                    name: format!("name: {}", wts.to_string()),
-                    description: format!("description: {}", wts.to_string()),
+                    name: format!("name: {}", wts),
+                    description: format!("description: {}", wts),
                 })
                 .collect_vec(),
             modifiers: vec![],
@@ -255,6 +255,23 @@ impl TestObjects {
     }
 }
 
+pub fn setup_test_tracing() {
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("trace"));
+
+    // Format with timestamps, all span events, and include parent spans
+    let fmt_layer = Layer::new()
+        .with_timer(Uptime::default())
+        .with_span_events(FmtSpan::FULL) // This will show new, enter, exit, close events
+        .with_thread_ids(true)
+        .with_target(true);
+
+    // Register the subscriber
+    let subscriber = Registry::default().with(env_filter).with(fmt_layer);
+
+    // Set as global default
+    set_global_default(subscriber).expect("Failed to set tracing subscriber");
+}
+
 #[cfg(test)]
 mod tests {
     use crate::behavior_tree::behavior_args::BehaviorArgs;
@@ -267,7 +284,7 @@ mod tests {
     use crate::fleet::ship_runner::ship_behavior_runner;
     use tokio::sync::mpsc::{Receiver, Sender};
 
-    use test_log::test;
+    
 
     async fn test_run_ship_behavior(
         ship_ops: &mut ShipOperations,
@@ -311,21 +328,4 @@ mod tests {
 
         Ok((result?, received_action_state_messages, received_action_completed_messages))
     }
-}
-
-pub fn setup_test_tracing() {
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("trace"));
-
-    // Format with timestamps, all span events, and include parent spans
-    let fmt_layer = Layer::new()
-        .with_timer(Uptime::default())
-        .with_span_events(FmtSpan::FULL) // This will show new, enter, exit, close events
-        .with_thread_ids(true)
-        .with_target(true);
-
-    // Register the subscriber
-    let subscriber = Registry::default().with(env_filter).with(fmt_layer);
-
-    // Set as global default
-    set_global_default(subscriber).expect("Failed to set tracing subscriber");
 }

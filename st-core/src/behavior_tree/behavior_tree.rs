@@ -4,15 +4,12 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    DeliverConstructionMaterialTicketDetails, OperationExpenseEvent, PurchaseGoodTicketDetails, PurchaseShipResponse, PurchaseTradeGoodResponse,
-    SellGoodTicketDetails, SellTradeGoodResponse, Ship, ShipSymbol, ShipTaskMessage, SupplyConstructionSiteResponse, TradeTicket, TransactionActionEvent,
+    OperationExpenseEvent, ShipSymbol, TradeTicket, TransactionActionEvent,
 };
-use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::{Debug, Write};
 use std::fmt::{Display, Formatter};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::result;
 use std::sync::Arc;
 use std::time::Duration;
 use strum::Display;
@@ -288,9 +285,9 @@ where
         event!(Level::DEBUG, message = "Starting run", index = self.index(), actionable = actionable_label,);
 
         let result = match self {
-            Behavior::Action(a, _) => a.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await,
+            Behavior::Action(a, _) => a.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await,
             Behavior::Invert(b, _) => {
-                let result = b.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await;
+                let result = b.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await;
                 match result {
                     Ok(r) => match r {
                         Response::Success => Err(Self::ActionError::from(anyhow!("Inverted Ok"))),
@@ -301,7 +298,7 @@ where
             }
             Behavior::Select(behaviors, maybe_idx) => {
                 for b in behaviors {
-                    let result = b.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await;
+                    let result = b.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await;
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(r) => return Ok(r),
@@ -314,7 +311,7 @@ where
             // Behavior::While { .. } => {}
             Behavior::Sequence(behaviors, _) => {
                 for b in behaviors {
-                    let result = b.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await;
+                    let result = b.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await;
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(_) => continue,
@@ -327,7 +324,7 @@ where
                 Ok(Response::Success)
             }
             Behavior::While { condition, action, .. } => loop {
-                let condition_result = condition.run(args, state, sleep_duration, &state_changed_tx, action_completed_tx).await;
+                let condition_result = condition.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await;
 
                 match condition_result {
                     Err(_) => return Ok(Response::Success),
@@ -373,6 +370,19 @@ where
 
         result
     }
+}
+
+pub fn compute_sub_behavior_hashes<A: Display + Hash>(labelled_sub_behaviors: &HashMap<String, Behavior<A>>) -> HashMap<u64, String> {
+    labelled_sub_behaviors
+        .iter()
+        .map(|(label, behavior)| {
+            let mut hasher = DefaultHasher::new();
+            behavior.hash(&mut hasher);
+            let hash = hasher.finish();
+
+            (hash, label.to_string())
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -532,17 +542,4 @@ mod tests {
         let mermaid_string = bt.to_mermaid();
         println!("mermaid graph\n{}", mermaid_string)
     }
-}
-
-pub fn compute_sub_behavior_hashes<A: Display + Hash>(labelled_sub_behaviors: &HashMap<String, Behavior<A>>) -> HashMap<u64, String> {
-    labelled_sub_behaviors
-        .iter()
-        .map(|(label, behavior)| {
-            let mut hasher = DefaultHasher::new();
-            behavior.hash(&mut hasher);
-            let hash = hasher.finish();
-
-            (hash, label.to_string())
-        })
-        .collect()
 }

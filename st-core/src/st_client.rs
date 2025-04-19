@@ -8,8 +8,8 @@ use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
 use st_domain::{
     extract_system_symbol, AgentResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse, GetJumpGateResponse,
-    GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, ListAgentsResponse, NavAndFuelResponse, NavigateShipRequest,
-    NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PatchShipNavResponse, PurchaseShipRequest, PurchaseShipResponse, PurchaseTradeGoodRequest,
+    GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, ListAgentsResponse, NavigateShipRequest,
+    NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PurchaseShipRequest, PurchaseShipResponse, PurchaseTradeGoodRequest,
     PurchaseTradeGoodResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest, RegistrationResponse, SellTradeGoodRequest, SellTradeGoodResponse,
     SetFlightModeResponse, Ship, ShipSymbol, ShipType, StStatusResponse, SupplyConstructionSiteRequest, SupplyConstructionSiteResponse, SystemSymbol,
     SystemsPageData, TradeGoodSymbol, Waypoint, WaypointSymbol,
@@ -152,7 +152,7 @@ impl StClientTrait for StClient {
     }
 
     async fn purchase_ship(&self, ship_type: ShipType, waypoint_symbol: WaypointSymbol) -> Result<PurchaseShipResponse> {
-        Self::make_api_call(self.client.post(format!("https://api.spacetraders.io/v2/my/ships",)).json(&PurchaseShipRequest { ship_type, waypoint_symbol }))
+        Self::make_api_call(self.client.post("https://api.spacetraders.io/v2/my/ships".to_string()).json(&PurchaseShipRequest { ship_type, waypoint_symbol }))
             .await
     }
 

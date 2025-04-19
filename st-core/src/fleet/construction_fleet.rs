@@ -2,7 +2,7 @@ use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
 use st_domain::{
-    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, MarketData, MarketEntry,
+    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, MarketEntry,
     PurchaseGoodTicketDetails, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipPriceInfo, ShipSymbol, ShipTask, TicketId, TradeTicket,
     TransactionTicketId, Waypoint,
 };
@@ -122,7 +122,7 @@ impl ConstructJumpGateFleet {
 
         let still_unassigned_ships_symbols = still_unassigned_ships.iter().map(|s| s.symbol.clone()).collect_vec();
 
-        let market_data = trading::to_trade_goods_with_locations(&latest_market_data);
+        let market_data = trading::to_trade_goods_with_locations(latest_market_data);
         let trading_opportunities = trading::find_trading_opportunities(&market_data, &waypoint_map);
         let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
             trading::evaluate_trading_opportunities(&still_unassigned_ships, &waypoint_map, trading_opportunities, trading_budget);
@@ -169,7 +169,7 @@ impl ConstructJumpGateFleet {
         // ship purchases first
         let tasks_with_tickets = ship_purchase_tasks_with_trading_ticket
             .into_iter()
-            .chain(trading_tasks_with_trading_tickets.into_iter())
+            .chain(trading_tasks_with_trading_tickets)
             .unique_by(|ptt| ptt.ship_symbol.clone())
             .collect_vec();
 
@@ -182,8 +182,8 @@ pub fn create_trading_tickets(trading_opportunities_within_budget: &[EvaluatedTr
     for opp in trading_opportunities_within_budget.iter() {
         let ticket = TradeTicket::TradeCargo {
             ticket_id: TicketId::new(),
-            purchase_completion_status: vec![(PurchaseGoodTicketDetails::from_trading_opportunity(&opp), false)],
-            sale_completion_status: vec![(SellGoodTicketDetails::from_trading_opportunity(&opp), false)],
+            purchase_completion_status: vec![(PurchaseGoodTicketDetails::from_trading_opportunity(opp), false)],
+            sale_completion_status: vec![(SellGoodTicketDetails::from_trading_opportunity(opp), false)],
             evaluation_result: vec![opp.clone()],
         };
         new_tasks_with_tickets.push(PotentialTradingTask {

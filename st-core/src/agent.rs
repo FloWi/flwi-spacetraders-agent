@@ -1,39 +1,30 @@
-use crate::behavior_tree::behavior_tree::Actionable;
 use st_store::{
     db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, select_waypoints_of_system, upsert_systems_from_receiver,
-    upsert_waypoints_from_receiver, Ctx, DbModelManager, DbSystemCoordinateData, DbWaypointEntry,
+    upsert_waypoints_from_receiver, DbModelManager, DbSystemCoordinateData,
 };
 
 use anyhow::Result;
 use chrono::{Local, Utc};
 use futures::StreamExt;
 use itertools::Itertools;
-use serde_json::json;
-use sqlx::types::JsonValue;
 use sqlx::{Pool, Postgres};
-use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{mpsc, Mutex};
-use tracing::{event, span, Level};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing::{event, Level};
+use tracing_subscriber::prelude::*;
 
-use crate::behavior_tree::behavior_args::{BehaviorArgs, DbBlackboard};
-use crate::behavior_tree::ship_behaviors::ship_behaviors;
+use crate::behavior_tree::behavior_args::DbBlackboard;
 use crate::configuration::AgentConfiguration;
-use crate::exploration::exploration::generate_exploration_route;
 use crate::fleet::fleet::FleetAdmiral;
 use crate::format_time_delta_hh_mm_ss;
-use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_marketplaces_to_collect_remotely, find_shipyards_to_collect_remotely};
-use crate::pagination::{fetch_all_pages, fetch_all_pages_into_queue, PaginationInput};
-use crate::pathfinder::pathfinder;
-use crate::reqwest_helpers::create_client;
+use crate::marketplaces::marketplaces::{find_marketplaces_to_collect_remotely, find_shipyards_to_collect_remotely};
+use crate::pagination::{fetch_all_pages_into_queue, PaginationInput};
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
-    FactionSymbol, LabelledCoordinate, RegistrationRequest, SerializableCoordinate, Ship, ShipSymbol, StStatusResponse, SupplyChain, SystemSymbol, Waypoint,
+    LabelledCoordinate, StStatusResponse, SupplyChain, SystemSymbol,
     WaypointSymbol, WaypointType,
 };
 use st_store::bmc::{Bmc, DbBmc};
@@ -89,9 +80,9 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
 
     let shipyards_to_collect_remotely = find_shipyards_to_collect_remotely(shipyard_entries.clone(), &waypoint_entries_of_home_system);
 
-    let _ = collect_marketplaces(&authenticated_client, &marketplaces_to_collect_remotely, &pool).await?;
+    collect_marketplaces(&authenticated_client, &marketplaces_to_collect_remotely, &pool).await?;
 
-    let _ = collect_shipyards(&authenticated_client, &shipyards_to_collect_remotely, &pool).await?;
+    collect_shipyards(&authenticated_client, &shipyards_to_collect_remotely, &pool).await?;
 
     let client: Arc<dyn StClientTrait> = Arc::new(authenticated_client);
 
@@ -100,17 +91,14 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
 
     let construction_site = client.get_construction_site(&jump_gate_wp_of_home_system.symbol).await?;
 
-    let _ = db::upsert_construction_site(&pool, construction_site, now).await?;
+    db::upsert_construction_site(&pool, construction_site, now).await?;
 
-    let _ = match db::load_supply_chain(&pool).await? {
-        None => {
-            let supply_chain: SupplyChain = client.get_supply_chain().await?.into();
-            let _ = db::insert_supply_chain(&pool, supply_chain, Utc::now()).await?;
-        }
-        Some(_) => {}
+    if let None = db::load_supply_chain(&pool).await? {
+        let supply_chain: SupplyChain = client.get_supply_chain().await?.into();
+        db::insert_supply_chain(&pool, supply_chain, Utc::now()).await?;
     };
 
-    let (ship_updated_tx, mut ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = mpsc::channel::<ShipOperations>(32);
+    let (ship_updated_tx, ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = mpsc::channel::<ShipOperations>(32);
 
     // everything has to be cloned to give ownership to the spawned task
     let _ = tokio::spawn({
@@ -165,11 +153,11 @@ async fn load_home_system_and_waypoints_if_necessary(client: &StClient, pool: &P
 
     if needs_load_system {
         let system = client.get_system(headquarters_system_symbol).await?.data;
-        let _ = db::upsert_systems_page(pool, vec![system], now).await?;
+        db::upsert_systems_page(pool, vec![system], now).await?;
     }
 
     if needs_load_waypoints {
-        let _ = collect_waypoints_of_system(client, pool, headquarters_system_symbol.clone()).await?;
+        collect_waypoints_of_system(client, pool, headquarters_system_symbol.clone()).await?;
     }
     Ok(())
 }
@@ -180,7 +168,7 @@ async fn load_systems_and_waypoints_if_necessary(
     pool: &Pool<Postgres>,
     headquarters_system_symbol: &SystemSymbol,
 ) -> Result<()> {
-    let number_systems_in_db = db::select_count_of_systems(&pool).await?;
+    let number_systems_in_db = db::select_count_of_systems(pool).await?;
 
     let need_collect_systems = status.stats.systems as i64 != number_systems_in_db;
 
@@ -192,7 +180,7 @@ async fn load_systems_and_waypoints_if_necessary(
             number_systems_in_db,
         );
 
-        collect_all_systems(authenticated_client, &pool).await?;
+        collect_all_systems(authenticated_client, pool).await?;
     } else {
         event!(
             Level::INFO,
@@ -201,7 +189,7 @@ async fn load_systems_and_waypoints_if_necessary(
         );
     }
 
-    let systems_with_waypoint_details_to_be_loaded: Vec<DbSystemCoordinateData> = db::select_systems_with_waypoint_details_to_be_loaded(&pool).await?;
+    let systems_with_waypoint_details_to_be_loaded: Vec<DbSystemCoordinateData> = db::select_systems_with_waypoint_details_to_be_loaded(pool).await?;
 
     let number_of_systems_with_missing_waypoint_infos = systems_with_waypoint_details_to_be_loaded.len();
     let need_collect_waypoints_of_systems = number_of_systems_with_missing_waypoint_infos > 0;
@@ -216,8 +204,8 @@ async fn load_systems_and_waypoints_if_necessary(
         collect_waypoints_for_systems(
             authenticated_client,
             &systems_with_waypoint_details_to_be_loaded,
-            &headquarters_system_symbol,
-            &pool,
+            headquarters_system_symbol,
+            pool,
         )
         .await?;
     } else {

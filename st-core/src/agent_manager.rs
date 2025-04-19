@@ -3,24 +3,16 @@ use crate::configuration::AgentConfiguration;
 use crate::reqwest_helpers::{create_client, ResetSignal};
 use crate::st_client::{StClient, StClientTrait};
 use anyhow::Result;
-use chrono::{Local, Utc};
 use futures::StreamExt;
-use itertools::Itertools;
-use serde_json::json;
-use sqlx::types::JsonValue;
 use sqlx::{Pool, Postgres};
 use st_domain::{FactionSymbol, RegistrationRequest};
 use st_store::db;
-use std::clone;
-use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
-use tracing::{event, span, Level};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing::{event, Level};
+use tracing_subscriber::prelude::*;
 
 pub struct AgentManager {
     reset_rx: mpsc::Receiver<ResetSignal>,

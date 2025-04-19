@@ -1,6 +1,5 @@
 use petgraph::prelude::{NodeIndex, UnGraph};
-use st_domain::{ExplorationTask, LabelledCoordinate, Waypoint, WaypointTraitSymbol, WaypointType};
-use strum::Display;
+use st_domain::LabelledCoordinate;
 
 pub fn rotate_to_entry_point<T>(slice: &[T], start: &T) -> Option<Vec<T>>
 where

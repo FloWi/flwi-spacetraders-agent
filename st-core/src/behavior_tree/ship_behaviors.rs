@@ -137,7 +137,7 @@ pub fn ship_behaviors() -> Behaviors {
         ]),
     ]);
 
-    let mut travel_action_behavior = Behavior::new_select(vec![execute_navigate_travel_action, execute_refuel_travel_action.clone()]);
+    let travel_action_behavior = Behavior::new_select(vec![execute_navigate_travel_action, execute_refuel_travel_action.clone()]);
 
     let while_condition_travel_action = Behavior::new_sequence(vec![
         wait_for_arrival_bt.clone(),

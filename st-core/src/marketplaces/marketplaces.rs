@@ -19,15 +19,14 @@ pub fn find_shipyards_for_exploration(all_shipyards: Vec<ShipyardData>) -> Vec<W
     waypoint_symbols
 }
 
-pub fn filter_waypoints_with_trait<'a>(waypoints_of_system: &'a [Waypoint], filter_trait: WaypointTraitSymbol) -> impl Iterator<Item = &'a Waypoint> + 'a {
-    let filtered_waypoints = waypoints_of_system.into_iter().filter(move |wp| wp.traits.iter().any(|waypoint_trait| waypoint_trait.symbol == filter_trait));
+pub fn filter_waypoints_with_trait(waypoints_of_system: &[Waypoint], filter_trait: WaypointTraitSymbol) -> impl Iterator<Item = &Waypoint> + '_ {
+    let filtered_waypoints = waypoints_of_system.iter().filter(move |wp| wp.traits.iter().any(|waypoint_trait| waypoint_trait.symbol == filter_trait));
 
     filtered_waypoints
 }
 
 pub fn find_marketplaces_to_collect_remotely(all_marketplaces: Vec<MarketEntry>, waypoints_of_system: &[Waypoint]) -> Vec<WaypointSymbol> {
     filter_waypoints_with_trait(waypoints_of_system, WaypointTraitSymbol::MARKETPLACE)
-        .into_iter()
         .map(|waypoint| waypoint.symbol.clone())
         .filter(|wps| !all_marketplaces.iter().any(|me| wps == &me.waypoint_symbol))
         .collect_vec()
@@ -35,7 +34,6 @@ pub fn find_marketplaces_to_collect_remotely(all_marketplaces: Vec<MarketEntry>,
 
 pub fn find_shipyards_to_collect_remotely(all_shipyards: Vec<ShipyardData>, waypoints_of_system: &[Waypoint]) -> Vec<WaypointSymbol> {
     filter_waypoints_with_trait(waypoints_of_system, WaypointTraitSymbol::SHIPYARD)
-        .into_iter()
         .map(|waypoint| waypoint.symbol.clone())
         .filter(|wps| !all_shipyards.iter().any(|sd| wps == &sd.waypoint_symbol))
         .collect_vec()

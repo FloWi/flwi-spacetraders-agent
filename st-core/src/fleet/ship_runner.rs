@@ -14,7 +14,7 @@ pub async fn ship_behavior_runner(
     ship_updated_tx: &Sender<ShipOperations>,
     ship_action_completed_tx: &Sender<ActionEvent>,
 ) -> anyhow::Result<Response, Error> {
-    let result = behavior.run(&args, ship_ops, sleep_duration, &ship_updated_tx, &ship_action_completed_tx).await;
+    let result = behavior.run(args, ship_ops, sleep_duration, ship_updated_tx, ship_action_completed_tx).await;
 
     match result {
         Ok(resp) => {

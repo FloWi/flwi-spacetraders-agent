@@ -199,7 +199,7 @@ impl ShipOperations {
     }
 
     pub async fn purchase_ship(&self, ticket: &PurchaseShipTicketDetails) -> Result<PurchaseShipResponse> {
-        let response = self.client.purchase_ship(ticket.ship_type.clone(), ticket.waypoint_symbol.clone()).await?;
+        let response = self.client.purchase_ship(ticket.ship_type, ticket.waypoint_symbol.clone()).await?;
         //println!("{:?}", response);
 
         Ok(response)

@@ -1,26 +1,21 @@
 use crate::behavior_tree::behavior_args::BehaviorArgs;
 use crate::behavior_tree::behavior_tree::Response::Success;
-use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Behavior, Response};
+use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::ship::ShipOperations;
 use anyhow::Result;
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
-use chrono::{DateTime, Local, TimeDelta, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use core::time::Duration;
 use itertools::Itertools;
 use st_domain::TransactionActionEvent::{PurchasedTradeGoods, ShipPurchased, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, Agent, AgentSymbol, Cargo, Cooldown, Crew, Engine, ExplorationTask, FlightMode, Frame, Fuel, FuelConsumed, MarketData,
-    Nav, NavOnlyResponse, NavRouteWaypoint, NavStatus, OperationExpenseEvent, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, Requirements,
-    Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, TradeGoodSymbol, TradeTicket, Transaction, TransactionType, TravelAction, Waypoint,
-    WaypointSymbol, WaypointTrait, WaypointTraitSymbol, WaypointType,
+    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TradeTicket, TravelAction,
+    WaypointSymbol,
 };
-use std::future::Future;
 use std::ops::{Add, Not};
-use std::sync::Arc;
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::Mutex;
+use tokio::sync::mpsc::Sender;
 use tracing::event;
 use tracing_core::Level;
 
@@ -498,7 +493,7 @@ impl Actionable for ShipAction {
                 if let Some(trade) = &state.maybe_trade.clone() {
                     match trade {
                         TradeTicket::TradeCargo {
-                            ticket_id,
+                            
                             purchase_completion_status,
                             sale_completion_status,
                             ..
@@ -844,7 +839,7 @@ mod tests {
         assert_eq!(1, ship_states.len());
         assert_eq!(2, action_events.len());
 
-        matches!(action_events.get(0), Some(ActionEvent::ShipActionCompleted(_, _, Ok(_))));
+        matches!(action_events.first(), Some(ActionEvent::ShipActionCompleted(_, _, Ok(_))));
         matches!(action_events.get(1), Some(ActionEvent::BehaviorCompleted(_, _, Ok(_))));
     }
 

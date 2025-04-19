@@ -8,22 +8,18 @@ use async_trait::async_trait;
 use chrono::{TimeDelta, Utc};
 use itertools::Itertools;
 use st_domain::{
-    Agent, AgentResponse, AgentSymbol, Cargo, Construction, Cooldown, CreateChartResponse, Crew, Data, DockShipResponse, Engine, FactionSymbol, FlightMode,
-    Frame, Fuel, FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse,
-    JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, MarketTradeGood, Meta, ModuleType, Nav, NavAndFuelResponse, NavOnlyResponse,
+    Agent, AgentResponse, AgentSymbol, Cargo, Construction, Cooldown, CreateChartResponse, Crew, Data, DockShipResponse, FactionSymbol, FlightMode, Fuel, FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse,
+    JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Nav, NavAndFuelResponse, NavOnlyResponse,
     NavRouteWaypoint, NavStatus, NavigateShipResponse, NotEnoughFuelInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody,
-    PurchaseTradeGoodResponse, PurchaseTradeGoodResponseBody, Reactor, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest,
+    PurchaseTradeGoodResponse, PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest,
     RegistrationResponse, Route, SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction, ShipRegistrationRole,
     ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData,
-    TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointType,
+    TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, Waypoint, WaypointSymbol,
 };
-use std::clone;
 use std::collections::HashMap;
 use std::ops::Add;
 use std::path::Path;
 use std::sync::Arc;
-use std::thread::current;
-use std::time::Duration;
 use tokio::sync::RwLock;
 use RefuelTaskAnalysisError::NotEnoughFuelInCargo;
 
@@ -161,7 +157,7 @@ impl InMemoryUniverse {
     }
 
     pub fn perform_purchase_trade_good(&mut self, ship_symbol: ShipSymbol, units: u32, trade_good: TradeGoodSymbol) -> Result<PurchaseTradeGoodResponse> {
-        if let Some(mut ship) = self.ships.get_mut(&ship_symbol) {
+        if let Some(ship) = self.ships.get_mut(&ship_symbol) {
             // Ensure ship is docked
             match ship.nav.status {
                 NavStatus::InTransit => Err(anyhow!("Ship is still in transit")),
@@ -230,7 +226,7 @@ impl InMemoryUniverse {
         }
     }
     pub fn perform_sell_trade_good(&mut self, ship_symbol: ShipSymbol, units: u32, trade_good: TradeGoodSymbol) -> Result<SellTradeGoodResponse> {
-        if let Some(mut ship) = self.ships.get_mut(&ship_symbol) {
+        if let Some(ship) = self.ships.get_mut(&ship_symbol) {
             // Ensure ship is docked
             match ship.nav.status {
                 NavStatus::InTransit => Err(anyhow!("Ship is still in transit")),
@@ -298,7 +294,7 @@ impl InMemoryUniverse {
 
     pub fn book_transaction_and_adjust_agent_credits(&mut self, transaction: &Transaction) {
         let cash_amount = match transaction.transaction_type {
-            TransactionType::Purchase => transaction.total_price * -1,
+            TransactionType::Purchase => -transaction.total_price,
             TransactionType::Sell => transaction.total_price,
         };
 
@@ -387,7 +383,7 @@ impl StClientTrait for InMemoryUniverseClient {
     }
 
     async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<GetConstructionResponse> {
-        match self.universe.read().await.construction_sites.get(&waypoint_symbol) {
+        match self.universe.read().await.construction_sites.get(waypoint_symbol) {
             None => {
                 anyhow::bail!("Marketplace not found")
             }
@@ -544,8 +540,8 @@ impl StClientTrait for InMemoryUniverseClient {
     async fn refuel(&self, ship_symbol: ShipSymbol, amount: u32, from_cargo: bool) -> anyhow::Result<RefuelShipResponse> {
         let refuel_task_result = {
             let guard = self.universe.read().await;
-            let facts = guard.check_refuel_facts(ship_symbol.clone(), amount, from_cargo);
-            facts
+            
+            guard.check_refuel_facts(ship_symbol.clone(), amount, from_cargo)
         };
 
         let mut universe = self.universe.write().await;
@@ -765,7 +761,7 @@ impl StClientTrait for InMemoryUniverseClient {
     async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetMarketResponse> {
         let guard = self.universe.read().await;
 
-        match { guard.marketplaces.get(&waypoint_symbol) } {
+        match guard.marketplaces.get(&waypoint_symbol) {
             None => {
                 anyhow::bail!("Marketplace not found")
             }

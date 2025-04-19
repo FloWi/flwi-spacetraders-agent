@@ -20,7 +20,6 @@ pub mod pathfinder;
 pub mod test_objects;
 pub mod universe_server;
 
-pub use app_state::*;
 
 pub fn calculate_fuel_consumption(flight_mode: &FlightMode, distance: u32) -> u32 {
     match flight_mode {

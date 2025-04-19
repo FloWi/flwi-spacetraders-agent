@@ -1,7 +1,6 @@
 use st_domain::{Ship, TradeTicket, TransactionActionEvent, TransactionSummary};
-use st_store::bmc::Bmc;
 use st_store::trade_bmc::TradeBmcTrait;
-use st_store::{Ctx, DbModelManager};
+use st_store::Ctx;
 use std::sync::Arc;
 
 pub struct TradingManager;
