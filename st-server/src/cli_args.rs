@@ -4,6 +4,7 @@ pub struct AppConfig {
     pub spacetraders_agent_symbol: String,
     pub spacetraders_registration_email: String,
     pub spacetraders_account_token: String,
+    pub spacetraders_base_url: String,
 }
 
 impl AppConfig {
@@ -22,6 +23,7 @@ impl AppConfig {
             spacetraders_agent_symbol: get_env_var("SPACETRADERS_AGENT_SYMBOL")?,
             spacetraders_registration_email: get_env_var("SPACETRADERS_REGISTRATION_EMAIL")?,
             spacetraders_account_token: get_env_var("SPACETRADERS_ACCOUNT_TOKEN")?,
+            spacetraders_base_url: get_env_var("SPACETRADERS_BASE_URL")?,
         })
     }
 }

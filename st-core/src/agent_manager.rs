@@ -4,6 +4,7 @@ use crate::reqwest_helpers::{create_client, ResetSignal};
 use crate::st_client::{StClient, StClientTrait};
 use anyhow::Result;
 use futures::StreamExt;
+use reqwest::Url;
 use sqlx::{Pool, Postgres};
 use st_domain::{FactionSymbol, RegistrationRequest};
 use st_store::db;
@@ -88,7 +89,7 @@ impl AgentManager {
 
         // Create the initial client (without token) with reset detection
         let client_with_account_token = create_client(Some(self.cfg.spacetraders_account_token.clone()), Some(agent_reset_tx.clone()));
-        let client_with_account_token = StClient::new(client_with_account_token);
+        let client_with_account_token = StClient::try_with_base_url(client_with_account_token, &self.cfg.spacetraders_base_url)?;
 
         // Get the status (this will verify the API is responding)
         let status = client_with_account_token.get_status().await?;
@@ -157,7 +158,10 @@ pub async fn get_authenticated_client(cfg: &AgentConfiguration, pool: Pool<Postg
             // Create a reset channel for this specific client
             let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
 
-            Ok(StClient::new(create_client(Some(db_entry.token), Some(agent_reset_tx))))
+            Ok(StClient::try_with_base_url(
+                create_client(Some(db_entry.token), Some(agent_reset_tx)),
+                &cfg.spacetraders_base_url,
+            )?)
         }
         None => {
             event!(Level::INFO, "No registration infos found in database. Registering new agent",);
@@ -180,7 +184,10 @@ pub async fn get_authenticated_client(cfg: &AgentConfiguration, pool: Pool<Postg
             // Create a reset channel for this specific client
             let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
 
-            Ok(StClient::new(create_client(Some(registration_response.data.token), Some(agent_reset_tx))))
+            Ok(StClient::try_with_base_url(
+                create_client(Some(registration_response.data.token), Some(agent_reset_tx)),
+                &cfg.spacetraders_base_url,
+            )?)
         }
     }
 }

@@ -1,18 +1,20 @@
 use crate::pagination::{PaginatedResponse, PaginationInput};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use futures::SinkExt;
 use log::{log, Level};
 use mockall::automock;
+use reqwest::Url;
 use reqwest_middleware::ClientWithMiddleware;
 use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
 use st_domain::{
     extract_system_symbol, AgentResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse, GetJumpGateResponse,
-    GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, ListAgentsResponse, NavigateShipRequest,
-    NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PurchaseShipRequest, PurchaseShipResponse, PurchaseTradeGoodRequest,
-    PurchaseTradeGoodResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest, RegistrationResponse, SellTradeGoodRequest, SellTradeGoodResponse,
-    SetFlightModeResponse, Ship, ShipSymbol, ShipType, StStatusResponse, SupplyConstructionSiteRequest, SupplyConstructionSiteResponse, SystemSymbol,
-    SystemsPageData, TradeGoodSymbol, Waypoint, WaypointSymbol,
+    GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, ListAgentsResponse, NavigateShipRequest, NavigateShipResponse,
+    OrbitShipResponse, PatchShipNavRequest, PurchaseShipRequest, PurchaseShipResponse, PurchaseTradeGoodRequest, PurchaseTradeGoodResponse, RefuelShipRequest,
+    RefuelShipResponse, RegistrationRequest, RegistrationResponse, SellTradeGoodRequest, SellTradeGoodResponse, SetFlightModeResponse, Ship, ShipSymbol,
+    ShipType, StStatusResponse, SupplyConstructionSiteRequest, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, Waypoint,
+    WaypointSymbol,
 };
 use std::any::type_name;
 use std::fmt::Debug;
@@ -20,11 +22,21 @@ use std::fmt::Debug;
 #[derive(Debug, Clone)]
 pub struct StClient {
     pub client: ClientWithMiddleware,
+    pub base_url: Url,
 }
 
 impl StClient {
-    pub fn new(client: ClientWithMiddleware) -> Self {
-        StClient { client }
+    /// creates a new StClient with a base_url. base_url needs to include everything including "/v2/".
+    /// Inserts a trailing '/' if necessary
+    pub fn try_with_base_url(client: ClientWithMiddleware, base_url: &str) -> Result<Self> {
+        let with_trailing_slash = if base_url.ends_with('/') {
+            base_url.to_string()
+        } else {
+            format!("{}/", base_url)
+        };
+        let base_url = Url::parse(&with_trailing_slash)?;
+        // println!("base_url_with_slash: {}", base_url);
+        Ok(StClient { client, base_url })
     }
 
     async fn make_api_call<T: DeserializeOwned>(request: RequestBuilder) -> Result<T> {
@@ -51,24 +63,25 @@ impl StClient {
 #[async_trait]
 impl StClientTrait for StClient {
     async fn register(&self, registration_request: RegistrationRequest) -> Result<Data<RegistrationResponse>> {
-        Self::make_api_call(self.client.post("https://api.spacetraders.io/v2/register").json(&registration_request)).await
+        Self::make_api_call(self.client.post(self.base_url.join("register")?).json(&registration_request)).await
     }
 
     async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentResponse> {
-        Ok(self.client.get(format!("https://api.spacetraders.io/v2/agents/{}", agent_symbol.0)).send().await?.json().await?)
+        Ok(self.client.get(self.base_url.join(&format!("agents/{}", agent_symbol.0))?).send().await?.json().await?)
     }
+
     async fn get_agent(&self) -> Result<AgentResponse> {
-        Ok(self.client.get("https://api.spacetraders.io/v2/my/agent".to_string()).send().await?.json().await?)
+        Ok(self.client.get(self.base_url.join("my/agent")?).send().await?.json().await?)
     }
 
     async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> Result<GetConstructionResponse> {
         let resp = self
             .client
-            .get(format!(
-                "https://api.spacetraders.io/v2/systems/{}/waypoints/{}/construction",
+            .get(self.base_url.join(&format!(
+                "/systems/{}/waypoints/{}/construction",
                 extract_system_symbol(waypoint_symbol).0,
                 waypoint_symbol.0
-            ))
+            ))?)
             .send()
             .await;
         let construction_site_info = resp?.json().await?;
@@ -76,54 +89,42 @@ impl StClientTrait for StClient {
     }
 
     async fn get_supply_chain(&self) -> Result<GetSupplyChainResponse> {
-        Self::make_api_call(self.client.get("https://api.spacetraders.io/v2/market/supply-chain".to_string().to_string())).await
+        Self::make_api_call(self.client.get(self.base_url.join("market/supply-chain")?)).await
     }
 
     async fn dock_ship(&self, ship_symbol: ShipSymbol) -> Result<DockShipResponse> {
-        Self::make_api_call(self.client.post(format!("https://api.spacetraders.io/v2/my/ships/{}/dock", ship_symbol.0).to_string())).await
+        Self::make_api_call(self.client.post(self.base_url.join(&format!("my/ships/{}/dock", ship_symbol.0))?)).await
     }
 
     async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> Result<SetFlightModeResponse> {
         Self::make_api_call(
-            self.client
-                .patch(format!("https://api.spacetraders.io/v2/my/ships/{}/nav", ship_symbol.0).to_string())
-                .json(&PatchShipNavRequest { flight_mode: mode.clone() }),
+            self.client.patch(self.base_url.join(&format!("my/ships/{}/nav", ship_symbol.0))?).json(&PatchShipNavRequest { flight_mode: mode.clone() }),
         )
         .await
     }
 
     async fn navigate(&self, ship_symbol: ShipSymbol, to: &WaypointSymbol) -> Result<NavigateShipResponse> {
         Self::make_api_call(
-            self.client
-                .post(format!("https://api.spacetraders.io/v2/my/ships/{}/navigate", ship_symbol.0).to_string())
-                .json(&NavigateShipRequest { waypoint_symbol: to.clone() }),
+            self.client.post(self.base_url.join(&format!("my/ships/{}/navigate", ship_symbol.0))?).json(&NavigateShipRequest { waypoint_symbol: to.clone() }),
         )
         .await
     }
 
     async fn refuel(&self, ship_symbol: ShipSymbol, amount: u32, from_cargo: bool) -> Result<RefuelShipResponse> {
         Self::make_api_call(
-            self.client
-                .post(format!("https://api.spacetraders.io/v2/my/ships/{}/refuel", ship_symbol.0).to_string())
-                .json(&RefuelShipRequest { amount, from_cargo }),
+            self.client.post(self.base_url.join(&format!("my/ships/{}/refuel", ship_symbol.0))?).json(&RefuelShipRequest { amount, from_cargo }),
         )
         .await
     }
 
     async fn sell_trade_good(&self, ship_symbol: ShipSymbol, units: u32, symbol: TradeGoodSymbol) -> Result<SellTradeGoodResponse> {
-        Self::make_api_call(
-            self.client
-                .post(format!("https://api.spacetraders.io/v2/my/ships/{}/sell", ship_symbol.0).to_string())
-                .json(&SellTradeGoodRequest { symbol, units }),
-        )
-        .await
+        Self::make_api_call(self.client.post(self.base_url.join(&format!("my/ships/{}/sell", ship_symbol.0))?).json(&SellTradeGoodRequest { symbol, units }))
+            .await
     }
 
     async fn purchase_trade_good(&self, ship_symbol: ShipSymbol, units: u32, symbol: TradeGoodSymbol) -> Result<PurchaseTradeGoodResponse> {
         Self::make_api_call(
-            self.client
-                .post(format!("https://api.spacetraders.io/v2/my/ships/{}/purchase", ship_symbol.0).to_string())
-                .json(&PurchaseTradeGoodRequest { symbol, units }),
+            self.client.post(self.base_url.join(&format!("my/ships/{}/purchase", ship_symbol.0))?).json(&PurchaseTradeGoodRequest { symbol, units }),
         )
         .await
     }
@@ -137,11 +138,11 @@ impl StClientTrait for StClient {
     ) -> Result<SupplyConstructionSiteResponse> {
         Self::make_api_call(
             self.client
-                .post(format!(
-                    "https://api.spacetraders.io/v2/systems/{}/waypoints/{}/construction/supply",
+                .post(self.base_url.join(&format!(
+                    "/systems/{}/waypoints/{}/construction/supply",
                     waypoint_symbol.system_symbol().0,
                     waypoint_symbol.0
-                ))
+                ))?)
                 .json(&SupplyConstructionSiteRequest {
                     ship_symbol,
                     trade_symbol,
@@ -152,12 +153,11 @@ impl StClientTrait for StClient {
     }
 
     async fn purchase_ship(&self, ship_type: ShipType, waypoint_symbol: WaypointSymbol) -> Result<PurchaseShipResponse> {
-        Self::make_api_call(self.client.post("https://api.spacetraders.io/v2/my/ships".to_string()).json(&PurchaseShipRequest { ship_type, waypoint_symbol }))
-            .await
+        Self::make_api_call(self.client.post(self.base_url.join("my/ships")?).json(&PurchaseShipRequest { ship_type, waypoint_symbol })).await
     }
 
     async fn orbit_ship(&self, ship_symbol: ShipSymbol) -> Result<OrbitShipResponse> {
-        Self::make_api_call(self.client.post(format!("https://api.spacetraders.io/v2/my/ships/{}/orbit", ship_symbol.0).to_string())).await
+        Self::make_api_call(self.client.post(self.base_url.join(&format!("my/ships/{}/orbit", ship_symbol.0))?)).await
     }
 
     async fn list_ships(&self, pagination_input: PaginationInput) -> Result<PaginatedResponse<Ship>> {
@@ -166,13 +166,13 @@ impl StClientTrait for StClient {
             ("limit", pagination_input.limit.to_string()),
         ];
 
-        let request = self.client.get("https://api.spacetraders.io/v2/my/ships".to_string()).query(&query_param_list);
+        let request = self.client.get(self.base_url.join("my/ships")?).query(&query_param_list);
 
         Self::make_api_call(request).await
     }
 
     async fn get_ship(&self, ship_symbol: ShipSymbol) -> Result<Data<Ship>> {
-        let request = self.client.get(format!("https://api.spacetraders.io/v2/my/ships/{}", ship_symbol.0));
+        let request = self.client.get(self.base_url.join(&format!("my/ships/{}", ship_symbol.0))?);
 
         Self::make_api_call(request).await
     }
@@ -183,24 +183,25 @@ impl StClientTrait for StClient {
             ("limit", pagination_input.limit.to_string()),
         ];
 
-        let request = self.client.get(format!("https://api.spacetraders.io/v2/systems/{}/waypoints", system_symbol.0)).query(&query_param_list);
+        let request = self.client.get(self.base_url.join(&format!("systems/{}/waypoints", system_symbol.0))?).query(&query_param_list);
 
         Self::make_api_call(request).await
     }
+
     async fn list_systems_page(&self, pagination_input: PaginationInput) -> Result<PaginatedResponse<SystemsPageData>> {
         let query_param_list = [
             ("page", pagination_input.page.to_string()),
             ("limit", pagination_input.limit.to_string()),
         ];
 
-        let request = self.client.get("https://api.spacetraders.io/v2/systems".to_string()).query(&query_param_list);
+        let request = self.client.get(self.base_url.join("systems")?).query(&query_param_list);
 
         Self::make_api_call(request).await
     }
 
     async fn get_system(&self, system_symbol: &SystemSymbol) -> Result<GetSystemResponse> {
         log!(Level::Info, "Trying to load system {system_symbol:?}");
-        let request = self.client.get(format!("https://api.spacetraders.io/v2/systems/{}", system_symbol.0));
+        let request = self.client.get(self.base_url.join(&format!("systems/{}", system_symbol.0))?);
 
         let result = Self::make_api_call(request).await?;
         log!(Level::Info, "Done loading system {system_symbol:?}");
@@ -208,37 +209,37 @@ impl StClientTrait for StClient {
     }
 
     async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> Result<GetMarketResponse> {
-        let request = self.client.get(format!(
-            "https://api.spacetraders.io/v2/systems/{}/waypoints/{}/market",
+        let request = self.client.get(self.base_url.join(&format!(
+            "/systems/{}/waypoints/{}/market",
             waypoint_symbol.system_symbol().0,
             waypoint_symbol.0
-        ));
+        ))?);
 
         Self::make_api_call(request).await
     }
 
     async fn get_jump_gate(&self, waypoint_symbol: WaypointSymbol) -> Result<GetJumpGateResponse> {
-        let request = self.client.get(format!(
-            "https://api.spacetraders.io/v2/systems/{}/waypoints/{}/jump-gate",
+        let request = self.client.get(self.base_url.join(&format!(
+            "/systems/{}/waypoints/{}/jump-gate",
             waypoint_symbol.system_symbol().0,
             waypoint_symbol.0
-        ));
+        ))?);
 
         Self::make_api_call(request).await
     }
 
     async fn get_shipyard(&self, waypoint_symbol: WaypointSymbol) -> Result<GetShipyardResponse> {
-        let request = self.client.get(format!(
-            "https://api.spacetraders.io/v2/systems/{}/waypoints/{}/shipyard",
+        let request = self.client.get(self.base_url.join(&format!(
+            "/systems/{}/waypoints/{}/shipyard",
             waypoint_symbol.system_symbol().0,
             waypoint_symbol.0
-        ));
+        ))?);
 
         Self::make_api_call(request).await
     }
 
     async fn create_chart(&self, ship_symbol: ShipSymbol) -> Result<CreateChartResponse> {
-        let request = self.client.post(format!("https://api.spacetraders.io/v2/my/ships/{}/chart", ship_symbol.0,));
+        let request = self.client.post(self.base_url.join(&format!("my/ships/{}/chart", ship_symbol.0))?);
 
         Self::make_api_call(request).await
     }
@@ -249,15 +250,17 @@ impl StClientTrait for StClient {
             ("limit", pagination_input.limit.to_string()),
         ];
 
-        let request = self.client.get("https://api.spacetraders.io/v2/agents".to_string()).query(&query_param_list);
+        let request = self.client.get(self.base_url.join("agents")?).query(&query_param_list);
 
         Self::make_api_call(request).await
     }
+
     async fn get_status(&self) -> Result<StStatusResponse> {
-        Ok(self.client.get("https://api.spacetraders.io/v2/").send().await?.json().await?)
+        let request = self.client.get(self.base_url.join("")?);
+
+        Self::make_api_call(request).await
     }
 }
-
 #[automock]
 #[async_trait]
 pub trait StClientTrait: Send + Sync + Debug {

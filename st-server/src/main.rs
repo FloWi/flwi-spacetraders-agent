@@ -10,6 +10,7 @@ async fn main() {
     use st_core::configuration::AgentConfiguration;
     use st_server::app::{shell, App};
     use st_server::cli_args::AppConfig;
+    use st_store::bmc::{Bmc, DbBmc};
     use st_store::{db, DbModelManager};
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -23,6 +24,7 @@ async fn main() {
         spacetraders_agent_symbol,
         spacetraders_registration_email,
         spacetraders_account_token,
+        spacetraders_base_url,
     } = AppConfig::from_env().expect("cfg");
 
     tracing_subscriber::registry().with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE)).with(EnvFilter::from_default_env()).init();
@@ -33,6 +35,7 @@ async fn main() {
         spacetraders_agent_symbol,
         spacetraders_registration_email,
         spacetraders_account_token,
+        spacetraders_base_url,
     };
 
     // Create the agent manager and get the reset channel

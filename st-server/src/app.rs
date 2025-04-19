@@ -10,6 +10,7 @@ use leptos_router::{
     components::{Route, Router, Routes},
     StaticSegment,
 };
+use std::sync::Arc;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
@@ -96,5 +97,5 @@ fn HomePage() -> impl IntoView {
 #[cfg(feature = "ssr")]
 #[derive(Clone)]
 pub struct AppState {
-    pub db_model_manager: st_store::DbModelManager,
+    pub bmc: Arc<dyn st_store::bmc::Bmc>,
 }

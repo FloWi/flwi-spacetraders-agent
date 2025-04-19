@@ -8,13 +8,14 @@ use async_trait::async_trait;
 use chrono::{TimeDelta, Utc};
 use itertools::Itertools;
 use st_domain::{
-    Agent, AgentResponse, AgentSymbol, Cargo, Construction, Cooldown, CreateChartResponse, Crew, Data, DockShipResponse, FactionSymbol, FlightMode, Fuel, FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse,
-    JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Nav, NavAndFuelResponse, NavOnlyResponse,
-    NavRouteWaypoint, NavStatus, NavigateShipResponse, NotEnoughFuelInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody,
-    PurchaseTradeGoodResponse, PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest,
-    RegistrationResponse, Route, SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction, ShipRegistrationRole,
-    ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData,
-    TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, Waypoint, WaypointSymbol,
+    Agent, AgentResponse, AgentSymbol, Cargo, Construction, Cooldown, CreateChartResponse, Crew, Data, DockShipResponse, FactionSymbol, FlightMode, Fuel,
+    FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, JumpGate,
+    LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Nav, NavAndFuelResponse, NavOnlyResponse, NavRouteWaypoint, NavStatus,
+    NavigateShipResponse, NotEnoughFuelInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody, PurchaseTradeGoodResponse,
+    PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest, RegistrationResponse, Route,
+    SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction, ShipRegistrationRole, ShipSymbol, ShipTransaction,
+    ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, TradeGoodType,
+    Transaction, TransactionType, Waypoint, WaypointSymbol,
 };
 use std::collections::HashMap;
 use std::ops::Add;
@@ -314,7 +315,7 @@ impl InMemoryUniverse {
     }
 }
 
-enum RefuelTaskAnalysisSuccess {
+pub enum RefuelTaskAnalysisSuccess {
     CanRefuelFromMarket {
         barrels: u32,
         fuel_units: u32,
@@ -328,7 +329,7 @@ enum RefuelTaskAnalysisSuccess {
     },
 }
 
-enum RefuelTaskAnalysisError {
+pub enum RefuelTaskAnalysisError {
     NotEnoughCredits { required: i64, current: i64 },
     WaypointDoesntSellFuel { waypoint_symbol: WaypointSymbol },
     NotEnoughFuelInCargo { reason: NotEnoughFuelInCargoError },
@@ -540,7 +541,7 @@ impl StClientTrait for InMemoryUniverseClient {
     async fn refuel(&self, ship_symbol: ShipSymbol, amount: u32, from_cargo: bool) -> anyhow::Result<RefuelShipResponse> {
         let refuel_task_result = {
             let guard = self.universe.read().await;
-            
+
             guard.check_refuel_facts(ship_symbol.clone(), amount, from_cargo)
         };
 

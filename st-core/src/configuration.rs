@@ -7,6 +7,7 @@ pub struct AgentConfiguration {
     pub spacetraders_agent_symbol: String,
     pub spacetraders_registration_email: String,
     pub spacetraders_account_token: String,
+    pub spacetraders_base_url: String,
 }
 
 impl AgentConfiguration {

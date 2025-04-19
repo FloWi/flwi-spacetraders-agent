@@ -3,7 +3,7 @@ use axum::http::Extensions;
 use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 use log::{debug, error};
 use reqwest::header::{HeaderValue, CONTENT_LENGTH, CONTENT_TYPE};
-use reqwest::{Client, Request, Response};
+use reqwest::{Client, Request, Response, Url};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, Middleware, Next};
 use reqwest_retry::policies::ExponentialBackoff;
 use reqwest_retry::RetryTransientMiddleware;
