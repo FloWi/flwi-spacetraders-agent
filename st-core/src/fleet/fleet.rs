@@ -71,7 +71,8 @@ impl FleetAdmiral {
         let mut current_ship_types: HashMap<ShipType, u32> = HashMap::new();
 
         for (_, s) in self.all_ships.iter() {
-            let ship_type = mapping.get(&s.frame.symbol).expect("role_to_ship_type_mapping");
+            let ship_type =
+                mapping.get(&s.frame.symbol).expect(format!("role_to_ship_type_mapping for ShipFrameSymbol {}", &s.frame.symbol.to_string()).as_str());
             current_ship_types.entry(*ship_type).and_modify(|counter| *counter += 1).or_insert(1);
         }
 

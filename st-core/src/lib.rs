@@ -6,7 +6,11 @@ pub mod ship;
 pub mod st_client;
 
 use chrono::TimeDelta;
-use st_domain::FlightMode;
+use itertools::Itertools;
+use st_domain::{FlightMode, ShipSymbol, SystemSymbol, WaypointSymbol};
+use std::borrow::Borrow;
+use std::fmt::Display;
+use std::ops::Deref;
 
 pub mod agent;
 pub mod agent_manager;
@@ -19,7 +23,6 @@ pub mod pathfinder;
 #[cfg(test)]
 pub mod test_objects;
 pub mod universe_server;
-
 
 pub fn calculate_fuel_consumption(flight_mode: &FlightMode, distance: u32) -> u32 {
     match flight_mode {
@@ -48,4 +51,13 @@ pub fn format_time_delta_hh_mm_ss(delta: TimeDelta) -> String {
     let seconds = total_seconds % 60;
 
     format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+}
+
+// Format any collection whose items implement Display
+pub fn format_and_sort_collection<'a, T, I>(collection: I) -> String
+where
+    T: Display + 'a,
+    I: IntoIterator<Item = &'a T>,
+{
+    collection.into_iter().map(|item| item.to_string()).sorted().join(", ")
 }

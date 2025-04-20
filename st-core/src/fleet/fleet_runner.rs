@@ -839,18 +839,19 @@ mod tests {
     use crate::bmc_blackboard::BmcBlackboard;
     use crate::fleet::fleet::FleetAdmiral;
     use crate::fleet::fleet_runner::FleetRunner;
+    use crate::format_and_sort_collection;
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
     use itertools::Itertools;
-    use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipFrameSymbol, ShipRegistrationRole};
-    use st_store::bmc::jump_gate_bmc::{InMemoryJumpGateBmc, JumpGateBmcTrait};
-    use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc, ShipBmcTrait};
+    use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipFrameSymbol, ShipRegistrationRole, WaypointSymbol};
+    use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
+    use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
     use st_store::bmc::{Bmc, InMemoryBmc};
-    use st_store::shipyard_bmc::{InMemoryShipyardBmc, ShipyardBmcTrait};
-    use st_store::trade_bmc::{InMemoryTradeBmc, TradeBmcTrait};
+    use st_store::shipyard_bmc::InMemoryShipyardBmc;
+    use st_store::trade_bmc::InMemoryTradeBmc;
     use st_store::{
-        AgentBmcTrait, ConstructionBmcTrait, Ctx, FleetBmcTrait, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc,
-        InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc, MarketBmcTrait, SystemBmcTrait,
+        Ctx, FleetBmcTrait, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc,
+        InMemorySystemsBmc,
     };
     use std::collections::HashSet;
     use std::sync::Arc;
@@ -957,7 +958,8 @@ mod tests {
                     let num_ships = admiral.all_ships.len();
                     let has_bought_ships = num_ships > 2;
                     let num_stationary_probes = admiral.stationary_probe_locations.len();
-                    let stationary_probe_locations = admiral.stationary_probe_locations.iter().map(|spl| spl.waypoint_symbol.clone()).collect::<HashSet<_>>();
+                    let stationary_probe_locations: HashSet<WaypointSymbol> =
+                        admiral.stationary_probe_locations.iter().map(|spl| spl.waypoint_symbol.clone()).collect::<HashSet<_>>();
 
                     let has_probes_at_every_shipyard = shipyard_waypoints.difference(&stationary_probe_locations).count() == 0;
                     let has_probes_at_every_marketplace = marketplace_waypoints.difference(&stationary_probe_locations).count() == 0;
@@ -979,15 +981,18 @@ is_in_construction_phase: {is_in_construction_phase}
 num_ships: {num_ships}
 num_stationary_probes: {num_stationary_probes}
 num_haulers: {num_haulers}
-stationary_probe_locations: {stationary_probe_locations:?}
-shipyard_waypoints: {shipyard_waypoints:?}
+stationary_probe_locations: {}
+shipyard_waypoints: {}
 has_probes_at_every_shipyard: {has_probes_at_every_shipyard}
-marketplace_waypoints: {marketplace_waypoints:?}
+marketplace_waypoints: {}
 has_probes_at_every_marketplace: {has_probes_at_every_marketplace}
 has_bought_all_haulers: {has_bought_all_haulers}
 
 evaluation_result: {evaluation_result}
-"#
+"#,
+                        format_and_sort_collection(&stationary_probe_locations),
+                        format_and_sort_collection(&shipyard_waypoints),
+                        format_and_sort_collection(&marketplace_waypoints),
                     );
 
                     evaluation_result
