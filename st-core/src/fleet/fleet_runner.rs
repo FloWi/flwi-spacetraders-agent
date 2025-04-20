@@ -2,8 +2,7 @@ use crate::behavior_tree::behavior_args::BehaviorArgs;
 use crate::behavior_tree::behavior_tree::ActionEvent;
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::fleet::fleet::{
-    collect_fleet_decision_facts, compute_fleets_with_tasks, recompute_tasks_after_ship_finishing_behavior_tree, FleetAdmiral,
-    NewTaskResult, ShipStatusReport,
+    collect_fleet_decision_facts, compute_fleets_with_tasks, recompute_tasks_after_ship_finishing_behavior_tree, FleetAdmiral, NewTaskResult, ShipStatusReport,
 };
 use crate::fleet::ship_runner::ship_behavior_runner;
 use crate::pagination::fetch_all_pages;
@@ -16,8 +15,7 @@ use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
-    OperationExpenseEvent, Ship, ShipSymbol, ShipTask,
-    StationaryProbeLocation, TradeTicket, TransactionActionEvent, WaypointTraitSymbol, WaypointType,
+    OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket, TransactionActionEvent, WaypointTraitSymbol, WaypointType,
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
 use st_store::bmc::Bmc;
@@ -247,7 +245,7 @@ impl FleetRunner {
         use crate::behavior_tree::behavior_tree::Response;
         use crate::behavior_tree::ship_behaviors::ship_behaviors;
         use anyhow::Error;
-        
+
         use tracing::{span, Level};
         let behaviors = ship_behaviors();
 
@@ -661,9 +659,8 @@ impl FleetRunner {
             }
         };
 
-        let marketplaces_to_collect_remotely = filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::MARKETPLACE)
-            .map(|wp| wp.symbol.clone())
-            .collect_vec();
+        let marketplaces_to_collect_remotely =
+            filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::MARKETPLACE).map(|wp| wp.symbol.clone()).collect_vec();
 
         let shipyards_to_collect_remotely =
             filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::SHIPYARD).map(|wp| wp.symbol.clone()).collect_vec();
@@ -708,7 +705,7 @@ mod tests {
     use st_store::trade_bmc::{InMemoryTradeBmc, TradeBmcTrait};
     use st_store::{
         AgentBmcTrait, ConstructionBmcTrait, Ctx, FleetBmcTrait, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc,
-        InMemorySystemsBmc, MarketBmcTrait, SystemBmcTrait,
+        InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc, MarketBmcTrait, SystemBmcTrait,
     };
     use std::collections::HashSet;
     use std::sync::Arc;
@@ -745,17 +742,21 @@ mod tests {
         let market_bmc = InMemoryMarketBmc::new();
         let shipyard_bmc = InMemoryShipyardBmc::new();
         let jump_gate_bmc = InMemoryJumpGateBmc::new();
+        let supply_chain_bmc = InMemorySupplyChainBmc::new();
+        let status_bmc = InMemoryStatusBmc::new();
 
         let bmc = InMemoryBmc {
-            ship_bmc: Arc::new(ship_bmc) as Arc<dyn ShipBmcTrait>,
-            fleet_bmc: Arc::new(fleet_bmc) as Arc<dyn FleetBmcTrait>,
-            trade_bmc: Arc::new(trade_bmc) as Arc<dyn TradeBmcTrait>,
-            system_bmc: Arc::new(system_bmc) as Arc<dyn SystemBmcTrait>,
-            agent_bmc: Arc::new(agent_bmc) as Arc<dyn AgentBmcTrait>,
-            construction_bmc: Arc::new(construction_bmc) as Arc<dyn ConstructionBmcTrait>,
-            market_bmc: Arc::new(market_bmc) as Arc<dyn MarketBmcTrait>,
-            jump_gate_bmc: Arc::new(jump_gate_bmc) as Arc<dyn JumpGateBmcTrait>,
-            shipyard_bmc: Arc::new(shipyard_bmc) as Arc<dyn ShipyardBmcTrait>,
+            in_mem_ship_bmc: Arc::new(ship_bmc),
+            in_mem_fleet_bmc: Arc::new(fleet_bmc),
+            in_mem_trade_bmc: Arc::new(trade_bmc),
+            in_mem_system_bmc: Arc::new(system_bmc),
+            in_mem_agent_bmc: Arc::new(agent_bmc),
+            in_mem_construction_bmc: Arc::new(construction_bmc),
+            in_mem_market_bmc: Arc::new(market_bmc),
+            in_mem_jump_gate_bmc: Arc::new(jump_gate_bmc),
+            in_mem_shipyard_bmc: Arc::new(shipyard_bmc),
+            in_mem_supply_chain_bmc: Arc::new(supply_chain_bmc),
+            in_mem_status_bmc: Arc::new(status_bmc),
         };
 
         let client = Arc::new(in_memory_client) as Arc<dyn StClientTrait>;
@@ -766,8 +767,7 @@ mod tests {
 
         println!("Creating fleet admiral");
 
-        let fleet_admiral =
-            FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_symbol, Arc::clone(&client)).await.expect("FleetAdmiral::load_or_create");
+        let fleet_admiral = FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_symbol, Arc::clone(&client)).await.expect("FleetAdmiral::load_or_create");
 
         assert!(matches!(
             fleet_admiral.fleet_tasks.get(&FleetId(0)).cloned().unwrap_or_default().first(),

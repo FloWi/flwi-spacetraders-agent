@@ -15,16 +15,13 @@ use serde::{Deserialize, Serialize};
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::{
-    get_exploration_tasks_for_waypoint, Agent, ConstructJumpGateFleetConfig, ExplorationTask, Fleet, FleetConfig,
-    FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry,
-    MarketObservationFleetConfig, MiningFleetConfig, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
-    StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TradeTicket, TradingFleetConfig,
-    TransactionActionEvent, Waypoint, WaypointSymbol,
+    get_exploration_tasks_for_waypoint, Agent, ConstructJumpGateFleetConfig, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase,
+    FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MiningFleetConfig,
+    OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig, StationaryProbeLocation,
+    SystemSpawningFleetConfig, SystemSymbol, TradeTicket, TradingFleetConfig, TransactionActionEvent, Waypoint, WaypointSymbol,
 };
 use st_store::bmc::Bmc;
-use st_store::{
-    load_fleet_overview, upsert_fleets_data, Ctx,
-};
+use st_store::{load_fleet_overview, upsert_fleets_data, Ctx};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::ops::Not;
@@ -268,24 +265,24 @@ impl FleetAdmiral {
                 if is_complete {
                     event!(
                         Level::INFO,
-                        "Transaction complete. It completed the whole trade.\nTransaction: {:?}\nTrade: {:?}\nTotal Price: {}\nOld Agent Credits: {}\nNew Agent Credits: {}",
-                        &tx_summary.transaction_ticket_id,
-                        &tx_summary.trade_ticket.ticket_id(),
-                        &tx_summary.total_price,
+                        message = "Transaction complete. It completed the whole trade.",
+                        transaction_ticket_id = &tx_summary.transaction_ticket_id.0.to_string(),
+                        trade_ticket_id = &tx_summary.trade_ticket.ticket_id().0.to_string(),
+                        total_price = &tx_summary.total_price,
                         old_credits,
-                        self.agent_info.credits,
+                        new_credits = self.agent_info.credits,
                     );
                     self.active_trades.remove(&ship.symbol);
                 } else {
                     self.active_trades.insert(ship.symbol.clone(), updated_trade_ticket.clone());
                     event!(
                         Level::INFO,
-                        "Transaction complete. Transaction is not complete yet.\nTransaction: {:?}\nTrade: {:?}\nTotal Price: {}\nOld Agent Credits: {}\nNew Agent Credits: {}",
-                        &tx_summary.transaction_ticket_id,
-                        &tx_summary.trade_ticket.ticket_id(),
-                        &tx_summary.total_price,
+                        message = "Transaction complete. Transaction is not complete yet.",
+                        transaction_ticket_id = &tx_summary.transaction_ticket_id.0.to_string(),
+                        trade_ticket_id = &tx_summary.trade_ticket.ticket_id().0.to_string(),
+                        total_price = &tx_summary.total_price,
                         old_credits,
-                        self.agent_info.credits,
+                        new_credits = self.agent_info.credits,
                     );
                 }
                 Ok(())
@@ -827,19 +824,17 @@ pub fn compute_fleet_phase_with_tasks(
         ];
 
         let shipyard_probes = [ShipType::SHIP_PROBE].repeat(fleet_decision_facts.shipyards_of_interest.len());
-        let construction_fleet = [
-            vec![ShipType::SHIP_COMMAND_FRIGATE],
-            [ShipType::SHIP_LIGHT_HAULER].repeat(4),
-        ]
-        .concat();
+        let construction_fleet = [vec![ShipType::SHIP_COMMAND_FRIGATE], [ShipType::SHIP_LIGHT_HAULER].repeat(4)].concat();
 
         let mining_fleet = [
             vec![ShipType::SHIP_MINING_DRONE],
-            [ShipType::SHIP_MINING_DRONE,
+            [
+                ShipType::SHIP_MINING_DRONE,
                 ShipType::SHIP_MINING_DRONE,
                 ShipType::SHIP_MINING_DRONE,
                 ShipType::SHIP_SURVEYOR,
-                ShipType::SHIP_LIGHT_HAULER]
+                ShipType::SHIP_LIGHT_HAULER,
+            ]
             .repeat(2),
         ]
         .concat();

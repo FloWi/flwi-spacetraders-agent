@@ -36,6 +36,14 @@ pub struct InMemoryStatusBmc {
     in_memory_status: Arc<RwLock<crate::InMemoryStatus>>,
 }
 
+impl InMemoryStatusBmc {
+    pub fn new() -> Self {
+        Self {
+            in_memory_status: Arc::new(RwLock::new(InMemoryStatus { status_response: None })),
+        }
+    }
+}
+
 #[async_trait]
 impl StatusBmcTrait for InMemoryStatusBmc {
     async fn get_status(&self, _ctx: &Ctx) -> Result<Option<StStatusResponse>> {
