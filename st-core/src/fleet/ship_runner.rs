@@ -11,10 +11,12 @@ pub async fn ship_behavior_runner(
     sleep_duration: Duration,
     args: &BehaviorArgs,
     behavior: Behavior<ShipAction>,
-    ship_updated_tx: &Sender<ShipOperations>,
-    ship_action_completed_tx: &Sender<ActionEvent>,
+    ship_updated_tx: Sender<ShipOperations>,
+    ship_action_completed_tx: Sender<ActionEvent>,
 ) -> anyhow::Result<Response, Error> {
-    let result = behavior.run(args, ship_ops, sleep_duration, ship_updated_tx, ship_action_completed_tx).await;
+    let ship_updated_tx_clone = ship_updated_tx.clone();
+    let ship_action_completed_tx_clone = ship_action_completed_tx.clone();
+    let result = behavior.run(args, ship_ops, sleep_duration, &ship_updated_tx_clone, &ship_action_completed_tx_clone).await;
 
     match result {
         Ok(resp) => {

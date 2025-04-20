@@ -187,7 +187,7 @@ impl InMemoryUniverse {
 
             let total_price = mtg.purchase_price as i64 * units as i64;
             if total_price > self.agent.credits {
-                return Err(anyhow!("TradeVolume is lower than requested units. Aborting purchase."));
+                return Err(anyhow!("Not enough credits to perform purchase."));
             }
 
             // try adding cargo if there is enough space

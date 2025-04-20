@@ -69,13 +69,14 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 
     // Run the agent manager in the background
-    tokio::spawn(async move {
+    let agent_runner_handle = tokio::spawn(async move {
         if let Err(e) = agent_manager.run().await {
             eprintln!("Agent manager error: {}", e);
         }
     });
 
     axum::serve(listener, app.into_make_service()).await.unwrap();
+    agent_runner_handle.await.unwrap();
 }
 
 #[cfg(not(feature = "ssr"))]

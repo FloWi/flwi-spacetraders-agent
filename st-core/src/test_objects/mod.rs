@@ -284,8 +284,6 @@ mod tests {
     use crate::fleet::ship_runner::ship_behavior_runner;
     use tokio::sync::mpsc::{Receiver, Sender};
 
-    
-
     async fn test_run_ship_behavior(
         ship_ops: &mut ShipOperations,
         sleep_duration: Duration,
@@ -316,7 +314,15 @@ mod tests {
         });
 
         // Run the behavior
-        let result = ship_behavior_runner(ship_ops, sleep_duration, &args, behavior, &ship_updated_tx, &ship_action_completed_tx).await;
+        let result = ship_behavior_runner(
+            ship_ops,
+            sleep_duration,
+            &args,
+            behavior,
+            ship_updated_tx.clone(),
+            ship_action_completed_tx.clone(),
+        )
+        .await;
 
         // Close the channels to signal collection is complete
         drop(ship_updated_tx);

@@ -3,9 +3,7 @@ use crate::ship::ShipOperations;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use st_domain::{
-    OperationExpenseEvent, ShipSymbol, TradeTicket, TransactionActionEvent,
-};
+use st_domain::{OperationExpenseEvent, ShipSymbol, TradeTicket, TransactionActionEvent};
 use std::collections::HashMap;
 use std::fmt::{Debug, Write};
 use std::fmt::{Display, Formatter};
@@ -346,7 +344,10 @@ where
         };
         match &result {
             Ok(o) => {
-                state_changed_tx.send(state.clone()).await.expect("send");
+                match state_changed_tx.send(state.clone()).await {
+                    Err(err) => return Err(Self::ActionError::from(anyhow!("sending to state_changed_tx failed. Error: {err}"))),
+                    Ok(_) => {}
+                }
 
                 let capacity = state_changed_tx.capacity();
                 event!(

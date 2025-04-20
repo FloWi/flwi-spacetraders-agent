@@ -23,10 +23,7 @@ use crate::pagination::{fetch_all_pages_into_queue, PaginationInput};
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::{
-    LabelledCoordinate, StStatusResponse, SupplyChain, SystemSymbol,
-    WaypointSymbol, WaypointType,
-};
+use st_domain::{LabelledCoordinate, StStatusResponse, SupplyChain, SystemSymbol, WaypointSymbol, WaypointType};
 use st_store::bmc::{Bmc, DbBmc};
 
 pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authenticated_client: StClient, pool: Pool<Postgres>) -> Result<()> {
@@ -101,7 +98,7 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
     let (ship_updated_tx, ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = mpsc::channel::<ShipOperations>(32);
 
     // everything has to be cloned to give ownership to the spawned task
-    let _ = tokio::spawn({
+    let _running = tokio::spawn({
         let client_clone = client.clone();
         let hq_system_clone = headquarters_system_symbol.clone();
         let waypoint_entries_of_home_system_clone = waypoint_entries_of_home_system.clone();
@@ -118,7 +115,7 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
     });
 
     // everything has to be cloned to give ownership to the spawned task
-    let _ = tokio::spawn({
+    let _bg_collect = tokio::spawn({
         let client_clone = client.clone();
         let pool_clone = pool.clone();
         let hq_system_clone = headquarters_system_symbol.clone();

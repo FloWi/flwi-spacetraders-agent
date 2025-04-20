@@ -11,8 +11,8 @@ use core::time::Duration;
 use itertools::Itertools;
 use st_domain::TransactionActionEvent::{PurchasedTradeGoods, ShipPurchased, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TradeTicket, TravelAction,
-    WaypointSymbol,
+    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TradeTicket,
+    TravelAction, WaypointSymbol,
 };
 use std::ops::{Add, Not};
 use tokio::sync::mpsc::Sender;
@@ -493,7 +493,6 @@ impl Actionable for ShipAction {
                 if let Some(trade) = &state.maybe_trade.clone() {
                     match trade {
                         TradeTicket::TradeCargo {
-                            
                             purchase_completion_status,
                             sale_completion_status,
                             ..
@@ -732,7 +731,15 @@ mod tests {
         });
 
         // Run the behavior
-        let result = ship_behavior_runner(ship_ops, sleep_duration, &args, behavior, &ship_updated_tx, &ship_action_completed_tx).await;
+        let result = ship_behavior_runner(
+            ship_ops,
+            sleep_duration,
+            &args,
+            behavior,
+            ship_updated_tx.clone(),
+            ship_action_completed_tx.clone(),
+        )
+        .await;
 
         // Close the channels to signal collection is complete
         drop(ship_updated_tx);

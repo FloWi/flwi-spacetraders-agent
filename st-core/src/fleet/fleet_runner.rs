@@ -27,6 +27,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use tracing::{event, span, Instrument};
 use tracing_core::Level;
 
@@ -72,9 +73,9 @@ impl FleetRunner {
         let fleet_runner = Self {
             ship_fibers,
             ship_ops,
-            ship_updated_tx,
-            ship_action_completed_tx,
-            ship_status_report_tx,
+            ship_updated_tx: ship_updated_tx.clone(),
+            ship_action_completed_tx: ship_action_completed_tx.clone(),
+            ship_status_report_tx: ship_status_report_tx.clone(),
             client,
             args,
             fleet_admiral,
@@ -251,6 +252,9 @@ impl FleetRunner {
 
         let mut ship = ship_op.lock().await;
 
+        let ship_updated_tx_clone = ship_updated_tx.clone();
+        let ship_action_completed_tx_clone = ship_action_completed_tx.clone();
+
         let maybe_behavior = match ship_task.clone() {
             ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
                 ship.set_permanent_observation_location(waypoint_symbol);
@@ -282,8 +286,8 @@ impl FleetRunner {
                     sleep_duration,
                     &args,
                     ship_behavior,
-                    &ship_updated_tx.clone(),
-                    &ship_action_completed_tx.clone(),
+                    ship_updated_tx_clone,
+                    ship_action_completed_tx_clone,
                 )
                 .instrument(ship_span)
                 .await;
@@ -338,6 +342,7 @@ impl FleetRunner {
 
         Ok(())
     }
+
     pub async fn listen_to_ship_status_report_messages(
         fleet_admiral: Arc<Mutex<FleetAdmiral>>,
         bmc: Arc<dyn Bmc>,
@@ -353,142 +358,96 @@ impl FleetRunner {
             );
             let _enter = ship_span.enter();
 
-            let mut admiral_guard = fleet_admiral.lock().await;
-            admiral_guard.report_ship_action_completed(&msg, Arc::clone(&bmc)).await?;
+            // Process the message with error handling that doesn't return from the function
+            if let Err(e) = Self::process_ship_status_report(&msg, Arc::clone(&fleet_admiral), Arc::clone(&bmc), Arc::clone(&runner), sleep_duration).await {
+                // Log the error but continue the loop
+                event!(Level::ERROR, "Error processing ship status report: {}", e);
+                // Optionally add a small delay to prevent CPU spinning on persistent errors
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                continue;
+            }
+        }
 
-            match msg {
-                ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
-                    admiral_guard.ship_tasks.remove(&ship.symbol);
-                    let result = recompute_tasks_after_ship_finishing_behavior_tree(&admiral_guard, &ship, &task, Arc::clone(&bmc)).await?;
-                    event!(
-                        Level::INFO,
-                        message = "ShipFinishedBehaviorTree",
-                        ship = ship.symbol.0,
-                        recompute_result = result.to_string()
-                    );
-                    match result {
-                        NewTaskResult::DismantleFleets { fleets_to_dismantle } => {
-                            event!(
-                                Level::INFO,
-                                "Dismantling fleets {}",
-                                fleets_to_dismantle.iter().map(|fleet_id| fleet_id.0.to_string()).join(", ")
-                            );
+        // This should only be reached if the channel is closed
+        event!(Level::WARN, "Ship status report channel closed, exiting listener");
+        Ok(())
+    }
 
-                            FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle.clone());
-                            bmc.fleet_bmc().delete_fleets(&Ctx::Anonymous, &fleets_to_dismantle).await?;
+    pub async fn process_ship_status_report(
+        msg: &ShipStatusReport,
+        fleet_admiral: Arc<Mutex<FleetAdmiral>>,
+        bmc: Arc<dyn Bmc>,
+        runner: Arc<Mutex<FleetRunner>>,
+        sleep_duration: Duration,
+    ) -> Result<()> {
+        let ship_span = span!(
+            Level::INFO,
+            "fleet_runner::listen_to_ship_status_report_messages",
+            ship = format!("{}", msg.ship_symbol().0)
+        );
+        let _enter = ship_span.enter();
 
-                            let system_symbol = ship.nav.system_symbol;
-                            let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
+        let mut admiral_guard = fleet_admiral.lock().await;
+        admiral_guard.report_ship_action_completed(&msg, Arc::clone(&bmc)).await?;
 
-                            let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(
-                                system_symbol,
-                                &admiral_guard.completed_fleet_tasks,
-                                &facts,
-                                &admiral_guard.fleets,
-                                &admiral_guard.fleet_tasks,
-                            );
-                            // println!("Computed new fleets after dismantling the fleets: {:?}", fleets_to_dismantle);
-                            // dbg!(&fleets);
-                            // dbg!(&fleet_tasks);
-                            // dbg!(&fleet_phase);
+        match msg {
+            ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
+                admiral_guard.ship_tasks.remove(&ship.symbol);
+                let result = recompute_tasks_after_ship_finishing_behavior_tree(&admiral_guard, &ship, &task, Arc::clone(&bmc)).await?;
+                event!(
+                    Level::INFO,
+                    message = "ShipFinishedBehaviorTree",
+                    ship = ship.symbol.0,
+                    recompute_result = result.to_string()
+                );
+                match result {
+                    NewTaskResult::DismantleFleets { fleets_to_dismantle } => {
+                        event!(
+                            Level::INFO,
+                            "Dismantling fleets {}",
+                            fleets_to_dismantle.iter().map(|fleet_id| fleet_id.0.to_string()).join(", ")
+                        );
 
-                            admiral_guard.fleets = fleets.into_iter().map(|f| (f.id.clone(), f)).collect();
-                            admiral_guard.fleet_tasks = fleet_tasks.into_iter().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
-                            admiral_guard.fleet_phase = fleet_phase;
+                        FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle.clone());
+                        bmc.fleet_bmc().delete_fleets(&Ctx::Anonymous, &fleets_to_dismantle).await?;
 
-                            //FIXME: assuming one fleet task per fleet
-                            let fleet_task_list =
-                                admiral_guard.fleet_tasks.iter().map(|(fleet_id, tasks)| (fleet_id.clone(), tasks.first().cloned().unwrap())).collect_vec();
-                            let ship_fleet_assignment =
-                                FleetAdmiral::assign_ships(&fleet_task_list, &admiral_guard.all_ships, &admiral_guard.fleet_phase.shopping_list_in_order);
-                            admiral_guard.ship_fleet_assignment = ship_fleet_assignment;
+                        let system_symbol = ship.nav.system_symbol.clone();
+                        let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
 
-                            let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
-                            FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut admiral_guard, new_ship_tasks);
+                        let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(
+                            system_symbol,
+                            &admiral_guard.completed_fleet_tasks,
+                            &facts,
+                            &admiral_guard.fleets,
+                            &admiral_guard.fleet_tasks,
+                        );
+                        // println!("Computed new fleets after dismantling the fleets: {:?}", fleets_to_dismantle);
+                        // dbg!(&fleets);
+                        // dbg!(&fleet_tasks);
+                        // dbg!(&fleet_phase);
 
-                            Self::launch_ship_fibers_of_idle_or_new_ships(
-                                Arc::clone(&runner),
-                                admiral_guard.all_ships.keys().cloned().collect::<HashSet<_>>(),
-                                admiral_guard.ship_tasks.clone(),
-                                sleep_duration,
-                            )
-                            .await?;
+                        admiral_guard.fleets = fleets.into_iter().map(|f| (f.id.clone(), f)).collect();
+                        admiral_guard.fleet_tasks = fleet_tasks.into_iter().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
+                        admiral_guard.fleet_phase = fleet_phase;
 
-                            upsert_fleets_data(
-                                Arc::clone(&bmc),
-                                &Ctx::Anonymous,
-                                &admiral_guard.fleets,
-                                &admiral_guard.fleet_tasks,
-                                &admiral_guard.ship_fleet_assignment,
-                                &admiral_guard.ship_tasks,
-                                &admiral_guard.active_trades,
-                            )
-                            .await?;
-                        }
-                        NewTaskResult::RegisterWaypointForPermanentObservation {
-                            ship_symbol,
-                            waypoint_symbol,
-                            exploration_tasks,
-                        } => {
-                            let location = StationaryProbeLocation {
-                                waypoint_symbol,
-                                probe_ship_symbol: ship_symbol.clone(),
-                                exploration_tasks,
-                            };
-                            bmc.ship_bmc().insert_stationary_probe(&Ctx::Anonymous, location.clone()).await?;
-                            FleetAdmiral::add_stationary_probe_location(&mut admiral_guard, location);
-                            FleetAdmiral::remove_ship_from_fleet(&mut admiral_guard, &ship_symbol);
-                            FleetAdmiral::remove_ship_task(&mut admiral_guard, &ship_symbol);
-                            Self::stop_ship(Arc::clone(&runner), &ship_symbol).await?;
-                        }
-                        NewTaskResult::AssignNewTaskToShip {
-                            ship_symbol,
-                            task,
-                            ship_task_requirement,
-                        } => {
-                            FleetAdmiral::assign_ship_task_and_potential_requirement(&mut admiral_guard, ship_symbol.clone(), task, ship_task_requirement);
-                            Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration).await?;
-                            upsert_fleets_data(
-                                Arc::clone(&bmc),
-                                &Ctx::Anonymous,
-                                &admiral_guard.fleets,
-                                &admiral_guard.fleet_tasks,
-                                &admiral_guard.ship_fleet_assignment,
-                                &admiral_guard.ship_tasks,
-                                &admiral_guard.active_trades,
-                            )
-                            .await?;
-                        }
-                    }
-                }
+                        //FIXME: assuming one fleet task per fleet
+                        let fleet_task_list =
+                            admiral_guard.fleet_tasks.iter().map(|(fleet_id, tasks)| (fleet_id.clone(), tasks.first().cloned().unwrap())).collect_vec();
+                        let ship_fleet_assignment =
+                            FleetAdmiral::assign_ships(&fleet_task_list, &admiral_guard.all_ships, &admiral_guard.fleet_phase.shopping_list_in_order);
+                        admiral_guard.ship_fleet_assignment = ship_fleet_assignment;
 
-                ShipStatusReport::ShipActionCompleted(_, _) => {}
-                ShipStatusReport::Expense(_, operation_expense) => match operation_expense {
-                    OperationExpenseEvent::RefueledShip { .. } => {
-                        event!(Level::INFO, "Ship reported TransactionActionEvent::PurchasedTradeGoods");
-                    }
-                },
-                ShipStatusReport::TransactionCompleted(_, transaction_event, _) => match &transaction_event {
-                    TransactionActionEvent::PurchasedTradeGoods { .. } => {
-                        event!(Level::INFO, "Ship reported TransactionActionEvent::PurchasedTradeGoods");
-                    }
-                    TransactionActionEvent::SoldTradeGoods { .. } => {
-                        event!(Level::INFO, "Ship reported TransactionActionEvent::SoldTradeGoods");
-                    }
-                    TransactionActionEvent::SuppliedConstructionSite { .. } => {
-                        event!(Level::INFO, "Ship reported TransactionActionEvent::SuppliedConstructionSite");
-                    }
-                    TransactionActionEvent::ShipPurchased { ticket_details, response } => {
-                        event!(Level::INFO, "Ship reported TransactionActionEvent::ShipPurchased");
-
-                        let new_ship = response.data.ship.clone();
-                        bmc.ship_bmc().upsert_ships(&Ctx::Anonymous, &vec![new_ship.clone()], Utc::now()).await?;
-                        admiral_guard.all_ships.insert(new_ship.symbol.clone(), new_ship.clone());
-                        admiral_guard.ship_fleet_assignment.insert(new_ship.symbol.clone(), ticket_details.assigned_fleet_id.clone());
-
-                        let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &new_ship.nav.system_symbol).await?;
                         let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
                         FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut admiral_guard, new_ship_tasks);
+
+                        Self::launch_ship_fibers_of_idle_or_new_ships(
+                            Arc::clone(&runner),
+                            admiral_guard.all_ships.keys().cloned().collect::<HashSet<_>>(),
+                            admiral_guard.ship_tasks.clone(),
+                            sleep_duration,
+                        )
+                        .await?;
+
                         upsert_fleets_data(
                             Arc::clone(&bmc),
                             &Ctx::Anonymous,
@@ -499,20 +458,130 @@ impl FleetRunner {
                             &admiral_guard.active_trades,
                         )
                         .await?;
-                        Self::launch_and_register_ship(
-                            Arc::clone(&runner),
-                            &new_ship.symbol,
-                            new_ship.clone(),
-                            sleep_duration,
-                            &admiral_guard.ship_tasks,
-                        )
-                        .await?
                     }
-                },
+                    NewTaskResult::RegisterWaypointForPermanentObservation {
+                        ship_symbol,
+                        waypoint_symbol,
+                        exploration_tasks,
+                    } => {
+                        let location = StationaryProbeLocation {
+                            waypoint_symbol,
+                            probe_ship_symbol: ship_symbol.clone(),
+                            exploration_tasks,
+                        };
+                        bmc.ship_bmc().insert_stationary_probe(&Ctx::Anonymous, location.clone()).await?;
+                        FleetAdmiral::add_stationary_probe_location(&mut admiral_guard, location);
+                        FleetAdmiral::remove_ship_from_fleet(&mut admiral_guard, &ship_symbol);
+                        FleetAdmiral::remove_ship_task(&mut admiral_guard, &ship_symbol);
+                        Self::stop_ship(Arc::clone(&runner), &ship_symbol).await?;
+                    }
+                    NewTaskResult::AssignNewTaskToShip {
+                        ship_symbol,
+                        task,
+                        ship_task_requirement,
+                    } => {
+                        FleetAdmiral::assign_ship_task_and_potential_requirement(&mut admiral_guard, ship_symbol.clone(), task, ship_task_requirement);
+                        Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration).await?;
+                        upsert_fleets_data(
+                            Arc::clone(&bmc),
+                            &Ctx::Anonymous,
+                            &admiral_guard.fleets,
+                            &admiral_guard.fleet_tasks,
+                            &admiral_guard.ship_fleet_assignment,
+                            &admiral_guard.ship_tasks,
+                            &admiral_guard.active_trades,
+                        )
+                        .await?;
+                    }
+                }
             }
-            drop(_enter);
-        }
 
+            ShipStatusReport::ShipActionCompleted(_, _) => {}
+            ShipStatusReport::Expense(_, operation_expense) => match operation_expense {
+                OperationExpenseEvent::RefueledShip { response } => {
+                    event!(
+                        Level::INFO,
+                        message = "ShipStatusReport",
+                        report_type = "OperationExpenseEvent::RefueledShip",
+                        units = response.data.transaction.units,
+                        price_per_unit = response.data.transaction.price_per_unit,
+                        total_price = response.data.transaction.total_price,
+                        waypoint_symbol = response.data.transaction.waypoint_symbol.0,
+                    );
+                }
+            },
+            ShipStatusReport::TransactionCompleted(_, transaction_event, _) => match &transaction_event {
+                TransactionActionEvent::PurchasedTradeGoods { ticket_details, response } => {
+                    event!(
+                        Level::INFO,
+                        message = "ShipStatusReport",
+                        report_type = "TransactionActionEvent::PurchasedTradeGoods",
+                        trade_symbol = response.data.transaction.trade_symbol.to_string(),
+                        units = response.data.transaction.units,
+                        price_per_unit = response.data.transaction.price_per_unit,
+                        total_price = response.data.transaction.total_price,
+                        waypoint_symbol = response.data.transaction.waypoint_symbol.0,
+                    );
+                }
+                TransactionActionEvent::SoldTradeGoods { ticket_details, response } => {
+                    event!(
+                        Level::INFO,
+                        message = "ShipStatusReport",
+                        report_type = "TransactionActionEvent::SoldTradeGoods",
+                        trade_symbol = response.data.transaction.trade_symbol.to_string(),
+                        units = response.data.transaction.units,
+                        price_per_unit = response.data.transaction.price_per_unit,
+                        total_price = response.data.transaction.total_price,
+                        waypoint_symbol = response.data.transaction.waypoint_symbol.0,
+                    );
+                }
+                TransactionActionEvent::SuppliedConstructionSite { .. } => {
+                    event!(
+                        Level::INFO,
+                        message = "ShipStatusReport",
+                        report_type = "TransactionActionEvent::SuppliedConstructionSite"
+                    );
+                }
+                TransactionActionEvent::ShipPurchased { ticket_details, response } => {
+                    event!(
+                        Level::INFO,
+                        message = "ShipStatusReport",
+                        report_type = "TransactionActionEvent::ShipPurchased",
+                        new_ship = response.data.ship.symbol.0,
+                        new_ship_type = response.data.ship.frame.symbol.to_string(),
+                        assigned_fleet_id = ticket_details.assigned_fleet_id.0
+                    );
+
+                    let new_ship = response.data.ship.clone();
+                    bmc.ship_bmc().upsert_ships(&Ctx::Anonymous, &vec![new_ship.clone()], Utc::now()).await?;
+                    admiral_guard.all_ships.insert(new_ship.symbol.clone(), new_ship.clone());
+                    admiral_guard.ship_fleet_assignment.insert(new_ship.symbol.clone(), ticket_details.assigned_fleet_id.clone());
+
+                    let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &new_ship.nav.system_symbol).await?;
+                    let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
+                    FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut admiral_guard, new_ship_tasks);
+                    upsert_fleets_data(
+                        Arc::clone(&bmc),
+                        &Ctx::Anonymous,
+                        &admiral_guard.fleets,
+                        &admiral_guard.fleet_tasks,
+                        &admiral_guard.ship_fleet_assignment,
+                        &admiral_guard.ship_tasks,
+                        &admiral_guard.active_trades,
+                    )
+                    .await?;
+                    Self::launch_and_register_ship(
+                        Arc::clone(&runner),
+                        &new_ship.symbol,
+                        new_ship.clone(),
+                        sleep_duration,
+                        &admiral_guard.ship_tasks,
+                    )
+                    .await?
+                }
+            },
+        }
+        drop(_enter);
         Ok(())
     }
 
@@ -563,7 +632,8 @@ impl FleetRunner {
                             message = "BehaviorCompleted",
                             ship = ship_ops.symbol.0,
                             action = %ship_action,
-                            error
+                            error,
+                            debug_state = ship_ops.to_debug_string(),
                         );
                     }
                 },
@@ -596,34 +666,109 @@ impl FleetRunner {
         // Extract all needed data with a single lock acquisition
         let (bmc, fleet_admiral, ship_status_report_tx) = {
             let guard = runner.lock().await;
-            (guard.bmc.clone(), Arc::clone(&guard.fleet_admiral), guard.ship_status_report_tx.clone())
+            (Arc::clone(&guard.bmc), Arc::clone(&guard.fleet_admiral), guard.ship_status_report_tx.clone())
         };
 
-        let ship_updated_listener_join_handle = tokio::spawn(Self::listen_to_ship_changes_and_persist(
-            bmc.ship_bmc(),
-            Arc::clone(&fleet_admiral),
-            ship_updated_rx,
-        ));
+        // Create a cancellation token for coordinated shutdown
+        let cancel_token = CancellationToken::new();
 
-        let ship_action_update_listener_join_handle =
-            tokio::spawn(Self::listen_to_ship_action_update_messages(ship_status_report_tx, ship_action_completed_rx));
+        // Clone tokens and resources for each task
+        let ship_updated_token = cancel_token.clone();
+        let ship_action_token = cancel_token.clone();
+        let ship_status_token = cancel_token.clone();
 
-        let ship_status_report_listener_join_handle = tokio::spawn(Self::listen_to_ship_status_report_messages(
-            fleet_admiral,
-            bmc,
-            ship_status_report_rx,
-            Arc::clone(&runner),
-            sleep_duration,
-        ));
+        let bmc_for_updated = Arc::clone(&bmc);
+        let bmc_for_status = Arc::clone(&bmc);
+        let fleet_admiral_for_updated = Arc::clone(&fleet_admiral);
+        let fleet_admiral_for_status = Arc::clone(&fleet_admiral);
+        let runner_for_status = Arc::clone(&runner);
 
-        // run forever
-        tokio::join!(
+        // Spawn tasks with error handling
+        let ship_updated_listener_join_handle = tokio::spawn(async move {
+            let result = tokio::select! {
+                r = Self::listen_to_ship_changes_and_persist(
+                    bmc_for_updated.ship_bmc(),
+                    fleet_admiral_for_updated,
+                    ship_updated_rx,
+                ) => r,
+                _ = ship_updated_token.cancelled() => {
+                    event!(Level::INFO, "Ship updated listener cancelled");
+                    Ok(())
+                }
+            };
+
+            if let Err(e) = &result {
+                event!(Level::ERROR, "Ship updated listener failed: {}", e);
+                // Cancel other tasks when one fails
+                ship_updated_token.cancel();
+            }
+            result
+        });
+
+        let ship_action_update_listener_join_handle = tokio::spawn(async move {
+            let result = tokio::select! {
+                r = Self::listen_to_ship_action_update_messages(
+                    ship_status_report_tx,
+                    ship_action_completed_rx
+                ) => r,
+                _ = ship_action_token.cancelled() => {
+                    event!(Level::INFO, "Ship action update listener cancelled");
+                    Ok(())
+                }
+            };
+
+            if let Err(e) = &result {
+                event!(Level::ERROR, "Ship action update listener failed: {}", e);
+                ship_action_token.cancel();
+            }
+            result
+        });
+
+        // These listener-functions must be very robust.
+        // If we throw an error in here (e.g. early return by `?` on a Result)
+        // the passed in receivers (e.g. Receiver<ShipStatusReport>) get dropped and then everything grinds to a halt due to channel closed
+
+        let ship_status_report_listener_join_handle = tokio::spawn(async move {
+            let result = tokio::select! {
+                r = Self::listen_to_ship_status_report_messages(
+                    fleet_admiral_for_status,
+                    bmc_for_status,
+                    ship_status_report_rx,
+                    runner_for_status,
+                    sleep_duration,
+                ) => r,
+                _ = ship_status_token.cancelled() => {
+                    event!(Level::INFO, "Ship status report listener cancelled");
+                    Ok(())
+                }
+            };
+
+            if let Err(e) = &result {
+                event!(Level::ERROR, "Ship status report listener failed: {}", e);
+                ship_status_token.cancel();
+            }
+            result
+        });
+
+        // Wait for all tasks and handle errors
+        let (updated_result, action_result, status_result) = tokio::join!(
             ship_updated_listener_join_handle,
             ship_action_update_listener_join_handle,
             ship_status_report_listener_join_handle
         );
 
-        unreachable!()
+        // Log any join errors
+        if let Err(e) = updated_result {
+            event!(Level::ERROR, "Ship updated listener join error: {}", e);
+        }
+        if let Err(e) = action_result {
+            event!(Level::ERROR, "Ship action update listener join error: {}", e);
+        }
+        if let Err(e) = status_result {
+            event!(Level::ERROR, "Ship status report listener join error: {}", e);
+        }
+
+        event!(Level::WARN, "All listeners have exited, fleet runner will no longer process messages");
     }
 
     async fn stop_ship(fleet_runner: Arc<Mutex<FleetRunner>>, ship_symbol: &ShipSymbol) -> Result<()> {
@@ -697,7 +842,7 @@ mod tests {
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
     use itertools::Itertools;
-    use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipRegistrationRole};
+    use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipFrameSymbol, ShipRegistrationRole};
     use st_store::bmc::jump_gate_bmc::{InMemoryJumpGateBmc, JumpGateBmcTrait};
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc, ShipBmcTrait};
     use st_store::bmc::{Bmc, InMemoryBmc};
@@ -723,6 +868,7 @@ mod tests {
         let in_memory_universe = InMemoryUniverse::from_snapshot("tests/assets/universe_snapshot.json").expect("InMemoryUniverse::from_snapshot");
 
         let shipyard_waypoints = in_memory_universe.shipyards.keys().cloned().collect::<HashSet<_>>();
+        let marketplace_waypoints = in_memory_universe.marketplaces.keys().cloned().collect::<HashSet<_>>();
 
         let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
 
@@ -813,8 +959,18 @@ mod tests {
                     let num_stationary_probes = admiral.stationary_probe_locations.len();
                     let stationary_probe_locations = admiral.stationary_probe_locations.iter().map(|spl| spl.waypoint_symbol.clone()).collect::<HashSet<_>>();
 
-                    let has_probes_at_every_shipyard = stationary_probe_locations == shipyard_waypoints;
-                    let evaluation_result = has_finished_initial_observation && is_in_construction_phase && has_bought_ships && has_probes_at_every_shipyard;
+                    let has_probes_at_every_shipyard = shipyard_waypoints.difference(&stationary_probe_locations).count() == 0;
+                    let has_probes_at_every_marketplace = marketplace_waypoints.difference(&stationary_probe_locations).count() == 0;
+
+                    let num_haulers = admiral.all_ships.iter().filter(|(_, s)| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER).count();
+                    let has_bought_all_haulers = num_haulers == 4;
+
+                    let evaluation_result = has_finished_initial_observation
+                        && is_in_construction_phase
+                        && has_bought_ships
+                        && has_probes_at_every_shipyard
+                        && has_probes_at_every_marketplace
+                        && has_bought_all_haulers;
 
                     println!(
                         r#"
@@ -822,9 +978,14 @@ has_finished_initial_observation: {has_finished_initial_observation}
 is_in_construction_phase: {is_in_construction_phase}
 num_ships: {num_ships}
 num_stationary_probes: {num_stationary_probes}
-has_probes_at_every_shipyard: {has_probes_at_every_shipyard}
+num_haulers: {num_haulers}
 stationary_probe_locations: {stationary_probe_locations:?}
 shipyard_waypoints: {shipyard_waypoints:?}
+has_probes_at_every_shipyard: {has_probes_at_every_shipyard}
+marketplace_waypoints: {marketplace_waypoints:?}
+has_probes_at_every_marketplace: {has_probes_at_every_marketplace}
+has_bought_all_haulers: {has_bought_all_haulers}
+
 evaluation_result: {evaluation_result}
 "#
                     );
@@ -899,7 +1060,13 @@ evaluation_result: {evaluation_result}
 
         match construct_jump_gate_fleet_ships.as_slice() {
             [ship] => assert_eq!(ship.registration.role, ShipRegistrationRole::Command),
-            _ => panic!("expected one ship, but got {}", construct_jump_gate_fleet_ships.len()),
+            [] => {
+                panic!("expected one ship, but got 0")
+            }
+            ships => {
+                assert_eq!(1, ships.iter().filter(|s| s.frame.symbol == ShipFrameSymbol::FRAME_FRIGATE).count());
+                assert!(ships.iter().filter(|s| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER).count() <= 4);
+            }
         }
 
         // After reaching their observation point, the probes will stay docked and idle at their observation waypoints and won't be part of the market observation fleet anymore.
