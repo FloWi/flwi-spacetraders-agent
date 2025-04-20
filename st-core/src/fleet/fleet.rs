@@ -14,11 +14,13 @@ use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::FleetConfig::SystemSpawningCfg;
+use st_domain::ShipRegistrationRole::{Command, Explorer, Interceptor, Refinery, Satellite, Surveyor};
+use st_domain::TradeGoodSymbol::{MOUNT_GAS_SIPHON_I, MOUNT_MINING_LASER_I, MOUNT_SURVEYOR_I};
 use st_domain::{
     get_exploration_tasks_for_waypoint, Agent, ConstructJumpGateFleetConfig, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase,
     FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MiningFleetConfig,
-    OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig, StationaryProbeLocation,
-    SystemSpawningFleetConfig, SystemSymbol, TradeTicket, TradingFleetConfig, TransactionActionEvent, Waypoint, WaypointSymbol,
+    OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
+    StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TradeTicket, TradingFleetConfig, TransactionActionEvent, Waypoint, WaypointSymbol,
 };
 use st_store::bmc::Bmc;
 use st_store::{load_fleet_overview, upsert_fleets_data, Ctx};
@@ -66,14 +68,11 @@ pub struct FleetAdmiral {
 
 impl FleetAdmiral {
     pub fn get_next_ship_purchase(&self) -> Option<(ShipType, FleetTask)> {
-        let mapping = role_to_ship_type_mapping();
-
         let mut current_ship_types: HashMap<ShipType, u32> = HashMap::new();
 
         for (_, s) in self.all_ships.iter() {
-            let ship_type =
-                mapping.get(&s.frame.symbol).expect(format!("role_to_ship_type_mapping for ShipFrameSymbol {}", &s.frame.symbol.to_string()).as_str());
-            current_ship_types.entry(*ship_type).and_modify(|counter| *counter += 1).or_insert(1);
+            let ship_type = get_ship_type_of_ship(&s).expect(format!("role_to_ship_type_mapping for ShipFrameSymbol {}", &s.frame.symbol.to_string()).as_str());
+            current_ship_types.entry(ship_type).and_modify(|counter| *counter += 1).or_insert(1);
         }
 
         for (ship_type, fleet_task) in self.fleet_phase.shopping_list_in_order.iter() {
@@ -683,6 +682,8 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
                     ship_task_requirement: ship_task_requirement.clone(),
                 })
             } else {
+                // No new tasks found. Computing again for debugging
+                let new_tasks = FleetAdmiral::compute_ship_tasks(admiral, &facts, Arc::clone(&bmc)).await?;
                 Err(anyhow!("No new task for ship found"))
             }
         }
@@ -915,25 +916,50 @@ pub fn compute_fleet_phase_with_tasks(
     tasks
 }
 
-fn role_to_ship_type_mapping() -> HashMap<ShipFrameSymbol, ShipType> {
-    HashMap::from([
-        (ShipFrameSymbol::FRAME_FRIGATE, ShipType::SHIP_COMMAND_FRIGATE),
-        (ShipFrameSymbol::FRAME_PROBE, ShipType::SHIP_PROBE),
-        (ShipFrameSymbol::FRAME_LIGHT_FREIGHTER, ShipType::SHIP_LIGHT_HAULER),
-    ])
+fn get_ship_type_of_ship(ship: &Ship) -> Result<ShipType> {
+    use ShipRegistrationRole::*;
+    use ShipType::*;
+
+    let is_miner = || ship.mounts.iter().any(|m| m.symbol.starts_with(MOUNT_MINING_LASER_I.to_string().as_str()));
+    let is_siphoner = || ship.mounts.iter().any(|m| m.symbol.starts_with(MOUNT_GAS_SIPHON_I.to_string().as_str()));
+    let is_surveyor = || ship.mounts.iter().any(|m| m.symbol.starts_with(MOUNT_SURVEYOR_I.to_string().as_str()));
+    let is_refining_freighter = || ship.registration.role == Refinery;
+
+    match &ship.frame.symbol {
+        ShipFrameSymbol::FRAME_PROBE => Ok(SHIP_PROBE),
+        ShipFrameSymbol::FRAME_EXPLORER => Ok(SHIP_EXPLORER),
+        ShipFrameSymbol::FRAME_MINER => Ok(SHIP_ORE_HOUND),
+        ShipFrameSymbol::FRAME_DRONE if is_miner() => Ok(SHIP_MINING_DRONE),
+        ShipFrameSymbol::FRAME_DRONE if is_siphoner() => Ok(SHIP_SIPHON_DRONE),
+        ShipFrameSymbol::FRAME_DRONE if is_surveyor() => Ok(SHIP_SURVEYOR),
+        ShipFrameSymbol::FRAME_DRONE => Err(anyhow!(
+            "Unknown mapping from FRAME_DRONE to ShipType (none of those is true: is_miner, is_siphoner, is_surveyor)"
+        )),
+        ShipFrameSymbol::FRAME_SHUTTLE => Ok(SHIP_LIGHT_SHUTTLE),
+        ShipFrameSymbol::FRAME_LIGHT_FREIGHTER => Ok(SHIP_LIGHT_HAULER),
+        ShipFrameSymbol::FRAME_FRIGATE => Ok(SHIP_COMMAND_FRIGATE),
+        ShipFrameSymbol::FRAME_INTERCEPTOR => Ok(SHIP_INTERCEPTOR),
+        ShipFrameSymbol::FRAME_HEAVY_FREIGHTER if is_refining_freighter() => Ok(SHIP_REFINING_FREIGHTER),
+        ShipFrameSymbol::FRAME_HEAVY_FREIGHTER => Ok(SHIP_HEAVY_FREIGHTER),
+        ShipFrameSymbol::FRAME_BULK_FREIGHTER => Ok(SHIP_BULK_FREIGHTER),
+        ShipFrameSymbol::FRAME_CARRIER => Err(anyhow!("Unknown mapping from FRAME_CARRIER to ShipType")),
+        ShipFrameSymbol::FRAME_CRUISER => Err(anyhow!("Unknown mapping from FRAME_CRUISER to ShipType")),
+        ShipFrameSymbol::FRAME_TRANSPORT => Err(anyhow!("Unknown mapping from FRAME_TRANSPORT to ShipType")),
+        ShipFrameSymbol::FRAME_DESTROYER => Err(anyhow!("Unknown mapping from FRAME_DESTROYER to ShipType")),
+        ShipFrameSymbol::FRAME_RACER => Err(anyhow!("Unknown mapping from FRAME_RACER to ShipType")),
+        ShipFrameSymbol::FRAME_FIGHTER => Err(anyhow!("Unknown mapping from FRAME_FIGHTER to ShipType")),
+    }
 }
 
 fn assign_matching_ships(desired_fleet_config: &[ShipType], available_ships: &mut HashMap<ShipSymbol, Ship>) -> HashMap<ShipSymbol, Ship> {
-    let mapping: HashMap<ShipFrameSymbol, ShipType> = role_to_ship_type_mapping();
-
     let mut assigned_ships: Vec<Ship> = vec![];
 
     for ship_type in desired_fleet_config.iter() {
         let assignable_ships = available_ships
             .iter()
             .filter_map(|(_, s)| {
-                let current_ship_type = mapping.get(&s.frame.symbol).expect("role_to_ship_type_mapping");
-                (current_ship_type == ship_type).then_some((s.symbol.clone(), *current_ship_type, s.clone()))
+                let current_ship_type = get_ship_type_of_ship(&s).expect("role_to_ship_type_mapping");
+                (&current_ship_type == ship_type).then_some((s.symbol.clone(), current_ship_type, s.clone()))
             })
             .take(1)
             .collect_vec();

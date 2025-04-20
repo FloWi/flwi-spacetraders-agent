@@ -2,9 +2,8 @@ use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
 use st_domain::{
-    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, MarketEntry,
-    PurchaseGoodTicketDetails, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipPriceInfo, ShipSymbol, ShipTask, TicketId, TradeTicket,
-    TransactionTicketId, Waypoint,
+    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, MarketEntry, PurchaseGoodTicketDetails,
+    PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipPriceInfo, ShipSymbol, ShipTask, TicketId, TradeTicket, TransactionTicketId, Waypoint,
 };
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -141,25 +140,6 @@ impl ConstructJumpGateFleet {
         // rest_budget = 175k - 75k = 75k
         // can_purchase_ship = rest_budget - ship_price > required_for_trading ==> true
 
-        // dbg!(&budget);
-        // dbg!(&fleet_ship_symbols);
-        // dbg!(&ship_tasks);
-        // dbg!(&allocated_budget);
-        // dbg!(&ships_with_tasks);
-        // dbg!(&still_unassigned_ships_symbols);
-        // dbg!(&reserved_for_trading);
-        // dbg!(&not_allocated_budget);
-        // //dbg!(evaluated_trading_opportunities);
-        // dbg!(&trades_for_ships);
-        // dbg!(&admiral.fleet_phase);
-        //
-        // dbg!(&maybe_next_ship_to_purchase);
-        // dbg!(&reserved_for_trading);
-        // dbg!(&not_allocated_budget);
-        // dbg!(&budget_for_ship_purchase);
-        // dbg!(&maybe_ship_purchase_location);
-        // dbg!(&maybe_ship_purchase_ticket_details);
-
         let trading_tasks_with_trading_tickets = create_trading_tickets(&trades_for_ships);
         let ship_purchase_tasks_with_trading_ticket = match maybe_ship_purchase_ticket_details {
             Some(ticket_details) => vec![create_ship_purchase_ticket(ticket_details)],
@@ -173,7 +153,28 @@ impl ConstructJumpGateFleet {
             .unique_by(|ptt| ptt.ship_symbol.clone())
             .collect_vec();
 
-        Ok(tasks_with_tickets)
+        if tasks_with_tickets.is_empty() {
+            // dbg!(&budget);
+            // dbg!(&fleet_ship_symbols);
+            // dbg!(&ship_tasks);
+            // dbg!(&allocated_budget);
+            // dbg!(&ships_with_tasks);
+            // dbg!(&still_unassigned_ships_symbols);
+            // dbg!(&reserved_for_trading);
+            // dbg!(&not_allocated_budget);
+            // dbg!(evaluated_trading_opportunities);
+            // dbg!(&trades_for_ships);
+            // dbg!(&admiral.fleet_phase);
+            //
+            // dbg!(&maybe_next_ship_to_purchase);
+            // dbg!(&reserved_for_trading);
+            // dbg!(&not_allocated_budget);
+            // dbg!(&budget_for_ship_purchase);
+            // dbg!(&maybe_ship_purchase_location);
+            Ok(tasks_with_tickets)
+        } else {
+            Ok(tasks_with_tickets)
+        }
     }
 }
 

@@ -361,7 +361,16 @@ impl FleetRunner {
             // Process the message with error handling that doesn't return from the function
             if let Err(e) = Self::process_ship_status_report(&msg, Arc::clone(&fleet_admiral), Arc::clone(&bmc), Arc::clone(&runner), sleep_duration).await {
                 // Log the error but continue the loop
-                event!(Level::ERROR, "Error processing ship status report: {}", e);
+                let maybe_fleet = {
+                    let guard = fleet_admiral.lock().await;
+                    guard.ship_fleet_assignment.get(&msg.ship_symbol()).cloned().and_then(|id| guard.fleets.get(&id)).cloned()
+                };
+                event!(
+                    Level::ERROR,
+                    message = format!("Error processing ship status report: {}", e),
+                    fleet = maybe_fleet.clone().map(|f| f.id.0),
+                    fleet_cfg = maybe_fleet.map(|f| f.cfg.to_string()),
+                );
                 // Optionally add a small delay to prevent CPU spinning on persistent errors
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 continue;
@@ -510,7 +519,7 @@ impl FleetRunner {
                     );
                 }
             },
-            ShipStatusReport::TransactionCompleted(_, transaction_event, _) => match &transaction_event {
+            ShipStatusReport::TransactionCompleted(_, transaction_event, trade_ticket) => match &transaction_event {
                 TransactionActionEvent::PurchasedTradeGoods { ticket_details, response } => {
                     event!(
                         Level::INFO,
