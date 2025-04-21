@@ -99,8 +99,6 @@ impl FleetAdmiral {
     pub(crate) fn get_total_budget_for_fleet(&self, fleet: &Fleet) -> u64 {
         // todo: take into account what the fleet still has to do
         // e.g. a fully equipped market_observation_fleet (probes at all locations) doesn't need any budget
-        let number_of_fleets = self.fleets.len();
-        let budget_per_fleet = self.agent_info.credits / number_of_fleets as i64;
 
         let fleet_budget: u64 = self.calculate_budget_for_fleet(&self.agent_info, fleet, &self.fleets);
         fleet_budget
@@ -111,11 +109,14 @@ impl FleetAdmiral {
             FleetPhaseName::InitialExploration => 0,
             FleetPhaseName::ConstructJumpGate => match fleet.cfg {
                 FleetConfig::ConstructJumpGateCfg(_) => {
-                    if agent.credits < 0 {
+                    let en_route_credits: u64 = self.get_expected_sell_value_of_fleet_cargo(fleet);
+
+                    let agent_credits = if agent.credits < 0 {
                         0
                     } else {
                         agent.credits as u64
-                    }
+                    };
+                    agent_credits + (en_route_credits as f64 * 0.95) as u64
                 }
                 _ => 0,
             },
@@ -143,6 +144,68 @@ impl FleetAdmiral {
 
     pub(crate) fn get_allocated_budget_of_fleet(&self, fleet: &Fleet) -> u64 {
         Self::sum_allocated_tickets(self.get_ships_of_fleet(fleet).iter().flat_map(|ship| self.active_trades.get(&ship.symbol)))
+    }
+
+    pub(crate) fn get_open_purchase_total_of_ongoing_trades(&self, fleet: &Fleet) -> u64 {
+        self.get_ships_of_fleet(fleet)
+            .iter()
+            .flat_map(|ship| self.active_trades.get(&ship.symbol))
+            .map(|trade_ticket: &TradeTicket| match trade_ticket {
+                TradeTicket::TradeCargo {
+                    purchase_completion_status, ..
+                } => purchase_completion_status
+                    .iter()
+                    .filter_map(|(sell_details, is_complete)| is_complete.not().then_some(sell_details.price_per_unit * sell_details.quantity as u64))
+                    .sum(),
+                _ => 0,
+            })
+            .sum()
+    }
+
+    pub(crate) fn get_open_sell_total_of_ongoing_trades(&self, fleet: &Fleet) -> u64 {
+        self.get_ships_of_fleet(fleet)
+            .iter()
+            .flat_map(|ship| self.active_trades.get(&ship.symbol))
+            .map(|trade_ticket: &TradeTicket| match trade_ticket {
+                TradeTicket::TradeCargo { sale_completion_status, .. } => sale_completion_status
+                    .iter()
+                    .filter_map(|(sell_details, is_complete)| is_complete.not().then_some(sell_details.price_per_unit * sell_details.quantity as u64))
+                    .sum(),
+                _ => 0,
+            })
+            .sum()
+    }
+
+    pub(crate) fn get_expected_sell_value_of_fleet_cargo(&self, fleet: &Fleet) -> u64 {
+        self.get_ships_of_fleet(fleet)
+            .iter()
+            .flat_map(|ship| self.active_trades.get(&ship.symbol))
+            .map(|trade_ticket: &TradeTicket| match trade_ticket {
+                TradeTicket::TradeCargo {
+                    ticket_id,
+                    purchase_completion_status,
+                    sale_completion_status,
+                    evaluation_result,
+                } => {
+                    // find the open sale positions that have already been purchased
+                    sale_completion_status
+                        .iter()
+                        .filter_map(|(sell_details, is_sell_complete)| {
+                            let has_already_been_purchased = purchase_completion_status.iter().any(|(purchase_details, is_purchase_complete)| {
+                                *is_purchase_complete
+                                    && purchase_details.ship_symbol == sell_details.ship_symbol
+                                    && purchase_details.trade_good == sell_details.trade_good
+                                    && purchase_details.quantity == sell_details.quantity
+                            });
+                            let is_en_route_trade = has_already_been_purchased && !*is_sell_complete;
+                            is_en_route_trade.then_some(sell_details.price_per_unit * sell_details.quantity as u64)
+                        })
+                        .sum()
+                }
+                TradeTicket::DeliverConstructionMaterials { .. } => 0,
+                TradeTicket::PurchaseShipTicket { .. } => 0,
+            })
+            .sum()
     }
 
     pub(crate) fn get_total_allocated_budget(&self) -> u64 {
@@ -684,6 +747,7 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
             } else {
                 // No new tasks found. Computing again for debugging
                 let new_tasks = FleetAdmiral::compute_ship_tasks(admiral, &facts, Arc::clone(&bmc)).await?;
+
                 Err(anyhow!("No new task for ship found"))
             }
         }

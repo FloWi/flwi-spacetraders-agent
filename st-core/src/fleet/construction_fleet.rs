@@ -28,17 +28,30 @@ impl ConstructJumpGateFleet {
 
         let allocated_budget: u64 = admiral.get_allocated_budget_of_fleet(fleet);
 
+        let en_route_credits: u64 = admiral.get_expected_sell_value_of_fleet_cargo(fleet);
+        let open_purchase_total_of_ongoing_trades: u64 = admiral.get_open_purchase_total_of_ongoing_trades(fleet);
+        let open_sell_total_of_ongoing_trades: u64 = admiral.get_open_sell_total_of_ongoing_trades(fleet);
+        let expected_profit_of_ongoing_trades: i64 = open_sell_total_of_ongoing_trades as i64 - open_purchase_total_of_ongoing_trades as i64;
+
         let ships_with_tasks = ship_tasks.iter().map(|(ss, _)| ss.clone()).collect::<HashSet<_>>();
 
         let unassigned_ships = fleet_ships.into_iter().filter(|s| ships_with_tasks.contains(&s.symbol).not()).collect_vec();
         let initial_unassigned_ships = unassigned_ships.iter().map(|s| s.symbol.clone()).collect_vec();
 
         // all ships are traders (command frigate + 4 haulers --> 200k each => 1M total)
-        let reserved_for_trading = (50_000 * unassigned_ships.len()) as i64;
+        let reserved_for_trading = (100_000 * unassigned_ships.len()) as i64;
 
         let not_allocated_budget = (budget as i64) - allocated_budget as i64;
 
-        let trading_budget = reserved_for_trading.min(not_allocated_budget);
+        // we can plan on spending the en_route_credits. -5% to account for market changes
+        // scenario
+        //                   Budget =  39_861
+        //         allocated budget =  39_861
+        // ==> not allocated budget =    -334
+        //
+        //         en_route_credits = 246_072
+
+        let trading_budget = reserved_for_trading.min(not_allocated_budget.max(expected_profit_of_ongoing_trades));
 
         let budget_for_ship_purchase = not_allocated_budget - trading_budget;
 
@@ -119,8 +132,6 @@ impl ConstructJumpGateFleet {
             })
             .collect_vec();
 
-        let still_unassigned_ships_symbols = still_unassigned_ships.iter().map(|s| s.symbol.clone()).collect_vec();
-
         let market_data = trading::to_trade_goods_with_locations(latest_market_data);
         let trading_opportunities = trading::find_trading_opportunities(&market_data, &waypoint_map);
         let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
@@ -171,6 +182,7 @@ impl ConstructJumpGateFleet {
             // dbg!(&not_allocated_budget);
             // dbg!(&budget_for_ship_purchase);
             // dbg!(&maybe_ship_purchase_location);
+
             Ok(tasks_with_tickets)
         } else {
             Ok(tasks_with_tickets)

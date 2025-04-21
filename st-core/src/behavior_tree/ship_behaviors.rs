@@ -42,6 +42,7 @@ pub enum ShipAction {
     SetNextTradeStopAsDestination,
     PerformTradeActionAndMarkAsCompleted,
     HasNextTradeWaypoint,
+    WaitForAllocatedBudgetToBeAvailable,
 }
 
 pub struct Behaviors {
@@ -220,6 +221,7 @@ pub fn ship_behaviors() -> Behaviors {
             navigate_to_destination.clone(),
             wait_for_arrival_bt.clone(),
             dock_if_necessary.clone(),
+            Behavior::new_action(ShipAction::WaitForAllocatedBudgetToBeAvailable),
             Behavior::new_action(ShipAction::PerformTradeActionAndMarkAsCompleted),
             Behavior::new_action(ShipAction::CollectWaypointInfos),
         ]),

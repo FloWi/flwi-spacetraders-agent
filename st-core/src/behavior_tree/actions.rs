@@ -29,7 +29,7 @@ impl Actionable for ShipAction {
         &self,
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
-        _: Duration,
+        sleep_duration: Duration,
         state_changed_tx: &Sender<Self::ActionState>,
         action_completed_tx: &Sender<ActionEvent>,
     ) -> Result<Response, Self::ActionError> {
@@ -652,6 +652,67 @@ impl Actionable for ShipAction {
                     Ok(Success)
                 }
             },
+            ShipAction::WaitForAllocatedBudgetToBeAvailable => {
+                let current_location = state.current_location();
+                let required_budget = if let Some(trade) = &state.maybe_trade.clone() {
+                    match trade {
+                        TradeTicket::TradeCargo {
+                            purchase_completion_status, ..
+                        } => purchase_completion_status
+                            .iter()
+                            .filter_map(|(ticket, is_completed)| {
+                                (is_completed.not() && ticket.waypoint_symbol == current_location).then_some(ticket.allocated_credits as i64)
+                            })
+                            .sum(),
+                        TradeTicket::DeliverConstructionMaterials {
+                            purchase_completion_status, ..
+                        } => purchase_completion_status
+                            .iter()
+                            .filter_map(|(ticket, is_completed)| {
+                                (is_completed.not() && ticket.waypoint_symbol == current_location).then_some(ticket.allocated_credits as i64)
+                            })
+                            .sum(),
+
+                        TradeTicket::PurchaseShipTicket { ticket_id, details } => details.allocated_credits as i64,
+                    }
+                } else {
+                    0
+                };
+
+                let mut sleeping_turns = 0;
+                let sleep_duration = Duration::from_millis(20).max(sleep_duration);
+                loop {
+                    let available_credits = args.blackboard.get_available_agent_credits().await.unwrap_or_default();
+
+                    if required_budget <= available_credits {
+                        break;
+                    }
+                    let missing_credits = required_budget - available_credits;
+                    sleeping_turns += 1;
+
+                    if sleeping_turns < 20 {
+                        event!(
+                            Level::DEBUG,
+                            message = format!("WaitForAllocatedBudgetToBeAvailable: sleeping for {sleep_duration:?}"),
+                            required_budget,
+                            available_credits,
+                            missing_credits
+                        )
+                    } else {
+                        event!(
+                            Level::WARN,
+                            message =
+                                format!("WaitForAllocatedBudgetToBeAvailable: Slept for {sleeping_turns} turns already.  sleeping for {sleep_duration:?}"),
+                            required_budget,
+                            available_credits,
+                            missing_credits
+                        )
+                    }
+
+                    tokio::time::sleep(sleep_duration).await;
+                }
+                Ok(Success)
+            }
         };
 
         let capacity = action_completed_tx.capacity();

@@ -90,4 +90,8 @@ impl BlackboardOps for BmcBlackboard {
     async fn get_ticket_by_id(&self, ticket_id: TicketId) -> anyhow::Result<TradeTicket> {
         self.bmc.trade_bmc().get_ticket_by_id(&Ctx::Anonymous, ticket_id).await
     }
+
+    async fn get_available_agent_credits(&self) -> anyhow::Result<i64> {
+        Ok(self.bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?.credits)
+    }
 }

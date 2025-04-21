@@ -976,12 +976,23 @@ mod tests {
                     let num_haulers = admiral.all_ships.iter().filter(|(_, s)| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER).count();
                     let has_bought_all_haulers = num_haulers == 4;
 
+                    let num_mining_drones = admiral.all_ships.iter().filter(|(_, s)| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER).count();
+                    let has_bought_all_mining_drones = num_mining_drones == 7;
+
+                    let home_system = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?.headquarters.system_symbol();
+
+                    let maybe_construction_site = bmc.construction_bmc().get_construction_site_for_system(&Ctx::Anonymous, home_system).await?;
+
+                    let has_started_construction = maybe_construction_site.map(|cs| cs.data.materials.iter().any(|cm| cm.fulfilled > 0)).unwrap_or(false);
+
                     let evaluation_result = has_finished_initial_observation
                         && is_in_construction_phase
                         && has_bought_ships
                         && has_probes_at_every_shipyard
                         && has_probes_at_every_marketplace
-                        && has_bought_all_haulers;
+                        && has_bought_all_haulers
+                        && has_bought_all_mining_drones;
+                        //&& has_started_construction;
 
                     println!(
                         r#"
@@ -990,12 +1001,15 @@ is_in_construction_phase: {is_in_construction_phase}
 num_ships: {num_ships}
 num_stationary_probes: {num_stationary_probes}
 num_haulers: {num_haulers}
+num_mining_drones: {num_mining_drones}
 stationary_probe_locations: {}
 shipyard_waypoints: {}
 has_probes_at_every_shipyard: {has_probes_at_every_shipyard}
 marketplace_waypoints: {}
 has_probes_at_every_marketplace: {has_probes_at_every_marketplace}
 has_bought_all_haulers: {has_bought_all_haulers}
+has_bought_all_mining_drones: {has_bought_all_mining_drones}
+has_started_construction: {has_started_construction}
 
 evaluation_result: {evaluation_result}
 "#,
@@ -1069,8 +1083,8 @@ evaluation_result: {evaluation_result}
         let construct_jump_gate_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&construct_jump_gate_fleet.0).into_iter().cloned().collect_vec();
         let market_observation_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&market_observation_fleet.0).into_iter().cloned().collect_vec();
 
-        assert!(siphoning_fleet_ships.is_empty());
-        assert!(mining_fleet_ships.is_empty());
+        assert_eq!(siphoning_fleet_ships.len(), 11);
+        assert_eq!(mining_fleet_ships.len(), 5);
 
         match construct_jump_gate_fleet_ships.as_slice() {
             [ship] => assert_eq!(ship.registration.role, ShipRegistrationRole::Command),
