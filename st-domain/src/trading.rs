@@ -49,16 +49,13 @@ pub fn find_trading_opportunities(
 }
 
 pub fn to_trade_goods_with_locations(market_data: &Vec<MarketEntry>) -> Vec<(WaypointSymbol, Vec<MarketTradeGood>)> {
-    market_data
-        .iter()
-        .filter_map(|md| md.market_data.trade_goods.as_ref().map(|trade_goods| (md.waypoint_symbol.clone(), trade_goods.clone())))
-        .collect_vec()
+    market_data.iter().filter_map(|md| md.market_data.trade_goods.as_ref().map(|trade_goods| (md.waypoint_symbol.clone(), trade_goods.clone()))).collect_vec()
 }
 
 pub fn evaluate_trading_opportunities(
     unassigned_ships: &[&Ship],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
-    trading_opportunities: Vec<TradingOpportunity>,
+    trading_opportunities: &[TradingOpportunity],
     budget_for_trading: i64,
 ) -> Vec<EvaluatedTradingOpportunity> {
     let top_trading_opps = trading_opportunities.iter().sorted_by_key(|t| -(t.profit_per_unit as i64)).take(15).collect_vec();

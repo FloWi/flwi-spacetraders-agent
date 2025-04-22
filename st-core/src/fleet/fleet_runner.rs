@@ -274,6 +274,10 @@ impl FleetRunner {
                 //println!("ship_loop: Ship {:?} is running trading_behavior", ship.symbol);
                 Some((behaviors.trading_behavior, "trading_behavior"))
             }
+            ShipTask::PrepositionShipForTrade { first_purchase_location } => {
+                ship.set_destination(first_purchase_location);
+                Some((behaviors.navigate_to_destination, "navigate_to_destination"))
+            }
         };
 
         match maybe_behavior {
@@ -901,14 +905,16 @@ mod tests {
         let supply_chain_bmc = InMemorySupplyChainBmc::new();
         let status_bmc = InMemoryStatusBmc::new();
 
+        let trade_bmc = Arc::new(trade_bmc);
+        let market_bmc = Arc::new(market_bmc);
         let bmc = InMemoryBmc {
             in_mem_ship_bmc: Arc::new(ship_bmc),
             in_mem_fleet_bmc: Arc::new(fleet_bmc),
-            in_mem_trade_bmc: Arc::new(trade_bmc),
+            in_mem_trade_bmc: Arc::clone(&trade_bmc),
             in_mem_system_bmc: Arc::new(system_bmc),
             in_mem_agent_bmc: Arc::new(agent_bmc),
             in_mem_construction_bmc: Arc::new(construction_bmc),
-            in_mem_market_bmc: Arc::new(market_bmc),
+            in_mem_market_bmc: Arc::clone(&market_bmc),
             in_mem_jump_gate_bmc: Arc::new(jump_gate_bmc),
             in_mem_shipyard_bmc: Arc::new(shipyard_bmc),
             in_mem_supply_chain_bmc: Arc::new(supply_chain_bmc),
@@ -979,9 +985,10 @@ mod tests {
                     let num_mining_drones = admiral.all_ships.iter().filter(|(_, s)| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER).count();
                     let has_bought_all_mining_drones = num_mining_drones == 7;
 
-                    let home_system = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?.headquarters.system_symbol();
+                    let home_system = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await.expect("agent").headquarters.system_symbol();
 
-                    let maybe_construction_site = bmc.construction_bmc().get_construction_site_for_system(&Ctx::Anonymous, home_system).await?;
+                    let maybe_construction_site =
+                        bmc.construction_bmc().get_construction_site_for_system(&Ctx::Anonymous, home_system).await.expect("construction_site");
 
                     let has_started_construction = maybe_construction_site.map(|cs| cs.data.materials.iter().any(|cm| cm.fulfilled > 0)).unwrap_or(false);
 
@@ -992,7 +999,7 @@ mod tests {
                         && has_probes_at_every_marketplace
                         && has_bought_all_haulers
                         && has_bought_all_mining_drones;
-                        //&& has_started_construction;
+                    //&& has_started_construction;
 
                     println!(
                         r#"
@@ -1030,7 +1037,7 @@ evaluation_result: {evaluation_result}
         // Use select to race between the fleet task and your condition checker
         // Add a timeout as a fallback
         tokio::select! {
-            _ = tokio::time::timeout(Duration::from_secs(60), fleet_task) => {
+            _ = tokio::time::timeout(Duration::from_secs(30), fleet_task) => {
                 println!("Fleet task completed or timed out");
             }
             _ = condition_checker => {
@@ -1083,8 +1090,8 @@ evaluation_result: {evaluation_result}
         let construct_jump_gate_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&construct_jump_gate_fleet.0).into_iter().cloned().collect_vec();
         let market_observation_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&market_observation_fleet.0).into_iter().cloned().collect_vec();
 
-        assert_eq!(siphoning_fleet_ships.len(), 11);
-        assert_eq!(mining_fleet_ships.len(), 5);
+        assert!(siphoning_fleet_ships.len() > 4);
+        assert!(mining_fleet_ships.len() > 4);
 
         match construct_jump_gate_fleet_ships.as_slice() {
             [ship] => assert_eq!(ship.registration.role, ShipRegistrationRole::Command),

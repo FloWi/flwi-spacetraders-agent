@@ -4,6 +4,7 @@ use itertools::Itertools;
 use st_domain::{
     trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, MarketEntry, PurchaseGoodTicketDetails,
     PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipPriceInfo, ShipSymbol, ShipTask, TicketId, TradeTicket, TransactionTicketId, Waypoint,
+    WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -39,7 +40,8 @@ impl ConstructJumpGateFleet {
         let initial_unassigned_ships = unassigned_ships.iter().map(|s| s.symbol.clone()).collect_vec();
 
         // all ships are traders (command frigate + 4 haulers --> 200k each => 1M total)
-        let reserved_for_trading = (100_000 * unassigned_ships.len()) as i64;
+        let per_ship_trading_budget: u64 = 100_000;
+        let reserved_for_trading = (per_ship_trading_budget as i64 * unassigned_ships.len() as i64) as i64;
 
         let not_allocated_budget = (budget as i64) - allocated_budget as i64;
 
@@ -51,7 +53,7 @@ impl ConstructJumpGateFleet {
         //
         //         en_route_credits = 246_072
 
-        let trading_budget = reserved_for_trading.min(not_allocated_budget.max(expected_profit_of_ongoing_trades));
+        let trading_budget = reserved_for_trading.min(not_allocated_budget);
 
         let budget_for_ship_purchase = not_allocated_budget - trading_budget;
 
@@ -133,12 +135,16 @@ impl ConstructJumpGateFleet {
             .collect_vec();
 
         let market_data = trading::to_trade_goods_with_locations(latest_market_data);
-        let trading_opportunities = trading::find_trading_opportunities(&market_data, &waypoint_map);
-        let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
-            trading::evaluate_trading_opportunities(&still_unassigned_ships, &waypoint_map, trading_opportunities, trading_budget);
 
         // FIXME: get currently active trades
         let active_trades_of_goods: Vec<EvaluatedTradingOpportunity> = Vec::new();
+
+        let trading_opportunities = trading::find_trading_opportunities(&market_data, &waypoint_map);
+        let budget_to_consider = trading_budget;
+
+        let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
+            trading::evaluate_trading_opportunities(&still_unassigned_ships, &waypoint_map, &trading_opportunities, budget_to_consider);
+
         let trades_for_ships: Vec<EvaluatedTradingOpportunity> =
             trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trades_of_goods);
 
@@ -183,7 +189,17 @@ impl ConstructJumpGateFleet {
             // dbg!(&budget_for_ship_purchase);
             // dbg!(&maybe_ship_purchase_location);
 
-            Ok(tasks_with_tickets)
+            let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
+                trading::evaluate_trading_opportunities(&still_unassigned_ships, &waypoint_map, &trading_opportunities, per_ship_trading_budget as i64);
+
+            let trades_for_ships: Vec<EvaluatedTradingOpportunity> =
+                trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trades_of_goods);
+
+            let trading_tasks_with_trading_tickets = create_trading_tickets(&trades_for_ships);
+
+            // We found a potential trade, but we're currently low on budget. However, there might be opportunities later, once we have credits again. We can still yield the tickets to preposition the ships
+
+            Ok(trading_tasks_with_trading_tickets)
         } else {
             Ok(tasks_with_tickets)
         }
@@ -202,6 +218,7 @@ pub fn create_trading_tickets(trading_opportunities_within_budget: &[EvaluatedTr
         new_tasks_with_tickets.push(PotentialTradingTask {
             ship_symbol: opp.ship_symbol.clone(),
             trade_ticket: ticket.clone(),
+            first_purchase_location: opp.trading_opportunity.purchase_waypoint_symbol.clone(),
             ship_task: ShipTask::Trade { ticket_id: ticket.ticket_id() },
         });
     }
@@ -216,6 +233,7 @@ pub fn create_ship_purchase_ticket(details: PurchaseShipTicketDetails) -> Potent
     PotentialTradingTask {
         ship_symbol: details.ship_symbol.clone(),
         trade_ticket: ticket.clone(),
+        first_purchase_location: details.waypoint_symbol.clone(),
         ship_task: ShipTask::Trade { ticket_id: ticket.ticket_id() },
     }
 }
@@ -224,4 +242,5 @@ pub struct PotentialTradingTask {
     pub ship_symbol: ShipSymbol,
     pub trade_ticket: TradeTicket,
     pub ship_task: ShipTask,
+    pub first_purchase_location: WaypointSymbol,
 }

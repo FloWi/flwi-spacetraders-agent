@@ -93,6 +93,12 @@ pub enum TradeTicket {
 }
 
 impl TradeTicket {
+    pub fn total_costs(&self) -> u64 {
+        todo!()
+    }
+}
+
+impl TradeTicket {
     pub fn ticket_id(&self) -> TicketId {
         match self {
             TradeTicket::TradeCargo { ticket_id, .. } => ticket_id.clone(),
@@ -271,6 +277,8 @@ pub enum ShipTask {
     SurveyAsteroid { waypoint_symbol: WaypointSymbol },
 
     Trade { ticket_id: TicketId },
+
+    PrepositionShipForTrade { first_purchase_location: WaypointSymbol },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]

@@ -557,9 +557,17 @@ impl FleetAdmiral {
                         ship_symbol,
                         trade_ticket,
                         ship_task,
+                        first_purchase_location,
                     } in potential_trading_tasks
                     {
-                        new_ship_tasks.push((ship_symbol, ship_task, ShipTaskRequirement::TradeTicket { trade_ticket }));
+                        new_ship_tasks.push((
+                            ship_symbol,
+                            ship_task,
+                            ShipTaskRequirement::TradeTicket {
+                                trade_ticket,
+                                first_purchase_location,
+                            },
+                        ));
                     }
                 }
                 FleetConfig::TradingCfg(cfg) => (),
@@ -598,16 +606,32 @@ impl FleetAdmiral {
         requirements: ShipTaskRequirement,
     ) {
         match requirements {
-            ShipTaskRequirement::TradeTicket { trade_ticket } => {
-                if !(admiral.active_trades.contains_key(&ship_symbol)) {
-                    admiral.active_trades.insert(ship_symbol.clone(), trade_ticket);
-                    admiral.ship_tasks.insert(ship_symbol.clone(), ship_task);
-                } else {
+            ShipTaskRequirement::TradeTicket {
+                trade_ticket,
+                first_purchase_location,
+            } => {
+                let costs_of_ticket: i64 = trade_ticket.total_costs() as i64;
+
+                let is_trade_affordable = costs_of_ticket < admiral.agent_info.credits;
+
+                if !is_trade_affordable {
                     event!(
                         Level::WARN,
-                        message = "Can't assign new trade_ticket to ship - there's already a trade assigned to it",
+                        message = "Can't assign new trade_ticket to ship (yet)- the costs are currently too high. We preposition the ship though",
                         ship = ship_symbol.0
                     );
+                    admiral.ship_tasks.insert(ship_symbol, ShipTask::PrepositionShipForTrade { first_purchase_location });
+                } else {
+                    if !(admiral.active_trades.contains_key(&ship_symbol)) {
+                        admiral.active_trades.insert(ship_symbol.clone(), trade_ticket);
+                        admiral.ship_tasks.insert(ship_symbol.clone(), ship_task);
+                    } else {
+                        event!(
+                            Level::WARN,
+                            message = "Can't assign new trade_ticket to ship - there's already a trade assigned to it",
+                            ship = ship_symbol.0
+                        );
+                    }
                 }
             }
             ShipTaskRequirement::None => {
@@ -735,7 +759,7 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
         ShipTask::ObserveAllWaypointsOnce { .. } => Ok(NewTaskResult::DismantleFleets {
             fleets_to_dismantle: vec![admiral.ship_fleet_assignment.get(&ship.symbol).unwrap().clone()],
         }),
-        ShipTask::Trade { .. } => {
+        ShipTask::Trade { .. } | ShipTask::PrepositionShipForTrade { .. } => {
             let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &ship.nav.system_symbol).await?;
             let new_tasks = FleetAdmiral::compute_ship_tasks(admiral, &facts, Arc::clone(&bmc)).await?;
             if let Some((ss, new_task_for_ship, ship_task_requirement)) = new_tasks.iter().find(|(ss, task, _)| ss == &ship.symbol) {
@@ -1138,6 +1162,9 @@ pub fn create_fleet(super_fleet_config: FleetConfig, fleet_task: FleetTask, id: 
 
 #[derive(Clone, Debug, Serialize, Deserialize, Display)]
 pub enum ShipTaskRequirement {
-    TradeTicket { trade_ticket: TradeTicket },
+    TradeTicket {
+        trade_ticket: TradeTicket,
+        first_purchase_location: WaypointSymbol,
+    },
     None,
 }
