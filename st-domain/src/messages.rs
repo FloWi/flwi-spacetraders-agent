@@ -4,6 +4,7 @@ use crate::{
     SystemSymbol, TradeGoodSymbol, WaypointSymbol,
 };
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -404,6 +405,87 @@ pub struct FleetPhase {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ShipPriceInfo {
     pub price_infos: Vec<(WaypointSymbol, Vec<ShipyardShip>)>,
+    pub latest_shipyard_infos: Vec<ShipyardData>,
+}
+
+impl ShipPriceInfo {
+    pub fn guess_price_for_ship(ship_type: &ShipType) -> Option<u32> {
+        match ship_type {
+            ShipType::SHIP_PROBE => Some(30_000),
+            ShipType::SHIP_MINING_DRONE => None,
+            ShipType::SHIP_SIPHON_DRONE => None,
+            ShipType::SHIP_INTERCEPTOR => None,
+            ShipType::SHIP_LIGHT_HAULER => None,
+            ShipType::SHIP_COMMAND_FRIGATE => None,
+            ShipType::SHIP_EXPLORER => None,
+            ShipType::SHIP_HEAVY_FREIGHTER => None,
+            ShipType::SHIP_LIGHT_SHUTTLE => None,
+            ShipType::SHIP_ORE_HOUND => None,
+            ShipType::SHIP_REFINING_FREIGHTER => None,
+            ShipType::SHIP_SURVEYOR => None,
+            ShipType::SHIP_BULK_FREIGHTER => None,
+        }
+    }
+    pub fn compute_ship_type_purchase_location_map(&self) -> HashMap<ShipType, Vec<WaypointSymbol>> {
+        self.latest_shipyard_infos
+            .iter()
+            .flat_map(|shipyard_data| shipyard_data.shipyard.ship_types.iter().map(|st| (st.r#type, shipyard_data.waypoint_symbol.clone())))
+            .into_group_map_by(|(st, _)| *st)
+            .into_iter()
+            .map(|(k, values)| (k, values.into_iter().map(|tup| tup.1).collect_vec()))
+            .collect()
+    }
+
+    pub fn compute_ship_type_purchase_price_map(&self) -> HashMap<ShipType, Vec<(WaypointSymbol, u32)>> {
+        self.price_infos
+            .iter()
+            .flat_map(|(wps, shipyard_ships)| shipyard_ships.iter().map(|shipyard_ship| (shipyard_ship.r#type, (wps.clone(), shipyard_ship.purchase_price))))
+            .into_group_map_by(|(st, _)| *st)
+            .into_iter()
+            .map(|(k, values)| (k, values.into_iter().map(|tup| tup.1).collect_vec()))
+            .collect()
+    }
+
+    fn get_price_and_location(
+        ship_type: &ShipType,
+        purchase_price_map: &HashMap<ShipType, Vec<(WaypointSymbol, u32)>>,
+        purchase_location_map: &HashMap<ShipType, Vec<WaypointSymbol>>,
+    ) -> Option<(WaypointSymbol, u32)> {
+        purchase_price_map.get(ship_type).and_then(|prices| prices.iter().min_by_key(|(wps, p)| p)).cloned().or_else(|| {
+            purchase_location_map
+                .get(ship_type)
+                .and_then(|waypoints| waypoints.first().and_then(|wps| Self::guess_price_for_ship(ship_type).map(|guessed_price| (wps.clone(), guessed_price))))
+        })
+    }
+
+    pub fn get_all_ship_purchases_within_budget(&self, shopping_list: Vec<ShipType>, budget: i64) -> Vec<(ShipType, WaypointSymbol, u32)> {
+        let purchase_price_map: HashMap<ShipType, Vec<(WaypointSymbol, u32)>> = self.compute_ship_type_purchase_price_map();
+        let purchase_location_map: HashMap<ShipType, Vec<WaypointSymbol>> = self.compute_ship_type_purchase_location_map();
+
+        let purchase_locations: HashMap<_, _> = shopping_list
+            .iter()
+            .unique()
+            .filter_map(|ship_type| {
+                Self::get_price_and_location(ship_type, &purchase_price_map, &purchase_location_map)
+                    .map(|(wps, p)| (ship_type.clone(), wps, p))
+                    .map(|(st, wps, p)| (st, (wps, p)))
+            })
+            .collect();
+
+        shopping_list
+            .into_iter()
+            .map(|ship_type| {
+                let (wps, price) = purchase_locations.get(&ship_type).unwrap();
+                (ship_type, wps, price)
+            })
+            .scan(0, |acc, (ship_type, wps, price)| {
+                *acc += price;
+                Some((ship_type, wps, price, *acc))
+            })
+            .take_while(|(_, _, _, total)| *total as i64 <= budget)
+            .map(|(ship_type, wps, price, _)| (ship_type, wps.clone(), *price))
+            .collect()
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Display)]

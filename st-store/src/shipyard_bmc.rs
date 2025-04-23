@@ -102,8 +102,12 @@ impl ShipyardBmcTrait for InMemoryShipyardBmc {
 fn extract_ship_price_infos_from_shipyards(result: &[ShipyardData]) -> ShipPriceInfo {
     let price_infos = result
         .iter()
-        .filter(|&entry| entry.shipyard.has_detailed_price_information()).map(|entry| (entry.waypoint_symbol.clone(), entry.shipyard.ships.clone().unwrap_or_default()))
+        .filter(|&entry| entry.shipyard.has_detailed_price_information())
+        .map(|entry| (entry.waypoint_symbol.clone(), entry.shipyard.ships.clone().unwrap_or_default()))
         .collect_vec();
-    
-    ShipPriceInfo { price_infos }
+
+    ShipPriceInfo {
+        price_infos,
+        latest_shipyard_infos: result.iter().cloned().collect_vec(),
+    }
 }

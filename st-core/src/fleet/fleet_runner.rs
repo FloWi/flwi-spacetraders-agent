@@ -2,7 +2,8 @@ use crate::behavior_tree::behavior_args::BehaviorArgs;
 use crate::behavior_tree::behavior_tree::ActionEvent;
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::fleet::fleet::{
-    collect_fleet_decision_facts, compute_fleets_with_tasks, recompute_tasks_after_ship_finishing_behavior_tree, FleetAdmiral, NewTaskResult, ShipStatusReport,
+    collect_fleet_decision_facts, compute_fleet_phase_with_tasks, compute_fleets_with_tasks, recompute_tasks_after_ship_finishing_behavior_tree, FleetAdmiral,
+    NewTaskResult, ShipStatusReport,
 };
 use crate::fleet::ship_runner::ship_behavior_runner;
 use crate::pagination::fetch_all_pages;
@@ -427,13 +428,8 @@ impl FleetRunner {
                         let system_symbol = ship.nav.system_symbol.clone();
                         let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
 
-                        let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(
-                            system_symbol,
-                            &admiral_guard.completed_fleet_tasks,
-                            &facts,
-                            &admiral_guard.fleets,
-                            &admiral_guard.fleet_tasks,
-                        );
+                        let fleet_phase = compute_fleet_phase_with_tasks(system_symbol, &facts, &admiral_guard.completed_fleet_tasks);
+                        let (fleets, fleet_tasks) = compute_fleets_with_tasks(&facts, &admiral_guard.fleets, &admiral_guard.fleet_tasks, &fleet_phase);
                         // println!("Computed new fleets after dismantling the fleets: {:?}", fleets_to_dismantle);
                         // dbg!(&fleets);
                         // dbg!(&fleet_tasks);
@@ -795,7 +791,7 @@ impl FleetRunner {
         Ok(())
     }
 
-    async fn load_and_store_initial_data(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> Result<()> {
+    pub(crate) async fn load_and_store_initial_data_in_bmcs(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> Result<()> {
         let ctx = &Ctx::Anonymous;
         let agent = match bmc.agent_bmc().load_agent(ctx).await {
             Ok(agent) => agent,
@@ -805,6 +801,13 @@ impl FleetRunner {
                 response.data
             }
         };
+
+        let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await?;
+
+        if ships.is_empty() {
+            let ships: Vec<Ship> = fetch_all_pages(|p| client.list_ships(p)).await?;
+            bmc.ship_bmc().upsert_ships(&Ctx::Anonymous, &ships, Utc::now()).await?;
+        }
 
         let headquarters_system_symbol = agent.headquarters.system_symbol();
 
@@ -925,7 +928,7 @@ mod tests {
         let bmc = Arc::new(bmc) as Arc<dyn Bmc>;
         let blackboard = BmcBlackboard::new(Arc::clone(&bmc));
 
-        FleetRunner::load_and_store_initial_data(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
+        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
 
         println!("Creating fleet admiral");
 

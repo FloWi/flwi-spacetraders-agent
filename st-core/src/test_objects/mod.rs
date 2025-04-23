@@ -20,10 +20,6 @@ use tracing_subscriber::{
 pub struct TestObjects;
 
 impl TestObjects {
-    pub(crate) fn ship_prices(p0: &[Waypoint]) -> ShipPriceInfo {
-        ShipPriceInfo { price_infos: vec![] }
-    }
-
     pub(crate) fn latest_market_data(waypoints: &[Waypoint]) -> Vec<MarketData> {
         vec![]
     }

@@ -1,16 +1,10 @@
-use chrono::{DateTime, Duration, Utc};
-use serde::{Deserialize, Serialize};
-use st_core::accounting::budgeting::{
-    FinanceError, FleetBudget, FundingSource, TicketFinancials, TicketStatus, TicketType, TransactionEvent, TransactionGoal, TransactionTicket,
-};
+use chrono::{Duration, Utc};
+use st_core::accounting::budgeting::{FundingSource, TicketType, TransactionEvent, TransactionGoal};
 use st_core::accounting::credits::Credits;
 use st_core::accounting::treasurer::{InMemoryTreasurer, Treasurer};
 use st_domain::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::error::Error;
-use std::fmt;
-use uuid::Uuid;
-// Import the event-driven finance system types (simplified versions included here)
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Create an in-memory finance system with 1,000,000 credits in treasury

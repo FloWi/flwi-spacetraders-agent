@@ -2,8 +2,9 @@ use crate::accounting::budgeting::{
     FinanceError, FleetBudget, FundingSource, TicketFinancials, TicketStatus, TicketType, TransactionEvent, TransactionGoal, TransactionTicket,
 };
 use crate::accounting::credits::Credits;
+use crate::fleet::fleet;
 use chrono::{DateTime, Utc};
-use st_domain::{FleetId, ShipSymbol};
+use st_domain::{Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, Ship, ShipPriceInfo, ShipSymbol, ShipType, WaypointSymbol};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -41,6 +42,17 @@ pub trait Treasurer {
     fn create_fleet_budget(&mut self, fleet_id: FleetId, initial_capital: Credits) -> Result<(), Self::Error>;
 
     fn get_fleet_budget(&self, fleet_id: &FleetId) -> Result<FleetBudget, Self::Error>;
+
+    fn redistribute_distribute_fleet_budgets(
+        &mut self,
+        fleet_phase: &FleetPhase,
+        facts: &FleetDecisionFacts,
+        fleets: &[Fleet],
+        fleet_tasks: &[(FleetId, FleetTask)],
+        ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>,
+        ship_map: &HashMap<ShipSymbol, Ship>,
+        ship_price_info: &ShipPriceInfo,
+    ) -> Result<(), Self::Error>;
 }
 
 // In-memory implementation of the EventDrivenFinanceSystem trait
@@ -527,5 +539,161 @@ impl Treasurer for InMemoryTreasurer {
 
     fn get_fleet_budget(&self, fleet_id: &FleetId) -> Result<FleetBudget, Self::Error> {
         self.fleet_budgets.get(fleet_id).cloned().ok_or(FinanceError::FleetNotFound)
+    }
+
+    fn redistribute_distribute_fleet_budgets(
+        &mut self,
+        fleet_phase: &FleetPhase,
+        facts: &FleetDecisionFacts,
+        fleets: &[Fleet],
+        fleet_tasks: &[(FleetId, FleetTask)],
+        ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>,
+        ship_map: &HashMap<ShipSymbol, Ship>,
+        ship_price_info: &ShipPriceInfo,
+    ) -> Result<(), Self::Error> {
+        for (_, budget) in self.fleet_budgets.iter_mut() {
+            // TODO: clean up properly (cancel and clear tickets etc)
+            self.treasury += budget.total_capital
+        }
+        self.fleet_budgets.clear();
+
+        let all_next_ship_purchases = fleet::get_all_next_ship_purchases(ship_map, fleet_phase);
+        let (new_ship_types, tasks_of_new_ships): (Vec<_>, Vec<_>) = all_next_ship_purchases.iter().cloned().unzip();
+
+        let market_observation_fleet_id = fleet_tasks
+            .iter()
+            .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. }).then_some(id))
+            .unwrap();
+
+        match fleet_phase.name {
+            FleetPhaseName::InitialExploration => {
+                // we start with one probe and want to keep 50k for trading. Let's try to reserve budget for purchasing one probe per shipyard
+                let command_ship_fleet_id =
+                    fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::CollectMarketInfosOnce { .. }).then_some(id)).unwrap();
+
+                let command_fleet_budget = self.treasury.min(Credits::new(50_000));
+                self.create_fleet_budget(command_ship_fleet_id.clone(), command_fleet_budget)?;
+
+                let rest_budget = self.treasury;
+                // let ships_within_budget = ship_price_info.get_all_ship_purchases_within_budget(new_ship_types, rest_budget.0);
+                // println!("{} ships are within budget: {:?}", ships_within_budget.len(), &ships_within_budget);
+                //
+                // let probes_budget = ships_within_budget.iter().map(|(_, _, price)| *price as i64).sum();
+
+                self.create_fleet_budget(market_observation_fleet_id.clone(), rest_budget)?;
+            }
+            FleetPhaseName::ConstructJumpGate => {}
+            FleetPhaseName::TradeProfitably => {}
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::accounting::credits::Credits;
+    use crate::accounting::treasurer::{InMemoryTreasurer, Treasurer};
+    use crate::fleet::fleet;
+    use crate::fleet::fleet::{collect_fleet_decision_facts, compute_fleet_phase_with_tasks, FleetAdmiral};
+    use crate::fleet::fleet_runner::FleetRunner;
+    use crate::st_client::StClientTrait;
+    use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
+    use anyhow::Result;
+    use itertools::Itertools;
+    use st_domain::{Fleet, FleetId, FleetTask, WaypointSymbol};
+    use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
+    use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
+    use st_store::bmc::{Bmc, InMemoryBmc};
+    use st_store::shipyard_bmc::InMemoryShipyardBmc;
+    use st_store::trade_bmc::InMemoryTradeBmc;
+    use st_store::{
+        Ctx, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc,
+    };
+    use std::collections::HashSet;
+    use std::sync::Arc;
+    use test_log::test;
+
+    #[test(tokio::test)]
+    //#[tokio::test] // for accessing runtime-infos with tokio-conso&le
+    async fn distribute_budget_among_fleets_based_on_fleet_phase() -> Result<()> {
+        let mut finance = InMemoryTreasurer::new(Credits::new(1_000_000));
+
+        let (bmc, client) = get_test_universe().await;
+        let system_symbol = client.get_agent().await?.data.headquarters.system_symbol();
+
+        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
+
+        let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
+
+        let marketplaces_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(facts.marketplaces_of_interest.iter().cloned());
+        let shipyards_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(facts.shipyards_of_interest.iter().cloned());
+        let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest.difference(&shipyards_of_interest).cloned().collect_vec();
+
+        let fleet_phase = fleet::create_initial_exploration_fleet_phase(&system_symbol, shipyards_of_interest.len());
+        // let fleet_phase = fleet::create_construction_fleet_phase(&system_symbol, facts.shipyards_of_interest.len(), marketplaces_ex_shipyards.len());
+
+        let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) =
+            fleet::compute_fleets_with_tasks(&facts, &Default::default(), &Default::default(), &fleet_phase);
+
+        let ship_map = facts.ships.iter().map(|s| (s.symbol.clone(), s.clone())).collect();
+
+        let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
+
+        let ship_fleet_assignment = FleetAdmiral::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
+
+        finance.redistribute_distribute_fleet_budgets(&fleet_phase, &facts, &fleets, &fleet_tasks, &ship_fleet_assignment, &ship_map, &ship_price_info)?;
+
+        assert_eq!(facts.ships.len(), 2);
+
+        Ok(())
+    }
+
+    async fn get_test_universe() -> (Arc<dyn Bmc>, Arc<dyn StClientTrait>) {
+        let in_memory_universe = InMemoryUniverse::from_snapshot("tests/assets/universe_snapshot.json").expect("InMemoryUniverse::from_snapshot");
+
+        let shipyard_waypoints = in_memory_universe.shipyards.keys().cloned().collect::<HashSet<_>>();
+        let marketplace_waypoints = in_memory_universe.marketplaces.keys().cloned().collect::<HashSet<_>>();
+
+        let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
+
+        let agent = in_memory_client.get_agent().await.expect("agent").data;
+        let hq_system_symbol = agent.headquarters.system_symbol();
+
+        let ship_bmc = InMemoryShipsBmc::new(InMemoryShips::new());
+        let agent_bmc = InMemoryAgentBmc::new(agent);
+        let trade_bmc = InMemoryTradeBmc::new();
+        let fleet_bmc = InMemoryFleetBmc::new();
+        let system_bmc = InMemorySystemsBmc::new();
+        let construction_bmc = InMemoryConstructionBmc::new();
+
+        //insert some data
+        //construction_bmc.save_construction_site(&Ctx::Anonymous, in_memory_client.get_construction_site().unwrap())
+
+        let market_bmc = InMemoryMarketBmc::new();
+        let shipyard_bmc = InMemoryShipyardBmc::new();
+        let jump_gate_bmc = InMemoryJumpGateBmc::new();
+        let supply_chain_bmc = InMemorySupplyChainBmc::new();
+        let status_bmc = InMemoryStatusBmc::new();
+
+        let trade_bmc = Arc::new(trade_bmc);
+        let market_bmc = Arc::new(market_bmc);
+        let bmc = InMemoryBmc {
+            in_mem_ship_bmc: Arc::new(ship_bmc),
+            in_mem_fleet_bmc: Arc::new(fleet_bmc),
+            in_mem_trade_bmc: Arc::clone(&trade_bmc),
+            in_mem_system_bmc: Arc::new(system_bmc),
+            in_mem_agent_bmc: Arc::new(agent_bmc),
+            in_mem_construction_bmc: Arc::new(construction_bmc),
+            in_mem_market_bmc: Arc::clone(&market_bmc),
+            in_mem_jump_gate_bmc: Arc::new(jump_gate_bmc),
+            in_mem_shipyard_bmc: Arc::new(shipyard_bmc),
+            in_mem_supply_chain_bmc: Arc::new(supply_chain_bmc),
+            in_mem_status_bmc: Arc::new(status_bmc),
+        };
+
+        let client = Arc::new(in_memory_client) as Arc<dyn StClientTrait>;
+        let bmc = Arc::new(bmc) as Arc<dyn Bmc>;
+
+        (bmc, client)
     }
 }

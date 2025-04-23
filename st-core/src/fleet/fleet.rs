@@ -14,6 +14,9 @@ use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::FleetConfig::SystemSpawningCfg;
+use st_domain::FleetTask::{
+    CollectMarketInfosOnce, ConstructJumpGate, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably,
+};
 use st_domain::ShipRegistrationRole::{Command, Explorer, Interceptor, Refinery, Satellite, Surveyor};
 use st_domain::TradeGoodSymbol::{MOUNT_GAS_SIPHON_I, MOUNT_MINING_LASER_I, MOUNT_SURVEYOR_I};
 use st_domain::{
@@ -68,23 +71,10 @@ pub struct FleetAdmiral {
 
 impl FleetAdmiral {
     pub fn get_next_ship_purchase(&self) -> Option<(ShipType, FleetTask)> {
-        let mut current_ship_types: HashMap<ShipType, u32> = HashMap::new();
+        let ship_map: &HashMap<ShipSymbol, Ship> = &self.all_ships;
+        let fleet_phase: &FleetPhase = &self.fleet_phase;
 
-        for (_, s) in self.all_ships.iter() {
-            let ship_type = get_ship_type_of_ship(&s).expect(format!("role_to_ship_type_mapping for ShipFrameSymbol {}", &s.frame.symbol.to_string()).as_str());
-            current_ship_types.entry(ship_type).and_modify(|counter| *counter += 1).or_insert(1);
-        }
-
-        for (ship_type, fleet_task) in self.fleet_phase.shopping_list_in_order.iter() {
-            let num_of_ships_left = current_ship_types.get(ship_type).unwrap_or(&0);
-            if num_of_ships_left.is_zero() {
-                return Some((*ship_type, fleet_task.clone()));
-            } else {
-                // we already have this ship - continue
-                current_ship_types.entry(*ship_type).and_modify(|counter| *counter -= 1);
-            }
-        }
-        None
+        get_next_ship_purchase(ship_map, fleet_phase)
     }
 
     pub(crate) fn get_ship_tasks_of_fleet(&self, fleet: &Fleet) -> Vec<(ShipSymbol, ShipTask)> {
@@ -413,13 +403,8 @@ impl FleetAdmiral {
 
             // recompute ship-tasks and persist them. Might have been outdated since last agent restart
             let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
-            let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(
-                system_symbol,
-                &overview.completed_fleet_tasks,
-                &facts,
-                &overview.fleets,
-                &overview.fleet_task_assignments,
-            );
+            let fleet_phase = compute_fleet_phase_with_tasks(system_symbol, &facts, &overview.completed_fleet_tasks);
+            let (fleets, fleet_tasks) = compute_fleets_with_tasks(&facts, &overview.fleets, &overview.fleet_task_assignments, &fleet_phase);
             let fleet_map: HashMap<FleetId, Fleet> = fleets.iter().map(|f| (f.id.clone(), f.clone())).collect();
             let fleet_task_map: HashMap<FleetId, Vec<FleetTask>> = fleet_tasks.iter().map(|(fleet_id, task)| (fleet_id.clone(), vec![task.clone()])).collect();
 
@@ -485,7 +470,9 @@ impl FleetAdmiral {
 
         let completed_tasks = bmc.fleet_bmc().load_completed_fleet_tasks(&Ctx::Anonymous).await?;
 
-        let (fleets, fleet_tasks, fleet_phase) = compute_fleets_with_tasks(system_symbol, &completed_tasks, &facts, &HashMap::new(), &HashMap::new());
+        let fleet_phase = compute_fleet_phase_with_tasks(system_symbol, &facts, &completed_tasks);
+
+        let (fleets, fleet_tasks) = compute_fleets_with_tasks(&facts, &HashMap::new(), &HashMap::new(), &fleet_phase);
 
         let ship_fleet_assignment = Self::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
 
@@ -874,116 +861,21 @@ pub fn compute_fleet_phase_with_tasks(
     let has_collected_all_waypoint_details_once =
         is_shipyard_exploration_complete && is_marketplace_exploration_complete || has_collect_market_infos_once_task_been_completed;
 
-    let tasks = if !has_collected_all_waypoint_details_once {
-        let tasks = [
-            CollectMarketInfosOnce {
-                system_symbol: system_symbol.clone(),
-            },
-            ObserveAllWaypointsOfSystemWithStationaryProbes {
-                system_symbol: system_symbol.clone(),
-            },
-        ];
+    let marketplace_waypoints_ex_shipyards = diff_waypoint_symbols(&fleet_decision_facts.marketplaces_of_interest, &fleet_decision_facts.shipyards_of_interest);
 
-        let frigate_task = tasks[0].clone();
-        let probe_task = tasks[1].clone();
+    let num_shipyards_of_interest = fleet_decision_facts.shipyards_of_interest.len();
+    let num_marketplaces_ex_shipyards = marketplace_waypoints_ex_shipyards.len();
 
-        let shopping_list_in_order = vec![
-            (ShipType::SHIP_COMMAND_FRIGATE, frigate_task),
-            (ShipType::SHIP_PROBE, probe_task),
-        ];
+    let waypoints_of_interest =
+        fleet_decision_facts.marketplaces_of_interest.iter().chain(fleet_decision_facts.shipyards_of_interest.iter()).unique().collect_vec();
+    let num_waypoints_of_interest = waypoints_of_interest.len();
 
-        FleetPhase {
-            name: FleetPhaseName::InitialExploration,
-            shopping_list_in_order,
-            tasks: Vec::from(tasks),
-        }
+    let fleet_phase = if !has_collected_all_waypoint_details_once {
+        create_initial_exploration_fleet_phase(&system_symbol, num_shipyards_of_interest)
     } else if !is_jump_gate_done {
-        let tasks = [
-            ConstructJumpGate {
-                system_symbol: system_symbol.clone(),
-            },
-            ObserveAllWaypointsOfSystemWithStationaryProbes {
-                system_symbol: system_symbol.clone(),
-            },
-            MineOres {
-                system_symbol: system_symbol.clone(),
-            },
-            SiphonGases {
-                system_symbol: system_symbol.clone(),
-            },
-        ];
-
-        let shipyard_probes = [ShipType::SHIP_PROBE].repeat(fleet_decision_facts.shipyards_of_interest.len());
-        let construction_fleet = [vec![ShipType::SHIP_COMMAND_FRIGATE], [ShipType::SHIP_LIGHT_HAULER].repeat(4)].concat();
-
-        let mining_fleet = [
-            vec![ShipType::SHIP_MINING_DRONE],
-            [
-                ShipType::SHIP_MINING_DRONE,
-                ShipType::SHIP_MINING_DRONE,
-                ShipType::SHIP_MINING_DRONE,
-                ShipType::SHIP_SURVEYOR,
-                ShipType::SHIP_LIGHT_HAULER,
-            ]
-            .repeat(2),
-        ]
-        .concat();
-
-        let siphoning_fleet = [ShipType::SHIP_SIPHON_DRONE].repeat(5);
-
-        let rest_waypoints = diff_waypoint_symbols(&fleet_decision_facts.marketplaces_of_interest, &fleet_decision_facts.shipyards_of_interest);
-        let other_probes = [ShipType::SHIP_PROBE].repeat(rest_waypoints.len());
-
-        // this is compile-time safe - rust knows the length of arrays and restricts out-of-bounds-access
-        let construct_jump_gate_task = tasks[0].clone();
-        let probe_observation_task = tasks[1].clone();
-        let mining_task = tasks[2].clone();
-        let siphoning_task = tasks[3].clone();
-
-        let shopping_list_in_order = shipyard_probes
-            .into_iter()
-            .map(|ship_type| (ship_type, probe_observation_task.clone()))
-            .chain(construction_fleet.into_iter().map(|ship_type| (ship_type, construct_jump_gate_task.clone())))
-            .chain(other_probes.into_iter().map(|ship_type| (ship_type, probe_observation_task.clone())))
-            .chain(mining_fleet.into_iter().map(|ship_type| (ship_type, mining_task.clone())))
-            .chain(siphoning_fleet.into_iter().map(|ship_type| (ship_type, siphoning_task.clone())))
-            .collect_vec();
-
-        FleetPhase {
-            name: FleetPhaseName::ConstructJumpGate,
-            shopping_list_in_order,
-            tasks: tasks.into(),
-        }
+        create_construction_fleet_phase(&system_symbol, num_shipyards_of_interest, num_marketplaces_ex_shipyards)
     } else if is_jump_gate_done {
-        let tasks = [
-            TradeProfitably {
-                system_symbol: system_symbol.clone(),
-            },
-            ObserveAllWaypointsOfSystemWithStationaryProbes {
-                system_symbol: system_symbol.clone(),
-            },
-        ];
-
-        let trade_profitably_task = tasks[0].clone();
-        let probe_observation_task = tasks[1].clone();
-
-        let trading_fleet = [ShipType::SHIP_LIGHT_HAULER].repeat(4);
-
-        let waypoints_of_interest =
-            fleet_decision_facts.marketplaces_of_interest.iter().chain(fleet_decision_facts.shipyards_of_interest.iter()).unique().collect_vec();
-        let probe_observation_fleet = [ShipType::SHIP_PROBE].repeat(waypoints_of_interest.len());
-
-        let shopping_list_in_order = trading_fleet
-            .into_iter()
-            .map(|ship_type| (ship_type, probe_observation_task.clone()))
-            .chain(probe_observation_fleet.into_iter().map(|ship_type| (ship_type, probe_observation_task.clone())))
-            .collect_vec();
-
-        FleetPhase {
-            name: FleetPhaseName::TradeProfitably,
-            shopping_list_in_order,
-            tasks: tasks.into(),
-        }
+        create_trade_profitably_fleet_phase(system_symbol, num_waypoints_of_interest)
     } else {
         unimplemented!("this shouldn't happen - think harder")
     };
@@ -1001,7 +893,121 @@ pub fn compute_fleet_phase_with_tasks(
     //         &tasks
     //     );
 
-    tasks
+    fleet_phase
+}
+
+pub fn create_trade_profitably_fleet_phase(system_symbol: SystemSymbol, num_waypoints_of_interest: usize) -> FleetPhase {
+    let tasks = [
+        TradeProfitably {
+            system_symbol: system_symbol.clone(),
+        },
+        ObserveAllWaypointsOfSystemWithStationaryProbes {
+            system_symbol: system_symbol.clone(),
+        },
+    ];
+
+    let probe_observation_task = tasks[1].clone();
+
+    let trading_fleet = [ShipType::SHIP_LIGHT_HAULER].repeat(4);
+
+    let probe_observation_fleet = [ShipType::SHIP_PROBE].repeat(num_waypoints_of_interest);
+
+    let shopping_list_in_order = trading_fleet
+        .into_iter()
+        .map(|ship_type| (ship_type, probe_observation_task.clone()))
+        .chain(probe_observation_fleet.into_iter().map(|ship_type| (ship_type, probe_observation_task.clone())))
+        .collect_vec();
+
+    FleetPhase {
+        name: FleetPhaseName::TradeProfitably,
+        shopping_list_in_order,
+        tasks: tasks.into(),
+    }
+}
+
+pub fn create_initial_exploration_fleet_phase(system_symbol: &SystemSymbol, num_shipyards_of_interest: usize) -> FleetPhase {
+    let tasks = [
+        CollectMarketInfosOnce {
+            system_symbol: system_symbol.clone(),
+        },
+        ObserveAllWaypointsOfSystemWithStationaryProbes {
+            system_symbol: system_symbol.clone(),
+        },
+    ];
+
+    let frigate_task = tasks[0].clone();
+    let probe_observation_task = tasks[1].clone();
+
+    let shipyard_probes = [ShipType::SHIP_PROBE].repeat(num_shipyards_of_interest);
+
+    let shopping_list_in_order = vec![(ShipType::SHIP_COMMAND_FRIGATE, frigate_task)]
+        .into_iter()
+        .chain(shipyard_probes.into_iter().map(|ship_type| (ship_type, probe_observation_task.clone())))
+        .collect_vec();
+
+    FleetPhase {
+        name: FleetPhaseName::InitialExploration,
+        shopping_list_in_order,
+        tasks: Vec::from(tasks),
+    }
+}
+
+pub fn create_construction_fleet_phase(system_symbol: &SystemSymbol, num_shipyards_of_interest: usize, num_marketplaces_ex_shipyards: usize) -> FleetPhase {
+    let tasks = [
+        ConstructJumpGate {
+            system_symbol: system_symbol.clone(),
+        },
+        ObserveAllWaypointsOfSystemWithStationaryProbes {
+            system_symbol: system_symbol.clone(),
+        },
+        MineOres {
+            system_symbol: system_symbol.clone(),
+        },
+        SiphonGases {
+            system_symbol: system_symbol.clone(),
+        },
+    ];
+
+    let shipyard_probes = [ShipType::SHIP_PROBE].repeat(num_shipyards_of_interest);
+    let construction_fleet = [vec![ShipType::SHIP_COMMAND_FRIGATE], [ShipType::SHIP_LIGHT_HAULER].repeat(4)].concat();
+
+    let mining_fleet = [
+        vec![ShipType::SHIP_MINING_DRONE],
+        [
+            ShipType::SHIP_MINING_DRONE,
+            ShipType::SHIP_MINING_DRONE,
+            ShipType::SHIP_MINING_DRONE,
+            ShipType::SHIP_SURVEYOR,
+            ShipType::SHIP_LIGHT_HAULER,
+        ]
+        .repeat(2),
+    ]
+    .concat();
+
+    let siphoning_fleet = [ShipType::SHIP_SIPHON_DRONE].repeat(5);
+
+    let other_probes = [ShipType::SHIP_PROBE].repeat(num_marketplaces_ex_shipyards);
+
+    // this is compile-time safe - rust knows the length of arrays and restricts out-of-bounds-access
+    let construct_jump_gate_task = tasks[0].clone();
+    let probe_observation_task = tasks[1].clone();
+    let mining_task = tasks[2].clone();
+    let siphoning_task = tasks[3].clone();
+
+    let shopping_list_in_order = shipyard_probes
+        .into_iter()
+        .map(|ship_type| (ship_type, probe_observation_task.clone()))
+        .chain(construction_fleet.into_iter().map(|ship_type| (ship_type, construct_jump_gate_task.clone())))
+        .chain(other_probes.into_iter().map(|ship_type| (ship_type, probe_observation_task.clone())))
+        .chain(mining_fleet.into_iter().map(|ship_type| (ship_type, mining_task.clone())))
+        .chain(siphoning_fleet.into_iter().map(|ship_type| (ship_type, siphoning_task.clone())))
+        .collect_vec();
+
+    FleetPhase {
+        name: FleetPhaseName::ConstructJumpGate,
+        shopping_list_in_order,
+        tasks: tasks.into(),
+    }
 }
 
 fn get_ship_type_of_ship(ship: &Ship) -> Result<ShipType> {
@@ -1113,14 +1119,11 @@ pub fn are_vecs_equal_ignoring_order<T: Eq + Hash>(vec1: &[T], vec2: &[T]) -> bo
 }
 
 pub fn compute_fleets_with_tasks(
-    system_symbol: SystemSymbol,
-    completed_tasks: &Vec<FleetTaskCompletion>,
     facts: &FleetDecisionFacts,
     active_fleets: &HashMap<FleetId, Fleet>,
     active_fleet_task_assignments: &HashMap<FleetId, Vec<FleetTask>>,
-) -> (Vec<Fleet>, Vec<(FleetId, FleetTask)>, FleetPhase) {
-    let fleet_phase = compute_fleet_phase_with_tasks(system_symbol, facts, completed_tasks);
-
+    fleet_phase: &FleetPhase,
+) -> (Vec<Fleet>, Vec<(FleetId, FleetTask)>) {
     let active_fleets_and_tasks: Vec<(Fleet, (FleetId, FleetTask))> = active_fleets
         .iter()
         .map(|(fleet_id, fleet)| {
@@ -1147,7 +1150,7 @@ pub fn compute_fleets_with_tasks(
         .collect_vec();
 
     let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) = new_fleets_with_tasks.into_iter().chain(active_fleets_and_tasks).unzip();
-    (fleets, fleet_tasks, fleet_phase)
+    (fleets, fleet_tasks)
 }
 
 pub fn create_fleet(super_fleet_config: FleetConfig, fleet_task: FleetTask, id: i32) -> Result<(Fleet, (FleetId, FleetTask))> {
@@ -1158,6 +1161,38 @@ pub fn create_fleet(super_fleet_config: FleetConfig, fleet_task: FleetTask, id: 
     };
 
     Ok((fleet, (id, fleet_task)))
+}
+
+pub fn get_next_ship_purchase(ship_map: &HashMap<ShipSymbol, Ship>, fleet_phase: &FleetPhase) -> Option<(ShipType, FleetTask)> {
+    get_all_next_ship_purchases(ship_map, fleet_phase).first().cloned()
+}
+
+pub fn get_all_next_ship_purchases(ship_map: &HashMap<ShipSymbol, Ship>, fleet_phase: &FleetPhase) -> Vec<(ShipType, FleetTask)> {
+    let mut current_ship_types: HashMap<ShipType, u32> = HashMap::new();
+    let mut purchases = Vec::new();
+
+    // Count current ships by type
+    for (_, s) in ship_map.iter() {
+        let ship_type = get_ship_type_of_ship(&s).expect(format!("role_to_ship_type_mapping for ShipFrameSymbol {}", &s.frame.symbol.to_string()).as_str());
+        current_ship_types.entry(ship_type).and_modify(|counter| *counter += 1).or_insert(1);
+    }
+
+    // Create a mutable copy to track remaining ships
+    let mut remaining_ships = current_ship_types.clone();
+
+    // Check each item in the shopping list
+    for (ship_type, fleet_task) in fleet_phase.shopping_list_in_order.iter() {
+        let num_of_ships_left = remaining_ships.get(ship_type).unwrap_or(&0);
+        if num_of_ships_left.is_zero() {
+            // Need to purchase this ship
+            purchases.push((*ship_type, fleet_task.clone()));
+        } else {
+            // We already have this ship - decrement the count
+            remaining_ships.entry(*ship_type).and_modify(|counter| *counter -= 1);
+        }
+    }
+
+    purchases
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Display)]

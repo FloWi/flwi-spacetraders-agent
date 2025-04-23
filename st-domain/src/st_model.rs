@@ -116,7 +116,7 @@ pub struct Chart {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[allow(non_camel_case_types)]
 pub struct ShipTypeEntry {
-    r#type: ShipType,
+    pub r#type: ShipType,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Display)]
