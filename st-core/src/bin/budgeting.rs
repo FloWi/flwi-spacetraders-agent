@@ -1017,7 +1017,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("  Net profit: {} credits", final_ticket.financials.current_profit);
     println!("  Operating expenses: {} credits", final_ticket.financials.operating_expenses);
 
-    print_event_history(final_ticket);
+    println!("{}", final_ticket.generate_event_history());
 
     // Check updated fleet budget
     let updated_budget = finance.get_fleet_budget(&trading_fleet_id)?;
@@ -1118,7 +1118,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("\nCompleted ship purchase transaction");
 
     let final_ticket = finance.get_ticket(ticket_id)?;
-    print_event_history(final_ticket);
+    println!("{}", final_ticket.generate_event_history());
 
     // Check final fleet budgets
     let trading_budget = finance.get_fleet_budget(&trading_fleet_id)?;
@@ -1130,169 +1130,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("  Market Observation Fleet assets: {} credits", observer_budget.asset_value);
 
     Ok(())
-}
-
-fn print_event_history(final_ticket: TransactionTicket) {
-    // Show event history
-    println!("\nEvent History:");
-    for (i, event) in final_ticket.event_history.iter().enumerate() {
-        match event {
-            TransactionEvent::TicketCreated { timestamp } => {
-                println!("  {}. Ticket created at {}", i + 1, timestamp);
-            }
-            TransactionEvent::TicketFunded { timestamp, source } => {
-                println!(
-                    "  {}. Ticket funded with {} credits from {:?} at {}",
-                    i + 1,
-                    source.amount,
-                    source.source_fleet,
-                    timestamp
-                );
-            }
-            TransactionEvent::ExecutionStarted { timestamp } => {
-                println!("  {}. Execution started at {}", i + 1, timestamp);
-            }
-            TransactionEvent::WaypointArrived { timestamp, waypoint, .. } => {
-                println!("  {}. Arrived at {} at {}", i + 1, waypoint, timestamp);
-            }
-            TransactionEvent::WaypointDeparted {
-                timestamp,
-                waypoint,
-                destination,
-                ..
-            } => {
-                println!("  {}. Departed from {} to {} at {}", i + 1, waypoint, destination, timestamp);
-            }
-            TransactionEvent::MarketObserved { timestamp, waypoint, .. } => {
-                println!("  {}. Observed market at {} at {}", i + 1, waypoint, timestamp);
-            }
-            TransactionEvent::GoodsPurchased {
-                timestamp,
-                waypoint,
-                good,
-                quantity,
-                price_per_unit,
-                total_cost,
-            } => {
-                println!(
-                    "  {}. Purchased {} units of {} at {} credits each (total: {}) at {} at {}",
-                    i + 1,
-                    quantity,
-                    good,
-                    price_per_unit,
-                    total_cost,
-                    waypoint,
-                    timestamp
-                );
-            }
-            TransactionEvent::GoodsSold {
-                timestamp,
-                waypoint,
-                good,
-                quantity,
-                price_per_unit,
-                total_revenue,
-            } => {
-                println!(
-                    "  {}. Sold {} units of {} at {} credits each (total: {}) at {} at {}",
-                    i + 1,
-                    quantity,
-                    good,
-                    price_per_unit,
-                    total_revenue,
-                    waypoint,
-                    timestamp
-                );
-            }
-            TransactionEvent::ShipRefueled {
-                timestamp,
-                waypoint,
-                fuel_added,
-                total_cost,
-                ..
-            } => {
-                println!(
-                    "  {}. Refueled {} units (cost: {}) at {} at {}",
-                    i + 1,
-                    fuel_added,
-                    total_cost,
-                    waypoint,
-                    timestamp
-                );
-            }
-            TransactionEvent::GoalSkipped { timestamp, goal_index, reason } => {
-                println!("  {}. Skipped goal {} (reason: {}) at {}", i + 1, goal_index, reason, timestamp);
-            }
-            TransactionEvent::TicketCompleted { timestamp, final_profit } => {
-                println!("  {}. Ticket completed with profit of {} at {}", i + 1, final_profit, timestamp);
-            }
-            TransactionEvent::TicketFailed { timestamp, reason } => {
-                eprintln!("  {}. Ticket failed at {}. Reason: {}", i + 1, timestamp, reason);
-            }
-            TransactionEvent::FundsReturned {
-                timestamp,
-                unspent_funds_returned,
-                revenue_returned,
-                net_profit,
-            } => {
-                println!(
-                    "  {}. Funds returned to fleet at {}. Unspent funds: {}; revenue returned: {}; net_profit: {}",
-                    i + 1,
-                    timestamp,
-                    unspent_funds_returned,
-                    revenue_returned,
-                    net_profit
-                );
-            }
-            TransactionEvent::ShipPurchased {
-                timestamp,
-                ship_type,
-                ship_id,
-                total_cost,
-                beneficiary_fleet,
-                ..
-            } => {
-                println!(
-                    "  {}. Purchased {} ship (ID: {}) for {} credits for fleet {} at {}",
-                    i + 1,
-                    ship_type,
-                    ship_id,
-                    total_cost,
-                    beneficiary_fleet,
-                    timestamp
-                );
-            }
-            TransactionEvent::ShipTransferred {
-                timestamp,
-                ship_id,
-                from_fleet,
-                to_fleet,
-            } => {
-                println!(
-                    "  {}. Transferred ship {} from fleet #{} to fleet #{} at {}",
-                    i + 1,
-                    ship_id,
-                    from_fleet,
-                    to_fleet,
-                    timestamp
-                );
-            }
-            TransactionEvent::AssetTransferred {
-                timestamp,
-                asset_type,
-                asset_value,
-                to_fleet,
-            } => {
-                println!(
-                    "  {}. Asset transferred. asset_type {} asset_value {} to fleet #{}",
-                    i + 1,
-                    asset_type,
-                    asset_value,
-                    to_fleet
-                );
-            }
-        }
-    }
 }
 
 impl TransactionGoal {
@@ -1483,5 +1320,190 @@ impl TransactionTicket {
         // Add event to history
         self.event_history.push(event.clone());
         self.updated_at = Utc::now();
+    }
+
+    fn generate_event_history(&self) -> String {
+        // Show event history
+
+        use std::fmt::Write;
+
+        let mut result = String::new();
+
+        writeln!(&mut result, "\nEvent History:").unwrap();
+        for (i, event) in self.event_history.iter().enumerate() {
+            match event {
+                TransactionEvent::TicketCreated { timestamp } => {
+                    writeln!(&mut result, "  {}. Ticket created at {}", i + 1, timestamp).unwrap();
+                }
+                TransactionEvent::TicketFunded { timestamp, source } => {
+                    writeln!(
+                        &mut result,
+                        "  {}. Ticket funded with {} credits from {:?} at {}",
+                        i + 1,
+                        source.amount,
+                        source.source_fleet,
+                        timestamp
+                    )
+                    .unwrap();
+                }
+                TransactionEvent::ExecutionStarted { timestamp } => {
+                    writeln!(&mut result, "  {}. Execution started at {}", i + 1, timestamp).unwrap();
+                }
+                TransactionEvent::WaypointArrived { timestamp, waypoint, .. } => {
+                    writeln!(&mut result, "  {}. Arrived at {} at {}", i + 1, waypoint, timestamp).unwrap();
+                }
+                TransactionEvent::WaypointDeparted {
+                    timestamp,
+                    waypoint,
+                    destination,
+                    ..
+                } => {
+                    writeln!(&mut result, "  {}. Departed from {} to {} at {}", i + 1, waypoint, destination, timestamp).unwrap();
+                }
+                TransactionEvent::MarketObserved { timestamp, waypoint, .. } => {
+                    writeln!(&mut result, "  {}. Observed market at {} at {}", i + 1, waypoint, timestamp).unwrap();
+                }
+                TransactionEvent::GoodsPurchased {
+                    timestamp,
+                    waypoint,
+                    good,
+                    quantity,
+                    price_per_unit,
+                    total_cost,
+                } => {
+                    writeln!(
+                        &mut result,
+                        "  {}. Purchased {} units of {} at {} credits each (total: {}) at {} at {}",
+                        i + 1,
+                        quantity,
+                        good,
+                        price_per_unit,
+                        total_cost,
+                        waypoint,
+                        timestamp
+                    )
+                    .unwrap();
+                }
+                TransactionEvent::GoodsSold {
+                    timestamp,
+                    waypoint,
+                    good,
+                    quantity,
+                    price_per_unit,
+                    total_revenue,
+                } => {
+                    writeln!(
+                        &mut result,
+                        "  {}. Sold {} units of {} at {} credits each (total: {}) at {} at {}",
+                        i + 1,
+                        quantity,
+                        good,
+                        price_per_unit,
+                        total_revenue,
+                        waypoint,
+                        timestamp
+                    )
+                    .unwrap();
+                }
+                TransactionEvent::ShipRefueled {
+                    timestamp,
+                    waypoint,
+                    fuel_added,
+                    total_cost,
+                    ..
+                } => {
+                    writeln!(
+                        &mut result,
+                        "  {}. Refueled {} units (cost: {}) at {} at {}",
+                        i + 1,
+                        fuel_added,
+                        total_cost,
+                        waypoint,
+                        timestamp
+                    )
+                    .unwrap();
+                }
+                TransactionEvent::GoalSkipped { timestamp, goal_index, reason } => {
+                    writeln!(&mut result, "  {}. Skipped goal {} (reason: {}) at {}", i + 1, goal_index, reason, timestamp).unwrap();
+                }
+                TransactionEvent::TicketCompleted { timestamp, final_profit } => {
+                    writeln!(&mut result, "  {}. Ticket completed with profit of {} at {}", i + 1, final_profit, timestamp).unwrap();
+                }
+                TransactionEvent::TicketFailed { timestamp, reason } => {
+                    eprintln!("  {}. Ticket failed at {}. Reason: {}", i + 1, timestamp, reason);
+                }
+                TransactionEvent::FundsReturned {
+                    timestamp,
+                    unspent_funds_returned,
+                    revenue_returned,
+                    net_profit,
+                } => {
+                    writeln!(
+                        &mut result,
+                        "  {}. Funds returned to fleet at {}. Unspent funds: {}; revenue returned: {}; net_profit: {}",
+                        i + 1,
+                        timestamp,
+                        unspent_funds_returned,
+                        revenue_returned,
+                        net_profit
+                    )
+                    .unwrap();
+                }
+                TransactionEvent::ShipPurchased {
+                    timestamp,
+                    ship_type,
+                    ship_id,
+                    total_cost,
+                    beneficiary_fleet,
+                    ..
+                } => {
+                    writeln!(
+                        &mut result,
+                        "  {}. Purchased {} ship (ID: {}) for {} credits for fleet {} at {}",
+                        i + 1,
+                        ship_type,
+                        ship_id,
+                        total_cost,
+                        beneficiary_fleet,
+                        timestamp
+                    )
+                    .unwrap();
+                }
+                TransactionEvent::ShipTransferred {
+                    timestamp,
+                    ship_id,
+                    from_fleet,
+                    to_fleet,
+                } => {
+                    writeln!(
+                        &mut result,
+                        "  {}. Transferred ship {} from fleet #{} to fleet #{} at {}",
+                        i + 1,
+                        ship_id,
+                        from_fleet,
+                        to_fleet,
+                        timestamp
+                    )
+                    .unwrap();
+                }
+                TransactionEvent::AssetTransferred {
+                    timestamp,
+                    asset_type,
+                    asset_value,
+                    to_fleet,
+                } => {
+                    writeln!(
+                        &mut result,
+                        "  {}. Asset transferred. asset_type {} asset_value {} to fleet #{}",
+                        i + 1,
+                        asset_type,
+                        asset_value,
+                        to_fleet
+                    )
+                    .unwrap();
+                }
+            }
+        }
+        result
     }
 }
