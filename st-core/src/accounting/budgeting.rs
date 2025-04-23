@@ -230,6 +230,7 @@ pub enum FinanceError {
     InsufficientFunds,
     TicketNotFound,
     FleetNotFound,
+    FleetAlreadyBudgeted,
     InvalidOperation,
     InvalidState,
     GoalNotFound,
@@ -244,6 +245,7 @@ impl fmt::Display for FinanceError {
             Self::InvalidOperation => write!(f, "Invalid operation"),
             Self::InvalidState => write!(f, "Invalid state for operation"),
             Self::GoalNotFound => write!(f, "Goal not found"),
+            Self::FleetAlreadyBudgeted => write!(f, "Fleet already budgeted"),
         }
     }
 }

@@ -15,9 +15,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mining_fleet_id = FleetId(2);
     let market_observation_fleet_id = FleetId(3);
 
-    finance.create_fleet_budget(mining_fleet_id.clone(), Credits::new(300_000))?;
-    finance.create_fleet_budget(trading_fleet_id.clone(), Credits::new(500_000))?;
-    finance.create_fleet_budget(market_observation_fleet_id.clone(), Credits::new(50_000))?;
+    finance.create_fleet_budget(mining_fleet_id.clone(), Credits::new(300_000), Credits::new(0))?;
+    finance.create_fleet_budget(trading_fleet_id.clone(), Credits::new(500_000), Credits::new(0))?;
+    finance.create_fleet_budget(market_observation_fleet_id.clone(), Credits::new(50_000), Credits::new(0))?;
 
     println!("Created fleets with initial budgets:");
     println!("  TRADING_FLEET: {}", finance.get_fleet_budget(&trading_fleet_id)?.available_capital);

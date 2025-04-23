@@ -39,7 +39,7 @@ pub trait Treasurer {
 
     fn get_active_ticket_for_vessel(&self, vessel_id: &ShipSymbol) -> Result<Option<TransactionTicket>, Self::Error>;
 
-    fn create_fleet_budget(&mut self, fleet_id: FleetId, initial_capital: Credits) -> Result<(), Self::Error>;
+    fn create_fleet_budget(&mut self, fleet_id: FleetId, initial_capital: Credits, credits: Credits) -> Result<(), Self::Error>;
 
     fn get_fleet_budget(&self, fleet_id: &FleetId) -> Result<FleetBudget, Self::Error>;
 
@@ -509,18 +509,26 @@ impl Treasurer for InMemoryTreasurer {
         }
     }
 
-    fn create_fleet_budget(&mut self, fleet_id: FleetId, initial_capital: Credits) -> Result<(), Self::Error> {
+    fn create_fleet_budget(&mut self, fleet_id: FleetId, initial_capital: Credits, operating_reserve: Credits) -> Result<(), Self::Error> {
         // Check if we have enough in treasury
-        if self.treasury < initial_capital {
+        if initial_capital < operating_reserve {
+            return Err(FinanceError::InvalidState);
+        }
+
+        if self.treasury < (initial_capital) {
             return Err(FinanceError::InsufficientFunds);
+        }
+
+        if self.fleet_budgets.contains_key(&fleet_id) {
+            return Err(FinanceError::FleetAlreadyBudgeted);
         }
 
         // Create new fleet budget
         let budget = FleetBudget {
             fleet_id: fleet_id.clone(),
-            total_capital: initial_capital,
+            total_capital: initial_capital - operating_reserve,
             available_capital: initial_capital,
-            operating_reserve: Credits::new(0),
+            operating_reserve,
             earmarked_funds: HashMap::new(),
             asset_value: Credits::new(0),
             funded_transactions: HashSet::new(),
@@ -571,8 +579,9 @@ impl Treasurer for InMemoryTreasurer {
                 let command_ship_fleet_id =
                     fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::CollectMarketInfosOnce { .. }).then_some(id)).unwrap();
 
-                let command_fleet_budget = self.treasury.min(Credits::new(50_000));
-                self.create_fleet_budget(command_ship_fleet_id.clone(), command_fleet_budget)?;
+                let command_fleet_budget = self.treasury.min(Credits::new(51_000));
+                let command_ship_reserve = Credits::new(1_000);
+                self.create_fleet_budget(command_ship_fleet_id.clone(), command_fleet_budget, command_ship_reserve)?;
 
                 let rest_budget = self.treasury;
                 // let ships_within_budget = ship_price_info.get_all_ship_purchases_within_budget(new_ship_types, rest_budget.0);
@@ -580,7 +589,8 @@ impl Treasurer for InMemoryTreasurer {
                 //
                 // let probes_budget = ships_within_budget.iter().map(|(_, _, price)| *price as i64).sum();
 
-                self.create_fleet_budget(market_observation_fleet_id.clone(), rest_budget)?;
+                self.create_fleet_budget(market_observation_fleet_id.clone(), rest_budget, Credits::new(0))?;
+                println!("Budget redistributed");
             }
             FleetPhaseName::ConstructJumpGate => {}
             FleetPhaseName::TradeProfitably => {}
@@ -616,10 +626,11 @@ mod tests {
     #[test(tokio::test)]
     //#[tokio::test] // for accessing runtime-infos with tokio-conso&le
     async fn distribute_budget_among_fleets_based_on_fleet_phase() -> Result<()> {
-        let mut finance = InMemoryTreasurer::new(Credits::new(1_000_000));
-
         let (bmc, client) = get_test_universe().await;
-        let system_symbol = client.get_agent().await?.data.headquarters.system_symbol();
+        let agent = client.get_agent().await?.data;
+        let system_symbol = agent.headquarters.system_symbol();
+
+        let mut finance = InMemoryTreasurer::new(Credits::new(agent.credits));
 
         FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
 
@@ -641,9 +652,21 @@ mod tests {
 
         let ship_fleet_assignment = FleetAdmiral::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
 
-        finance.redistribute_distribute_fleet_budgets(&fleet_phase, &facts, &fleets, &fleet_tasks, &ship_fleet_assignment, &ship_map, &ship_price_info)?;
+        let command_ship_fleet_id =
+            fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::CollectMarketInfosOnce { .. }).then_some(id)).unwrap();
 
-        assert_eq!(facts.ships.len(), 2);
+        let market_observation_fleet_id = fleet_tasks
+            .iter()
+            .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. }).then_some(id))
+            .unwrap();
+
+        finance.redistribute_distribute_fleet_budgets(&fleet_phase, &facts, &fleets, &fleet_tasks, &ship_fleet_assignment, &ship_map, &ship_price_info)?;
+        let command_fleet_budget = finance.get_fleet_budget(command_ship_fleet_id)?;
+        let market_observation_fleet_budget = finance.get_fleet_budget(market_observation_fleet_id)?;
+
+        assert_eq!(Credits::new(50_000), command_fleet_budget.total_capital);
+        assert_eq!(Credits::new(1_000), command_fleet_budget.operating_reserve);
+        assert_eq!(Credits::new(124_000), market_observation_fleet_budget.total_capital);
 
         Ok(())
     }
