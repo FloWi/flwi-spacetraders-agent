@@ -1,22 +1,18 @@
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use st_domain::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use uuid::Uuid;
 
 // Import the event-driven finance system types (simplified versions included here)
-type ShipType = String;
-type ShipId = String;
-type FleetId = String;
-type WaypointSymbol = String;
-type GoodSymbol = String;
 type Credits = i64;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TransactionGoal {
     Purchase {
-        good: GoodSymbol,
+        good: TradeGoodSymbol,
         target_quantity: u32,
         available_quantity: Option<u32>,
         acquired_quantity: u32,
@@ -26,7 +22,7 @@ pub enum TransactionGoal {
     },
 
     Sell {
-        good: GoodSymbol,
+        good: TradeGoodSymbol,
         target_quantity: u32,
         sold_quantity: u32,
         estimated_price: Credits,
@@ -48,126 +44,6 @@ pub enum TransactionGoal {
         beneficiary_fleet: FleetId,
         shipyard_waypoint: WaypointSymbol,
     },
-}
-
-impl TransactionGoal {
-    pub fn is_completed(&self) -> bool {
-        match self {
-            Self::Purchase {
-                target_quantity,
-                acquired_quantity,
-                ..
-            } => *acquired_quantity >= *target_quantity,
-
-            Self::Sell {
-                target_quantity,
-                sold_quantity,
-                ..
-            } => *sold_quantity >= *target_quantity,
-
-            Self::Refuel {
-                target_fuel_level,
-                current_fuel_level,
-                ..
-            } => *current_fuel_level >= *target_fuel_level,
-            TransactionGoal::ShipPurchase {
-                ship_type,
-                estimated_cost,
-                has_been_purchased,
-                beneficiary_fleet,
-                shipyard_waypoint: waypoint,
-            } => *has_been_purchased,
-        }
-    }
-
-    pub fn is_optional(&self) -> bool {
-        match self {
-            Self::Refuel { is_optional, .. } => *is_optional,
-            _ => false,
-        }
-    }
-
-    pub fn get_waypoint(&self) -> &WaypointSymbol {
-        match self {
-            Self::Purchase { source_waypoint, .. } => source_waypoint,
-            Self::Sell { destination_waypoint, .. } => destination_waypoint,
-            Self::Refuel { waypoint, .. } => waypoint,
-            TransactionGoal::ShipPurchase {
-                shipyard_waypoint: waypoint, ..
-            } => waypoint,
-        }
-    }
-
-    pub fn update_progress(&mut self, event: &TransactionEvent) -> bool {
-        match (self, event) {
-            // Purchase goal progress update
-            (
-                Self::Purchase {
-                    good: goal_good,
-                    acquired_quantity,
-                    ..
-                },
-                TransactionEvent::GoodsPurchased { good, quantity, .. },
-            ) if goal_good == good => {
-                *acquired_quantity += quantity;
-                true
-            }
-
-            // Sell goal progress update
-            (
-                Self::Sell {
-                    good: goal_good,
-                    sold_quantity,
-                    ..
-                },
-                TransactionEvent::GoodsSold { good, quantity, .. },
-            ) if goal_good == good => {
-                *sold_quantity += quantity;
-                true
-            }
-
-            // Refuel goal progress update
-            (Self::Refuel { current_fuel_level, .. }, TransactionEvent::ShipRefueled { new_fuel_level, .. }) => {
-                *current_fuel_level = *new_fuel_level;
-                true
-            }
-
-            // Ship purchase goal progress update
-            (
-                Self::ShipPurchase {
-                    ship_type: goal_ship_type,
-                    beneficiary_fleet: goal_fleet,
-                    has_been_purchased,
-                    ..
-                },
-                TransactionEvent::ShipPurchased {
-                    ship_type, beneficiary_fleet, ..
-                },
-            ) if goal_ship_type == ship_type && goal_fleet == beneficiary_fleet => {
-                *has_been_purchased = true;
-                true
-            }
-
-            // Market observation updates
-            (
-                Self::Purchase {
-                    available_quantity,
-                    source_waypoint,
-                    good,
-                    ..
-                },
-                TransactionEvent::MarketObserved { waypoint, goods_supply, .. },
-            ) if waypoint == source_waypoint => {
-                if let Some(supply) = goods_supply.get(good) {
-                    *available_quantity = Some(*supply);
-                    return true;
-                }
-                false
-            }
-
-            _ => false,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -239,14 +115,14 @@ pub enum TransactionEvent {
     MarketObserved {
         timestamp: DateTime<Utc>,
         waypoint: WaypointSymbol,
-        goods_prices: HashMap<GoodSymbol, Credits>,
-        goods_supply: HashMap<GoodSymbol, u32>,
+        goods_prices: HashMap<TradeGoodSymbol, Credits>,
+        goods_supply: HashMap<TradeGoodSymbol, u32>,
     },
 
     GoodsPurchased {
         timestamp: DateTime<Utc>,
         waypoint: WaypointSymbol,
-        good: GoodSymbol,
+        good: TradeGoodSymbol,
         quantity: u32,
         price_per_unit: Credits,
         total_cost: Credits,
@@ -255,7 +131,7 @@ pub enum TransactionEvent {
     GoodsSold {
         timestamp: DateTime<Utc>,
         waypoint: WaypointSymbol,
-        good: GoodSymbol,
+        good: TradeGoodSymbol,
         quantity: u32,
         price_per_unit: Credits,
         total_revenue: Credits,
@@ -295,15 +171,15 @@ pub enum TransactionEvent {
     ShipPurchased {
         timestamp: DateTime<Utc>,
         waypoint: WaypointSymbol,
-        ship_type: String,
-        ship_id: ShipId,
+        ship_type: ShipType,
+        ship_id: ShipSymbol,
         total_cost: Credits,
         beneficiary_fleet: FleetId,
     },
 
     ShipTransferred {
         timestamp: DateTime<Utc>,
-        ship_id: ShipId,
+        ship_id: ShipSymbol,
         from_fleet: FleetId,
         to_fleet: FleetId,
     },
@@ -311,7 +187,7 @@ pub enum TransactionEvent {
         timestamp: DateTime<Utc>,
         asset_type: String,
         asset_value: Credits,
-        to_fleet: String,
+        to_fleet: FleetId,
     },
 }
 
@@ -320,7 +196,7 @@ pub struct TransactionTicket {
     pub id: Uuid,
     pub ticket_type: TicketType,
     pub status: TicketStatus,
-    pub executing_vessel: ShipId,
+    pub executing_vessel: ShipSymbol,
     pub executing_fleet: FleetId,
     pub initiating_fleet: FleetId,
     pub beneficiary_fleet: FleetId,
@@ -334,77 +210,6 @@ pub struct TransactionTicket {
     pub current_waypoint: Option<WaypointSymbol>,
     pub event_history: Vec<TransactionEvent>,
     pub metadata: HashMap<String, String>,
-}
-
-impl TransactionTicket {
-    pub fn all_required_goals_completed(&self) -> bool {
-        self.goals.iter().all(|goal| goal.is_completed() || goal.is_optional())
-    }
-
-    pub fn update_from_event(&mut self, event: &TransactionEvent) {
-        // Update the current waypoint based on arrival/departure events
-        match event {
-            TransactionEvent::WaypointArrived { waypoint, .. } => {
-                self.current_waypoint = Some(waypoint.clone());
-            }
-            TransactionEvent::WaypointDeparted { .. } => {
-                // Don't clear the waypoint as the ship is still technically at this waypoint
-                // until it arrives at the next one
-            }
-            _ => {}
-        }
-
-        // Update financials based on events
-        match event {
-            TransactionEvent::GoodsPurchased { total_cost, .. } => {
-                self.financials.spent_capital += total_cost;
-                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
-            }
-            TransactionEvent::GoodsSold { total_revenue, .. } => {
-                self.financials.earned_revenue += total_revenue;
-                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
-            }
-            TransactionEvent::ShipRefueled { total_cost, .. } => {
-                self.financials.spent_capital += total_cost;
-                self.financials.operating_expenses += total_cost;
-                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
-            }
-
-            TransactionEvent::TicketCreated { .. } => {}
-            TransactionEvent::TicketFunded { .. } => {}
-            TransactionEvent::ExecutionStarted { .. } => {}
-            TransactionEvent::WaypointArrived { .. } => {}
-            TransactionEvent::WaypointDeparted { .. } => {}
-            TransactionEvent::MarketObserved { .. } => {}
-            TransactionEvent::GoalSkipped { .. } => {}
-            TransactionEvent::TicketCompleted { .. } => {}
-            TransactionEvent::TicketFailed { .. } => {}
-            TransactionEvent::FundsReturned { .. } => {}
-            TransactionEvent::ShipPurchased {
-                timestamp,
-                waypoint,
-                ship_type,
-                ship_id,
-                total_cost,
-                beneficiary_fleet,
-            } => {
-                self.financials.spent_capital += total_cost;
-                self.financials.operating_expenses += total_cost;
-                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
-            }
-            TransactionEvent::ShipTransferred { .. } => {}
-            TransactionEvent::AssetTransferred { .. } => {}
-        }
-
-        // Update goal progress based on events
-        for goal in &mut self.goals {
-            goal.update_progress(event);
-        }
-
-        // Add event to history
-        self.event_history.push(event.clone());
-        self.updated_at = Utc::now();
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -460,10 +265,10 @@ pub trait EventDrivenFinanceSystem {
     fn create_ticket(
         &mut self,
         ticket_type: TicketType,
-        executing_vessel: ShipId,
-        executing_fleet: FleetId,
-        initiating_fleet: FleetId,
-        beneficiary_fleet: FleetId,
+        executing_vessel: ShipSymbol,
+        executing_fleet: &FleetId,
+        initiating_fleet: &FleetId,
+        beneficiary_fleet: &FleetId,
         goals: Vec<TransactionGoal>,
         estimated_completion: DateTime<Utc>,
         priority: f64,
@@ -483,7 +288,7 @@ pub trait EventDrivenFinanceSystem {
 
     fn complete_ticket(&mut self, id: Uuid) -> Result<(), Self::Error>;
 
-    fn get_active_ticket_for_vessel(&self, vessel_id: &ShipId) -> Result<Option<TransactionTicket>, Self::Error>;
+    fn get_active_ticket_for_vessel(&self, vessel_id: &ShipSymbol) -> Result<Option<TransactionTicket>, Self::Error>;
 
     fn create_fleet_budget(&mut self, fleet_id: FleetId, initial_capital: Credits) -> Result<(), Self::Error>;
 
@@ -495,7 +300,7 @@ struct InMemoryEventFinanceSystem {
     tickets: HashMap<Uuid, TransactionTicket>,
     fleet_budgets: HashMap<FleetId, FleetBudget>,
     treasury: Credits,
-    active_tickets_by_vessel: HashMap<ShipId, Uuid>,
+    active_tickets_by_vessel: HashMap<ShipSymbol, Uuid>,
 }
 
 impl InMemoryEventFinanceSystem {
@@ -581,18 +386,18 @@ impl EventDrivenFinanceSystem for InMemoryEventFinanceSystem {
     fn create_ticket(
         &mut self,
         ticket_type: TicketType,
-        executing_vessel: ShipId,
-        executing_fleet: FleetId,
-        initiating_fleet: FleetId,
-        beneficiary_fleet: FleetId,
+        executing_vessel: ShipSymbol,
+        executing_fleet: &FleetId,
+        initiating_fleet: &FleetId,
+        beneficiary_fleet: &FleetId,
         goals: Vec<TransactionGoal>,
         estimated_completion: DateTime<Utc>,
         priority: f64,
     ) -> Result<Uuid, Self::Error> {
         // Check if fleets exist
-        if !self.fleet_budgets.contains_key(&executing_fleet)
-            || !self.fleet_budgets.contains_key(&initiating_fleet)
-            || !self.fleet_budgets.contains_key(&beneficiary_fleet)
+        if !self.fleet_budgets.contains_key(executing_fleet)
+            || !self.fleet_budgets.contains_key(initiating_fleet)
+            || !self.fleet_budgets.contains_key(beneficiary_fleet)
         {
             return Err(FinanceError::FleetNotFound);
         }
@@ -635,17 +440,17 @@ impl EventDrivenFinanceSystem for InMemoryEventFinanceSystem {
         self.tickets.insert(ticket_id, ticket);
 
         // Update fleet budget records to reference this ticket
-        if let Some(budget) = self.fleet_budgets.get_mut(&executing_fleet) {
+        if let Some(budget) = self.fleet_budgets.get_mut(executing_fleet) {
             budget.executing_transactions.insert(ticket_id);
         }
 
-        if let Some(budget) = self.fleet_budgets.get_mut(&initiating_fleet) {
+        if let Some(budget) = self.fleet_budgets.get_mut(initiating_fleet) {
             if initiating_fleet != executing_fleet {
                 budget.beneficiary_transactions.insert(ticket_id);
             }
         }
 
-        if let Some(budget) = self.fleet_budgets.get_mut(&beneficiary_fleet) {
+        if let Some(budget) = self.fleet_budgets.get_mut(beneficiary_fleet) {
             if beneficiary_fleet != executing_fleet && beneficiary_fleet != initiating_fleet {
                 budget.beneficiary_transactions.insert(ticket_id);
             }
@@ -845,7 +650,7 @@ impl EventDrivenFinanceSystem for InMemoryEventFinanceSystem {
                 ticket.update_from_event(&reconciliation_event);
 
                 println!(
-                    "Finance reconciliation: Returned {} unspent funds and {} revenue to fleet {}. Net profit: {}",
+                    "Finance reconciliation: Returned {} unspent funds and {} revenue to fleet {:?}. Net profit: {}",
                     unspent_funds, earned_revenue, beneficiary_fleet, profit
                 );
             }
@@ -868,7 +673,7 @@ impl EventDrivenFinanceSystem for InMemoryEventFinanceSystem {
                         funding_budget.available_capital += unspent_funds;
 
                         println!(
-                            "Finance reconciliation: Returned {} unspent funds to funding fleet {}.",
+                            "Finance reconciliation: Returned {} unspent funds to funding fleet {:?}.",
                             unspent_funds, source.source_fleet
                         );
                     }
@@ -890,7 +695,7 @@ impl EventDrivenFinanceSystem for InMemoryEventFinanceSystem {
                     beneficiary_budget.asset_value += ship_value;
 
                     println!(
-                        "Asset reconciliation: Added ship worth {} credits to {} fleet assets.",
+                        "Asset reconciliation: Added ship worth {} credits to {:?} fleet assets.",
                         ship_value, beneficiary_fleet
                     );
                 }
@@ -939,7 +744,7 @@ impl EventDrivenFinanceSystem for InMemoryEventFinanceSystem {
         Ok(())
     }
 
-    fn get_active_ticket_for_vessel(&self, vessel_id: &ShipId) -> Result<Option<TransactionTicket>, Self::Error> {
+    fn get_active_ticket_for_vessel(&self, vessel_id: &ShipSymbol) -> Result<Option<TransactionTicket>, Self::Error> {
         if let Some(ticket_id) = self.active_tickets_by_vessel.get(vessel_id) {
             Ok(Some(self.get_ticket(*ticket_id)?))
         } else {
@@ -985,22 +790,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut finance = InMemoryEventFinanceSystem::new(1_000_000);
 
     // Create some fleets
-    finance.create_fleet_budget("TRADING_FLEET".to_string(), 500_000)?;
-    finance.create_fleet_budget("MINING_FLEET".to_string(), 300_000)?;
-    finance.create_fleet_budget("MARKET_OBSERVATION_FLEET".to_string(), 50_000)?;
+    let trading_fleet_id = FleetId(1);
+    let mining_fleet_id = FleetId(2);
+    let market_observation_fleet_id = FleetId(3);
+
+    finance.create_fleet_budget(mining_fleet_id.clone(), 300_000)?;
+    finance.create_fleet_budget(trading_fleet_id.clone(), 500_000)?;
+    finance.create_fleet_budget(market_observation_fleet_id.clone(), 50_000)?;
 
     println!("Created fleets with initial budgets:");
-    println!(
-        "  TRADING_FLEET: {} credits",
-        finance.get_fleet_budget(&"TRADING_FLEET".to_string())?.available_capital
-    );
-    println!(
-        "  MINING_FLEET: {} credits",
-        finance.get_fleet_budget(&"MINING_FLEET".to_string())?.available_capital
-    );
+    println!("  TRADING_FLEET: {} credits", finance.get_fleet_budget(&trading_fleet_id)?.available_capital);
+    println!("  MINING_FLEET: {} credits", finance.get_fleet_budget(&mining_fleet_id)?.available_capital);
     println!(
         "  MARKET_OBSERVATION_FLEET: {} credits",
-        finance.get_fleet_budget(&"MARKET_OBSERVATION_FLEET".to_string())?.available_capital
+        finance.get_fleet_budget(&market_observation_fleet_id)?.available_capital
     );
 
     println!("Created fleets with budgets");
@@ -1009,30 +812,30 @@ fn main() -> Result<(), Box<dyn Error>> {
     let goals = vec![
         // Goal 1: Purchase goods at X1-YZ45
         TransactionGoal::Purchase {
-            good: "PRECIOUS_METALS".to_string(),
+            good: TradeGoodSymbol::PRECIOUS_STONES,
             target_quantity: 100,
             available_quantity: None,
             acquired_quantity: 0,
             estimated_price: 2_000,
             max_acceptable_price: Some(2_200),
-            source_waypoint: "X1-YZ45".to_string(),
+            source_waypoint: WaypointSymbol("X1-YZ45".to_string()),
         },
         // Goal 2: Refuel at X1-YZ46 (optional)
         TransactionGoal::Refuel {
             target_fuel_level: 100,
             current_fuel_level: 60,
             estimated_cost_per_unit: 250,
-            waypoint: "X1-YZ46".to_string(),
+            waypoint: WaypointSymbol("X1-YZ46".to_string()),
             is_optional: true,
         },
         // Goal 3: Sell goods at X1-YZ47
         TransactionGoal::Sell {
-            good: "PRECIOUS_METALS".to_string(),
+            good: TradeGoodSymbol::PRECIOUS_STONES,
             target_quantity: 100,
             sold_quantity: 0,
             estimated_price: 2_500,
             min_acceptable_price: Some(2_400),
-            destination_waypoint: "X1-YZ47".to_string(),
+            destination_waypoint: WaypointSymbol("X1-YZ47".to_string()),
         },
     ];
 
@@ -1040,10 +843,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let estimated_completion = Utc::now() + Duration::hours(3);
     let ticket_id = finance.create_ticket(
         TicketType::Trading,
-        "SHIP-1".to_string(),
-        "TRADING_FLEET".to_string(),
-        "TRADING_FLEET".to_string(),
-        "TRADING_FLEET".to_string(),
+        ShipSymbol("SHIP-1".to_string()),
+        &trading_fleet_id,
+        &trading_fleet_id,
+        &trading_fleet_id,
         goals,
         estimated_completion,
         10.0,
@@ -1055,7 +858,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     finance.fund_ticket(
         ticket_id,
         FundingSource {
-            source_fleet: "TRADING_FLEET".to_string(),
+            source_fleet: trading_fleet_id.clone(),
             amount: 215_000, // Purchase cost + refuel cost buffer
         },
     )?;
@@ -1072,8 +875,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // STEP 1: Ship departs from HQ to the purchase location
     let departure_event = TransactionEvent::WaypointDeparted {
         timestamp: Utc::now(),
-        waypoint: "HQ".to_string(),
-        destination: "X1-YZ45".to_string(),
+        waypoint: WaypointSymbol("HQ".to_string()),
+        destination: WaypointSymbol("X1-YZ45".to_string()),
         estimated_arrival: Utc::now() + Duration::minutes(5),
     };
     finance.record_event(ticket_id, departure_event)?;
@@ -1082,7 +885,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // STEP 2: Ship arrives at purchase location
     let arrival_event = TransactionEvent::WaypointArrived {
         timestamp: Utc::now(),
-        waypoint: "X1-YZ45".to_string(),
+        waypoint: WaypointSymbol("X1-YZ45".to_string()),
         fuel_level: Some(80),
         cargo_used: Some(0),
         cargo_capacity: Some(100),
@@ -1092,14 +895,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // STEP 3: Ship observes the market
     let mut market_prices = HashMap::new();
-    market_prices.insert("PRECIOUS_METALS".to_string(), 2100);
+    market_prices.insert(TradeGoodSymbol::PRECIOUS_STONES, 2100);
 
     let mut market_supply = HashMap::new();
-    market_supply.insert("PRECIOUS_METALS".to_string(), 200);
+    market_supply.insert(TradeGoodSymbol::PRECIOUS_STONES, 200);
 
     let market_event = TransactionEvent::MarketObserved {
         timestamp: Utc::now(),
-        waypoint: "X1-YZ45".to_string(),
+        waypoint: WaypointSymbol("X1-YZ45".to_string()),
         goods_prices: market_prices,
         goods_supply: market_supply,
     };
@@ -1110,8 +913,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // The price is acceptable (2100 <= 2200 max acceptable price)
     let purchase_event = TransactionEvent::GoodsPurchased {
         timestamp: Utc::now(),
-        waypoint: "X1-YZ45".to_string(),
-        good: "PRECIOUS_METALS".to_string(),
+        waypoint: WaypointSymbol("X1-YZ45".to_string()),
+        good: TradeGoodSymbol::PRECIOUS_STONES,
         quantity: 100,
         price_per_unit: 2100,
         total_cost: 210_000,
@@ -1128,8 +931,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // STEP 5: Ship departs from purchase location to refuel location
     let departure_event = TransactionEvent::WaypointDeparted {
         timestamp: Utc::now(),
-        waypoint: "X1-YZ45".to_string(),
-        destination: "X1-YZ46".to_string(),
+        waypoint: WaypointSymbol("X1-YZ45".to_string()),
+        destination: WaypointSymbol("X1-YZ46".to_string()),
         estimated_arrival: Utc::now() + Duration::minutes(3),
     };
     finance.record_event(ticket_id, departure_event)?;
@@ -1138,7 +941,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // STEP 6: Ship arrives at refuel location
     let arrival_event = TransactionEvent::WaypointArrived {
         timestamp: Utc::now(),
-        waypoint: "X1-YZ46".to_string(),
+        waypoint: WaypointSymbol("X1-YZ46".to_string()),
         fuel_level: Some(65), // Reduced from travel
         cargo_used: Some(100),
         cargo_capacity: Some(100),
@@ -1154,8 +957,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // STEP 8: Ship departs from refuel location to sell location
     let departure_event = TransactionEvent::WaypointDeparted {
         timestamp: Utc::now(),
-        waypoint: "X1-YZ46".to_string(),
-        destination: "X1-YZ47".to_string(),
+        waypoint: WaypointSymbol("X1-YZ46".to_string()),
+        destination: WaypointSymbol("X1-YZ47".to_string()),
         estimated_arrival: Utc::now() + Duration::minutes(4),
     };
     finance.record_event(ticket_id, departure_event)?;
@@ -1164,7 +967,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // STEP 9: Ship arrives at sell location
     let arrival_event = TransactionEvent::WaypointArrived {
         timestamp: Utc::now(),
-        waypoint: "X1-YZ47".to_string(),
+        waypoint: WaypointSymbol("X1-YZ47".to_string()),
         fuel_level: Some(50), // Further reduced
         cargo_used: Some(100),
         cargo_capacity: Some(100),
@@ -1174,11 +977,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // STEP 10: Ship observes the sell market
     let mut sell_prices = HashMap::new();
-    sell_prices.insert("PRECIOUS_METALS".to_string(), 2700); // Good price!
+    sell_prices.insert(TradeGoodSymbol::PRECIOUS_STONES, 2700); // Good price!
 
     let market_event = TransactionEvent::MarketObserved {
         timestamp: Utc::now(),
-        waypoint: "X1-YZ47".to_string(),
+        waypoint: WaypointSymbol("X1-YZ47".to_string()),
         goods_prices: sell_prices,
         goods_supply: HashMap::new(),
     };
@@ -1189,8 +992,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // The price is very good (2700 > 2400 min acceptable price)
     let sell_event = TransactionEvent::GoodsSold {
         timestamp: Utc::now(),
-        waypoint: "X1-YZ47".to_string(),
-        good: "PRECIOUS_METALS".to_string(),
+        waypoint: WaypointSymbol("X1-YZ47".to_string()),
+        good: TradeGoodSymbol::PRECIOUS_STONES,
         quantity: 100,
         price_per_unit: 2700,
         total_revenue: 270_000,
@@ -1217,31 +1020,31 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_event_history(final_ticket);
 
     // Check updated fleet budget
-    let updated_budget = finance.get_fleet_budget(&"TRADING_FLEET".to_string())?;
+    let updated_budget = finance.get_fleet_budget(&trading_fleet_id)?;
     println!("\nUpdated Trading Fleet Budget:");
     println!("  Available capital: {} credits", updated_budget.available_capital);
 
     println!(
         "  Market Observation Fleet: {} credits",
-        finance.get_fleet_budget(&"MARKET_OBSERVATION_FLEET".to_string())?.available_capital
+        finance.get_fleet_budget(&market_observation_fleet_id)?.available_capital
     );
 
     // Create a ship purchase ticket
     // Trading fleet will buy a ship for the market observation fleet
     let ship_purchase_goal = TransactionGoal::ShipPurchase {
-        ship_type: "LIGHT_HAULER".to_string(),
+        ship_type: ShipType::SHIP_LIGHT_HAULER,
         estimated_cost: 25_000,
-        beneficiary_fleet: "MARKET_OBSERVATION_FLEET".to_string(),
-        shipyard_waypoint: "X1-SHIPYARD".to_string(),
+        beneficiary_fleet: market_observation_fleet_id.clone(),
+        shipyard_waypoint: WaypointSymbol("X1-SHIPYARD".to_string()),
         has_been_purchased: false,
     };
 
     let ticket_id = finance.create_ticket(
         TicketType::FleetExpansion,
-        "TRADING-SHIP-1".to_string(),           // Ship executing the purchase
-        "TRADING_FLEET".to_string(),            // Fleet owning the ship
-        "TRADING_FLEET".to_string(),            // Fleet initiating the purchase
-        "MARKET_OBSERVATION_FLEET".to_string(), // Fleet benefiting from the purchase
+        ShipSymbol("TRADING-SHIP-1".to_string()), // Ship executing the purchase
+        &trading_fleet_id,                        // Fleet owning the ship
+        &trading_fleet_id,                        // Fleet initiating the purchase
+        &market_observation_fleet_id,             // Fleet benefiting from the purchase
         vec![ship_purchase_goal],
         Utc::now() + Duration::hours(1),
         5.0,
@@ -1253,7 +1056,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     finance.fund_ticket(
         ticket_id,
         FundingSource {
-            source_fleet: "MARKET_OBSERVATION_FLEET".to_string(),
+            source_fleet: market_observation_fleet_id.clone(),
             amount: 25_000,
         },
     )?;
@@ -1270,8 +1073,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Ship departs from current location to shipyard
     let departure_event = TransactionEvent::WaypointDeparted {
         timestamp: Utc::now(),
-        waypoint: "TRADING-HQ".to_string(),
-        destination: "X1-SHIPYARD".to_string(),
+        waypoint: WaypointSymbol("TRADING-HQ".to_string()),
+        destination: WaypointSymbol("X1-SHIPYARD".to_string()),
         estimated_arrival: Utc::now() + Duration::minutes(10),
     };
     finance.record_event(ticket_id, departure_event)?;
@@ -1280,7 +1083,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Ship arrives at shipyard
     let arrival_event = TransactionEvent::WaypointArrived {
         timestamp: Utc::now(),
-        waypoint: "X1-SHIPYARD".to_string(),
+        waypoint: WaypointSymbol("X1-SHIPYARD".to_string()),
         fuel_level: Some(70),
         cargo_used: Some(0),
         cargo_capacity: Some(100),
@@ -1291,11 +1094,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Purchase the new ship
     let purchase_event = TransactionEvent::ShipPurchased {
         timestamp: Utc::now(),
-        waypoint: "X1-SHIPYARD".to_string(),
-        ship_type: "LIGHT_HAULER".to_string(),
-        ship_id: "OBSERVER-SHIP-1".to_string(),
+        waypoint: WaypointSymbol("X1-SHIPYARD".to_string()),
+        ship_type: ShipType::SHIP_LIGHT_HAULER,
+        ship_id: ShipSymbol("OBSERVER-SHIP-1".to_string()),
         total_cost: 25_000,
-        beneficiary_fleet: "MARKET_OBSERVATION_FLEET".to_string(),
+        beneficiary_fleet: market_observation_fleet_id.clone(),
     };
     finance.record_event(ticket_id, purchase_event)?;
     println!("Purchased LIGHT_HAULER ship for 25,000 credits (ID: OBSERVER-SHIP-1)");
@@ -1303,9 +1106,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Transfer the ship to the observation fleet
     let transfer_event = TransactionEvent::ShipTransferred {
         timestamp: Utc::now(),
-        ship_id: "OBSERVER-SHIP-1".to_string(),
-        from_fleet: "TRADING_FLEET".to_string(),
-        to_fleet: "MARKET_OBSERVATION_FLEET".to_string(),
+        ship_id: ShipSymbol("OBSERVER-SHIP-1".to_string()),
+        from_fleet: trading_fleet_id.clone(),
+        to_fleet: market_observation_fleet_id.clone(),
     };
     finance.record_event(ticket_id, transfer_event)?;
     println!("Transferred ship OBSERVER-SHIP-1 to MARKET_OBSERVATION_FLEET");
@@ -1318,8 +1121,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_event_history(final_ticket);
 
     // Check final fleet budgets
-    let trading_budget = finance.get_fleet_budget(&"TRADING_FLEET".to_string())?;
-    let observer_budget = finance.get_fleet_budget(&"MARKET_OBSERVATION_FLEET".to_string())?;
+    let trading_budget = finance.get_fleet_budget(&trading_fleet_id)?;
+    let observer_budget = finance.get_fleet_budget(&market_observation_fleet_id)?;
 
     println!("\nFinal fleet budgets:");
     println!("  Trading Fleet: {} credits", trading_budget.available_capital);
@@ -1339,7 +1142,7 @@ fn print_event_history(final_ticket: TransactionTicket) {
             }
             TransactionEvent::TicketFunded { timestamp, source } => {
                 println!(
-                    "  {}. Ticket funded with {} credits from {} at {}",
+                    "  {}. Ticket funded with {} credits from {:?} at {}",
                     i + 1,
                     source.amount,
                     source.source_fleet,
@@ -1466,7 +1269,7 @@ fn print_event_history(final_ticket: TransactionTicket) {
                 to_fleet,
             } => {
                 println!(
-                    "  {}. Transferred ship {} from fleet {} to fleet {} at {}",
+                    "  {}. Transferred ship {} from fleet #{} to fleet #{} at {}",
                     i + 1,
                     ship_id,
                     from_fleet,
@@ -1481,7 +1284,7 @@ fn print_event_history(final_ticket: TransactionTicket) {
                 to_fleet,
             } => {
                 println!(
-                    "  {}. Asset transferred. asset_type {} asset_value {} to fleet {}",
+                    "  {}. Asset transferred. asset_type {} asset_value {} to fleet #{}",
                     i + 1,
                     asset_type,
                     asset_value,
@@ -1489,5 +1292,196 @@ fn print_event_history(final_ticket: TransactionTicket) {
                 );
             }
         }
+    }
+}
+
+impl TransactionGoal {
+    pub fn is_completed(&self) -> bool {
+        match self {
+            Self::Purchase {
+                target_quantity,
+                acquired_quantity,
+                ..
+            } => *acquired_quantity >= *target_quantity,
+
+            Self::Sell {
+                target_quantity,
+                sold_quantity,
+                ..
+            } => *sold_quantity >= *target_quantity,
+
+            Self::Refuel {
+                target_fuel_level,
+                current_fuel_level,
+                ..
+            } => *current_fuel_level >= *target_fuel_level,
+            TransactionGoal::ShipPurchase {
+                ship_type,
+                estimated_cost,
+                has_been_purchased,
+                beneficiary_fleet,
+                shipyard_waypoint: waypoint,
+            } => *has_been_purchased,
+        }
+    }
+
+    pub fn is_optional(&self) -> bool {
+        match self {
+            Self::Refuel { is_optional, .. } => *is_optional,
+            _ => false,
+        }
+    }
+
+    pub fn get_waypoint(&self) -> &WaypointSymbol {
+        match self {
+            Self::Purchase { source_waypoint, .. } => source_waypoint,
+            Self::Sell { destination_waypoint, .. } => destination_waypoint,
+            Self::Refuel { waypoint, .. } => waypoint,
+            TransactionGoal::ShipPurchase {
+                shipyard_waypoint: waypoint, ..
+            } => waypoint,
+        }
+    }
+
+    pub fn update_progress(&mut self, event: &TransactionEvent) -> bool {
+        match (self, event) {
+            // Purchase goal progress update
+            (
+                Self::Purchase {
+                    good: goal_good,
+                    acquired_quantity,
+                    ..
+                },
+                TransactionEvent::GoodsPurchased { good, quantity, .. },
+            ) if goal_good == good => {
+                *acquired_quantity += quantity;
+                true
+            }
+
+            // Sell goal progress update
+            (
+                Self::Sell {
+                    good: goal_good,
+                    sold_quantity,
+                    ..
+                },
+                TransactionEvent::GoodsSold { good, quantity, .. },
+            ) if goal_good == good => {
+                *sold_quantity += quantity;
+                true
+            }
+
+            // Refuel goal progress update
+            (Self::Refuel { current_fuel_level, .. }, TransactionEvent::ShipRefueled { new_fuel_level, .. }) => {
+                *current_fuel_level = *new_fuel_level;
+                true
+            }
+
+            // Ship purchase goal progress update
+            (
+                Self::ShipPurchase {
+                    ship_type: goal_ship_type,
+                    beneficiary_fleet: goal_fleet,
+                    has_been_purchased,
+                    ..
+                },
+                TransactionEvent::ShipPurchased {
+                    ship_type, beneficiary_fleet, ..
+                },
+            ) if goal_ship_type == ship_type && goal_fleet == beneficiary_fleet => {
+                *has_been_purchased = true;
+                true
+            }
+
+            // Market observation updates
+            (
+                Self::Purchase {
+                    available_quantity,
+                    source_waypoint,
+                    good,
+                    ..
+                },
+                TransactionEvent::MarketObserved { waypoint, goods_supply, .. },
+            ) if waypoint == source_waypoint => {
+                if let Some(supply) = goods_supply.get(good) {
+                    *available_quantity = Some(*supply);
+                    return true;
+                }
+                false
+            }
+
+            _ => false,
+        }
+    }
+}
+
+impl TransactionTicket {
+    pub fn all_required_goals_completed(&self) -> bool {
+        self.goals.iter().all(|goal| goal.is_completed() || goal.is_optional())
+    }
+
+    pub fn update_from_event(&mut self, event: &TransactionEvent) {
+        // Update the current waypoint based on arrival/departure events
+        match event {
+            TransactionEvent::WaypointArrived { waypoint, .. } => {
+                self.current_waypoint = Some(waypoint.clone());
+            }
+            TransactionEvent::WaypointDeparted { .. } => {
+                // Don't clear the waypoint as the ship is still technically at this waypoint
+                // until it arrives at the next one
+            }
+            _ => {}
+        }
+
+        // Update financials based on events
+        match event {
+            TransactionEvent::GoodsPurchased { total_cost, .. } => {
+                self.financials.spent_capital += total_cost;
+                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
+            }
+            TransactionEvent::GoodsSold { total_revenue, .. } => {
+                self.financials.earned_revenue += total_revenue;
+                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
+            }
+            TransactionEvent::ShipRefueled { total_cost, .. } => {
+                self.financials.spent_capital += total_cost;
+                self.financials.operating_expenses += total_cost;
+                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
+            }
+
+            TransactionEvent::TicketCreated { .. } => {}
+            TransactionEvent::TicketFunded { .. } => {}
+            TransactionEvent::ExecutionStarted { .. } => {}
+            TransactionEvent::WaypointArrived { .. } => {}
+            TransactionEvent::WaypointDeparted { .. } => {}
+            TransactionEvent::MarketObserved { .. } => {}
+            TransactionEvent::GoalSkipped { .. } => {}
+            TransactionEvent::TicketCompleted { .. } => {}
+            TransactionEvent::TicketFailed { .. } => {}
+            TransactionEvent::FundsReturned { .. } => {}
+            TransactionEvent::ShipPurchased {
+                timestamp,
+                waypoint,
+                ship_type,
+                ship_id,
+                total_cost,
+                beneficiary_fleet,
+            } => {
+                self.financials.spent_capital += total_cost;
+                self.financials.operating_expenses += total_cost;
+                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
+            }
+            TransactionEvent::ShipTransferred { .. } => {}
+            TransactionEvent::AssetTransferred { .. } => {}
+        }
+
+        // Update goal progress based on events
+        for goal in &mut self.goals {
+            goal.update_progress(event);
+        }
+
+        // Add event to history
+        self.event_history.push(event.clone());
+        self.updated_at = Utc::now();
     }
 }

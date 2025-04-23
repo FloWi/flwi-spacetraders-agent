@@ -37,6 +37,12 @@ impl Display for WaypointSymbol {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct ShipSymbol(pub String);
 
+impl Display for ShipSymbol {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 pub type GetJumpGateResponse = Data<JumpGate>;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
