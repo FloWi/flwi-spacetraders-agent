@@ -997,8 +997,8 @@ pub fn create_construction_fleet_phase(system_symbol: &SystemSymbol, num_shipyar
     let shopping_list_in_order = shipyard_probes
         .into_iter()
         .map(|ship_type| (ship_type, probe_observation_task.clone()))
-        .chain(construction_fleet.into_iter().map(|ship_type| (ship_type, construct_jump_gate_task.clone())))
         .chain(other_probes.into_iter().map(|ship_type| (ship_type, probe_observation_task.clone())))
+        .chain(construction_fleet.into_iter().map(|ship_type| (ship_type, construct_jump_gate_task.clone())))
         .chain(mining_fleet.into_iter().map(|ship_type| (ship_type, mining_task.clone())))
         .chain(siphoning_fleet.into_iter().map(|ship_type| (ship_type, siphoning_task.clone())))
         .collect_vec();

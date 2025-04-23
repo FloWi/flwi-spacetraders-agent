@@ -4,8 +4,10 @@ use crate::accounting::budgeting::{
 use crate::accounting::credits::Credits;
 use crate::fleet::fleet;
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use st_domain::{Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, Ship, ShipPriceInfo, ShipSymbol, ShipType, WaypointSymbol};
 use std::collections::{HashMap, HashSet};
+use std::ops::Not;
 use uuid::Uuid;
 
 pub trait Treasurer {
@@ -568,6 +570,8 @@ impl Treasurer for InMemoryTreasurer {
         let all_next_ship_purchases = fleet::get_all_next_ship_purchases(ship_map, fleet_phase);
         let (new_ship_types, tasks_of_new_ships): (Vec<_>, Vec<_>) = all_next_ship_purchases.iter().cloned().unzip();
 
+        let fleet_task_lookup = fleet_tasks.iter().map(|(id, fleet_task)| (fleet_task.clone(), id.clone())).collect::<HashMap<_, _>>();
+
         let market_observation_fleet_id = fleet_tasks
             .iter()
             .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. }).then_some(id))
@@ -590,9 +594,52 @@ impl Treasurer for InMemoryTreasurer {
                 // let probes_budget = ships_within_budget.iter().map(|(_, _, price)| *price as i64).sum();
 
                 self.create_fleet_budget(market_observation_fleet_id.clone(), rest_budget, Credits::new(0))?;
-                println!("Budget redistributed");
             }
-            FleetPhaseName::ConstructJumpGate => {}
+            FleetPhaseName::ConstructJumpGate => {
+                let construction_fleet_id =
+                    fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ConstructJumpGate { .. }).then_some(id)).unwrap();
+
+                let fleet_sizes = ship_fleet_assignment.iter().counts_by(|(_ss, fleet_id)| fleet_id.clone());
+
+                let reserve_per_ship = Credits::new(1_000);
+                let trading_budget_per_ship = Credits::new(75_000);
+                let num_trading_ships = fleet_sizes.get(construction_fleet_id).cloned().unwrap_or_default() as i64;
+                let trading_budget = Credits::new((trading_budget_per_ship.0 + reserve_per_ship.0) * num_trading_ships);
+
+                let construction_fleet_budget = self.treasury.min(trading_budget);
+                let reserve_for_trading_fleet = Credits::new(reserve_per_ship.0 * num_trading_ships);
+
+                self.create_fleet_budget(construction_fleet_id.clone(), construction_fleet_budget, reserve_for_trading_fleet)?;
+
+                let rest_budget = self.treasury;
+                let ship_purchases_running_total = ship_price_info.get_running_total_of_all_ship_purchases(new_ship_types);
+                let affordable_ships =
+                    ship_purchases_running_total.iter().take_while(|(_, _, _, running_total)| (*running_total as i64) < rest_budget.0).collect_vec();
+
+                let ship_purchases_per_fleet = affordable_ships
+                    .iter()
+                    .zip(tasks_of_new_ships)
+                    .map(|((ship_type, wps, price, _), fleet_task)| (fleet_task, *ship_type, wps.clone(), *price))
+                    .into_group_map_by(|tup| tup.0.clone())
+                    .into_iter()
+                    .map(|(fleet_task, entries)| {
+                        let fleet_task_total = entries.iter().map(|(_, _, _, p)| p).sum::<u32>();
+                        let fleet_id = fleet_task_lookup.get(&fleet_task).unwrap();
+                        (fleet_task, fleet_id.clone(), entries, fleet_task_total)
+                    })
+                    .collect_vec();
+
+                let rest_budget = self.treasury;
+                for (_fleet_task, fleet_id, _entries, fleet_task_total) in ship_purchases_per_fleet {
+                    self.create_fleet_budget(fleet_id.clone(), Credits::new(fleet_task_total as i64), Credits::new(0))?;
+                }
+
+                // we create a budget for the rest of the fleets
+                let other_fleets = fleet_tasks.iter().map(|(id, _)| id.clone()).filter(|id| self.fleet_budgets.contains_key(id).not()).collect_vec();
+                for other_fleet_id in other_fleets {
+                    self.create_fleet_budget(other_fleet_id, Credits::new(0), Credits::new(0))?
+                }
+            }
             FleetPhaseName::TradeProfitably => {}
         }
         Ok(())
@@ -625,7 +672,7 @@ mod tests {
 
     #[test(tokio::test)]
     //#[tokio::test] // for accessing runtime-infos with tokio-conso&le
-    async fn distribute_budget_among_fleets_based_on_fleet_phase() -> Result<()> {
+    async fn distribute_budget_among_fleets_based_for_initial_exploration_fleet_phase() -> Result<()> {
         let (bmc, client) = get_test_universe().await;
         let agent = client.get_agent().await?.data;
         let system_symbol = agent.headquarters.system_symbol();
@@ -667,6 +714,67 @@ mod tests {
         assert_eq!(Credits::new(50_000), command_fleet_budget.total_capital);
         assert_eq!(Credits::new(1_000), command_fleet_budget.operating_reserve);
         assert_eq!(Credits::new(124_000), market_observation_fleet_budget.total_capital);
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    //#[tokio::test] // for accessing runtime-infos with tokio-conso&le
+    async fn distribute_budget_among_fleets_based_for_create_construction_fleet_phase() -> Result<()> {
+        let (bmc, client) = get_test_universe().await;
+        let agent = client.get_agent().await?.data;
+        let system_symbol = agent.headquarters.system_symbol();
+
+        let mut finance = InMemoryTreasurer::new(Credits::new(agent.credits));
+
+        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
+
+        let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
+
+        let marketplaces_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(facts.marketplaces_of_interest.iter().cloned());
+        let shipyards_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(facts.shipyards_of_interest.iter().cloned());
+        let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest.difference(&shipyards_of_interest).cloned().collect_vec();
+
+        let fleet_phase = fleet::create_construction_fleet_phase(&system_symbol, facts.shipyards_of_interest.len(), marketplaces_ex_shipyards.len());
+
+        let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) =
+            fleet::compute_fleets_with_tasks(&facts, &Default::default(), &Default::default(), &fleet_phase);
+
+        let ship_map = facts.ships.iter().map(|s| (s.symbol.clone(), s.clone())).collect();
+
+        let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
+
+        let ship_fleet_assignment = FleetAdmiral::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
+
+        let construction_fleet_id =
+            fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ConstructJumpGate { .. }).then_some(id)).unwrap();
+
+        let market_observation_fleet_id = fleet_tasks
+            .iter()
+            .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. }).then_some(id))
+            .unwrap();
+
+        let mining_fleet_id = fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::MineOres { .. }).then_some(id)).unwrap();
+
+        let siphoning_fleet_id = fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::SiphonGases { .. }).then_some(id)).unwrap();
+
+        finance.redistribute_distribute_fleet_budgets(&fleet_phase, &facts, &fleets, &fleet_tasks, &ship_fleet_assignment, &ship_map, &ship_price_info)?;
+        let construction_fleet_budget = finance.get_fleet_budget(construction_fleet_id)?;
+        let market_observation_fleet_budget = finance.get_fleet_budget(market_observation_fleet_id)?;
+        let mining_fleet_budget = finance.get_fleet_budget(mining_fleet_id)?;
+        let siphoning_fleet_budget = finance.get_fleet_budget(siphoning_fleet_id)?;
+
+        assert_eq!(Credits::new(75_000), construction_fleet_budget.total_capital);
+        assert_eq!(Credits::new(1_000), construction_fleet_budget.operating_reserve);
+
+        assert_eq!(Credits::new(75000), market_observation_fleet_budget.total_capital); // 3 probes à 25k each (estimated for now, since we don't have accurate marketdata yet)
+        assert_eq!(Credits::new(0), market_observation_fleet_budget.operating_reserve);
+
+        assert_eq!(Credits::new(0), mining_fleet_budget.total_capital); // 3 probes à 25k each (estimated for now, since we don't have accurate marketdata yet)
+        assert_eq!(Credits::new(0), mining_fleet_budget.operating_reserve);
+
+        assert_eq!(Credits::new(0), siphoning_fleet_budget.total_capital); // 3 probes à 25k each (estimated for now, since we don't have accurate marketdata yet)
+        assert_eq!(Credits::new(0), siphoning_fleet_budget.operating_reserve);
 
         Ok(())
     }

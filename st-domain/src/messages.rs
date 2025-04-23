@@ -411,18 +411,18 @@ pub struct ShipPriceInfo {
 impl ShipPriceInfo {
     pub fn guess_price_for_ship(ship_type: &ShipType) -> Option<u32> {
         match ship_type {
-            ShipType::SHIP_PROBE => Some(30_000),
-            ShipType::SHIP_MINING_DRONE => None,
-            ShipType::SHIP_SIPHON_DRONE => None,
+            ShipType::SHIP_PROBE => Some(25_000),
+            ShipType::SHIP_LIGHT_HAULER => Some(277_000),
+            ShipType::SHIP_LIGHT_SHUTTLE => Some(90_000),
+            ShipType::SHIP_SIPHON_DRONE => Some(40_000),
+            ShipType::SHIP_MINING_DRONE => Some(42_000),
+            ShipType::SHIP_SURVEYOR => Some(30_000),
             ShipType::SHIP_INTERCEPTOR => None,
-            ShipType::SHIP_LIGHT_HAULER => None,
             ShipType::SHIP_COMMAND_FRIGATE => None,
             ShipType::SHIP_EXPLORER => None,
             ShipType::SHIP_HEAVY_FREIGHTER => None,
-            ShipType::SHIP_LIGHT_SHUTTLE => None,
             ShipType::SHIP_ORE_HOUND => None,
             ShipType::SHIP_REFINING_FREIGHTER => None,
-            ShipType::SHIP_SURVEYOR => None,
             ShipType::SHIP_BULK_FREIGHTER => None,
         }
     }
@@ -458,7 +458,7 @@ impl ShipPriceInfo {
         })
     }
 
-    pub fn get_all_ship_purchases_within_budget(&self, shopping_list: Vec<ShipType>, budget: i64) -> Vec<(ShipType, WaypointSymbol, u32)> {
+    pub fn get_running_total_of_all_ship_purchases(&self, shopping_list: Vec<ShipType>) -> Vec<(ShipType, WaypointSymbol, u32, u32)> {
         let purchase_price_map: HashMap<ShipType, Vec<(WaypointSymbol, u32)>> = self.compute_ship_type_purchase_price_map();
         let purchase_location_map: HashMap<ShipType, Vec<WaypointSymbol>> = self.compute_ship_type_purchase_location_map();
 
@@ -482,8 +482,7 @@ impl ShipPriceInfo {
                 *acc += price;
                 Some((ship_type, wps, price, *acc))
             })
-            .take_while(|(_, _, _, total)| *total as i64 <= budget)
-            .map(|(ship_type, wps, price, _)| (ship_type, wps.clone(), *price))
+            .map(|(ship_type, wps, price, running_total)| (ship_type, wps.clone(), *price, running_total))
             .collect()
     }
 }
