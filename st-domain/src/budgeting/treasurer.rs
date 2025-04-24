@@ -2,13 +2,12 @@ use crate::budgeting::budgeting::{
     FinanceError, FleetBudget, FundingSource, TicketFinancials, TicketStatus, TicketType, TransactionEvent, TransactionGoal, TransactionTicket,
 };
 use crate::budgeting::credits::Credits;
-use crate::{Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, Ship, ShipPriceInfo, ShipSymbol, ShipType};
+use crate::{Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, Ship, ShipPriceInfo, ShipSymbol, ShipType, TicketId};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
-use uuid::Uuid;
 
 pub trait Treasurer {
     type Error;
@@ -23,19 +22,19 @@ pub trait Treasurer {
         goals: Vec<TransactionGoal>,
         estimated_completion: DateTime<Utc>,
         priority: f64,
-    ) -> Result<Uuid, Self::Error>;
+    ) -> Result<TicketId, Self::Error>;
 
-    fn get_ticket(&self, id: Uuid) -> Result<TransactionTicket, Self::Error>;
+    fn get_ticket(&self, id: TicketId) -> Result<TransactionTicket, Self::Error>;
 
-    fn fund_ticket(&mut self, id: Uuid, source: FundingSource) -> Result<(), Self::Error>;
+    fn fund_ticket(&mut self, id: TicketId, source: FundingSource) -> Result<(), Self::Error>;
 
-    fn start_ticket_execution(&mut self, id: Uuid) -> Result<(), Self::Error>;
+    fn start_ticket_execution(&mut self, id: TicketId) -> Result<(), Self::Error>;
 
-    fn record_event(&mut self, id: Uuid, event: TransactionEvent) -> Result<(), Self::Error>;
+    fn record_event(&mut self, id: TicketId, event: TransactionEvent) -> Result<(), Self::Error>;
 
-    fn update_goal(&mut self, id: Uuid, goal_index: usize, updated_goal: TransactionGoal) -> Result<(), Self::Error>;
+    fn update_goal(&mut self, id: TicketId, goal_index: usize, updated_goal: TransactionGoal) -> Result<(), Self::Error>;
 
-    fn complete_ticket(&mut self, id: Uuid) -> Result<(), Self::Error>;
+    fn complete_ticket(&mut self, id: TicketId) -> Result<(), Self::Error>;
 
     fn get_active_ticket_for_vessel(&self, vessel_id: &ShipSymbol) -> Result<Option<TransactionTicket>, Self::Error>;
 
@@ -62,10 +61,10 @@ pub trait Treasurer {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct InMemoryTreasurer {
-    tickets: HashMap<Uuid, TransactionTicket>,
+    tickets: HashMap<TicketId, TransactionTicket>,
     fleet_budgets: HashMap<FleetId, FleetBudget>,
     treasury: Credits,
-    active_tickets_by_vessel: HashMap<ShipSymbol, Uuid>,
+    active_tickets_by_vessel: HashMap<ShipSymbol, TicketId>,
 }
 
 impl InMemoryTreasurer {
@@ -152,7 +151,7 @@ impl Treasurer for InMemoryTreasurer {
         goals: Vec<TransactionGoal>,
         estimated_completion: DateTime<Utc>,
         priority: f64,
-    ) -> Result<Uuid, Self::Error> {
+    ) -> Result<TicketId, Self::Error> {
         // Check if fleets exist
         if !self.fleet_budgets.contains_key(executing_fleet)
             || !self.fleet_budgets.contains_key(initiating_fleet)
@@ -164,7 +163,7 @@ impl Treasurer for InMemoryTreasurer {
         let required_capital = self.calculate_required_capital(&goals);
         let projected_profit = self.calculate_projected_profit(&goals);
 
-        let ticket_id = Uuid::new_v4();
+        let ticket_id = TicketId::new();
         let now = Utc::now();
 
         let ticket = TransactionTicket {
@@ -217,11 +216,11 @@ impl Treasurer for InMemoryTreasurer {
         Ok(ticket_id)
     }
 
-    fn get_ticket(&self, id: Uuid) -> Result<TransactionTicket, Self::Error> {
+    fn get_ticket(&self, id: TicketId) -> Result<TransactionTicket, Self::Error> {
         self.tickets.get(&id).cloned().ok_or(FinanceError::TicketNotFound)
     }
 
-    fn fund_ticket(&mut self, id: Uuid, source: FundingSource) -> Result<(), Self::Error> {
+    fn fund_ticket(&mut self, id: TicketId, source: FundingSource) -> Result<(), Self::Error> {
         // Get the ticket
         let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
 
@@ -253,7 +252,7 @@ impl Treasurer for InMemoryTreasurer {
         Ok(())
     }
 
-    fn start_ticket_execution(&mut self, id: Uuid) -> Result<(), Self::Error> {
+    fn start_ticket_execution(&mut self, id: TicketId) -> Result<(), Self::Error> {
         let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
 
         // Check if ticket is funded
@@ -274,7 +273,7 @@ impl Treasurer for InMemoryTreasurer {
         Ok(())
     }
 
-    fn record_event(&mut self, id: Uuid, event: TransactionEvent) -> Result<(), Self::Error> {
+    fn record_event(&mut self, id: TicketId, event: TransactionEvent) -> Result<(), Self::Error> {
         let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
 
         // Process the event
@@ -288,7 +287,7 @@ impl Treasurer for InMemoryTreasurer {
         Ok(())
     }
 
-    fn update_goal(&mut self, id: Uuid, goal_index: usize, updated_goal: TransactionGoal) -> Result<(), Self::Error> {
+    fn update_goal(&mut self, id: TicketId, goal_index: usize, updated_goal: TransactionGoal) -> Result<(), Self::Error> {
         let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
 
         if goal_index >= ticket.goals.len() {
@@ -301,7 +300,7 @@ impl Treasurer for InMemoryTreasurer {
         Ok(())
     }
 
-    fn complete_ticket(&mut self, id: Uuid) -> Result<(), Self::Error> {
+    fn complete_ticket(&mut self, id: TicketId) -> Result<(), Self::Error> {
         let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
 
         if ticket.completed_at.is_some() {

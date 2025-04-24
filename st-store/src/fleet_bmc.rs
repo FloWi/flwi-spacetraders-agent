@@ -287,7 +287,7 @@ pub async fn upsert_fleets_data(
     fleet_tasks: &HashMap<FleetId, Vec<FleetTask>>,
     ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>,
     ship_task_assignment: &HashMap<ShipSymbol, ShipTask>,
-    active_trades: &HashMap<ShipSymbol, TradeTicket>,
+    //active_trades: &HashMap<ShipSymbol, TradeTicket>,
 ) -> Result<()> {
     let fleet_bmc = bmc.fleet_bmc();
 
@@ -300,9 +300,9 @@ pub async fn upsert_fleets_data(
 
     let trade_bmc = bmc.trade_bmc();
 
-    for (ss, ticket) in active_trades {
-        trade_bmc.upsert_ticket(&Ctx::Anonymous, ss, &ticket.ticket_id(), ticket, ticket.is_complete()).await?
-    }
+    // for (ss, ticket) in active_trades {
+    //     trade_bmc.upsert_ticket(&Ctx::Anonymous, ss, &ticket.ticket_id(), ticket, ticket.is_complete()).await?
+    // }
 
     Ok(())
 }

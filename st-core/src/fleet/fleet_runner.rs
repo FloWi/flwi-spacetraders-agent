@@ -475,7 +475,6 @@ impl FleetRunner {
                             &admiral_guard.fleet_tasks,
                             &admiral_guard.ship_fleet_assignment,
                             &admiral_guard.ship_tasks,
-                            &admiral_guard.active_trades,
                         )
                         .await?;
                     }
@@ -509,7 +508,6 @@ impl FleetRunner {
                             &admiral_guard.fleet_tasks,
                             &admiral_guard.ship_fleet_assignment,
                             &admiral_guard.ship_tasks,
-                            &admiral_guard.active_trades,
                         )
                         .await?;
                     }
@@ -587,7 +585,6 @@ impl FleetRunner {
                         &admiral_guard.fleet_tasks,
                         &admiral_guard.ship_fleet_assignment,
                         &admiral_guard.ship_tasks,
-                        &admiral_guard.active_trades,
                     )
                     .await?;
                     Self::launch_and_register_ship(

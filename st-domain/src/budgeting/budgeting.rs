@@ -1,11 +1,10 @@
 use crate::budgeting::credits::Credits;
-use crate::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
+use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
-use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TransactionGoal {
@@ -156,7 +155,7 @@ pub enum TransactionEvent {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TransactionTicket {
-    pub id: Uuid,
+    pub id: TicketId,
     pub ticket_type: TicketType,
     pub status: TicketStatus,
     pub executing_vessel: ShipSymbol,
@@ -191,9 +190,9 @@ pub struct FleetBudget {
     pub operating_reserve: Credits,
     pub earmarked_funds: HashMap<FundingPurpose, Credits>,
     pub asset_value: Credits,
-    pub funded_transactions: HashSet<Uuid>,
-    pub beneficiary_transactions: HashSet<Uuid>,
-    pub executing_transactions: HashSet<Uuid>,
+    pub funded_transactions: HashSet<TicketId>,
+    pub beneficiary_transactions: HashSet<TicketId>,
+    pub executing_transactions: HashSet<TicketId>,
 }
 
 #[derive(Debug)]

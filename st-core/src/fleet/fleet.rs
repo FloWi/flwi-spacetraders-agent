@@ -14,6 +14,7 @@ use itertools::Itertools;
 use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use st_domain::blackboard_ops::BlackboardOps;
+use st_domain::budgeting::budgeting::FleetBudget;
 use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
 use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{ConstructJumpGate, InitialExploration, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably};
@@ -23,7 +24,8 @@ use st_domain::{
     get_exploration_tasks_for_waypoint, Agent, ConstructJumpGateFleetConfig, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase,
     FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MiningFleetConfig,
     OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
-    StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TradeTicket, TradingFleetConfig, TransactionActionEvent, Waypoint, WaypointSymbol,
+    StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeTicket, TradingFleetConfig, TransactionActionEvent, Waypoint,
+    WaypointSymbol,
 };
 use st_store::bmc::Bmc;
 use st_store::{load_fleet_overview, upsert_fleets_data, Ctx};
@@ -65,7 +67,7 @@ pub struct FleetAdmiral {
     pub ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
     pub agent_info: Agent,
     pub fleet_phase: FleetPhase,
-    pub active_trades: HashMap<ShipSymbol, TradeTicket>,
+    pub active_trade_ids: HashMap<ShipSymbol, TicketId>,
     pub stationary_probe_locations: Vec<StationaryProbeLocation>,
     pub treasurer: Arc<Mutex<InMemoryTreasurer>>,
 }
@@ -85,122 +87,6 @@ impl FleetAdmiral {
             .flat_map(|ss| self.get_task_of_ship(&ss.symbol).map(|st| (ss.symbol.clone(), st.clone())).into_iter())
             .collect_vec();
         tasks
-    }
-
-    pub(crate) fn get_total_budget_for_fleet(&self, fleet: &Fleet) -> u64 {
-        // todo: take into account what the fleet still has to do
-        // e.g. a fully equipped market_observation_fleet (probes at all locations) doesn't need any budget
-
-        let fleet_budget: u64 = self.calculate_budget_for_fleet(&self.agent_info, fleet, &self.fleets);
-        fleet_budget
-    }
-
-    pub fn calculate_budget_for_fleet(&self, agent: &Agent, fleet: &Fleet, fleets: &HashMap<FleetId, Fleet>) -> u64 {
-        match self.fleet_phase.name {
-            FleetPhaseName::InitialExploration => 0,
-            FleetPhaseName::ConstructJumpGate => match fleet.cfg {
-                FleetConfig::ConstructJumpGateCfg(_) => {
-                    let en_route_credits: u64 = self.get_expected_sell_value_of_fleet_cargo(fleet);
-
-                    let agent_credits = if agent.credits < 0 {
-                        0
-                    } else {
-                        agent.credits as u64
-                    };
-                    agent_credits + (en_route_credits as f64 * 0.95) as u64
-                }
-                _ => 0,
-            },
-            FleetPhaseName::TradeProfitably => 0,
-        }
-    }
-
-    fn sum_allocated_tickets<'a, I>(trade_tickets: I) -> u64
-    where
-        I: IntoIterator<Item = &'a TradeTicket>,
-    {
-        trade_tickets
-            .into_iter()
-            .map(|trade_ticket| match trade_ticket {
-                TradeTicket::PurchaseShipTicket { details, .. } => details.allocated_credits,
-                TradeTicket::TradeCargo {
-                    purchase_completion_status, ..
-                } => purchase_completion_status.iter().filter_map(|(ticket, is_completed)| (!is_completed).then_some(ticket.allocated_credits)).sum(),
-                TradeTicket::DeliverConstructionMaterials {
-                    purchase_completion_status, ..
-                } => purchase_completion_status.iter().filter_map(|(ticket, is_completed)| (!is_completed).then_some(ticket.allocated_credits)).sum(),
-            })
-            .sum()
-    }
-
-    pub(crate) fn get_allocated_budget_of_fleet(&self, fleet: &Fleet) -> u64 {
-        Self::sum_allocated_tickets(self.get_ships_of_fleet(fleet).iter().flat_map(|ship| self.active_trades.get(&ship.symbol)))
-    }
-
-    pub(crate) fn get_open_purchase_total_of_ongoing_trades(&self, fleet: &Fleet) -> u64 {
-        self.get_ships_of_fleet(fleet)
-            .iter()
-            .flat_map(|ship| self.active_trades.get(&ship.symbol))
-            .map(|trade_ticket: &TradeTicket| match trade_ticket {
-                TradeTicket::TradeCargo {
-                    purchase_completion_status, ..
-                } => purchase_completion_status
-                    .iter()
-                    .filter_map(|(sell_details, is_complete)| is_complete.not().then_some(sell_details.price_per_unit * sell_details.quantity as u64))
-                    .sum(),
-                _ => 0,
-            })
-            .sum()
-    }
-
-    pub(crate) fn get_open_sell_total_of_ongoing_trades(&self, fleet: &Fleet) -> u64 {
-        self.get_ships_of_fleet(fleet)
-            .iter()
-            .flat_map(|ship| self.active_trades.get(&ship.symbol))
-            .map(|trade_ticket: &TradeTicket| match trade_ticket {
-                TradeTicket::TradeCargo { sale_completion_status, .. } => sale_completion_status
-                    .iter()
-                    .filter_map(|(sell_details, is_complete)| is_complete.not().then_some(sell_details.price_per_unit * sell_details.quantity as u64))
-                    .sum(),
-                _ => 0,
-            })
-            .sum()
-    }
-
-    pub(crate) fn get_expected_sell_value_of_fleet_cargo(&self, fleet: &Fleet) -> u64 {
-        self.get_ships_of_fleet(fleet)
-            .iter()
-            .flat_map(|ship| self.active_trades.get(&ship.symbol))
-            .map(|trade_ticket: &TradeTicket| match trade_ticket {
-                TradeTicket::TradeCargo {
-                    ticket_id,
-                    purchase_completion_status,
-                    sale_completion_status,
-                    evaluation_result,
-                } => {
-                    // find the open sale positions that have already been purchased
-                    sale_completion_status
-                        .iter()
-                        .filter_map(|(sell_details, is_sell_complete)| {
-                            let has_already_been_purchased = purchase_completion_status.iter().any(|(purchase_details, is_purchase_complete)| {
-                                *is_purchase_complete
-                                    && purchase_details.ship_symbol == sell_details.ship_symbol
-                                    && purchase_details.trade_good == sell_details.trade_good
-                                    && purchase_details.quantity == sell_details.quantity
-                            });
-                            let is_en_route_trade = has_already_been_purchased && !*is_sell_complete;
-                            is_en_route_trade.then_some(sell_details.price_per_unit * sell_details.quantity as u64)
-                        })
-                        .sum()
-                }
-                TradeTicket::DeliverConstructionMaterials { .. } => 0,
-                TradeTicket::PurchaseShipTicket { .. } => 0,
-            })
-            .sum()
-    }
-
-    pub(crate) fn get_total_allocated_budget(&self) -> u64 {
-        Self::sum_allocated_tickets(self.active_trades.values())
     }
 
     pub async fn run_fleets(
@@ -326,9 +212,10 @@ impl FleetAdmiral {
                         old_credits,
                         new_credits = self.agent_info.credits,
                     );
-                    self.active_trades.remove(&ship.symbol);
+                    // FIXME: move logic to treasurer
+                    self.active_trade_ids.remove(&ship.symbol);
                 } else {
-                    self.active_trades.insert(ship.symbol.clone(), updated_trade_ticket.clone());
+                    // self.active_trades.insert(ship.symbol.clone(), updated_trade_ticket.clone());
                     event!(
                         Level::INFO,
                         message = "Transaction complete. Transaction is not complete yet.",
@@ -381,7 +268,6 @@ impl FleetAdmiral {
                     &admiral.fleet_tasks,
                     &admiral.ship_fleet_assignment,
                     &admiral.ship_tasks,
-                    &admiral.active_trades,
                 )
                 .await?;
                 Ok(admiral)
@@ -463,7 +349,8 @@ impl FleetAdmiral {
                 ship_fleet_assignment,
                 agent_info,
                 fleet_phase,
-                active_trades: overview.open_trade_tickets,
+                //FIXME
+                active_trade_ids: Default::default(),
                 stationary_probe_locations: overview.stationary_probe_locations,
                 treasurer: Arc::new(Mutex::new(treasurer)),
             };
@@ -478,7 +365,6 @@ impl FleetAdmiral {
                 &admiral.fleet_tasks,
                 &admiral.ship_fleet_assignment,
                 &admiral.ship_tasks,
-                &admiral.active_trades,
             )
             .await?;
 
@@ -530,7 +416,7 @@ impl FleetAdmiral {
             ship_fleet_assignment,
             agent_info,
             fleet_phase,
-            active_trades: Default::default(),
+            active_trade_ids: Default::default(),
             stationary_probe_locations,
             treasurer: Arc::new(Mutex::new(treasurer)),
         };
@@ -545,7 +431,6 @@ impl FleetAdmiral {
             &admiral.fleet_tasks,
             &admiral.ship_fleet_assignment,
             &admiral.ship_tasks,
-            &admiral.active_trades,
         )
         .await?;
 
@@ -637,29 +522,7 @@ impl FleetAdmiral {
                 trade_ticket,
                 first_purchase_location,
             } => {
-                let costs_of_ticket: i64 = trade_ticket.total_costs() as i64;
-
-                let is_trade_affordable = costs_of_ticket < admiral.agent_info.credits;
-
-                if !is_trade_affordable {
-                    event!(
-                        Level::WARN,
-                        message = "Can't assign new trade_ticket to ship (yet)- the costs are currently too high. We preposition the ship though",
-                        ship = ship_symbol.0
-                    );
-                    admiral.ship_tasks.insert(ship_symbol, ShipTask::PrepositionShipForTrade { first_purchase_location });
-                } else {
-                    if !(admiral.active_trades.contains_key(&ship_symbol)) {
-                        admiral.active_trades.insert(ship_symbol.clone(), trade_ticket);
-                        admiral.ship_tasks.insert(ship_symbol.clone(), ship_task);
-                    } else {
-                        event!(
-                            Level::WARN,
-                            message = "Can't assign new trade_ticket to ship - there's already a trade assigned to it",
-                            ship = ship_symbol.0
-                        );
-                    }
-                }
+                // FIXME: pass along ticket to treasurer
             }
             ShipTaskRequirement::None => {
                 admiral.ship_tasks.insert(ship_symbol, ship_task);
