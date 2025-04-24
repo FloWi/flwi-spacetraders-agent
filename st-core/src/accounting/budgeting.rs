@@ -27,7 +27,6 @@ pub enum TransactionGoal {
         min_acceptable_price: Option<Credits>,
         destination_waypoint: WaypointSymbol,
     },
-
     Refuel {
         target_fuel_level: u32,
         current_fuel_level: u32,
@@ -95,21 +94,6 @@ pub enum TransactionEvent {
         timestamp: DateTime<Utc>,
     },
 
-    WaypointArrived {
-        timestamp: DateTime<Utc>,
-        waypoint: WaypointSymbol,
-        fuel_level: Option<u32>,
-        cargo_used: Option<u32>,
-        cargo_capacity: Option<u32>,
-    },
-
-    WaypointDeparted {
-        timestamp: DateTime<Utc>,
-        waypoint: WaypointSymbol,
-        destination: WaypointSymbol,
-        estimated_arrival: DateTime<Utc>,
-    },
-
     GoodsPurchased {
         timestamp: DateTime<Utc>,
         waypoint: WaypointSymbol,
@@ -167,7 +151,6 @@ pub enum TransactionEvent {
         total_cost: Credits,
         beneficiary_fleet: FleetId,
     },
-
     ShipTransferred {
         timestamp: DateTime<Utc>,
         ship_id: ShipSymbol,
@@ -198,7 +181,6 @@ pub struct TransactionTicket {
     pub estimated_completion: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
     pub priority: f64,
-    pub current_waypoint: Option<WaypointSymbol>,
     pub event_history: Vec<TransactionEvent>,
     pub metadata: HashMap<String, String>,
 }
@@ -258,18 +240,6 @@ impl TransactionTicket {
     }
 
     pub fn update_from_event(&mut self, event: &TransactionEvent) {
-        // Update the current waypoint based on arrival/departure events
-        match event {
-            TransactionEvent::WaypointArrived { waypoint, .. } => {
-                self.current_waypoint = Some(waypoint.clone());
-            }
-            TransactionEvent::WaypointDeparted { .. } => {
-                // Don't clear the waypoint as the ship is still technically at this waypoint
-                // until it arrives at the next one
-            }
-            _ => {}
-        }
-
         // Update financials based on events
         match event {
             TransactionEvent::GoodsPurchased { total_cost, .. } => {
@@ -289,8 +259,6 @@ impl TransactionTicket {
             TransactionEvent::TicketCreated { .. } => {}
             TransactionEvent::TicketFunded { .. } => {}
             TransactionEvent::ExecutionStarted { .. } => {}
-            TransactionEvent::WaypointArrived { .. } => {}
-            TransactionEvent::WaypointDeparted { .. } => {}
             TransactionEvent::GoalSkipped { .. } => {}
             TransactionEvent::TicketCompleted { .. } => {}
             TransactionEvent::TicketFailed { .. } => {}
@@ -347,17 +315,6 @@ impl TransactionTicket {
                 }
                 TransactionEvent::ExecutionStarted { timestamp } => {
                     writeln!(&mut result, "  {}. Execution started at {}", i + 1, timestamp).unwrap();
-                }
-                TransactionEvent::WaypointArrived { timestamp, waypoint, .. } => {
-                    writeln!(&mut result, "  {}. Arrived at {} at {}", i + 1, waypoint, timestamp).unwrap();
-                }
-                TransactionEvent::WaypointDeparted {
-                    timestamp,
-                    waypoint,
-                    destination,
-                    ..
-                } => {
-                    writeln!(&mut result, "  {}. Departed from {} to {} at {}", i + 1, waypoint, destination, timestamp).unwrap();
                 }
                 TransactionEvent::GoodsPurchased {
                     timestamp,

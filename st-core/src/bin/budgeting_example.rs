@@ -93,27 +93,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Manually simulate the execution process
     println!("\n--- Manually simulating the transaction execution ---\n");
 
-    // STEP 1: Ship departs from HQ to the purchase location
-    let departure_event = TransactionEvent::WaypointDeparted {
-        timestamp: Utc::now(),
-        waypoint: WaypointSymbol("HQ".to_string()),
-        destination: WaypointSymbol("X1-YZ45".to_string()),
-        estimated_arrival: Utc::now() + Duration::minutes(5),
-    };
-    finance.record_event(ticket_id, departure_event)?;
-    println!("Ship departed from HQ heading to X1-YZ45");
-
-    // STEP 2: Ship arrives at purchase location
-    let arrival_event = TransactionEvent::WaypointArrived {
-        timestamp: Utc::now(),
-        waypoint: WaypointSymbol("X1-YZ45".to_string()),
-        fuel_level: Some(80),
-        cargo_used: Some(0),
-        cargo_capacity: Some(100),
-    };
-    finance.record_event(ticket_id, arrival_event)?;
-    println!("Ship arrived at X1-YZ45");
-
     // STEP 3: Ship observes the market
     let mut market_prices = HashMap::new();
     market_prices.insert(TradeGoodSymbol::PRECIOUS_STONES, Credits::new(2100));
@@ -139,53 +118,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("\nCurrent ticket state after purchase:");
     println!("  Spent capital: {}", current_ticket.financials.spent_capital);
     println!("  Purchase goal completed: {}", current_ticket.goals[0].is_completed());
-
-    // STEP 5: Ship departs from purchase location to refuel location
-    let departure_event = TransactionEvent::WaypointDeparted {
-        timestamp: Utc::now(),
-        waypoint: WaypointSymbol("X1-YZ45".to_string()),
-        destination: WaypointSymbol("X1-YZ46".to_string()),
-        estimated_arrival: Utc::now() + Duration::minutes(3),
-    };
-    finance.record_event(ticket_id, departure_event)?;
-    println!("\nShip departed from X1-YZ45 heading to X1-YZ46 (refueling station)");
-
-    // STEP 6: Ship arrives at refuel location
-    let arrival_event = TransactionEvent::WaypointArrived {
-        timestamp: Utc::now(),
-        waypoint: WaypointSymbol("X1-YZ46".to_string()),
-        fuel_level: Some(65), // Reduced from travel
-        cargo_used: Some(100),
-        cargo_capacity: Some(100),
-    };
-    finance.record_event(ticket_id, arrival_event)?;
-    println!("Ship arrived at X1-YZ46 with fuel level at 65");
-
-    // STEP 7: Decision about refueling
-    // The ship has over 50% fuel and refueling is optional, so we decide to skip
-    finance.skip_goal(ticket_id, 1, "Sufficient fuel available for the journey".to_string())?;
-    println!("Decided to skip refueling as current level (65) is sufficient");
-
-    // STEP 8: Ship departs from refuel location to sell location
-    let departure_event = TransactionEvent::WaypointDeparted {
-        timestamp: Utc::now(),
-        waypoint: WaypointSymbol("X1-YZ46".to_string()),
-        destination: WaypointSymbol("X1-YZ47".to_string()),
-        estimated_arrival: Utc::now() + Duration::minutes(4),
-    };
-    finance.record_event(ticket_id, departure_event)?;
-    println!("\nShip departed from X1-YZ46 heading to X1-YZ47 (market)");
-
-    // STEP 9: Ship arrives at sell location
-    let arrival_event = TransactionEvent::WaypointArrived {
-        timestamp: Utc::now(),
-        waypoint: WaypointSymbol("X1-YZ47".to_string()),
-        fuel_level: Some(50), // Further reduced
-        cargo_used: Some(100),
-        cargo_capacity: Some(100),
-    };
-    finance.record_event(ticket_id, arrival_event)?;
-    println!("Ship arrived at X1-YZ47");
 
     // STEP 10: Ship observes the sell market
     let mut sell_prices = HashMap::new();
@@ -272,27 +204,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // --- Manually simulate the execution ---
     println!("\n--- Simulating the ship purchase ---\n");
-
-    // Ship departs from current location to shipyard
-    let departure_event = TransactionEvent::WaypointDeparted {
-        timestamp: Utc::now(),
-        waypoint: WaypointSymbol("TRADING-HQ".to_string()),
-        destination: WaypointSymbol("X1-SHIPYARD".to_string()),
-        estimated_arrival: Utc::now() + Duration::minutes(10),
-    };
-    finance.record_event(ticket_id, departure_event)?;
-    println!("Trading ship departed from TRADING-HQ heading to X1-SHIPYARD");
-
-    // Ship arrives at shipyard
-    let arrival_event = TransactionEvent::WaypointArrived {
-        timestamp: Utc::now(),
-        waypoint: WaypointSymbol("X1-SHIPYARD".to_string()),
-        fuel_level: Some(70),
-        cargo_used: Some(0),
-        cargo_capacity: Some(100),
-    };
-    finance.record_event(ticket_id, arrival_event)?;
-    println!("Trading ship arrived at X1-SHIPYARD");
 
     // Purchase the new ship
     let purchase_event = TransactionEvent::ShipPurchased {

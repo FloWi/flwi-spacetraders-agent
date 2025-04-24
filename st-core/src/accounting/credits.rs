@@ -105,7 +105,6 @@ impl fmt::Display for Credits {
     }
 }
 
-// Optional: Multiplication with u32/i32 for quantity calculations
 impl std::ops::Mul<u32> for Credits {
     type Output = Credits;
 
@@ -119,5 +118,13 @@ impl std::ops::Mul<i32> for Credits {
 
     fn mul(self, quantity: i32) -> Credits {
         Credits(self.0 * i64::from(quantity))
+    }
+}
+
+impl std::ops::Div<i32> for Credits {
+    type Output = Credits;
+
+    fn div(self, rhs: i32) -> Self::Output {
+        Credits(self.0 * i64::from(rhs))
     }
 }
