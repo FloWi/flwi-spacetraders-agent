@@ -36,7 +36,6 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
     let db_blackboard = DbBlackboard { bmc: db_bmc.clone() };
 
     let bmc = Arc::new(db_bmc) as Arc<dyn Bmc>;
-    let blackboard = Arc::new(db_blackboard) as Arc<dyn BlackboardOps>;
 
     let headquarters_waypoint_symbol = my_agent.data.headquarters.clone();
     let headquarters_system_symbol = headquarters_waypoint_symbol.system_symbol();
@@ -108,7 +107,7 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
         ));
 
         async move {
-            if let Err(e) = FleetAdmiral::run_fleets(Arc::clone(&admiral), Arc::clone(&client_clone), Arc::clone(&bmc), Arc::clone(&blackboard)).await {
+            if let Err(e) = FleetAdmiral::run_fleets(Arc::clone(&admiral), Arc::clone(&client_clone), Arc::clone(&bmc)).await {
                 eprintln!("Error on FleetAdmiral::start_fleets: {}", e);
             }
         }

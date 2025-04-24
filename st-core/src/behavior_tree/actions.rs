@@ -760,7 +760,9 @@ mod tests {
 
     use crate::test_objects::TestObjects;
     use st_domain::blackboard_ops::MockBlackboardOps;
+    use st_domain::budgeting::treasurer::InMemoryTreasurer;
     use test_log::test;
+    use tokio::sync::Mutex;
 
     async fn test_run_ship_behavior(
         ship_ops: &mut ShipOperations,
@@ -841,6 +843,7 @@ mod tests {
 
         let args = BehaviorArgs {
             blackboard: Arc::new(MockBlackboardOps::new()),
+            treasurer: Arc::new(Mutex::new(InMemoryTreasurer::new(0.into()))),
         };
 
         let mocked_client = mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).returning(move |_| {
@@ -876,6 +879,7 @@ mod tests {
 
         let args = BehaviorArgs {
             blackboard: Arc::new(MockBlackboardOps::new()),
+            treasurer: Arc::new(Mutex::new(InMemoryTreasurer::new(0.into()))),
         };
 
         let mocked_client = mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).returning(move |_| {
@@ -1028,6 +1032,7 @@ mod tests {
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
         let args = BehaviorArgs {
             blackboard: Arc::new(mock_test_blackboard),
+            treasurer: Arc::new(Mutex::new(InMemoryTreasurer::new(0.into()))),
         };
 
         let explorer_waypoint_symbols = explorer_waypoints.iter().map(|wp| wp.symbol.clone()).collect_vec();

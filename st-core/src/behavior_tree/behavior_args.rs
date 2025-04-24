@@ -5,6 +5,7 @@ use chrono::Local;
 use itertools::Itertools;
 use sqlx::{Pool, Postgres};
 use st_domain::blackboard_ops::BlackboardOps;
+use st_domain::budgeting::treasurer::InMemoryTreasurer;
 use st_domain::{JumpGate, LabelledCoordinate, MarketData, Shipyard, TicketId, TradeTicket, TravelAction, Waypoint, WaypointSymbol};
 use st_store::bmc::{Bmc, DbBmc};
 use st_store::{
@@ -12,10 +13,12 @@ use st_store::{
     DbModelManager,
 };
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct BehaviorArgs {
     pub blackboard: Arc<dyn BlackboardOps>,
+    pub treasurer: Arc<Mutex<InMemoryTreasurer>>,
 }
 
 // Implement Deref for BehaviorArgs to allow transparent access to BlackboardOps methods

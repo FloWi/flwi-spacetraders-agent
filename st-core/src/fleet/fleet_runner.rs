@@ -2,8 +2,8 @@ use crate::behavior_tree::behavior_args::BehaviorArgs;
 use crate::behavior_tree::behavior_tree::ActionEvent;
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::fleet::fleet::{
-    collect_fleet_decision_facts, compute_fleet_phase_with_tasks, compute_fleets_with_tasks, recompute_tasks_after_ship_finishing_behavior_tree, FleetAdmiral,
-    NewTaskResult, ShipStatusReport,
+    collect_fleet_decision_facts, compute_fleet_phase_with_tasks, compute_fleets_with_tasks, get_all_next_ship_purchases,
+    recompute_tasks_after_ship_finishing_behavior_tree, FleetAdmiral, NewTaskResult, ShipStatusReport,
 };
 use crate::fleet::ship_runner::ship_behavior_runner;
 use crate::pagination::fetch_all_pages;
@@ -12,11 +12,14 @@ use crate::st_client::StClientTrait;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 
+use crate::bmc_blackboard::BmcBlackboard;
 use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
+use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
 use st_domain::{
-    OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket, TransactionActionEvent, WaypointTraitSymbol, WaypointType,
+    Fleet, FleetId, FleetPhase, FleetTask, OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket, TransactionActionEvent,
+    WaypointTraitSymbol, WaypointType,
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
 use st_store::bmc::Bmc;
@@ -43,6 +46,7 @@ pub struct FleetRunner {
     args: BehaviorArgs,
     fleet_admiral: Arc<Mutex<FleetAdmiral>>,
     bmc: Arc<dyn Bmc>,
+    pub treasurer: Arc<Mutex<InMemoryTreasurer>>,
 }
 
 impl FleetRunner {
@@ -50,7 +54,6 @@ impl FleetRunner {
         fleet_admiral: Arc<Mutex<FleetAdmiral>>,
         client: Arc<dyn StClientTrait>,
         bmc: Arc<dyn Bmc>,
-        blackboard: Arc<dyn BlackboardOps>,
         sleep_duration: Duration,
     ) -> Result<()> {
         event!(Level::INFO, "Running fleets");
@@ -59,8 +62,15 @@ impl FleetRunner {
         let (ship_action_completed_tx, ship_action_completed_rx): (Sender<ActionEvent>, Receiver<ActionEvent>) = tokio::sync::mpsc::channel(32);
         let (ship_status_report_tx, ship_status_report_rx): (Sender<ShipStatusReport>, Receiver<ShipStatusReport>) = tokio::sync::mpsc::channel(32);
 
+        let blackboard = BmcBlackboard::new(Arc::clone(&bmc));
+
+        let blackboard: Arc<dyn BlackboardOps> = Arc::new(blackboard) as Arc<dyn BlackboardOps>;
+
+        let treasurer = fleet_admiral.lock().await.treasurer.clone();
+
         let args: BehaviorArgs = BehaviorArgs {
             blackboard: Arc::clone(&blackboard),
+            treasurer: Arc::clone(&treasurer),
         };
 
         let ship_fibers: HashMap<ShipSymbol, JoinHandle<Result<()>>> = HashMap::new();
@@ -81,6 +91,7 @@ impl FleetRunner {
             args,
             fleet_admiral,
             bmc,
+            treasurer: Arc::clone(&treasurer),
         };
 
         let fleet_runner_mutex = Arc::new(Mutex::new(fleet_runner));
@@ -953,15 +964,7 @@ mod tests {
         // This task runs your fleets
         let fleet_future = async {
             println!("Running fleets");
-            FleetRunner::run_fleets(
-                Arc::clone(&admiral_mutex),
-                Arc::clone(&client),
-                Arc::clone(&bmc),
-                Arc::new(blackboard),
-                Duration::from_millis(1),
-            )
-            .await
-            .unwrap();
+            FleetRunner::run_fleets(Arc::clone(&admiral_mutex), Arc::clone(&client), Arc::clone(&bmc), Duration::from_millis(1)).await.unwrap();
         };
 
         // This task periodically checks if the condition is met

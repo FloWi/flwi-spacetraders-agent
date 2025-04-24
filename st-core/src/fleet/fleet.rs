@@ -55,7 +55,7 @@ impl ShipStatusReport {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct FleetAdmiral {
     pub completed_fleet_tasks: Vec<FleetTaskCompletion>,
     pub fleets: HashMap<FleetId, Fleet>,
@@ -67,7 +67,7 @@ pub struct FleetAdmiral {
     pub fleet_phase: FleetPhase,
     pub active_trades: HashMap<ShipSymbol, TradeTicket>,
     pub stationary_probe_locations: Vec<StationaryProbeLocation>,
-    pub treasurer: InMemoryTreasurer,
+    pub treasurer: Arc<Mutex<InMemoryTreasurer>>,
 }
 
 impl FleetAdmiral {
@@ -207,11 +207,11 @@ impl FleetAdmiral {
         fleet_admiral: Arc<Mutex<FleetAdmiral>>,
         client: Arc<dyn StClientTrait>,
         bmc: Arc<dyn Bmc>,
-        blackboard: Arc<dyn BlackboardOps>,
+        //blackboard: Arc<dyn BlackboardOps>,
     ) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
-        FleetRunner::run_fleets(Arc::clone(&fleet_admiral), Arc::clone(&client), bmc, blackboard, Duration::from_secs(5)).await?;
+        FleetRunner::run_fleets(Arc::clone(&fleet_admiral), Arc::clone(&client), bmc, Duration::from_secs(5)).await?;
 
         Ok(())
     }
@@ -390,6 +390,39 @@ impl FleetAdmiral {
         }
     }
 
+    pub async fn initialize_treasurer(
+        bmc: Arc<dyn Bmc>,
+        fleet_phase: &FleetPhase,
+        ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>,
+        all_ships: &HashMap<ShipSymbol, Ship>,
+        fleets: &HashMap<FleetId, Fleet>,
+        fleet_tasks: &HashMap<FleetId, Vec<FleetTask>>,
+    ) -> Result<InMemoryTreasurer> {
+        let agent_info = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?;
+        let system_symbol = agent_info.headquarters.system_symbol();
+        let facts = collect_fleet_decision_facts(bmc.clone(), &system_symbol).await?;
+
+        let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
+        let all_next_ship_purchases = get_all_next_ship_purchases(&all_ships, &fleet_phase);
+
+        let fleets = fleets.values().cloned().collect_vec();
+        let fleet_tasks = fleet_tasks.iter().map(|(fleet_id, tasks)| (fleet_id.clone(), tasks.first().cloned().unwrap())).collect_vec();
+
+        let mut treasurer = InMemoryTreasurer::new(agent_info.credits.into());
+        treasurer.redistribute_distribute_fleet_budgets(
+            &fleet_phase,
+            &facts,
+            &fleets,
+            &fleet_tasks,
+            &ship_fleet_assignment,
+            &all_ships,
+            &ship_price_info,
+            &all_next_ship_purchases,
+        )?;
+
+        Ok(treasurer)
+    }
+
     async fn load_admiral(bmc: Arc<dyn Bmc>) -> Result<Option<Self>> {
         let overview = load_fleet_overview(Arc::clone(&bmc), &Ctx::Anonymous).await?;
 
@@ -419,20 +452,7 @@ impl FleetAdmiral {
                 .filter(|(ss, ship)| overview.stationary_probe_locations.iter().any(|spl| ss == &spl.probe_ship_symbol).not())
                 .collect();
 
-            let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
-            let all_next_ship_purchases = get_all_next_ship_purchases(&ship_map, &fleet_phase);
-
-            let mut treasurer = InMemoryTreasurer::new(agent_info.credits.into());
-            treasurer.redistribute_distribute_fleet_budgets(
-                &fleet_phase,
-                &facts,
-                &fleets,
-                &fleet_tasks,
-                &ship_fleet_assignment,
-                &ship_map,
-                &ship_price_info,
-                &all_next_ship_purchases,
-            )?;
+            let treasurer = Self::initialize_treasurer(bmc.clone(), &fleet_phase, &ship_fleet_assignment, &ships, &fleet_map, &fleet_task_map).await?;
 
             let mut admiral = Self {
                 completed_fleet_tasks: overview.completed_fleet_tasks.clone(),
@@ -445,7 +465,7 @@ impl FleetAdmiral {
                 fleet_phase,
                 active_trades: overview.open_trade_tickets,
                 stationary_probe_locations: overview.stationary_probe_locations,
-                treasurer,
+                treasurer: Arc::new(Mutex::new(treasurer)),
             };
 
             let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
@@ -499,20 +519,7 @@ impl FleetAdmiral {
         let agent_info = client.get_agent().await?.data;
         bmc.agent_bmc().store_agent(&Ctx::Anonymous, &agent_info).await?;
 
-        let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
-        let all_next_ship_purchases = get_all_next_ship_purchases(&ship_map, &fleet_phase);
-
-        let mut treasurer = InMemoryTreasurer::new(agent_info.credits.into());
-        treasurer.redistribute_distribute_fleet_budgets(
-            &fleet_phase,
-            &facts,
-            &fleets,
-            &fleet_tasks,
-            &ship_fleet_assignment,
-            &ship_map,
-            &ship_price_info,
-            &all_next_ship_purchases,
-        )?;
+        let treasurer = Self::initialize_treasurer(bmc.clone(), &fleet_phase, &ship_fleet_assignment, &ship_map, &fleet_map, &fleet_task_map).await?;
 
         let mut admiral = Self {
             completed_fleet_tasks: completed_tasks,
@@ -525,7 +532,7 @@ impl FleetAdmiral {
             fleet_phase,
             active_trades: Default::default(),
             stationary_probe_locations,
-            treasurer,
+            treasurer: Arc::new(Mutex::new(treasurer)),
         };
 
         let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
