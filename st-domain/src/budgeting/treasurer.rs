@@ -74,6 +74,10 @@ impl InMemoryTreasurer {
         }
     }
 
+    pub fn get_fleet_budgets(&self) -> HashMap<FleetId, FleetBudget> {
+        self.fleet_budgets.clone()
+    }
+
     fn calculate_required_capital(&self, goals: &[TransactionGoal]) -> Credits {
         let mut required = Credits::new(0);
 

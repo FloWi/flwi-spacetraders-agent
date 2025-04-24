@@ -990,6 +990,9 @@ mod tests {
                     let admiral = admiral_clone.lock().await;
                     let has_finished_initial_observation = admiral.completed_fleet_tasks.iter().any(|t| matches!(t.task, FleetTask::InitialExploration { .. }));
 
+                    let fleet_budgets = admiral.treasurer.lock().await.get_fleet_budgets();
+                    let has_all_fleets_registered_in_treasurer = admiral.fleets.keys().all(|id| fleet_budgets.contains_key(id));
+
                     let is_in_construction_phase = admiral.fleet_phase.name == FleetPhaseName::ConstructJumpGate;
                     let num_ships = admiral.all_ships.len();
                     let has_bought_ships = num_ships > 2;
@@ -1014,6 +1017,7 @@ mod tests {
                     let has_started_construction = maybe_construction_site.map(|cs| cs.data.materials.iter().any(|cm| cm.fulfilled > 0)).unwrap_or(false);
 
                     let evaluation_result = has_finished_initial_observation
+                        && has_all_fleets_registered_in_treasurer
                         && is_in_construction_phase
                         && has_bought_ships
                         && has_probes_at_every_shipyard
@@ -1025,6 +1029,7 @@ mod tests {
                     println!(
                         r#"
 has_finished_initial_observation: {has_finished_initial_observation}
+has_all_fleets_registered_in_treasurer: {has_all_fleets_registered_in_treasurer}
 is_in_construction_phase: {is_in_construction_phase}
 num_ships: {num_ships}
 num_stationary_probes: {num_stationary_probes}
