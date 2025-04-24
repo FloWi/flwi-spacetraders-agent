@@ -13,6 +13,7 @@ mod petgraph_example_page;
 pub mod ship_overview_page;
 pub mod tailwind;
 mod trading_opportunity_table;
+mod treasurer_experiment_page;
 
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]

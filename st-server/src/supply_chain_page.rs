@@ -63,7 +63,7 @@ async fn get_supply_chain_data(
     let cargo_capable_ships = ships.iter().filter(|s| s.cargo.capacity > 0).collect_vec();
 
     let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
-        trading::evaluate_trading_opportunities(&cargo_capable_ships, &waypoint_map, trading_opportunities, agent.credits);
+        trading::evaluate_trading_opportunities(&cargo_capable_ships, &waypoint_map, &trading_opportunities, agent.credits);
 
     let active_trades = Vec::new();
 
@@ -144,9 +144,7 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                                 )
                                                                 .unwrap()}
                                                         </pre>
-                                                        <h2 class="text-2xl font-bold">
-                                                            "Trading Decision"
-                                                        </h2>
+                                                        <h2 class="text-2xl font-bold">"Trading Decision"</h2>
                                                         <ClipboardButton
                                                             clipboard_text=serde_json::to_string_pretty(
                                                                     &trading_decision,
@@ -155,10 +153,7 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                             label="Copy to Clipboard".to_string()
                                                         />
                                                         <pre>
-                                                            {serde_json::to_string_pretty(
-                                                                    &trading_decision,
-                                                                )
-                                                                .unwrap()}
+                                                            {serde_json::to_string_pretty(&trading_decision).unwrap()}
                                                         </pre>
                                                         <h2 class="text-2xl font-bold">
                                                             "Evaluated Trading Opportunities"

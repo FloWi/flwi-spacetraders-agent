@@ -19,11 +19,13 @@ pub mod app_state;
 pub mod behavior_tree;
 mod bmc_blackboard;
 pub mod exploration;
+pub mod in_memory_universe;
 pub mod marketplaces;
 pub mod pathfinder;
+pub mod universe_server;
+
 #[cfg(test)]
 pub mod test_objects;
-pub mod universe_server;
 
 pub fn calculate_fuel_consumption(flight_mode: &FlightMode, distance: u32) -> u32 {
     match flight_mode {

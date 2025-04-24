@@ -1,7 +1,7 @@
-use crate::accounting::credits::Credits;
+use crate::budgeting::credits::Credits;
+use crate::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use st_domain::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;

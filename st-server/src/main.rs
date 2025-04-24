@@ -27,6 +27,7 @@ async fn main() {
         spacetraders_registration_email,
         spacetraders_account_token,
         spacetraders_base_url,
+        skip_running_agent,
     } = AppConfig::from_env().expect("cfg");
 
     tracing_subscriber::registry().with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE)).with(EnvFilter::from_default_env()).init();
@@ -70,8 +71,13 @@ async fn main() {
 
     // Run the agent manager in the background
     let agent_runner_handle = tokio::spawn(async move {
-        if let Err(e) = agent_manager.run().await {
-            eprintln!("Agent manager error: {}", e);
+        if skip_running_agent {
+            println!("Skipped starting agent");
+        } else {
+            panic!("should not happen - I thought we skipped the agent running");
+            if let Err(e) = agent_manager.run().await {
+                eprintln!("Agent manager error: {}", e);
+            }
         }
     });
 

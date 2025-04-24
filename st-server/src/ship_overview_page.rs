@@ -98,7 +98,7 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
                                 }
                             })
                     }}
-                    // <pre>{serde_json::to_string_pretty(&ship.nav)}</pre>
+                // <pre>{serde_json::to_string_pretty(&ship.nav)}</pre>
                 </div>
 
                 <div class="flex flex-row items-center gap-2">

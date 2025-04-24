@@ -791,7 +791,7 @@ impl FleetRunner {
         Ok(())
     }
 
-    pub(crate) async fn load_and_store_initial_data_in_bmcs(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> Result<()> {
+    pub async fn load_and_store_initial_data_in_bmcs(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> Result<()> {
         let ctx = &Ctx::Anonymous;
         let agent = match bmc.agent_bmc().load_agent(ctx).await {
             Ok(agent) => agent,

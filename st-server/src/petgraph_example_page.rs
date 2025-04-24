@@ -760,8 +760,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                 } else if !points.is_empty() {
                                     &points[points.len() - 1]
                                 } else {
-                                    return 
-                                    // Create SVG path from points
+                                    return // Create SVG path from points
 
                                     // If we have bezier curve points
                                     // Just a straight line

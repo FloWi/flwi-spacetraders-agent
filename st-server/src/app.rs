@@ -4,6 +4,7 @@ use crate::fleet_overview_page::*;
 use crate::petgraph_example_page::TechTreePetgraph;
 use crate::ship_overview_page::ShipOverviewPage;
 use crate::supply_chain_page::*;
+use crate::treasurer_experiment_page::TreasurerExperimentPage;
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
@@ -54,6 +55,7 @@ pub fn App() -> impl IntoView {
                     <Route path=StaticSegment("fleet-overview") view=FleetOverviewPage />
                     <Route path=StaticSegment("behavior-overview") view=BehaviorTreePage />
                     <Route path=StaticSegment("petgraph-example") view=TechTreePetgraph />
+                    <Route path=StaticSegment("treasurer-experiment") view=TreasurerExperimentPage />
                 </Routes>
             </main>
         </Router>

@@ -5,7 +5,8 @@ use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use leptos_use::{use_interval, UseIntervalReturn};
 use serde::{Deserialize, Serialize};
-use st_domain::{Agent, Fleet, FleetDecisionFacts, FleetPhase, FleetsOverview, Ship};
+use st_domain::{Agent, Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetTask, FleetsOverview, Ship, WaypointSymbol};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -35,13 +36,12 @@ async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, FleetsOvervie
 
     let fleet_overview = st_store::load_fleet_overview(Arc::clone(&bmc), &Ctx::Anonymous).await.expect("load_overview");
 
-    let (_0, _1, fleet_phase) = fleet::compute_fleets_with_tasks(
-        home_system_symbol.clone(),
-        &fleet_overview.completed_fleet_tasks,
-        &decision_facts,
-        &fleet_overview.fleets,
-        &fleet_overview.fleet_task_assignments,
-    );
+    let marketplaces_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(decision_facts.marketplaces_of_interest.iter().cloned());
+    let shipyards_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(decision_facts.shipyards_of_interest.iter().cloned());
+    let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest.difference(&shipyards_of_interest).cloned().collect_vec();
+
+    // Create a construction fleet phase
+    let fleet_phase = fleet::compute_fleet_phase_with_tasks(home_system_symbol, &decision_facts, &fleet_overview.completed_fleet_tasks);
 
     Ok((decision_facts, fleet_overview, fleet_phase))
 }
@@ -87,7 +87,9 @@ pub fn FleetOverviewPage() -> impl IntoView {
                                         <div class="flex flex-row gap-4 p-4">
                                             <div class="flex flex-col gap-2">
 
-                                                <h2 class="font-bold text-xl">"Fleet Phase with Shopping List"</h2>
+                                                <h2 class="font-bold text-xl">
+                                                    "Fleet Phase with Shopping List"
+                                                </h2>
                                                 <pre>
                                                     {serde_json::to_string_pretty(&fleet_phase)
                                                         .unwrap_or("---".to_string())}
