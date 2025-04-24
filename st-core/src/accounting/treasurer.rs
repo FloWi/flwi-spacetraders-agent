@@ -51,7 +51,7 @@ mod tests {
         let ship_fleet_assignment = FleetAdmiral::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
 
         let command_ship_fleet_id =
-            fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::CollectMarketInfosOnce { .. }).then_some(id)).unwrap();
+            fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::InitialExploration { .. }).then_some(id)).unwrap();
 
         let market_observation_fleet_id = fleet_tasks
             .iter()

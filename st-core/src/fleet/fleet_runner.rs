@@ -882,7 +882,11 @@ mod tests {
         // also don't use test-tracing-subscriber `#[test(tokio::test)]` but rather #[tokio::test]
         // console_subscriber::init();
 
-        let in_memory_universe = InMemoryUniverse::from_snapshot("tests/assets/universe_snapshot.json").expect("InMemoryUniverse::from_snapshot");
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+
+        let json_path = std::path::Path::new(manifest_dir).parent().unwrap().join("resources").join("universe_snapshot.json");
+
+        let in_memory_universe = InMemoryUniverse::from_snapshot(json_path).expect("InMemoryUniverse::from_snapshot");
 
         let shipyard_waypoints = in_memory_universe.shipyards.keys().cloned().collect::<HashSet<_>>();
         let marketplace_waypoints = in_memory_universe.marketplaces.keys().cloned().collect::<HashSet<_>>();
@@ -936,7 +940,7 @@ mod tests {
 
         assert!(matches!(
             fleet_admiral.fleet_tasks.get(&FleetId(0)).cloned().unwrap_or_default().first(),
-            Some(FleetTask::CollectMarketInfosOnce { .. })
+            Some(FleetTask::InitialExploration { .. })
         ));
         assert!(matches!(
             fleet_admiral.fleet_tasks.get(&FleetId(1)).cloned().unwrap_or_default().first(),
@@ -947,7 +951,7 @@ mod tests {
         let admiral_clone = Arc::clone(&admiral_mutex);
 
         // This task runs your fleets
-        let fleet_task = async {
+        let fleet_future = async {
             println!("Running fleets");
             FleetRunner::run_fleets(
                 Arc::clone(&admiral_mutex),
@@ -970,8 +974,8 @@ mod tests {
 
                 let condition_met = {
                     let admiral = admiral_clone.lock().await;
-                    let has_finished_initial_observation =
-                        admiral.completed_fleet_tasks.iter().any(|t| matches!(t.task, FleetTask::CollectMarketInfosOnce { .. }));
+                    let has_finished_initial_observation = admiral.completed_fleet_tasks.iter().any(|t| matches!(t.task, FleetTask::InitialExploration { .. }));
+
                     let is_in_construction_phase = admiral.fleet_phase.name == FleetPhaseName::ConstructJumpGate;
                     let num_ships = admiral.all_ships.len();
                     let has_bought_ships = num_ships > 2;
@@ -1040,7 +1044,7 @@ evaluation_result: {evaluation_result}
         // Use select to race between the fleet task and your condition checker
         // Add a timeout as a fallback
         tokio::select! {
-            _ = tokio::time::timeout(Duration::from_secs(30), fleet_task) => {
+            _ = tokio::time::timeout(Duration::from_secs(30), fleet_future) => {
                 println!("Fleet task completed or timed out");
             }
             _ = condition_checker => {

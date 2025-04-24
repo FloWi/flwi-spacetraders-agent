@@ -57,7 +57,7 @@ impl SystemSpawningFleet {
                 );
 
                 if marketplaces_to_explore.is_empty() && shipyards_to_explore.is_empty() {
-                    let maybe_matching_task = fleet_tasks.iter().find(|ft| matches!(ft, FleetTask::CollectMarketInfosOnce { .. }));
+                    let maybe_matching_task = fleet_tasks.iter().find(|ft| matches!(ft, FleetTask::InitialExploration { .. }));
                     maybe_matching_task.map(|ft| FleetTaskCompletion {
                         task: ft.clone(),
                         completed_at: Utc::now(),

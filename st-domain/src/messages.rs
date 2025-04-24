@@ -361,7 +361,7 @@ pub struct FleetTaskCompletion {
 
 #[derive(Deserialize, Serialize, Debug, Display, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum FleetTask {
-    CollectMarketInfosOnce { system_symbol: SystemSymbol },
+    InitialExploration { system_symbol: SystemSymbol },
     ObserveAllWaypointsOfSystemWithStationaryProbes { system_symbol: SystemSymbol },
     ConstructJumpGate { system_symbol: SystemSymbol },
     TradeProfitably { system_symbol: SystemSymbol },

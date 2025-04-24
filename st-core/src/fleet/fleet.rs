@@ -1,5 +1,6 @@
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::fleet::construction_fleet::{ConstructJumpGateFleet, PotentialTradingTask};
+use crate::fleet::fleet;
 use crate::fleet::fleet_runner::FleetRunner;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
 use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
@@ -13,10 +14,9 @@ use itertools::Itertools;
 use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use st_domain::blackboard_ops::BlackboardOps;
+use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
 use st_domain::FleetConfig::SystemSpawningCfg;
-use st_domain::FleetTask::{
-    CollectMarketInfosOnce, ConstructJumpGate, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably,
-};
+use st_domain::FleetTask::{ConstructJumpGate, InitialExploration, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably};
 use st_domain::ShipRegistrationRole::{Command, Explorer, Interceptor, Refinery, Satellite, Surveyor};
 use st_domain::TradeGoodSymbol::{MOUNT_GAS_SIPHON_I, MOUNT_MINING_LASER_I, MOUNT_SURVEYOR_I};
 use st_domain::{
@@ -67,6 +67,7 @@ pub struct FleetAdmiral {
     pub fleet_phase: FleetPhase,
     pub active_trades: HashMap<ShipSymbol, TradeTicket>,
     pub stationary_probe_locations: Vec<StationaryProbeLocation>,
+    pub treasurer: InMemoryTreasurer,
 }
 
 impl FleetAdmiral {
@@ -373,7 +374,7 @@ impl FleetAdmiral {
             None => {
                 println!("loading admiral failed - creating a new one");
                 let admiral = Self::create(Arc::clone(&bmc), system_symbol, Arc::clone(&client)).await?;
-                st_store::fleet_bmc::upsert_fleets_data(
+                upsert_fleets_data(
                     Arc::clone(&bmc),
                     &Ctx::Anonymous,
                     &admiral.fleets,
@@ -403,7 +404,7 @@ impl FleetAdmiral {
 
             // recompute ship-tasks and persist them. Might have been outdated since last agent restart
             let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
-            let fleet_phase = compute_fleet_phase_with_tasks(system_symbol, &facts, &overview.completed_fleet_tasks);
+            let fleet_phase = compute_fleet_phase_with_tasks(system_symbol.clone(), &facts, &overview.completed_fleet_tasks);
             let (fleets, fleet_tasks) = compute_fleets_with_tasks(&facts, &overview.fleets, &overview.fleet_task_assignments, &fleet_phase);
             let fleet_map: HashMap<FleetId, Fleet> = fleets.iter().map(|f| (f.id.clone(), f.clone())).collect();
             let fleet_task_map: HashMap<FleetId, Vec<FleetTask>> = fleet_tasks.iter().map(|(fleet_id, task)| (fleet_id.clone(), vec![task.clone()])).collect();
@@ -418,6 +419,21 @@ impl FleetAdmiral {
                 .filter(|(ss, ship)| overview.stationary_probe_locations.iter().any(|spl| ss == &spl.probe_ship_symbol).not())
                 .collect();
 
+            let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
+            let all_next_ship_purchases = get_all_next_ship_purchases(&ship_map, &fleet_phase);
+
+            let mut treasurer = InMemoryTreasurer::new(agent_info.credits.into());
+            treasurer.redistribute_distribute_fleet_budgets(
+                &fleet_phase,
+                &facts,
+                &fleets,
+                &fleet_tasks,
+                &ship_fleet_assignment,
+                &ship_map,
+                &ship_price_info,
+                &all_next_ship_purchases,
+            )?;
+
             let mut admiral = Self {
                 completed_fleet_tasks: overview.completed_fleet_tasks.clone(),
                 fleets: fleet_map,
@@ -429,6 +445,7 @@ impl FleetAdmiral {
                 fleet_phase,
                 active_trades: overview.open_trade_tickets,
                 stationary_probe_locations: overview.stationary_probe_locations,
+                treasurer,
             };
 
             let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
@@ -470,17 +487,32 @@ impl FleetAdmiral {
 
         let completed_tasks = bmc.fleet_bmc().load_completed_fleet_tasks(&Ctx::Anonymous).await?;
 
-        let fleet_phase = compute_fleet_phase_with_tasks(system_symbol, &facts, &completed_tasks);
+        let fleet_phase = compute_fleet_phase_with_tasks(system_symbol.clone(), &facts, &completed_tasks);
 
         let (fleets, fleet_tasks) = compute_fleets_with_tasks(&facts, &HashMap::new(), &HashMap::new(), &fleet_phase);
 
         let ship_fleet_assignment = Self::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
 
-        let fleet_map: HashMap<FleetId, Fleet> = fleets.into_iter().map(|f| (f.id.clone(), f)).collect();
-        let fleet_task_map: HashMap<FleetId, Vec<FleetTask>> = fleet_tasks.into_iter().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
+        let fleet_map: HashMap<FleetId, Fleet> = fleets.iter().map(|f| (f.id.clone(), f.clone())).collect();
+        let fleet_task_map: HashMap<FleetId, Vec<FleetTask>> = fleet_tasks.iter().cloned().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
 
         let agent_info = client.get_agent().await?.data;
         bmc.agent_bmc().store_agent(&Ctx::Anonymous, &agent_info).await?;
+
+        let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
+        let all_next_ship_purchases = get_all_next_ship_purchases(&ship_map, &fleet_phase);
+
+        let mut treasurer = InMemoryTreasurer::new(agent_info.credits.into());
+        treasurer.redistribute_distribute_fleet_budgets(
+            &fleet_phase,
+            &facts,
+            &fleets,
+            &fleet_tasks,
+            &ship_fleet_assignment,
+            &ship_map,
+            &ship_price_info,
+            &all_next_ship_purchases,
+        )?;
 
         let mut admiral = Self {
             completed_fleet_tasks: completed_tasks,
@@ -493,6 +525,7 @@ impl FleetAdmiral {
             fleet_phase,
             active_trades: Default::default(),
             stationary_probe_locations,
+            treasurer,
         };
 
         let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
@@ -778,7 +811,7 @@ pub fn compute_fleet_configs(
         .filter_map(|t| {
             let desired_fleet_config = shopping_list_in_order.iter().filter(|(st, ft)| ft == t).map(|(st, _)| st).cloned().collect_vec();
             let maybe_cfg = match t {
-                FleetTask::CollectMarketInfosOnce { system_symbol } => Some(FleetConfig::SystemSpawningCfg(SystemSpawningFleetConfig {
+                FleetTask::InitialExploration { system_symbol } => Some(FleetConfig::SystemSpawningCfg(SystemSpawningFleetConfig {
                     system_symbol: system_symbol.clone(),
                     marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
                     shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
@@ -845,7 +878,7 @@ pub fn compute_fleet_phase_with_tasks(
 
     let has_construct_jump_gate_task_been_completed = completed_tasks.iter().any(|t| matches!(&t.task, ConstructJumpGate { system_symbol }));
 
-    let has_collect_market_infos_once_task_been_completed = completed_tasks.iter().any(|t| matches!(&t.task, CollectMarketInfosOnce { system_symbol }));
+    let has_collect_market_infos_once_task_been_completed = completed_tasks.iter().any(|t| matches!(&t.task, InitialExploration { system_symbol }));
 
     let is_jump_gate_done =
         fleet_decision_facts.construction_site.clone().map(|cs| cs.is_complete).unwrap_or(false) || has_construct_jump_gate_task_been_completed;
@@ -927,7 +960,7 @@ pub fn create_trade_profitably_fleet_phase(system_symbol: SystemSymbol, num_wayp
 
 pub fn create_initial_exploration_fleet_phase(system_symbol: &SystemSymbol, num_shipyards_of_interest: usize) -> FleetPhase {
     let tasks = [
-        CollectMarketInfosOnce {
+        InitialExploration {
             system_symbol: system_symbol.clone(),
         },
         ObserveAllWaypointsOfSystemWithStationaryProbes {

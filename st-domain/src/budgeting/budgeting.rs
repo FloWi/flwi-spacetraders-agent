@@ -18,7 +18,6 @@ pub enum TransactionGoal {
         max_acceptable_price: Option<Credits>,
         source_waypoint: WaypointSymbol,
     },
-
     Sell {
         good: TradeGoodSymbol,
         target_quantity: u32,
@@ -26,13 +25,6 @@ pub enum TransactionGoal {
         estimated_price: Credits,
         min_acceptable_price: Option<Credits>,
         destination_waypoint: WaypointSymbol,
-    },
-    Refuel {
-        target_fuel_level: u32,
-        current_fuel_level: u32,
-        estimated_cost_per_unit: Credits,
-        waypoint: WaypointSymbol,
-        is_optional: bool,
     },
     ShipPurchase {
         ship_type: ShipType,
@@ -111,7 +103,6 @@ pub enum TransactionEvent {
         price_per_unit: Credits,
         total_revenue: Credits,
     },
-
     ShipRefueled {
         timestamp: DateTime<Utc>,
         waypoint: WaypointSymbol,
@@ -131,12 +122,10 @@ pub enum TransactionEvent {
         timestamp: DateTime<Utc>,
         final_profit: Credits,
     },
-
     TicketFailed {
         timestamp: DateTime<Utc>,
         reason: String,
     },
-
     FundsReturned {
         timestamp: DateTime<Utc>,
         unspent_funds_returned: Credits,
@@ -236,7 +225,7 @@ impl Error for FinanceError {}
 
 impl TransactionTicket {
     pub fn all_required_goals_completed(&self) -> bool {
-        self.goals.iter().all(|goal| goal.is_completed() || goal.is_optional())
+        self.goals.iter().all(|goal| goal.is_completed())
     }
 
     pub fn update_from_event(&mut self, event: &TransactionEvent) {
@@ -476,11 +465,6 @@ impl TransactionGoal {
                 ..
             } => *sold_quantity >= *target_quantity,
 
-            Self::Refuel {
-                target_fuel_level,
-                current_fuel_level,
-                ..
-            } => *current_fuel_level >= *target_fuel_level,
             TransactionGoal::ShipPurchase {
                 ship_type,
                 estimated_cost,
@@ -491,18 +475,10 @@ impl TransactionGoal {
         }
     }
 
-    pub fn is_optional(&self) -> bool {
-        match self {
-            Self::Refuel { is_optional, .. } => *is_optional,
-            _ => false,
-        }
-    }
-
     pub fn get_waypoint(&self) -> &WaypointSymbol {
         match self {
             Self::Purchase { source_waypoint, .. } => source_waypoint,
             Self::Sell { destination_waypoint, .. } => destination_waypoint,
-            Self::Refuel { waypoint, .. } => waypoint,
             TransactionGoal::ShipPurchase {
                 shipyard_waypoint: waypoint, ..
             } => waypoint,
@@ -534,12 +510,6 @@ impl TransactionGoal {
                 TransactionEvent::GoodsSold { good, quantity, .. },
             ) if goal_good == good => {
                 *sold_quantity += quantity;
-                true
-            }
-
-            // Refuel goal progress update
-            (Self::Refuel { current_fuel_level, .. }, TransactionEvent::ShipRefueled { new_fuel_level, .. }) => {
-                *current_fuel_level = *new_fuel_level;
                 true
             }
 

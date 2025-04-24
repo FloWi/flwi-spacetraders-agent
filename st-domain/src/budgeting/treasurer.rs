@@ -35,8 +35,6 @@ pub trait Treasurer {
 
     fn update_goal(&mut self, id: Uuid, goal_index: usize, updated_goal: TransactionGoal) -> Result<(), Self::Error>;
 
-    fn skip_goal(&mut self, id: Uuid, goal_index: usize, reason: String) -> Result<(), Self::Error>;
-
     fn complete_ticket(&mut self, id: Uuid) -> Result<(), Self::Error>;
 
     fn get_active_ticket_for_vessel(&self, vessel_id: &ShipSymbol) -> Result<Option<TransactionTicket>, Self::Error>;
@@ -62,7 +60,7 @@ pub trait Treasurer {
 
 // In-memory implementation of the EventDrivenFinanceSystem trait
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct InMemoryTreasurer {
     tickets: HashMap<Uuid, TransactionTicket>,
     fleet_budgets: HashMap<FleetId, FleetBudget>,
@@ -92,15 +90,6 @@ impl InMemoryTreasurer {
                 } => {
                     required += Credits::new(i64::from(*target_quantity) * estimated_price.0);
                 }
-                TransactionGoal::Refuel {
-                    target_fuel_level,
-                    current_fuel_level,
-                    estimated_cost_per_unit,
-                    ..
-                } => {
-                    let fuel_needed = target_fuel_level - current_fuel_level;
-                    required += Credits::new(i64::from(fuel_needed) * estimated_cost_per_unit.0);
-                }
                 _ => {}
             }
         }
@@ -127,15 +116,6 @@ impl InMemoryTreasurer {
                     ..
                 } => {
                     revenue += Credits::new(i64::from(*target_quantity) * estimated_price.0);
-                }
-                TransactionGoal::Refuel {
-                    target_fuel_level,
-                    current_fuel_level,
-                    estimated_cost_per_unit,
-                    ..
-                } => {
-                    let fuel_needed = target_fuel_level - current_fuel_level;
-                    costs += Credits::new(i64::from(fuel_needed) * estimated_cost_per_unit.0);
                 }
                 TransactionGoal::ShipPurchase { estimated_cost, .. } => {
                     costs += *estimated_cost;
@@ -317,58 +297,6 @@ impl Treasurer for InMemoryTreasurer {
 
         ticket.goals[goal_index] = updated_goal;
         ticket.updated_at = Utc::now();
-
-        Ok(())
-    }
-
-    fn skip_goal(&mut self, id: Uuid, goal_index: usize, reason: String) -> Result<(), Self::Error> {
-        let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
-
-        if goal_index >= ticket.goals.len() {
-            return Err(FinanceError::GoalNotFound);
-        }
-
-        let goal = &ticket.goals[goal_index];
-
-        // Only optional goals can be skipped
-        if !goal.is_optional() {
-            return Err(FinanceError::InvalidOperation);
-        }
-
-        // Skip the goal by force-completing it based on its type
-        match &mut ticket.goals[goal_index] {
-            TransactionGoal::Purchase {
-                target_quantity,
-                acquired_quantity,
-                ..
-            } => {
-                *acquired_quantity = *target_quantity;
-            }
-            TransactionGoal::Sell {
-                target_quantity,
-                sold_quantity,
-                ..
-            } => {
-                *sold_quantity = *target_quantity;
-            }
-            TransactionGoal::Refuel {
-                target_fuel_level,
-                current_fuel_level,
-                ..
-            } => {
-                *current_fuel_level = *target_fuel_level;
-            }
-            TransactionGoal::ShipPurchase { .. } => {}
-        }
-
-        // Record skip event
-        let event = TransactionEvent::GoalSkipped {
-            timestamp: Utc::now(),
-            goal_index,
-            reason,
-        };
-
-        ticket.update_from_event(&event);
 
         Ok(())
     }
@@ -597,19 +525,17 @@ impl Treasurer for InMemoryTreasurer {
             FleetPhaseName::InitialExploration => {
                 // we start with one probe and want to keep 50k for trading. Let's try to reserve budget for purchasing one probe per shipyard
                 let command_ship_fleet_id =
-                    fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::CollectMarketInfosOnce { .. }).then_some(id)).unwrap();
+                    fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::InitialExploration { .. }).then_some(id)).unwrap();
 
                 let command_fleet_budget = self.treasury.min(Credits::new(51_000));
                 let command_ship_reserve = Credits::new(1_000);
                 self.create_fleet_budget(command_ship_fleet_id.clone(), command_fleet_budget, command_ship_reserve)?;
 
-                let rest_budget = self.treasury;
-                // let ships_within_budget = ship_price_info.get_all_ship_purchases_within_budget(new_ship_types, rest_budget.0);
-                // println!("{} ships are within budget: {:?}", ships_within_budget.len(), &ships_within_budget);
-                //
-                // let probes_budget = ships_within_budget.iter().map(|(_, _, price)| *price as i64).sum();
+                let other_fleets = fleet_tasks.iter().map(|(id, _)| id.clone()).filter(|id| self.fleet_budgets.contains_key(id).not()).collect_vec();
 
-                self.create_fleet_budget(market_observation_fleet_id.clone(), rest_budget, Credits::new(0))?;
+                for other_fleet_id in other_fleets {
+                    self.create_fleet_budget(other_fleet_id, Credits::new(0), Credits::new(0))?
+                }
             }
             FleetPhaseName::ConstructJumpGate => {
                 // Strategy:
@@ -639,23 +565,6 @@ impl Treasurer for InMemoryTreasurer {
                 let ship_purchases_running_total = ship_price_info.get_running_total_of_all_ship_purchases(new_ship_types);
                 let affordable_ships =
                     ship_purchases_running_total.iter().take_while(|(_, _, _, running_total)| (*running_total as i64) < rest_budget.0).collect_vec();
-
-                let ship_purchases_per_fleet = affordable_ships
-                    .iter()
-                    .zip(tasks_of_new_ships)
-                    .map(|((ship_type, wps, price, _), fleet_task)| (fleet_task, *ship_type, wps.clone(), *price))
-                    .into_group_map_by(|tup| tup.0.clone())
-                    .into_iter()
-                    .map(|(fleet_task, entries)| {
-                        let fleet_task_total = entries.iter().map(|(_, _, _, p)| p).sum::<u32>();
-                        let fleet_id = fleet_task_lookup.get(&fleet_task).unwrap();
-                        (fleet_task, fleet_id.clone(), entries, fleet_task_total)
-                    })
-                    .collect_vec();
-
-                for (_fleet_task, fleet_id, _entries, fleet_task_total) in ship_purchases_per_fleet {
-                    self.create_fleet_budget(fleet_id.clone(), Credits::new(fleet_task_total as i64), Credits::new(0))?;
-                }
 
                 // we create a budget for the rest of the fleets
                 let other_fleets = fleet_tasks.iter().map(|(id, _)| id.clone()).filter(|id| self.fleet_budgets.contains_key(id).not()).collect_vec();

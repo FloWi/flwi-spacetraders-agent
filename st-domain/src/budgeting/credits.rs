@@ -1,9 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Deref, Neg, Sub, SubAssign};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Credits(pub i64);
+
+impl Deref for Credits {
+    type Target = i64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl Credits {
     pub fn new(amount: i64) -> Self {
