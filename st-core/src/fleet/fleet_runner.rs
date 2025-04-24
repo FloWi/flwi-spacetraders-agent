@@ -439,7 +439,7 @@ impl FleetRunner {
                         let system_symbol = ship.nav.system_symbol.clone();
                         let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
 
-                        let fleet_phase = compute_fleet_phase_with_tasks(system_symbol, &facts, &admiral_guard.completed_fleet_tasks);
+                        let fleet_phase = compute_fleet_phase_with_tasks(system_symbol.clone(), &facts, &admiral_guard.completed_fleet_tasks);
                         let (fleets, fleet_tasks) = compute_fleets_with_tasks(&facts, &admiral_guard.fleets, &admiral_guard.fleet_tasks, &fleet_phase);
                         // println!("Computed new fleets after dismantling the fleets: {:?}", fleets_to_dismantle);
                         // dbg!(&fleets);
@@ -456,6 +456,20 @@ impl FleetRunner {
                         let ship_fleet_assignment =
                             FleetAdmiral::assign_ships(&fleet_task_list, &admiral_guard.all_ships, &admiral_guard.fleet_phase.shopping_list_in_order);
                         admiral_guard.ship_fleet_assignment = ship_fleet_assignment;
+
+                        let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
+                        let all_next_ship_purchases = get_all_next_ship_purchases(&admiral_guard.all_ships, &admiral_guard.fleet_phase);
+
+                        let fleet_tasks: Vec<(FleetId, FleetTask)> =
+                            admiral_guard.fleet_tasks.iter().map(|t| (t.0.clone(), t.1.first().cloned().unwrap())).collect_vec();
+
+                        admiral_guard.treasurer.lock().await.redistribute_distribute_fleet_budgets(
+                            &admiral_guard.fleet_phase,
+                            &fleet_tasks,
+                            &admiral_guard.ship_fleet_assignment,
+                            &ship_price_info,
+                            &all_next_ship_purchases,
+                        )?;
 
                         let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
                         FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut admiral_guard, new_ship_tasks);

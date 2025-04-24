@@ -89,12 +89,7 @@ impl FleetAdmiral {
         tasks
     }
 
-    pub async fn run_fleets(
-        fleet_admiral: Arc<Mutex<FleetAdmiral>>,
-        client: Arc<dyn StClientTrait>,
-        bmc: Arc<dyn Bmc>,
-        //blackboard: Arc<dyn BlackboardOps>,
-    ) -> Result<()> {
+    pub async fn run_fleets(fleet_admiral: Arc<Mutex<FleetAdmiral>>, client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
         FleetRunner::run_fleets(Arc::clone(&fleet_admiral), Arc::clone(&client), bmc, Duration::from_secs(5)).await?;
@@ -295,16 +290,7 @@ impl FleetAdmiral {
         let fleet_tasks = fleet_tasks.iter().map(|(fleet_id, tasks)| (fleet_id.clone(), tasks.first().cloned().unwrap())).collect_vec();
 
         let mut treasurer = InMemoryTreasurer::new(agent_info.credits.into());
-        treasurer.redistribute_distribute_fleet_budgets(
-            &fleet_phase,
-            &facts,
-            &fleets,
-            &fleet_tasks,
-            &ship_fleet_assignment,
-            &all_ships,
-            &ship_price_info,
-            &all_next_ship_purchases,
-        )?;
+        treasurer.redistribute_distribute_fleet_budgets(&fleet_phase, &fleet_tasks, &ship_fleet_assignment, &ship_price_info, &all_next_ship_purchases)?;
 
         Ok(treasurer)
     }

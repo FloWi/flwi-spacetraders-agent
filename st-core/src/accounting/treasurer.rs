@@ -60,16 +60,7 @@ mod tests {
 
         let all_next_ship_purchases = fleet::get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
-        finance.redistribute_distribute_fleet_budgets(
-            &fleet_phase,
-            &facts,
-            &fleets,
-            &fleet_tasks,
-            &ship_fleet_assignment,
-            &ship_map,
-            &ship_price_info,
-            &all_next_ship_purchases,
-        )?;
+        finance.redistribute_distribute_fleet_budgets(&fleet_phase, &fleet_tasks, &ship_fleet_assignment, &ship_price_info, &all_next_ship_purchases)?;
         let command_fleet_budget = finance.get_fleet_budget(command_ship_fleet_id)?;
         let market_observation_fleet_budget = finance.get_fleet_budget(market_observation_fleet_id)?;
 
@@ -122,16 +113,7 @@ mod tests {
 
         let all_next_ship_purchases = fleet::get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
-        finance.redistribute_distribute_fleet_budgets(
-            &fleet_phase,
-            &facts,
-            &fleets,
-            &fleet_tasks,
-            &ship_fleet_assignment,
-            &ship_map,
-            &ship_price_info,
-            &all_next_ship_purchases,
-        )?;
+        finance.redistribute_distribute_fleet_budgets(&fleet_phase, &fleet_tasks, &ship_fleet_assignment, &ship_price_info, &all_next_ship_purchases)?;
         let construction_fleet_budget = finance.get_fleet_budget(construction_fleet_id)?;
         let market_observation_fleet_budget = finance.get_fleet_budget(market_observation_fleet_id)?;
         let mining_fleet_budget = finance.get_fleet_budget(mining_fleet_id)?;
@@ -190,16 +172,7 @@ mod tests {
         let all_next_ship_purchases = fleet::get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
         // Distribute the budgets based on fleet phase
-        finance.redistribute_distribute_fleet_budgets(
-            &fleet_phase,
-            &facts,
-            &fleets,
-            &fleet_tasks,
-            &ship_fleet_assignment,
-            &ship_map,
-            &ship_price_info,
-            &all_next_ship_purchases,
-        )?;
+        finance.redistribute_distribute_fleet_budgets(&fleet_phase, &fleet_tasks, &ship_fleet_assignment, &ship_price_info, &all_next_ship_purchases)?;
 
         // Check the initial budgets
         let construction_budget_before = finance.get_fleet_budget(construction_fleet_id)?;

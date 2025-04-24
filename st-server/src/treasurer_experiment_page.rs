@@ -105,16 +105,7 @@ async fn prepare_financials() -> Result<InMemoryTreasurer, ServerFnError> {
 
         let all_next_ship_purchases = fleet::get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
-        finance.redistribute_distribute_fleet_budgets(
-            &fleet_phase,
-            &facts,
-            &fleets,
-            &fleet_tasks,
-            &ship_fleet_assignment,
-            &ship_map,
-            &ship_price_info,
-            &all_next_ship_purchases,
-        )?;
+        finance.redistribute_distribute_fleet_budgets(&fleet_phase, &fleet_tasks, &ship_fleet_assignment, &ship_price_info, &all_next_ship_purchases)?;
         Ok(finance)
     }
 

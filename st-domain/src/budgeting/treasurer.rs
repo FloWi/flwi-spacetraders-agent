@@ -45,11 +45,8 @@ pub trait Treasurer {
     fn redistribute_distribute_fleet_budgets(
         &mut self,
         fleet_phase: &FleetPhase,
-        facts: &FleetDecisionFacts,
-        fleets: &[Fleet],
         fleet_tasks: &[(FleetId, FleetTask)],
         ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>,
-        ship_map: &HashMap<ShipSymbol, Ship>,
         ship_price_info: &ShipPriceInfo,
         all_next_ship_purchases: &[(ShipType, FleetTask)],
     ) -> Result<(), Self::Error>;
@@ -497,11 +494,8 @@ impl Treasurer for InMemoryTreasurer {
     fn redistribute_distribute_fleet_budgets(
         &mut self,
         fleet_phase: &FleetPhase,
-        facts: &FleetDecisionFacts,
-        fleets: &[Fleet],
         fleet_tasks: &[(FleetId, FleetTask)],
         ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>,
-        ship_map: &HashMap<ShipSymbol, Ship>,
         ship_price_info: &ShipPriceInfo,
         all_next_ship_purchases: &[(ShipType, FleetTask)],
     ) -> Result<(), Self::Error> {
