@@ -41,6 +41,7 @@ pub enum ShipAction {
     IsLateEnoughForWaypointObservation,
     SetNextTradeStopAsDestination,
     PerformTradeActionAndMarkAsCompleted,
+    HasShipPurchaseTicketForWaypoint,
     HasNextTradeWaypoint,
     WaitForAllocatedBudgetToBeAvailable,
 }
@@ -166,6 +167,15 @@ pub fn ship_behaviors() -> Behaviors {
         Behavior::new_action(ShipAction::RemoveDestination),
     ]);
 
+    let mut purchase_ship_if_has_ticket = Behavior::new_select(vec![
+        Behavior::new_invert(Behavior::new_action(ShipAction::HasShipPurchaseTicketForWaypoint)),
+        Behavior::new_sequence(vec![
+            dock_if_necessary.clone(),
+            Behavior::new_action(ShipAction::PerformTradeActionAndMarkAsCompleted),
+            orbit_if_necessary.clone(),
+        ]),
+    ]);
+
     let prime_explorer_destination_with_first_explorer_location = Behavior::new_select(vec![
         Behavior::new_invert(Behavior::new_action(ShipAction::PrintExploreLocations)),
         Behavior::new_action(ShipAction::HasDestination),
@@ -185,6 +195,7 @@ pub fn ship_behaviors() -> Behaviors {
             wait_for_arrival_bt.clone(),
             navigate_to_destination.clone(),
             Behavior::new_action(ShipAction::CollectWaypointInfos),
+            purchase_ship_if_has_ticket.clone(),
             Behavior::new_action(ShipAction::PopExploreLocationAsDestination),
         ]),
     );
@@ -206,6 +217,14 @@ pub fn ship_behaviors() -> Behaviors {
             navigate_to_destination.clone(),
             dock_if_necessary.clone(),
         ]),
+        Behavior::new_while(
+            Behavior::new_action(ShipAction::IsAtDestination), //this should be true, because we navigated here ==> endless loop
+            Behavior::new_sequence(vec![
+                Behavior::new_action(ShipAction::IsLateEnoughForWaypointObservation),
+                Behavior::new_action(ShipAction::CollectWaypointInfos),
+                Behavior::new_action(ShipAction::SleepUntilNextObservationTime),
+            ]),
+        ),
     ]);
 
     let while_condition_trader = Behavior::new_select(vec![

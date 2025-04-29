@@ -89,9 +89,9 @@ impl SystemSpawningFleet {
         cfg: &SystemSpawningFleetConfig,
         fleet: &Fleet,
         facts: &FleetDecisionFacts,
+        ships: &[&Ship],
     ) -> Result<HashMap<ShipSymbol, ShipTask>> {
-        let ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
-        assert_eq!(ships.len(), 1, "expecting 1 ship");
+        //assert_eq!(ships.len(), 1, "expecting 1 ship");
 
         // TODO: to optimize we could remove the waypoint from the list where the probe has been spawned
 

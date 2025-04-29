@@ -458,6 +458,14 @@ impl ShipPriceInfo {
         })
     }
 
+    pub fn get_best_purchase_location(&self, ship_type: &ShipType) -> Option<(ShipType, (WaypointSymbol, u32))> {
+        let purchase_price_map: HashMap<ShipType, Vec<(WaypointSymbol, u32)>> = self.compute_ship_type_purchase_price_map();
+        let purchase_location_map: HashMap<ShipType, Vec<WaypointSymbol>> = self.compute_ship_type_purchase_location_map();
+        Self::get_price_and_location(ship_type, &purchase_price_map, &purchase_location_map)
+            .map(|(wps, p)| (ship_type.clone(), wps, p))
+            .map(|(st, wps, p)| (st, (wps, p)))
+    }
+
     pub fn get_running_total_of_all_ship_purchases(&self, shopping_list: Vec<ShipType>) -> Vec<(ShipType, WaypointSymbol, u32, u32)> {
         let purchase_price_map: HashMap<ShipType, Vec<(WaypointSymbol, u32)>> = self.compute_ship_type_purchase_price_map();
         let purchase_location_map: HashMap<ShipType, Vec<WaypointSymbol>> = self.compute_ship_type_purchase_location_map();

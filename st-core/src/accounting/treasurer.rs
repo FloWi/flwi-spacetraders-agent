@@ -360,7 +360,7 @@ mod tests {
     ) -> Result<(), FinanceError> {
         // Create a ticket for ship purchase
         let ticket_id = treasurer.create_ticket(
-            TicketType::FleetExpansion,
+            TicketType::ShipPurchase,
             executing_ship.clone(),
             executing_fleet,
             executing_fleet,   // Initiating fleet is the same as executing

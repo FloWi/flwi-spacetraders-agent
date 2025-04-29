@@ -2,7 +2,7 @@ use crate::budgeting::budgeting::{
     FinanceError, FleetBudget, FundingSource, TicketFinancials, TicketStatus, TicketType, TransactionEvent, TransactionGoal, TransactionTicket,
 };
 use crate::budgeting::credits::Credits;
-use crate::{Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, Ship, ShipPriceInfo, ShipSymbol, ShipType, TicketId};
+use crate::{Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, Ship, ShipPriceInfo, ShipSymbol, ShipType, TicketId, WaypointSymbol};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -26,6 +26,8 @@ pub trait Treasurer {
 
     fn get_ticket(&self, id: TicketId) -> Result<TransactionTicket, Self::Error>;
 
+    fn fund_fleet_for_next_purchase(&mut self, source: FundingSource) -> Result<(), Self::Error>;
+
     fn fund_ticket(&mut self, id: TicketId, source: FundingSource) -> Result<(), Self::Error>;
 
     fn start_ticket_execution(&mut self, id: TicketId) -> Result<(), Self::Error>;
@@ -37,6 +39,7 @@ pub trait Treasurer {
     fn complete_ticket(&mut self, id: TicketId) -> Result<(), Self::Error>;
 
     fn get_active_ticket_for_vessel(&self, vessel_id: &ShipSymbol) -> Result<Option<TransactionTicket>, Self::Error>;
+    fn get_ship_purchase_tickets(&self) -> Vec<TransactionTicket>;
 
     fn create_fleet_budget(&mut self, fleet_id: FleetId, initial_capital: Credits, credits: Credits) -> Result<(), Self::Error>;
 
@@ -52,6 +55,16 @@ pub trait Treasurer {
     ) -> Result<(), Self::Error>;
 
     fn give_all_treasury_to_fleet(&mut self, fleet: &FleetId) -> Result<(), Self::Error>;
+
+    fn create_ship_purchase_ticket(
+        &mut self,
+        ship_type: &ShipType,
+        purchasing_ship: &ShipSymbol,
+        beneficiary_fleet: &FleetId,
+        executing_fleet: &FleetId,
+        estimated_cost: Credits,
+        shipyard_waypoint: &WaypointSymbol,
+    ) -> Result<TicketId, Self::Error>;
 }
 
 // In-memory implementation of the EventDrivenFinanceSystem trait
@@ -130,18 +143,6 @@ impl InMemoryTreasurer {
 impl Treasurer for InMemoryTreasurer {
     type Error = FinanceError;
 
-    fn give_all_treasury_to_fleet(&mut self, beneficiary_fleet: &FleetId) -> Result<(), Self::Error> {
-        if let Some(beneficiary_fleet_budget) = self.fleet_budgets.get_mut(beneficiary_fleet) {
-            beneficiary_fleet_budget.available_capital += self.treasury;
-            beneficiary_fleet_budget.total_capital += self.treasury;
-
-            self.treasury = Credits::new(0);
-            Ok(())
-        } else {
-            Err(FinanceError::FleetNotFound)
-        }
-    }
-
     fn create_ticket(
         &mut self,
         ticket_type: TicketType,
@@ -219,6 +220,26 @@ impl Treasurer for InMemoryTreasurer {
 
     fn get_ticket(&self, id: TicketId) -> Result<TransactionTicket, Self::Error> {
         self.tickets.get(&id).cloned().ok_or(FinanceError::TicketNotFound)
+    }
+
+    fn fund_fleet_for_next_purchase(&mut self, source: FundingSource) -> Result<(), Self::Error> {
+        // Check that the fleet exists and has enough funds
+        let fleet_budget = self.fleet_budgets.get_mut(&source.source_fleet).ok_or(FinanceError::FleetNotFound)?;
+
+        let diff = source.amount - fleet_budget.available_capital;
+
+        if diff.0 > 0 {
+            if self.treasury >= diff {
+                fleet_budget.available_capital += diff;
+                self.treasury -= diff;
+                Ok(())
+            } else {
+                Err(FinanceError::InsufficientFunds)
+            }
+        } else {
+            // no need to top up the fleet's budget
+            Ok(())
+        }
     }
 
     fn fund_ticket(&mut self, id: TicketId, source: FundingSource) -> Result<(), Self::Error> {
@@ -361,7 +382,7 @@ impl Treasurer for InMemoryTreasurer {
                 );
             }
 
-            TicketType::FleetExpansion => {
+            TicketType::ShipPurchase => {
                 // For ship purchases, we need to:
                 // 1. Return unspent funds to the funding fleet
                 // 2. Add the ship value as an asset to the beneficiary fleet
@@ -416,7 +437,7 @@ impl Treasurer for InMemoryTreasurer {
             }
 
             // Handle other ticket types similarly
-            TicketType::Construction | TicketType::Exploration => {
+            TicketType::DeliverConstructionMaterial | TicketType::Exploration => {
                 // Clone the funding sources to avoid borrow checker issues
                 let funding_sources: Vec<FundingSource> = ticket.financials.funding_sources.clone();
 
@@ -453,6 +474,21 @@ impl Treasurer for InMemoryTreasurer {
         } else {
             Ok(None)
         }
+    }
+
+    fn get_ship_purchase_tickets(&self) -> Vec<TransactionTicket> {
+        self.tickets
+            .iter()
+            .filter_map(|(_, t)| match &t {
+                TransactionTicket { ticket_type, .. } => match ticket_type {
+                    TicketType::ShipPurchase => true,
+                    TicketType::Trading => false,
+                    TicketType::DeliverConstructionMaterial => false,
+                    TicketType::Exploration => false,
+                }
+                .then_some(t.clone()),
+            })
+            .collect_vec()
     }
 
     fn create_fleet_budget(&mut self, fleet_id: FleetId, initial_capital: Credits, operating_reserve: Credits) -> Result<(), Self::Error> {
@@ -576,5 +612,46 @@ impl Treasurer for InMemoryTreasurer {
             FleetPhaseName::TradeProfitably => {}
         }
         Ok(())
+    }
+
+    fn give_all_treasury_to_fleet(&mut self, beneficiary_fleet: &FleetId) -> Result<(), Self::Error> {
+        if let Some(beneficiary_fleet_budget) = self.fleet_budgets.get_mut(beneficiary_fleet) {
+            beneficiary_fleet_budget.available_capital += self.treasury;
+            beneficiary_fleet_budget.total_capital += self.treasury;
+
+            self.treasury = Credits::new(0);
+            Ok(())
+        } else {
+            Err(FinanceError::FleetNotFound)
+        }
+    }
+
+    fn create_ship_purchase_ticket(
+        &mut self,
+        ship_type: &ShipType,
+        purchasing_ship: &ShipSymbol,
+        beneficiary_fleet: &FleetId,
+        executing_fleet: &FleetId,
+        estimated_cost: Credits,
+        shipyard_waypoint: &WaypointSymbol,
+    ) -> Result<TicketId, Self::Error> {
+        let ticket_id = self.create_ticket(
+            TicketType::ShipPurchase,
+            purchasing_ship.clone(),
+            executing_fleet,
+            executing_fleet,
+            beneficiary_fleet,
+            vec![TransactionGoal::ShipPurchase {
+                ship_type: *ship_type,
+                estimated_cost,
+                has_been_purchased: false,
+                beneficiary_fleet: beneficiary_fleet.clone(),
+                shipyard_waypoint: shipyard_waypoint.clone(),
+            }],
+            Default::default(),
+            0.0,
+        )?;
+
+        Ok(ticket_id)
     }
 }

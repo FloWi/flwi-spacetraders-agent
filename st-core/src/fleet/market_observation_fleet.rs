@@ -8,14 +8,7 @@ use std::collections::{HashMap, HashSet};
 pub struct MarketObservationFleet;
 
 impl MarketObservationFleet {
-    pub fn compute_ship_tasks(
-        admiral: &FleetAdmiral,
-        cfg: &MarketObservationFleetConfig,
-        fleet: &Fleet,
-        facts: &FleetDecisionFacts,
-    ) -> Result<HashMap<ShipSymbol, ShipTask>> {
-        let ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
-
+    pub fn compute_ship_tasks(admiral: &FleetAdmiral, cfg: &MarketObservationFleetConfig, ships: &[&Ship]) -> Result<HashMap<ShipSymbol, ShipTask>> {
         let marketplaces_to_explore = cfg.marketplace_waypoints_of_interest.clone();
         let shipyards_to_explore = cfg.shipyard_waypoints_of_interest.clone();
 

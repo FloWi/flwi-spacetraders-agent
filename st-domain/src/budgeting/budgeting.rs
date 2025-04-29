@@ -37,8 +37,8 @@ pub enum TransactionGoal {
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub enum TicketType {
     Trading,
-    FleetExpansion,
-    Construction,
+    ShipPurchase,
+    DeliverConstructionMaterial,
     Exploration,
 }
 

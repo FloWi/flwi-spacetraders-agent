@@ -24,7 +24,7 @@ use st_domain::{
 use st_store::bmc::ship_bmc::ShipBmcTrait;
 use st_store::bmc::Bmc;
 use st_store::{upsert_fleets_data, Ctx};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Not;
 use std::sync::Arc;
 use std::time::Duration;
@@ -430,7 +430,7 @@ impl FleetRunner {
                         event!(
                             Level::INFO,
                             "Dismantling fleets {}",
-                            fleets_to_dismantle.iter().map(|fleet_id| fleet_id.0.to_string()).join(", ")
+                            fleets_to_dismantle.iter().map(|fleet_id| format!("#{}", fleet_id.0)).join(", ")
                         );
 
                         FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle.clone());
@@ -445,6 +445,8 @@ impl FleetRunner {
                         // dbg!(&fleets);
                         // dbg!(&fleet_tasks);
                         // dbg!(&fleet_phase);
+                        let current_ship_demands = get_all_next_ship_purchases(&admiral_guard.all_ships, &fleet_phase);
+                        admiral_guard.ship_purchase_demand = VecDeque::from(current_ship_demands);
 
                         admiral_guard.fleets = fleets.into_iter().map(|f| (f.id.clone(), f)).collect();
                         admiral_guard.fleet_tasks = fleet_tasks.into_iter().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
@@ -458,7 +460,6 @@ impl FleetRunner {
                         admiral_guard.ship_fleet_assignment = ship_fleet_assignment;
 
                         let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
-                        let all_next_ship_purchases = get_all_next_ship_purchases(&admiral_guard.all_ships, &admiral_guard.fleet_phase);
 
                         let fleet_tasks: Vec<(FleetId, FleetTask)> =
                             admiral_guard.fleet_tasks.iter().map(|t| (t.0.clone(), t.1.first().cloned().unwrap())).collect_vec();
@@ -468,11 +469,11 @@ impl FleetRunner {
                             &fleet_tasks,
                             &admiral_guard.ship_fleet_assignment,
                             &ship_price_info,
-                            &all_next_ship_purchases,
+                            &admiral_guard.ship_purchase_demand.iter().cloned().collect_vec(),
                         )?;
 
                         let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
-                        FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut admiral_guard, new_ship_tasks);
+                        FleetAdmiral::assign_ship_tasks(&mut admiral_guard, new_ship_tasks);
 
                         Self::launch_ship_fibers_of_idle_or_new_ships(
                             Arc::clone(&runner),
@@ -504,16 +505,12 @@ impl FleetRunner {
                         };
                         bmc.ship_bmc().insert_stationary_probe(&Ctx::Anonymous, location.clone()).await?;
                         FleetAdmiral::add_stationary_probe_location(&mut admiral_guard, location);
-                        FleetAdmiral::remove_ship_from_fleet(&mut admiral_guard, &ship_symbol);
-                        FleetAdmiral::remove_ship_task(&mut admiral_guard, &ship_symbol);
-                        Self::stop_ship(Arc::clone(&runner), &ship_symbol).await?;
+                        // FleetAdmiral::remove_ship_from_fleet(&mut admiral_guard, &ship_symbol);
+                        // FleetAdmiral::remove_ship_task(&mut admiral_guard, &ship_symbol);
+                        // Self::stop_ship(Arc::clone(&runner), &ship_symbol).await?;
                     }
-                    NewTaskResult::AssignNewTaskToShip {
-                        ship_symbol,
-                        task,
-                        ship_task_requirement,
-                    } => {
-                        FleetAdmiral::assign_ship_task_and_potential_requirement(&mut admiral_guard, ship_symbol.clone(), task, ship_task_requirement);
+                    NewTaskResult::AssignNewTaskToShip { ship_symbol, task } => {
+                        FleetAdmiral::assign_ship_tasks(&mut admiral_guard, vec![(ship_symbol.clone(), task)]);
                         Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration).await?;
                         upsert_fleets_data(
                             Arc::clone(&bmc),
@@ -591,7 +588,7 @@ impl FleetRunner {
 
                     let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &new_ship.nav.system_symbol).await?;
                     let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
-                    FleetAdmiral::assign_ship_tasks_and_potential_requirements(&mut admiral_guard, new_ship_tasks);
+                    FleetAdmiral::assign_ship_tasks(&mut admiral_guard, new_ship_tasks);
                     upsert_fleets_data(
                         Arc::clone(&bmc),
                         &Ctx::Anonymous,

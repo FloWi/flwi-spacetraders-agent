@@ -420,7 +420,7 @@ impl Actionable for ShipAction {
                     if next_time < Utc::now() {
                         Ok(Success)
                     } else {
-                        Ok(Response::Running)
+                        Err(anyhow!("Not enough time has passed"))
                     }
                 }
             },
@@ -712,6 +712,26 @@ impl Actionable for ShipAction {
                     tokio::time::sleep(sleep_duration).await;
                 }
                 Ok(Success)
+            }
+            ShipAction::HasShipPurchaseTicketForWaypoint => {
+                let current_location = state.current_location();
+
+                let result = if let Some(trade) = &state.maybe_trade.clone() {
+                    match trade {
+                        TradeTicket::PurchaseShipTicket { ticket_id, details } => {
+                            if details.waypoint_symbol == current_location {
+                                Ok(Success)
+                            } else {
+                                Err(anyhow!("Ship purchase ticket for different location"))
+                            }
+                        }
+                        TradeTicket::TradeCargo { .. } => Err(anyhow!("Not a ship purchase ticket")),
+                        TradeTicket::DeliverConstructionMaterials { .. } => Err(anyhow!("Not a ship purchase ticket")),
+                    }
+                } else {
+                    Err(anyhow!("No trading ticket"))
+                };
+                result
             }
         };
 
