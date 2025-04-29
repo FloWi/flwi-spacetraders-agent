@@ -1,10 +1,12 @@
 use crate::budgeting::credits::Credits;
 use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
+use std::ops::Not;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TransactionGoal {
@@ -171,6 +173,16 @@ pub struct TransactionTicket {
     pub priority: f64,
     pub event_history: Vec<TransactionEvent>,
     pub metadata: HashMap<String, String>,
+}
+
+impl TransactionTicket {
+    pub fn get_incomplete_goals(&self) -> Vec<TransactionGoal> {
+        self.goals.iter().filter(|g| g.is_completed().not()).cloned().collect_vec()
+    }
+
+    pub fn get_completed_goals(&self) -> Vec<TransactionGoal> {
+        self.goals.iter().filter(|g| g.is_completed()).cloned().collect_vec()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]

@@ -1,6 +1,7 @@
 use crate::st_client::StClientTrait;
 use anyhow::*;
 use chrono::{DateTime, Utc};
+use st_domain::budgeting::budgeting::TransactionTicket;
 use st_domain::{
     CreateChartBody, DeliverConstructionMaterialTicketDetails, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseGoodTicketDetails,
     PurchaseShipResponse, PurchaseShipTicketDetails, PurchaseTradeGoodResponse, RefuelShipResponse, SellGoodTicketDetails, SellTradeGoodResponse, Ship,
@@ -19,7 +20,7 @@ pub struct ShipOperations {
     pub explore_location_queue: VecDeque<WaypointSymbol>,
     pub permanent_observation_location: Option<WaypointSymbol>,
     pub maybe_next_observation_time: Option<DateTime<Utc>>,
-    pub maybe_trade: Option<TradeTicket>,
+    pub maybe_trade: Option<TransactionTicket>,
 }
 
 impl PartialEq for ShipOperations {
@@ -56,15 +57,9 @@ maybe_trade: {:?},
         self.ship.nav.waypoint_symbol.clone()
     }
 
-    pub(crate) fn mark_transaction_as_complete(&mut self, transaction_ticket_id: &TransactionTicketId) {
-        if let Some(trade) = self.maybe_trade.as_mut() {
-            trade.mark_transaction_as_complete(transaction_ticket_id)
-        }
-    }
-
     pub(crate) fn remove_trade_ticket_if_complete(&mut self) {
         if let Some(trade) = self.maybe_trade.clone() {
-            if trade.is_complete() {
+            if trade.completed_at.is_some() {
                 self.maybe_trade = None;
             }
         }
@@ -128,7 +123,7 @@ maybe_trade: {:?},
         self.permanent_observation_location = Some(waypoint_symbol);
     }
 
-    pub fn set_trade_ticket(&mut self, trade_ticket: TradeTicket) {
+    pub fn set_trade_ticket(&mut self, trade_ticket: TransactionTicket) {
         self.maybe_trade = Some(trade_ticket);
     }
 

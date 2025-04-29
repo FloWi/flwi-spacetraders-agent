@@ -281,7 +281,9 @@ impl FleetRunner {
             ShipTask::MineMaterialsAtWaypoint { .. } => None,
             ShipTask::SurveyAsteroid { .. } => None,
             ShipTask::Trade { ticket_id } => {
-                let ticket: TradeTicket = args.blackboard.get_ticket_by_id(ticket_id).await?;
+                let mut guard = args.treasurer.lock().await;
+                let ticket = guard.get_ticket(ticket_id)?;
+                guard.start_ticket_execution(ticket_id)?;
                 ship.set_trade_ticket(ticket);
                 //println!("ship_loop: Ship {:?} is running trading_behavior", ship.symbol);
                 Some((behaviors.trading_behavior, "trading_behavior"))
