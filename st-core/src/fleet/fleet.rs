@@ -4,7 +4,6 @@ use crate::fleet::fleet;
 use crate::fleet::fleet_runner::FleetRunner;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
 use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
-use crate::fleet::trading_manager::TradingManager;
 use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_shipyards_for_exploration};
 use crate::pagination::fetch_all_pages;
 use crate::st_client::StClientTrait;
@@ -41,7 +40,7 @@ use tracing::{event, Level};
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum ShipStatusReport {
     ShipActionCompleted(Ship, ShipAction),
-    TransactionCompleted(Ship, TransactionActionEvent, TradeTicket),
+    TransactionCompleted(Ship, TransactionActionEvent, TransactionTicket),
     ShipFinishedBehaviorTree(Ship, ShipTask),
     Expense(Ship, OperationExpenseEvent),
 }
@@ -164,61 +163,13 @@ impl FleetAdmiral {
             }
 
             ShipStatusReport::TransactionCompleted(ship, transaction_event, updated_trade_ticket) => {
-                let ticket_id = match &updated_trade_ticket {
-                    TradeTicket::TradeCargo { ticket_id, .. } => ticket_id,
-                    TradeTicket::DeliverConstructionMaterials { ticket_id, .. } => ticket_id,
-                    TradeTicket::PurchaseShipTicket { ticket_id, .. } => ticket_id,
-                };
+                let ticket_id = updated_trade_ticket.id;
 
                 let is_complete = updated_trade_ticket.is_complete();
-                bmc.trade_bmc().upsert_ticket(&Ctx::Anonymous, &ship.symbol, ticket_id, updated_trade_ticket, is_complete).await?;
+                bmc.trade_bmc().upsert_ticket(&Ctx::Anonymous, &ship.symbol, &ticket_id, updated_trade_ticket, is_complete).await?;
 
-                let tx_summary =
-                    TradingManager::log_transaction_completed(Ctx::Anonymous, bmc.trade_bmc(), ship, transaction_event, updated_trade_ticket).await?;
+                //FIXME: agent-credits need to update
 
-                let maybe_updated_agent_credits = tx_summary.transaction_action_event.maybe_updated_agent_credits();
-                let old_credits = self.agent_info.credits;
-                let new_credits = self.agent_info.credits + tx_summary.total_price;
-
-                match maybe_updated_agent_credits {
-                    None => {}
-                    Some(agent_credits_from_response) => {
-                        if agent_credits_from_response != new_credits {
-                            event!(
-                        Level::WARN,
-                            "Agent Credits differ from our expectation! Expected Agent Credits: {new_credits}; Actual Agent Credits: {agent_credits_from_response}"
-                              );
-                        }
-                    }
-                };
-                self.agent_info.credits = new_credits;
-
-                bmc.agent_bmc().store_agent(&Ctx::Anonymous, &self.agent_info).await?;
-
-                if is_complete {
-                    event!(
-                        Level::INFO,
-                        message = "Transaction complete. It completed the whole trade.",
-                        transaction_ticket_id = &tx_summary.transaction_ticket_id.0.to_string(),
-                        trade_ticket_id = &tx_summary.trade_ticket.ticket_id().0.to_string(),
-                        total_price = &tx_summary.total_price,
-                        old_credits,
-                        new_credits = self.agent_info.credits,
-                    );
-                    // FIXME: move logic to treasurer
-                    self.active_trade_ids.remove(&ship.symbol);
-                } else {
-                    // self.active_trades.insert(ship.symbol.clone(), updated_trade_ticket.clone());
-                    event!(
-                        Level::INFO,
-                        message = "Transaction complete. Transaction is not complete yet.",
-                        transaction_ticket_id = &tx_summary.transaction_ticket_id.0.to_string(),
-                        trade_ticket_id = &tx_summary.trade_ticket.ticket_id().0.to_string(),
-                        total_price = &tx_summary.total_price,
-                        old_credits,
-                        new_credits = self.agent_info.credits,
-                    );
-                }
                 Ok(())
             }
             ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
@@ -226,7 +177,7 @@ impl FleetAdmiral {
                     Level::INFO,
                     message = "Ship finished behavior tree",
                     ship = ship.symbol.0,
-                    task = task.to_string()
+                    task = task.to_string(),
                 );
                 Ok(())
             }

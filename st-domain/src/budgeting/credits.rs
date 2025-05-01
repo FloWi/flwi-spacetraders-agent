@@ -100,6 +100,12 @@ impl From<i64> for Credits {
     }
 }
 
+impl From<i32> for Credits {
+    fn from(amount: i32) -> Self {
+        Credits(amount as i64)
+    }
+}
+
 impl From<Credits> for i64 {
     fn from(credits: Credits) -> Self {
         credits.0

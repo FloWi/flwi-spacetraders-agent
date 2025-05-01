@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
+use st_domain::budgeting::budgeting::TransactionTicket;
 use st_domain::{JumpGate, LabelledCoordinate, MarketData, Shipyard, TicketId, TradeTicket, TravelAction, Waypoint, WaypointSymbol};
 use st_store::bmc::Bmc;
 use st_store::Ctx;
@@ -87,7 +88,7 @@ impl BlackboardOps for BmcBlackboard {
         waypoints.into_iter().find(|wp| wp.symbol == *waypoint_symbol).ok_or(anyhow!("Waypoint not found"))
     }
 
-    async fn get_ticket_by_id(&self, ticket_id: TicketId) -> anyhow::Result<TradeTicket> {
+    async fn get_ticket_by_id(&self, ticket_id: TicketId) -> anyhow::Result<TransactionTicket> {
         self.bmc.trade_bmc().get_ticket_by_id(&Ctx::Anonymous, ticket_id).await
     }
 

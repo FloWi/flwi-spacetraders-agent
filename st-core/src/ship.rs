@@ -5,7 +5,7 @@ use st_domain::budgeting::budgeting::TransactionTicket;
 use st_domain::{
     CreateChartBody, DeliverConstructionMaterialTicketDetails, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseGoodTicketDetails,
     PurchaseShipResponse, PurchaseShipTicketDetails, PurchaseTradeGoodResponse, RefuelShipResponse, SellGoodTicketDetails, SellTradeGoodResponse, Ship,
-    Shipyard, SupplyConstructionSiteResponse, TradeTicket, TransactionTicketId, TravelAction, WaypointSymbol,
+    ShipType, Shipyard, SupplyConstructionSiteResponse, TradeGoodSymbol, TradeTicket, TransactionTicketId, TravelAction, WaypointSymbol,
 };
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
@@ -183,8 +183,8 @@ maybe_trade: {:?},
         Ok(response)
     }
 
-    pub async fn sell_trade_good(&mut self, ticket: &SellGoodTicketDetails) -> Result<SellTradeGoodResponse> {
-        let response = self.client.sell_trade_good(self.symbol.clone(), ticket.quantity, ticket.trade_good.clone()).await?;
+    pub async fn sell_trade_good(&mut self, quantity: u32, trade_good: TradeGoodSymbol) -> Result<SellTradeGoodResponse> {
+        let response = self.client.sell_trade_good(self.symbol.clone(), quantity, trade_good.clone()).await?;
         self.cargo = response.data.cargo.clone();
 
         //println!("{:?}", response);
@@ -192,8 +192,8 @@ maybe_trade: {:?},
         Ok(response)
     }
 
-    pub async fn purchase_trade_good(&mut self, ticket: &PurchaseGoodTicketDetails) -> Result<PurchaseTradeGoodResponse> {
-        let response = self.client.purchase_trade_good(self.symbol.clone(), ticket.quantity, ticket.trade_good.clone()).await?;
+    pub async fn purchase_trade_good(&mut self, quantity: u32, trade_good_symbol: TradeGoodSymbol) -> Result<PurchaseTradeGoodResponse> {
+        let response = self.client.purchase_trade_good(self.symbol.clone(), quantity, trade_good_symbol).await?;
         self.cargo = response.data.cargo.clone();
         //println!("{:?}", response);
 
@@ -216,9 +216,8 @@ maybe_trade: {:?},
         Ok(response)
     }
 
-    pub async fn purchase_ship(&self, ticket: &PurchaseShipTicketDetails) -> Result<PurchaseShipResponse> {
-        let response = self.client.purchase_ship(ticket.ship_type, ticket.waypoint_symbol.clone()).await?;
-        //println!("{:?}", response);
+    pub async fn purchase_ship(&self, ship_type: &ShipType, waypoint_symbol: &WaypointSymbol) -> Result<PurchaseShipResponse> {
+        let response = self.client.purchase_ship(*ship_type, waypoint_symbol.clone()).await?;
 
         Ok(response)
     }

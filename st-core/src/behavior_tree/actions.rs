@@ -9,8 +9,10 @@ use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
 use core::time::Duration;
 use itertools::Itertools;
-use st_domain::budgeting::budgeting::{TicketStatus, TicketType, TransactionGoal, TransactionTicket};
-use st_domain::TransactionActionEvent::{PurchasedTradeGoods, ShipPurchased, SoldTradeGoods, SuppliedConstructionSite};
+use st_domain::budgeting::budgeting::{
+    PurchaseShipTransactionGoal, PurchaseTradeGoodsTransactionGoal, SellTradeGoodsTransactionGoal, TicketStatus, TicketType, TransactionGoal, TransactionTicket,
+};
+use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
     get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TradeGoodSymbol,
     TradeTicket, TravelAction, WaypointSymbol,
@@ -435,18 +437,18 @@ impl Actionable for ShipAction {
                     let candidate_waypoints = incomplete_goals
                         .iter()
                         .filter_map(|g| match g {
-                            TransactionGoal::Purchase { source_waypoint, .. } => Some(source_waypoint.clone()),
-                            TransactionGoal::Sell {
+                            TransactionGoal::PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal { source_waypoint, .. }) => Some(source_waypoint.clone()),
+                            TransactionGoal::SellTradeGoods(SellTradeGoodsTransactionGoal {
                                 good,
                                 target_quantity,
                                 destination_waypoint,
                                 ..
-                            } => {
+                            }) => {
                                 let is_in_cargo =
                                     state.cargo.inventory.iter().any(|inventory| &inventory.symbol == good && &inventory.units >= target_quantity);
                                 is_in_cargo.then_some(destination_waypoint.clone())
                             }
-                            TransactionGoal::ShipPurchase { shipyard_waypoint, .. } => Some(shipyard_waypoint.clone()),
+                            TransactionGoal::PurchaseShip(PurchaseShipTransactionGoal { shipyard_waypoint, .. }) => Some(shipyard_waypoint.clone()),
                         })
                         .collect_vec();
 
@@ -475,121 +477,86 @@ impl Actionable for ShipAction {
                 if let Some(trade) = &state.maybe_trade.clone() {
                     //trade.goals
 
-                    todo!()
+                    let current_location = &state.nav.waypoint_symbol.clone();
 
-                /*                    match trade {
-                                        TradeTicket::TradeCargo {
-                                            purchase_completion_status,
-                                            sale_completion_status,
-                                            ..
-                                        } => {
-                                            let current_location = state.current_location();
+                    for g in trade.get_incomplete_goals().into_iter().filter(|g| g.get_waypoint() == current_location) {
+                        println!("processing incomplete goal {g:?}");
 
-                                            let purchases = purchase_completion_status
-                                                .iter()
-                                                .filter(|(ticket, is_completed)| is_completed.not() && ticket.waypoint_symbol == current_location);
+                        match g {
+                            TransactionGoal::PurchaseTradeGoods(purchase_transaction_goal) => {
+                                let PurchaseTradeGoodsTransactionGoal { good, target_quantity, .. } = &purchase_transaction_goal;
+                                let response = state.purchase_trade_good(*target_quantity, good.clone()).await?;
 
-                                            let sales =
-                                                sale_completion_status.iter().filter(|(ticket, is_completed)| is_completed.not() && ticket.waypoint_symbol == current_location);
+                                let updated_trade = args.mark_purchase_as_completed(trade.id, &purchase_transaction_goal, &response).await?;
+                                state.maybe_trade = updated_trade.is_complete().not().then_some(updated_trade.clone());
 
-                                            for (purchase, _) in purchases {
-                                                let result = state.purchase_trade_good(purchase).await?;
-                                                state.mark_transaction_as_complete(&purchase.id);
-                                                action_completed_tx
-                                                    .send(ActionEvent::TransactionCompleted(
-                                                        state.clone(),
-                                                        PurchasedTradeGoods {
-                                                            ticket_details: purchase.clone(),
-                                                            response: result,
-                                                        },
-                                                        state.maybe_trade.clone().unwrap(),
-                                                    ))
-                                                    .await?;
-                                            }
+                                action_completed_tx
+                                    .send(ActionEvent::TransactionCompleted(
+                                        state.clone(),
+                                        PurchasedTradeGoods {
+                                            ticket_details: purchase_transaction_goal,
+                                            response,
+                                        },
+                                        updated_trade,
+                                    ))
+                                    .await?;
+                            }
+                            TransactionGoal::SellTradeGoods(sell_transaction_goal) => {
+                                let SellTradeGoodsTransactionGoal {
+                                    id,
+                                    good,
+                                    target_quantity,
+                                    sold_quantity,
+                                    estimated_price,
+                                    min_acceptable_price,
+                                    destination_waypoint,
+                                } = &sell_transaction_goal;
 
-                                            for (sale, _) in sales {
-                                                let result = state.sell_trade_good(sale).await?;
-                                                state.mark_transaction_as_complete(&sale.id);
-                                                action_completed_tx
-                                                    .send(ActionEvent::TransactionCompleted(
-                                                        state.clone(),
-                                                        SoldTradeGoods {
-                                                            ticket_details: sale.clone(),
-                                                            response: result,
-                                                        },
-                                                        state.maybe_trade.clone().unwrap(),
-                                                    ))
-                                                    .await?;
-                                            }
-                                            state.remove_trade_ticket_if_complete();
-                                        }
-                                        TradeTicket::DeliverConstructionMaterials {
-                                            ticket_id,
-                                            purchase_completion_status,
-                                            delivery_status: delivery_completion_status,
-                                        } => {
-                                            let current_location = state.current_location();
+                                let response = state.sell_trade_good(*target_quantity, good.clone()).await?;
 
-                                            let purchases = purchase_completion_status
-                                                .iter()
-                                                .filter(|(ticket, is_completed)| is_completed.not() && ticket.waypoint_symbol == current_location);
+                                let updated_trade = args.mark_sell_as_completed(trade.id, &sell_transaction_goal, &response).await?;
+                                state.maybe_trade = updated_trade.is_complete().not().then_some(updated_trade.clone());
 
-                                            let deliveries = delivery_completion_status
-                                                .iter()
-                                                .filter(|(ticket, is_completed)| is_completed.not() && ticket.construction_site_waypoint_symbol == current_location);
+                                action_completed_tx
+                                    .send(ActionEvent::TransactionCompleted(
+                                        state.clone(),
+                                        SoldTradeGoods {
+                                            ticket_details: sell_transaction_goal,
+                                            response,
+                                        },
+                                        updated_trade,
+                                    ))
+                                    .await?;
+                            }
+                            TransactionGoal::PurchaseShip(ship_purchase_goal) => {
+                                let PurchaseShipTransactionGoal {
+                                    id,
+                                    ship_type,
+                                    estimated_cost,
+                                    has_been_purchased,
+                                    beneficiary_fleet,
+                                    shipyard_waypoint,
+                                } = &ship_purchase_goal;
 
-                                            for (purchase, _) in purchases {
-                                                let result = state.purchase_trade_good(purchase).await?;
-                                                state.mark_transaction_as_complete(&purchase.id);
-                                                action_completed_tx
-                                                    .send(ActionEvent::TransactionCompleted(
-                                                        state.clone(),
-                                                        PurchasedTradeGoods {
-                                                            ticket_details: purchase.clone(),
-                                                            response: result,
-                                                        },
-                                                        state.maybe_trade.clone().unwrap(),
-                                                    ))
-                                                    .await?;
-                                                // args.report_purchase(ticket_id, &purchase.id, &result).await?;
-                                            }
+                                let response = state.purchase_ship(ship_type, shipyard_waypoint).await?;
 
-                                            for (delivery, _) in deliveries {
-                                                let result = state.supply_construction_site(delivery).await?;
-                                                state.mark_transaction_as_complete(&delivery.id);
-                                                action_completed_tx
-                                                    .send(ActionEvent::TransactionCompleted(
-                                                        state.clone(),
-                                                        SuppliedConstructionSite {
-                                                            ticket_details: delivery.clone(),
-                                                            response: result,
-                                                        },
-                                                        state.maybe_trade.clone().unwrap(),
-                                                    ))
-                                                    .await?;
-                                                state.remove_trade_ticket_if_complete();
-                                            }
+                                let updated_trade = args.mark_ship_purchase_as_completed(trade.id, &ship_purchase_goal, &response).await?;
+                                state.maybe_trade = updated_trade.is_complete().not().then_some(updated_trade.clone());
 
-                                            state.remove_trade_ticket_if_complete();
-                                        }
-                                        TradeTicket::PurchaseShipTicket { ticket_id, details } => {
-                                            let result = state.purchase_ship(details).await?;
-                                            state.mark_transaction_as_complete(&details.id);
-                                            action_completed_tx
-                                                .send(ActionEvent::TransactionCompleted(
-                                                    state.clone(),
-                                                    ShipPurchased {
-                                                        ticket_details: details.clone(),
-                                                        response: result,
-                                                    },
-                                                    state.maybe_trade.clone().unwrap(),
-                                                ))
-                                                .await?;
-                                            state.remove_trade_ticket_if_complete();
-                                        }
-                                    }
-                                    Ok(Success)
-                */
+                                action_completed_tx
+                                    .send(ActionEvent::TransactionCompleted(
+                                        state.clone(),
+                                        PurchasedShip {
+                                            ticket_details: ship_purchase_goal,
+                                            response,
+                                        },
+                                        updated_trade,
+                                    ))
+                                    .await?;
+                            }
+                        }
+                    }
+                    Ok(Success)
                 } else {
                     Ok(Success)
                 }
@@ -668,9 +635,9 @@ impl Actionable for ShipAction {
                         TicketType::Exploration => Err(anyhow!("TicketType == Exploration")),
                         TicketType::ShipPurchase => {
                             let maybe_shipyard_wp = trade.goals.iter().find_map(|tg| match tg {
-                                TransactionGoal::ShipPurchase { shipyard_waypoint, .. } => Some(shipyard_waypoint.clone()),
-                                TransactionGoal::Purchase { .. } => None,
-                                TransactionGoal::Sell { .. } => None,
+                                TransactionGoal::PurchaseShip(PurchaseShipTransactionGoal { shipyard_waypoint, .. }) => Some(shipyard_waypoint.clone()),
+                                TransactionGoal::PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal { .. }) => None,
+                                TransactionGoal::SellTradeGoods(SellTradeGoodsTransactionGoal { .. }) => None,
                             });
 
                             match maybe_shipyard_wp {

@@ -1,8 +1,12 @@
 use crate::budgeting::budgeting::{
-    FinanceError, FleetBudget, FundingSource, TicketFinancials, TicketStatus, TicketType, TransactionEvent, TransactionGoal, TransactionTicket,
+    FinanceError, FleetBudget, FundingSource, PurchaseShipTransactionGoal, PurchaseTradeGoodsTransactionGoal, SellTradeGoodsTransactionGoal, TicketFinancials,
+    TicketStatus, TicketType, TransactionEvent, TransactionGoal, TransactionTicket,
 };
 use crate::budgeting::credits::Credits;
-use crate::{Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, Ship, ShipPriceInfo, ShipSymbol, ShipType, TicketId, WaypointSymbol};
+use crate::{
+    Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, Ship, ShipPriceInfo, ShipSymbol, ShipType, TicketId, TransactionTicketId,
+    WaypointSymbol,
+};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -96,11 +100,11 @@ impl InMemoryTreasurer {
 
         for goal in goals {
             match goal {
-                TransactionGoal::Purchase {
+                TransactionGoal::PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal {
                     target_quantity,
                     estimated_price,
                     ..
-                } => {
+                }) => {
                     required += Credits::new(i64::from(*target_quantity) * estimated_price.0);
                 }
                 _ => {}
@@ -116,21 +120,21 @@ impl InMemoryTreasurer {
 
         for goal in goals {
             match goal {
-                TransactionGoal::Purchase {
+                TransactionGoal::PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal {
                     target_quantity,
                     estimated_price,
                     ..
-                } => {
+                }) => {
                     costs += Credits::new(i64::from(*target_quantity) * estimated_price.0);
                 }
-                TransactionGoal::Sell {
+                TransactionGoal::SellTradeGoods(SellTradeGoodsTransactionGoal {
                     target_quantity,
                     estimated_price,
                     ..
-                } => {
+                }) => {
                     revenue += Credits::new(i64::from(*target_quantity) * estimated_price.0);
                 }
-                TransactionGoal::ShipPurchase { estimated_cost, .. } => {
+                TransactionGoal::PurchaseShip(PurchaseShipTransactionGoal { estimated_cost, .. }) => {
                     costs += *estimated_cost;
                 }
             }
@@ -641,13 +645,14 @@ impl Treasurer for InMemoryTreasurer {
             executing_fleet,
             executing_fleet,
             beneficiary_fleet,
-            vec![TransactionGoal::ShipPurchase {
+            vec![TransactionGoal::PurchaseShip(PurchaseShipTransactionGoal {
+                id: TransactionTicketId::new(),
                 ship_type: *ship_type,
                 estimated_cost,
                 has_been_purchased: false,
                 beneficiary_fleet: beneficiary_fleet.clone(),
                 shipyard_waypoint: shipyard_waypoint.clone(),
-            }],
+            })],
             Default::default(),
             0.0,
         )?;

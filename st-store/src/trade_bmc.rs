@@ -5,7 +5,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use mockall::automock;
 use sqlx::types::Json;
-use st_domain::{ShipSymbol, TicketId, TradeTicket, TransactionSummary, TransactionTicketId};
+use st_domain::budgeting::budgeting::TransactionTicket;
+use st_domain::{ShipSymbol, TicketId, TransactionSummary, TransactionTicketId};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -14,9 +15,16 @@ use tokio::sync::RwLock;
 #[automock]
 #[async_trait]
 pub trait TradeBmcTrait: Send + Sync + Debug {
-    async fn get_ticket_by_id(&self, _ctx: &Ctx, ticket_id: TicketId) -> Result<TradeTicket>;
-    async fn upsert_ticket(&self, _ctx: &Ctx, ship_symbol: &ShipSymbol, ticket_id: &TicketId, trade_ticket: &TradeTicket, is_complete: bool) -> Result<()>;
-    async fn load_uncompleted_tickets(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, TradeTicket>>;
+    async fn get_ticket_by_id(&self, _ctx: &Ctx, ticket_id: TicketId) -> Result<TransactionTicket>;
+    async fn upsert_ticket(
+        &self,
+        _ctx: &Ctx,
+        ship_symbol: &ShipSymbol,
+        ticket_id: &TicketId,
+        trade_ticket: &TransactionTicket,
+        is_complete: bool,
+    ) -> Result<()>;
+    async fn load_uncompleted_tickets(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, TransactionTicket>>;
     async fn save_transaction_completed(&self, _ctx: &Ctx, tx_summary: &TransactionSummary) -> Result<()>;
 }
 
@@ -27,12 +35,12 @@ pub struct DbTradeBmc {
 
 #[async_trait]
 impl TradeBmcTrait for DbTradeBmc {
-    async fn get_ticket_by_id(&self, _ctx: &Ctx, ticket_id: TicketId) -> Result<TradeTicket> {
-        let db_entry: DbTradeTicket = sqlx::query_as!(
-            DbTradeTicket,
+    async fn get_ticket_by_id(&self, _ctx: &Ctx, ticket_id: TicketId) -> Result<TransactionTicket> {
+        let db_entry: DbTransactionTicket = sqlx::query_as!(
+            DbTransactionTicket,
             r#"
 select ship_symbol
-     , entry as "entry: Json<TradeTicket>"
+     , entry as "entry: Json<TransactionTicket>"
   from trade_tickets
  where ticket_id = $1
         "#,
@@ -44,7 +52,14 @@ select ship_symbol
         Ok(db_entry.entry.0)
     }
 
-    async fn upsert_ticket(&self, _ctx: &Ctx, ship_symbol: &ShipSymbol, ticket_id: &TicketId, trade_ticket: &TradeTicket, is_complete: bool) -> Result<()> {
+    async fn upsert_ticket(
+        &self,
+        _ctx: &Ctx,
+        ship_symbol: &ShipSymbol,
+        ticket_id: &TicketId,
+        trade_ticket: &TransactionTicket,
+        is_complete: bool,
+    ) -> Result<()> {
         let now = Utc::now();
         sqlx::query!(
             r#"
@@ -67,12 +82,12 @@ on conflict (ticket_id) do update set entry = excluded.entry
         Ok(())
     }
 
-    async fn load_uncompleted_tickets(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, TradeTicket>> {
-        let entries: Vec<DbTradeTicket> = sqlx::query_as!(
-            DbTradeTicket,
+    async fn load_uncompleted_tickets(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, TransactionTicket>> {
+        let entries: Vec<DbTransactionTicket> = sqlx::query_as!(
+            DbTransactionTicket,
             r#"
 select ship_symbol
-     , entry as "entry: Json<TradeTicket>"
+     , entry as "entry: Json<TransactionTicket>"
   from trade_tickets
  where completed_at is null
         "#,
@@ -86,7 +101,7 @@ select ship_symbol
     async fn save_transaction_completed(&self, _ctx: &Ctx, tx_summary: &TransactionSummary) -> Result<()> {
         let now = Utc::now();
         let transaction_ticket_id: TransactionTicketId = tx_summary.transaction_ticket_id.clone();
-        let ticket_id = tx_summary.trade_ticket.ticket_id();
+        let ticket_id = tx_summary.trade_ticket.id;
         let ship_symbol = tx_summary.ship_symbol.clone();
 
         let is_complete = tx_summary.trade_ticket.is_complete();
@@ -133,14 +148,14 @@ values ($1, $2, $3, $4, $5, $6)
     }
 }
 
-struct DbTradeTicket {
+struct DbTransactionTicket {
     ship_symbol: String,
-    entry: Json<TradeTicket>,
+    entry: Json<TransactionTicket>,
 }
 
 #[derive(Debug)]
 pub struct InMemoryTrades {
-    active_trades: HashMap<ShipSymbol, TradeTicket>,
+    active_trades: HashMap<ShipSymbol, TransactionTicket>,
 }
 
 #[derive(Debug)]
@@ -166,17 +181,24 @@ impl InMemoryTradeBmc {
 
 #[async_trait]
 impl TradeBmcTrait for InMemoryTradeBmc {
-    async fn get_ticket_by_id(&self, _ctx: &Ctx, ticket_id: TicketId) -> Result<TradeTicket> {
+    async fn get_ticket_by_id(&self, _ctx: &Ctx, ticket_id: TicketId) -> Result<TransactionTicket> {
         self.in_memory_trades
             .read()
             .await
             .active_trades
             .iter()
-            .find_map(|(_, ticket)| (ticket.ticket_id() == ticket_id).then(|| ticket.clone()))
+            .find_map(|(_, ticket)| (ticket.id == ticket_id).then(|| ticket.clone()))
             .ok_or(anyhow!("Ticket not found"))
     }
 
-    async fn upsert_ticket(&self, _ctx: &Ctx, ship_symbol: &ShipSymbol, _ticket_id: &TicketId, trade_ticket: &TradeTicket, is_complete: bool) -> Result<()> {
+    async fn upsert_ticket(
+        &self,
+        _ctx: &Ctx,
+        ship_symbol: &ShipSymbol,
+        _ticket_id: &TicketId,
+        trade_ticket: &TransactionTicket,
+        is_complete: bool,
+    ) -> Result<()> {
         if is_complete {
             self.in_memory_trades.write().await.active_trades.remove(ship_symbol);
         } else {
@@ -185,7 +207,7 @@ impl TradeBmcTrait for InMemoryTradeBmc {
         Ok(())
     }
 
-    async fn load_uncompleted_tickets(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, TradeTicket>> {
+    async fn load_uncompleted_tickets(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, TransactionTicket>> {
         Ok(self.in_memory_trades.read().await.active_trades.clone())
     }
 
@@ -193,7 +215,7 @@ impl TradeBmcTrait for InMemoryTradeBmc {
         self.upsert_ticket(
             _ctx,
             &tx_summary.ship_symbol,
-            &tx_summary.trade_ticket.ticket_id(),
+            &tx_summary.trade_ticket.id,
             &tx_summary.trade_ticket,
             tx_summary.trade_ticket.is_complete(),
         )

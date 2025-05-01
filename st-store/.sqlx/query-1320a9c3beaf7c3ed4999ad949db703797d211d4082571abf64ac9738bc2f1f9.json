@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nselect ship_symbol\n     , entry as \"entry: Json<TradeTicket>\"\n  from trade_tickets\n where completed_at is null\n        ",
+  "query": "\nselect ship_symbol\n     , entry as \"entry: Json<TransactionTicket>\"\n  from trade_tickets\n where completed_at is null\n        ",
   "describe": {
     "columns": [
       {
@@ -10,7 +10,7 @@
       },
       {
         "ordinal": 1,
-        "name": "entry: Json<TradeTicket>",
+        "name": "entry: Json<TransactionTicket>",
         "type_info": "Jsonb"
       }
     ],
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "be0c4fe69abcaaf5c895170e0672f7c360f9402b877e3ceb603fac62251dcf04"
+  "hash": "1320a9c3beaf7c3ed4999ad949db703797d211d4082571abf64ac9738bc2f1f9"
 }

@@ -14,7 +14,7 @@ mod tests {
     use st_domain::budgeting::budgeting::{FinanceError, FundingSource, TicketType, TransactionEvent, TransactionGoal};
     use st_domain::budgeting::credits::Credits;
     use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
-    use st_domain::{Fleet, FleetId, FleetTask, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
+    use st_domain::{Fleet, FleetId, FleetTask, ShipSymbol, ShipType, TradeGoodSymbol, TransactionTicketId, WaypointSymbol};
     use st_store::bmc::Bmc;
     use st_store::Ctx;
     use std::collections::HashSet;
@@ -284,7 +284,8 @@ mod tests {
             executing_fleet, // Beneficiary fleet is the same as executing
             vec![
                 // Purchase goal
-                TransactionGoal::Purchase {
+                TransactionGoal::PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal {
+                    id: TransactionTicketId::new(),
                     good: good.clone(),
                     target_quantity: quantity,
                     available_quantity: Some(quantity),
@@ -292,16 +293,17 @@ mod tests {
                     estimated_price: buy_price,
                     max_acceptable_price: Some(buy_price * 2),
                     source_waypoint: source_waypoint.clone(),
-                },
+                }),
                 // Sell goal
-                TransactionGoal::Sell {
+                TransactionGoal::SellTradeGoods(SellTradeGoodsTransactionGoal {
+                    id: TransactionTicketId::new(),
                     good: good.clone(),
                     target_quantity: quantity,
                     sold_quantity: 0,
                     estimated_price: sell_price,
                     min_acceptable_price: Some(sell_price / 2),
                     destination_waypoint: destination_waypoint.clone(),
-                },
+                }),
             ],
             Utc::now() + Duration::hours(1),
             10.0, // High priority
@@ -365,13 +367,14 @@ mod tests {
             executing_fleet,
             executing_fleet,   // Initiating fleet is the same as executing
             beneficiary_fleet, // The fleet that will receive the ship
-            vec![TransactionGoal::ShipPurchase {
+            vec![TransactionGoal::PurchaseShip(PurchaseShipTransactionGoal {
+                id: TransactionTicketId::new(),
                 ship_type: ship_type.clone(),
                 estimated_cost,
                 has_been_purchased: false,
                 beneficiary_fleet: beneficiary_fleet.clone(),
                 shipyard_waypoint: shipyard_waypoint.clone(),
-            }],
+            })],
             Utc::now() + Duration::hours(1),
             5.0, // Medium priority
         )?;

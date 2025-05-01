@@ -417,9 +417,20 @@ impl FleetRunner {
         let mut admiral_guard = fleet_admiral.lock().await;
         admiral_guard.report_ship_action_completed(&msg, Arc::clone(&bmc)).await?;
 
+        let treasurer = Arc::clone(&admiral_guard.treasurer);
+
         match msg {
             ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
                 admiral_guard.ship_tasks.remove(&ship.symbol);
+                match task {
+                    ShipTask::Trade { ticket_id } => {
+                        let mut treasurer_guard = treasurer.lock().await;
+                        let ticket = treasurer_guard.get_ticket(ticket_id.clone())?;
+                        treasurer_guard.complete_ticket(ticket_id.clone())?;
+                        admiral_guard.active_trade_ids.remove(&ship.symbol);
+                    }
+                    _ => {}
+                }
                 let result = recompute_tasks_after_ship_finishing_behavior_tree(&admiral_guard, &ship, &task, Arc::clone(&bmc)).await?;
                 event!(
                     Level::INFO,
@@ -573,20 +584,20 @@ impl FleetRunner {
                         report_type = "TransactionActionEvent::SuppliedConstructionSite"
                     );
                 }
-                TransactionActionEvent::ShipPurchased { ticket_details, response } => {
+                TransactionActionEvent::PurchasedShip { ticket_details, response } => {
                     event!(
                         Level::INFO,
                         message = "ShipStatusReport",
                         report_type = "TransactionActionEvent::ShipPurchased",
                         new_ship = response.data.ship.symbol.0,
                         new_ship_type = response.data.ship.frame.symbol.to_string(),
-                        assigned_fleet_id = ticket_details.assigned_fleet_id.0
+                        assigned_fleet_id = ticket_details.beneficiary_fleet.0
                     );
 
                     let new_ship = response.data.ship.clone();
                     bmc.ship_bmc().upsert_ships(&Ctx::Anonymous, &vec![new_ship.clone()], Utc::now()).await?;
                     admiral_guard.all_ships.insert(new_ship.symbol.clone(), new_ship.clone());
-                    admiral_guard.ship_fleet_assignment.insert(new_ship.symbol.clone(), ticket_details.assigned_fleet_id.clone());
+                    admiral_guard.ship_fleet_assignment.insert(new_ship.symbol.clone(), ticket_details.beneficiary_fleet.clone());
 
                     let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &new_ship.nav.system_symbol).await?;
                     let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;

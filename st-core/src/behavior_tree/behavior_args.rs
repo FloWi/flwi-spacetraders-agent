@@ -5,8 +5,14 @@ use chrono::Local;
 use itertools::Itertools;
 use sqlx::{Pool, Postgres};
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::budgeting::treasurer::InMemoryTreasurer;
-use st_domain::{JumpGate, LabelledCoordinate, MarketData, Shipyard, TicketId, TradeTicket, TravelAction, Waypoint, WaypointSymbol};
+use st_domain::budgeting::budgeting::{
+    PurchaseShipTransactionGoal, PurchaseTradeGoodsTransactionGoal, SellTradeGoodsTransactionGoal, TransactionEvent, TransactionTicket,
+};
+use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
+use st_domain::{
+    JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard, TicketId, TradeTicket,
+    TravelAction, Waypoint, WaypointSymbol,
+};
 use st_store::bmc::{Bmc, DbBmc};
 use st_store::{
     insert_jump_gates, insert_market_data, insert_shipyards, select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints, Ctx,
@@ -19,6 +25,77 @@ use tokio::sync::Mutex;
 pub struct BehaviorArgs {
     pub blackboard: Arc<dyn BlackboardOps>,
     pub treasurer: Arc<Mutex<InMemoryTreasurer>>,
+}
+
+impl BehaviorArgs {
+    pub(crate) async fn mark_purchase_as_completed(
+        &self,
+        ticket_id: TicketId,
+        goal: &PurchaseTradeGoodsTransactionGoal,
+        response: &PurchaseTradeGoodResponse,
+    ) -> Result<TransactionTicket> {
+        let mut guard = self.treasurer.lock().await;
+
+        guard.record_event(
+            ticket_id,
+            TransactionEvent::GoodsPurchased {
+                timestamp: Default::default(),
+                waypoint: goal.source_waypoint.clone(),
+                good: goal.good.clone(),
+                quantity: goal.target_quantity,
+                price_per_unit: response.data.transaction.price_per_unit.into(),
+                total_cost: response.data.transaction.total_price.into(),
+            },
+        )?;
+
+        Ok(guard.get_ticket(ticket_id)?)
+    }
+
+    pub(crate) async fn mark_sell_as_completed(
+        &self,
+        ticket_id: TicketId,
+        goal: &SellTradeGoodsTransactionGoal,
+        response: &SellTradeGoodResponse,
+    ) -> Result<TransactionTicket> {
+        let mut guard = self.treasurer.lock().await;
+
+        guard.record_event(
+            ticket_id,
+            TransactionEvent::GoodsSold {
+                timestamp: Default::default(),
+                waypoint: goal.destination_waypoint.clone(),
+                good: goal.good.clone(),
+                quantity: goal.target_quantity,
+                price_per_unit: response.data.transaction.price_per_unit.into(),
+                total_revenue: response.data.transaction.total_price.into(),
+            },
+        )?;
+
+        Ok(guard.get_ticket(ticket_id)?)
+    }
+
+    pub(crate) async fn mark_ship_purchase_as_completed(
+        &self,
+        ticket_id: TicketId,
+        goal: &PurchaseShipTransactionGoal,
+        response: &PurchaseShipResponse,
+    ) -> Result<TransactionTicket> {
+        let mut guard = self.treasurer.lock().await;
+
+        guard.record_event(
+            ticket_id,
+            TransactionEvent::ShipPurchased {
+                timestamp: Default::default(),
+                waypoint: goal.shipyard_waypoint.clone(),
+                ship_type: goal.ship_type.clone(),
+                ship_id: response.data.ship.symbol.clone(),
+                total_cost: (response.data.transaction.price as i64).into(),
+                beneficiary_fleet: goal.beneficiary_fleet.clone(),
+            },
+        )?;
+
+        Ok(guard.get_ticket(ticket_id)?)
+    }
 }
 
 // Implement Deref for BehaviorArgs to allow transparent access to BlackboardOps methods
@@ -117,7 +194,7 @@ impl BlackboardOps for DbBlackboard {
         Ok(waypoint)
     }
 
-    async fn get_ticket_by_id(&self, ticket_id: TicketId) -> Result<TradeTicket> {
+    async fn get_ticket_by_id(&self, ticket_id: TicketId) -> Result<TransactionTicket> {
         self.bmc.trade_bmc().get_ticket_by_id(&Ctx::Anonymous, ticket_id).await
     }
 

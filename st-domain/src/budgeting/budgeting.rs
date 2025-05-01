@@ -1,5 +1,5 @@
 use crate::budgeting::credits::Credits;
-use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
+use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, TransactionTicketId, WaypointSymbol};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -9,31 +9,43 @@ use std::fmt;
 use std::ops::Not;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PurchaseTradeGoodsTransactionGoal {
+    pub id: TransactionTicketId,
+    pub good: TradeGoodSymbol,
+    pub target_quantity: u32,
+    pub available_quantity: Option<u32>,
+    pub acquired_quantity: u32,
+    pub estimated_price: Credits,
+    pub max_acceptable_price: Option<Credits>,
+    pub source_waypoint: WaypointSymbol,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SellTradeGoodsTransactionGoal {
+    pub id: TransactionTicketId,
+    pub good: TradeGoodSymbol,
+    pub target_quantity: u32,
+    pub sold_quantity: u32,
+    pub estimated_price: Credits,
+    pub min_acceptable_price: Option<Credits>,
+    pub destination_waypoint: WaypointSymbol,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PurchaseShipTransactionGoal {
+    pub id: TransactionTicketId,
+    pub ship_type: ShipType,
+    pub estimated_cost: Credits,
+    pub has_been_purchased: bool,
+    pub beneficiary_fleet: FleetId,
+    pub shipyard_waypoint: WaypointSymbol,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TransactionGoal {
-    Purchase {
-        good: TradeGoodSymbol,
-        target_quantity: u32,
-        available_quantity: Option<u32>,
-        acquired_quantity: u32,
-        estimated_price: Credits,
-        max_acceptable_price: Option<Credits>,
-        source_waypoint: WaypointSymbol,
-    },
-    Sell {
-        good: TradeGoodSymbol,
-        target_quantity: u32,
-        sold_quantity: u32,
-        estimated_price: Credits,
-        min_acceptable_price: Option<Credits>,
-        destination_waypoint: WaypointSymbol,
-    },
-    ShipPurchase {
-        ship_type: ShipType,
-        estimated_cost: Credits,
-        has_been_purchased: bool,
-        beneficiary_fleet: FleetId,
-        shipyard_waypoint: WaypointSymbol,
-    },
+    PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal),
+    SellTradeGoods(SellTradeGoodsTransactionGoal),
+    PurchaseShip(PurchaseShipTransactionGoal),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -176,6 +188,10 @@ pub struct TransactionTicket {
 }
 
 impl TransactionTicket {
+    pub fn is_complete(&self) -> bool {
+        self.completed_at.is_some()
+    }
+
     pub fn get_incomplete_goals(&self) -> Vec<TransactionGoal> {
         self.goals.iter().filter(|g| g.is_completed().not()).cloned().collect_vec()
     }
@@ -464,35 +480,36 @@ impl TransactionTicket {
 impl TransactionGoal {
     pub fn is_completed(&self) -> bool {
         match self {
-            Self::Purchase {
+            Self::PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal {
                 target_quantity,
                 acquired_quantity,
                 ..
-            } => *acquired_quantity >= *target_quantity,
+            }) => *acquired_quantity >= *target_quantity,
 
-            Self::Sell {
+            Self::SellTradeGoods(SellTradeGoodsTransactionGoal {
                 target_quantity,
                 sold_quantity,
                 ..
-            } => *sold_quantity >= *target_quantity,
+            }) => *sold_quantity >= *target_quantity,
 
-            TransactionGoal::ShipPurchase {
+            TransactionGoal::PurchaseShip(PurchaseShipTransactionGoal {
+                id,
                 ship_type,
                 estimated_cost,
                 has_been_purchased,
                 beneficiary_fleet,
                 shipyard_waypoint: waypoint,
-            } => *has_been_purchased,
+            }) => *has_been_purchased,
         }
     }
 
     pub fn get_waypoint(&self) -> &WaypointSymbol {
         match self {
-            Self::Purchase { source_waypoint, .. } => source_waypoint,
-            Self::Sell { destination_waypoint, .. } => destination_waypoint,
-            TransactionGoal::ShipPurchase {
+            Self::PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal { source_waypoint, .. }) => source_waypoint,
+            Self::SellTradeGoods(SellTradeGoodsTransactionGoal { destination_waypoint, .. }) => destination_waypoint,
+            TransactionGoal::PurchaseShip(PurchaseShipTransactionGoal {
                 shipyard_waypoint: waypoint, ..
-            } => waypoint,
+            }) => waypoint,
         }
     }
 
@@ -500,11 +517,11 @@ impl TransactionGoal {
         match (self, event) {
             // Purchase goal progress update
             (
-                Self::Purchase {
+                Self::PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal {
                     good: goal_good,
                     acquired_quantity,
                     ..
-                },
+                }),
                 TransactionEvent::GoodsPurchased { good, quantity, .. },
             ) if goal_good == good => {
                 *acquired_quantity += quantity;
@@ -513,11 +530,11 @@ impl TransactionGoal {
 
             // Sell goal progress update
             (
-                Self::Sell {
+                Self::SellTradeGoods(SellTradeGoodsTransactionGoal {
                     good: goal_good,
                     sold_quantity,
                     ..
-                },
+                }),
                 TransactionEvent::GoodsSold { good, quantity, .. },
             ) if goal_good == good => {
                 *sold_quantity += quantity;
@@ -526,12 +543,12 @@ impl TransactionGoal {
 
             // Ship purchase goal progress update
             (
-                Self::ShipPurchase {
+                Self::PurchaseShip(PurchaseShipTransactionGoal {
                     ship_type: goal_ship_type,
                     beneficiary_fleet: goal_fleet,
                     has_been_purchased,
                     ..
-                },
+                }),
                 TransactionEvent::ShipPurchased {
                     ship_type, beneficiary_fleet, ..
                 },
