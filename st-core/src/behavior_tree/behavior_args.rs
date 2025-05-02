@@ -94,7 +94,9 @@ impl BehaviorArgs {
             },
         )?;
 
-        Ok(guard.get_ticket(ticket_id)?)
+        let ticket = guard.get_ticket(ticket_id)?;
+
+        Ok(ticket)
     }
 }
 

@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use std::ops::Not;
+use strum::Display;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PurchaseTradeGoodsTransactionGoal {
@@ -48,7 +49,7 @@ pub enum TransactionGoal {
     PurchaseShip(PurchaseShipTransactionGoal),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Display, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub enum TicketType {
     Trading,
     ShipPurchase,
@@ -238,7 +239,10 @@ impl fmt::Display for FinanceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::InsufficientFunds => write!(f, "Insufficient funds for operation"),
-            Self::TicketNotFound => write!(f, "Transaction ticket not found"),
+            Self::TicketNotFound => {
+                dbg!("Hello, breakpoint");
+                write!(f, "Transaction ticket not found")
+            }
             Self::FleetNotFound => write!(f, "Fleet not found"),
             Self::InvalidOperation => write!(f, "Invalid operation"),
             Self::InvalidState => write!(f, "Invalid state for operation"),

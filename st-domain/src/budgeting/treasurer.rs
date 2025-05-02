@@ -79,6 +79,7 @@ pub struct InMemoryTreasurer {
     fleet_budgets: HashMap<FleetId, FleetBudget>,
     treasury: Credits,
     active_tickets_by_vessel: HashMap<ShipSymbol, TicketId>,
+    completed_tickets: HashMap<TicketId, TransactionTicket>,
 }
 
 impl InMemoryTreasurer {
@@ -88,6 +89,7 @@ impl InMemoryTreasurer {
             fleet_budgets: HashMap::new(),
             treasury: initial_treasury,
             active_tickets_by_vessel: HashMap::new(),
+            completed_tickets: HashMap::new(),
         }
     }
 
@@ -223,7 +225,14 @@ impl Treasurer for InMemoryTreasurer {
     }
 
     fn get_ticket(&self, id: TicketId) -> Result<TransactionTicket, Self::Error> {
-        self.tickets.get(&id).cloned().ok_or(FinanceError::TicketNotFound)
+        let either_ticket = self.tickets.get(&id).cloned().or(self.completed_tickets.get(&id).cloned()).ok_or(FinanceError::TicketNotFound);
+        match either_ticket {
+            Ok(ticket) => Ok(ticket),
+            Err(err) => {
+                eprintln!("Ticket not found");
+                Err(err)
+            }
+        }
     }
 
     fn fund_fleet_for_next_purchase(&mut self, source: FundingSource) -> Result<(), Self::Error> {
@@ -327,6 +336,10 @@ impl Treasurer for InMemoryTreasurer {
     }
 
     fn complete_ticket(&mut self, id: TicketId) -> Result<(), Self::Error> {
+        if self.completed_tickets.contains_key(&id) {
+            return Ok(());
+        }
+
         let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
 
         if ticket.completed_at.is_some() {
@@ -466,8 +479,10 @@ impl Treasurer for InMemoryTreasurer {
         }
 
         // Remove from active tickets
-        let ticket = self.tickets.get(&id).ok_or(FinanceError::TicketNotFound)?;
+        let ticket = self.tickets.get(&id).cloned().ok_or(FinanceError::TicketNotFound)?;
         self.active_tickets_by_vessel.remove(&ticket.executing_vessel);
+        self.tickets.remove(&id);
+        self.completed_tickets.insert(id, ticket);
 
         Ok(())
     }

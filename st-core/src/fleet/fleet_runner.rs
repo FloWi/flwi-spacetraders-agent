@@ -137,9 +137,10 @@ impl FleetRunner {
             let ship_status_report_tx_clone = guard.ship_status_report_tx.clone();
             let ship_task_clone = ship_task.clone();
             let ship_symbol_clone = ss.clone();
+            let ship_symbol_clone_2 = ship_symbol_clone.clone();
 
             let fiber = tokio::spawn(async move {
-                let maybe_task_finished_result = Self::behavior_runner(
+                match Self::behavior_runner(
                     ship_op_clone,
                     args_clone,
                     ship_updated_tx_clone,
@@ -147,10 +148,21 @@ impl FleetRunner {
                     ship_task_clone,
                     sleep_duration,
                 )
-                .await?;
-
-                if let Some((ship, ship_task)) = maybe_task_finished_result {
-                    ship_status_report_tx_clone.send(ShipStatusReport::ShipFinishedBehaviorTree(ship, ship_task)).await?;
+                .await
+                {
+                    Ok(maybe_task_finished_result) => {
+                        if let Some((ship, ship_task)) = maybe_task_finished_result {
+                            ship_status_report_tx_clone.send(ShipStatusReport::ShipFinishedBehaviorTree(ship, ship_task)).await?;
+                        }
+                    }
+                    Err(err) => {
+                        event!(
+                            Level::ERROR,
+                            message = "Error in behavior_runner",
+                            error = err.to_string(),
+                            ship = ship_symbol_clone_2.clone().0
+                        )
+                    }
                 }
 
                 Ok(())
@@ -224,8 +236,11 @@ impl FleetRunner {
             let ship_task_clone = ship_task.clone();
             let ship_symbol_clone = ss.clone();
 
+            let ship_symbol_clone2 = ship_symbol_clone.clone();
+
             let fiber = tokio::spawn(async move {
-                let maybe_task_finished_result = Self::behavior_runner(
+                let ship_task_clone_2 = ship_task_clone.clone();
+                match Self::behavior_runner(
                     ship_op_clone,
                     args_clone,
                     ship_updated_tx_clone,
@@ -233,16 +248,30 @@ impl FleetRunner {
                     ship_task_clone,
                     sleep_duration,
                 )
-                .await?;
-
-                if let Some((ship, ship_task)) = maybe_task_finished_result {
-                    ship_status_report_tx_clone.send(ShipStatusReport::ShipFinishedBehaviorTree(ship, ship_task)).await?;
+                .await
+                {
+                    Ok(maybe_task_finished_result) => {
+                        if let Some((ship, ship_task)) = maybe_task_finished_result {
+                            ship_status_report_tx_clone.send(ShipStatusReport::ShipFinishedBehaviorTree(ship, ship_task)).await?;
+                        }
+                    }
+                    Err(err) => {
+                        event!(
+                            Level::ERROR,
+                            message = "Error in behavior_runner",
+                            error = err.to_string(),
+                            ship = ship_symbol_clone2.0.clone(),
+                            task = ship_task_clone_2.to_string()
+                        )
+                    }
                 }
-
                 Ok(())
             });
 
             guard.ship_fibers.insert(ship_symbol_clone, fiber);
+            event!(Level::INFO, message = "Ship fiber spawned")
+        } else {
+            event!(Level::ERROR, message = "Failed to spawn ship fiber - no task found")
         }
         Ok(())
     }
@@ -262,11 +291,14 @@ impl FleetRunner {
         use tracing::{span, Level};
         let behaviors = ship_behaviors();
 
-        let mut ship = ship_op.lock().await;
+        event!(Level::INFO, message = "behavior_runner - trying to get lock on ship_op",);
 
+        let mut ship = ship_op.lock().await;
+        event!(Level::INFO, message = "behavior_runner - successfully got lock on ship_op",);
         let ship_updated_tx_clone = ship_updated_tx.clone();
         let ship_action_completed_tx_clone = ship_action_completed_tx.clone();
 
+        event!(Level::INFO, message = "behavior_runner - trying to get behavior for ship", ship = ship.symbol.0);
         let maybe_behavior = match ship_task.clone() {
             ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
                 ship.set_permanent_observation_location(waypoint_symbol);
@@ -281,10 +313,20 @@ impl FleetRunner {
             ShipTask::MineMaterialsAtWaypoint { .. } => None,
             ShipTask::SurveyAsteroid { .. } => None,
             ShipTask::Trade { ticket_id } => {
+                println!("running trading behavior for ship, trying to get lock on treasurer");
                 let mut guard = args.treasurer.lock().await;
+                println!("running trading behavior for ship, successfully got lock on treasurer");
                 let ticket = guard.get_ticket(ticket_id)?;
+                println!("running trading behavior for ship, successfully got ticket");
                 guard.start_ticket_execution(ticket_id)?;
-                ship.set_trade_ticket(ticket);
+                println!("running trading behavior for ship, successfully started ticket execution");
+                ship.set_trade_ticket(ticket.clone());
+                event!(
+                    Level::INFO,
+                    message = "Ship is executing trade",
+                    id = ticket.id.0.to_string(),
+                    r#type = ticket.ticket_type.to_string()
+                );
                 //println!("ship_loop: Ship {:?} is running trading_behavior", ship.symbol);
                 Some((behaviors.trading_behavior, "trading_behavior"))
             }
@@ -294,9 +336,30 @@ impl FleetRunner {
             }
         };
 
+        event!(
+            Level::INFO,
+            message = "behavior_runner - successfully computed behavior for ship",
+            ship = ship.symbol.0
+        );
+
         match maybe_behavior {
-            None => Ok(None),
+            None => {
+                event!(
+                    Level::WARN,
+                    message = "No behavior to run found for ship with task",
+                    ship = ship.symbol.0.clone(),
+                    task = ship_task.to_string()
+                );
+
+                Ok(None)
+            }
             Some((ship_behavior, behavior_label)) => {
+                event!(
+                    Level::INFO,
+                    message = "behavior runner started",
+                    ship = format!("{}", ship.symbol.0),
+                    behavior = behavior_label
+                );
                 let ship_span = span!(Level::INFO, "ship_behavior", ship = format!("{}", ship.symbol.0), behavior = behavior_label);
 
                 let result: Result<Response, Error> = ship_behavior_runner(
@@ -431,7 +494,7 @@ impl FleetRunner {
                     }
                     _ => {}
                 }
-                let result = recompute_tasks_after_ship_finishing_behavior_tree(&admiral_guard, &ship, &task, Arc::clone(&bmc)).await?;
+                let result = recompute_tasks_after_ship_finishing_behavior_tree(&mut admiral_guard, &ship, &task, Arc::clone(&bmc)).await?;
                 event!(
                     Level::INFO,
                     message = "ShipFinishedBehaviorTree",
@@ -524,6 +587,10 @@ impl FleetRunner {
                     }
                     NewTaskResult::AssignNewTaskToShip { ship_symbol, task } => {
                         FleetAdmiral::assign_ship_tasks(&mut admiral_guard, vec![(ship_symbol.clone(), task)]);
+                        assert!(
+                            admiral_guard.get_task_of_ship(&ship_symbol).is_some(),
+                            "After AssignNewTaskToShip, the ship is supposed to have a new task, but it was None"
+                        );
                         Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration).await?;
                         upsert_fleets_data(
                             Arc::clone(&bmc),
@@ -534,6 +601,7 @@ impl FleetRunner {
                             &admiral_guard.ship_tasks,
                         )
                         .await?;
+                        event!(Level::INFO, message = "Ship relaunched successfully")
                     }
                 }
             }

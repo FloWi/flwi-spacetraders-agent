@@ -362,7 +362,7 @@ impl FleetAdmiral {
             ship_purchase_demand: VecDeque::from(current_ship_demands),
         };
 
-        admiral.create_ship_purchase_ticket(&ship_prices).await?;
+        admiral.try_create_ship_purchase_ticket(&ship_prices).await;
 
         let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
         Self::assign_ship_tasks(&mut admiral, new_ship_tasks);
@@ -443,6 +443,10 @@ impl FleetAdmiral {
                 FleetConfig::MiningCfg(cfg) => (),
                 FleetConfig::SiphoningCfg(cfg) => (),
             }
+        }
+
+        if new_ship_tasks.is_empty() {
+            event!(Level::WARN, message = "no new tasks for ships computed - this should not happen");
         }
 
         Ok(new_ship_tasks)
@@ -542,6 +546,12 @@ impl FleetAdmiral {
         }
     }
 
+    async fn try_create_ship_purchase_ticket(&mut self, ship_prices: &ShipPriceInfo) -> () {
+        match self.create_ship_purchase_ticket(ship_prices).await {
+            Ok(_) => {}
+            Err(_) => {}
+        }
+    }
     async fn create_ship_purchase_ticket(&mut self, ship_prices: &ShipPriceInfo) -> Result<()> {
         let mut treasurer = self.treasurer.lock().await;
 
@@ -557,24 +567,33 @@ impl FleetAdmiral {
 
         let (_, (shipyard_wps, price)) = ship_prices.get_best_purchase_location(&ship_type).ok_or(anyhow!("No shipyard found selling {ship_type}"))?;
 
-        let ticket_id: TicketId = treasurer.create_ship_purchase_ticket(
-            &ship_type,
-            &purchasing_ship,
-            &beneficiary_fleet,
-            &executing_fleet,
-            (price as i64).into(),
-            &shipyard_wps,
-        )?;
-
         let ship_price = ((price as f64 * 1.02) as i64).into();
         let funding_source = FundingSource {
             source_fleet: beneficiary_fleet.clone(),
             amount: ship_price,
         };
-        treasurer.fund_fleet_for_next_purchase(funding_source.clone())?;
 
-        match treasurer.fund_ticket(ticket_id, funding_source) {
+        let funding_result = match treasurer.fund_fleet_for_next_purchase(funding_source.clone()) {
             Ok(_) => {
+                let ticket_id: TicketId = treasurer.create_ship_purchase_ticket(
+                    &ship_type,
+                    &purchasing_ship,
+                    &beneficiary_fleet,
+                    &executing_fleet,
+                    (price as i64).into(),
+                    &shipyard_wps,
+                )?;
+
+                match treasurer.fund_ticket(ticket_id, funding_source) {
+                    Ok(_) => Ok(ticket_id),
+                    Err(err) => Err(err),
+                }
+            }
+            Err(err) => Err(err),
+        };
+
+        match funding_result {
+            Ok(ticket_id) => {
                 event!(
                     Level::INFO,
                     message = "Funded ship purchase",
@@ -588,9 +607,21 @@ impl FleetAdmiral {
                 );
                 Ok(())
             }
-            Err(_) => {
+            Err(err) => {
                 self.ship_purchase_demand.push_front((ship_type, fleet_task));
-                Err(anyhow!("Unable to fund ticket"))
+                event!(
+                    Level::INFO,
+                    message = "Unable to fund ship purchase - removing ticket again",
+                    error = err.to_string(),
+                    ship_type = ship_type.to_string(),
+                    purchasing_ship = purchasing_ship.0,
+                    beneficiary_fleet = beneficiary_fleet.0,
+                    executing_fleet = executing_fleet.0,
+                    shipyard_wps = shipyard_wps.0,
+                    price = ship_price.0,
+                );
+
+                Err(anyhow!(err))
             }
         }
     }
@@ -607,26 +638,31 @@ impl FleetAdmiral {
 
         let purchase_map: Vec<(ShipType, WaypointSymbol, u32, u32)> = ship_prices.get_running_total_of_all_ship_purchases(vec![ship_type.clone()]);
 
-        let result = if let Some(&(_, ref wps, price, _)) = purchase_map.first() {
-            let purchase_candidates = match self.fleet_phase.name {
-                FleetPhaseName::InitialExploration => self
-                    .stationary_probe_locations
-                    .iter()
-                    .find(|spl| spl.waypoint_symbol == wps.clone())
-                    .map(|spl| spl.probe_ship_symbol.clone())
-                    .or_else(|| self.find_spawning_ship_for_system(system_symbol))
-                    .into_iter()
-                    .collect(),
-                FleetPhaseName::ConstructJumpGate => vec![],
-                FleetPhaseName::TradeProfitably => vec![],
-            };
+        let maybe_result = if let Some(&(_, ref wps, price, _)) = purchase_map.first() {
+            let purchase_candidates = self
+                .stationary_probe_locations
+                .iter()
+                .find(|spl| spl.waypoint_symbol == wps.clone())
+                .map(|spl| spl.probe_ship_symbol.clone())
+                .or_else(|| {
+                    self.find_spawning_ship_for_system(system_symbol)
+                        .or_else(|| self.all_ships.values().find(|s| s.frame.symbol == ShipFrameSymbol::FRAME_FRIGATE).map(|s| s.symbol.clone()))
+                })
+                .into_iter()
+                .collect_vec();
 
             purchase_candidates.first().cloned()
         } else {
             None
         };
 
-        result
+        match maybe_result {
+            None => {
+                event!(Level::WARN, "unable to find ship_purchaser. This should not happen.");
+                None
+            }
+            Some(result) => Some(result),
+        }
     }
 
     fn find_spawning_ship_for_system(&self, spawning_system_symbol: &SystemSymbol) -> Option<ShipSymbol> {
@@ -663,7 +699,7 @@ pub enum NewTaskResult {
 }
 
 pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
-    admiral: &FleetAdmiral,
+    admiral: &mut FleetAdmiral,
     ship: &Ship,
     finished_task: &ShipTask,
     bmc: Arc<dyn Bmc>,
@@ -689,6 +725,10 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
         }),
         ShipTask::Trade { .. } | ShipTask::PrepositionShipForTrade { .. } => {
             let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &ship.nav.system_symbol).await?;
+            let ship_prices = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &ship.nav.system_symbol).await?;
+
+            admiral.try_create_ship_purchase_ticket(&ship_prices).await;
+
             let new_tasks = FleetAdmiral::compute_ship_tasks(admiral, &facts, Arc::clone(&bmc)).await?;
             if let Some((ss, new_task_for_ship)) = new_tasks.iter().find(|(ss, task)| ss == &ship.symbol) {
                 Ok(NewTaskResult::AssignNewTaskToShip {

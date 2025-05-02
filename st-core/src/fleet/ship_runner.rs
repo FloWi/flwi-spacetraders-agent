@@ -5,6 +5,8 @@ use crate::ship::ShipOperations;
 use anyhow::Error;
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
+use tracing::event;
+use tracing_core::Level;
 
 pub async fn ship_behavior_runner(
     ship_ops: &mut ShipOperations,
@@ -24,6 +26,7 @@ pub async fn ship_behavior_runner(
             Ok(resp)
         }
         Err(err) => {
+            event!(Level::ERROR, "Behavior finished with error: {}", err);
             ship_action_completed_tx.send(ActionEvent::BehaviorCompleted(ship_ops.clone(), behavior, Err(err.to_string()))).await?;
             Err(err)
         }
