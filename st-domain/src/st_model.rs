@@ -291,7 +291,7 @@ pub struct AgentResponse {
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ConstructionMaterial {
-    pub trade_symbol: String,
+    pub trade_symbol: TradeGoodSymbol,
     pub required: u32,
     pub fulfilled: u32,
 }

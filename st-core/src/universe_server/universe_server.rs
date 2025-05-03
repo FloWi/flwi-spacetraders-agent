@@ -348,17 +348,28 @@ pub enum UniverseClientError {
     Internal(String),
 }
 
+#[derive(Debug, Default)]
+pub struct InMemoryUniverseOverrides {
+    pub always_respond_with_detailed_marketplace_data: bool,
+}
+
 /// Client implementation using InMemoryUniverse with interior mutability
 #[derive(Debug)]
 pub struct InMemoryUniverseClient {
-    universe: Arc<RwLock<InMemoryUniverse>>,
+    pub universe: Arc<RwLock<InMemoryUniverse>>,
+    pub overrides: InMemoryUniverseOverrides,
 }
 
 impl InMemoryUniverseClient {
     /// Create a new InMemoryUniverseClient
     pub fn new(universe: InMemoryUniverse) -> Self {
+        Self::new_with_overrides(universe, Default::default())
+    }
+
+    pub(crate) fn new_with_overrides(universe: InMemoryUniverse, overrides: InMemoryUniverseOverrides) -> Self {
         Self {
             universe: Arc::new(RwLock::new(universe)),
+            overrides,
         }
     }
 
@@ -771,7 +782,7 @@ impl StClientTrait for InMemoryUniverseClient {
             }
             Some(mp) => {
                 let is_ship_present = guard.ships.iter().any(|(_, s)| s.nav.waypoint_symbol == waypoint_symbol);
-                if is_ship_present {
+                if is_ship_present || self.overrides.always_respond_with_detailed_marketplace_data {
                     Ok(GetMarketResponse { data: mp.clone() })
                 } else {
                     let mut reduced_market_infos = mp.clone();

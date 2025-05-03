@@ -29,12 +29,12 @@ impl TestObjects {
             symbol: WaypointSymbol(waypoint_symbol.0.to_string()),
             materials: vec![
                 ConstructionMaterial {
-                    trade_symbol: TradeGoodSymbol::ADVANCED_CIRCUITRY.to_string(),
+                    trade_symbol: TradeGoodSymbol::ADVANCED_CIRCUITRY,
                     required: 400,
                     fulfilled: 0,
                 },
                 ConstructionMaterial {
-                    trade_symbol: TradeGoodSymbol::FAB_MATS.to_string(),
+                    trade_symbol: TradeGoodSymbol::FAB_MATS,
                     required: 1600,
                     fulfilled: 0,
                 },

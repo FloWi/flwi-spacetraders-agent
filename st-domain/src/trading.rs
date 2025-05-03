@@ -3,9 +3,10 @@ use crate::{
     WaypointSymbol,
 };
 use itertools::Itertools;
+use ordered_float::OrderedFloat;
 use std::collections::{HashMap, HashSet};
 
-pub fn find_trading_opportunities(
+pub fn find_trading_opportunities_sorted_by_profit_per_distance_unit(
     market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
 ) -> Vec<TradingOpportunity> {
@@ -31,17 +32,22 @@ pub fn find_trading_opportunities(
                 })
                 .map(|(import_wps, import_mtg)| {
                     let import_wp = waypoint_map.get(import_wps).unwrap();
+                    let profit_per_unit = (import_mtg.sell_price - export_mtg.purchase_price) as u64;
+                    let direct_distance = import_wp.distance_to(export_wp);
+                    let profit_per_unit_per_distance = profit_per_unit as f64 / direct_distance as f64;
+
                     TradingOpportunity {
                         purchase_waypoint_symbol: export_wps.clone(),
                         purchase_market_trade_good_entry: export_mtg.clone(),
                         sell_waypoint_symbol: import_wps.clone(),
                         sell_market_trade_good_entry: import_mtg.clone(),
-                        direct_distance: import_wp.distance_to(export_wp),
-                        profit_per_unit: (import_mtg.sell_price - export_mtg.purchase_price) as u64,
+                        direct_distance,
+                        profit_per_unit,
+                        profit_per_unit_per_distance: OrderedFloat(profit_per_unit_per_distance),
                     }
                 })
         })
-        .sorted_by_key(|trading_opp| trading_opp.profit_per_unit)
+        .sorted_by_key(|trading_opp| trading_opp.profit_per_unit_per_distance)
         .rev()
         .collect_vec();
 
@@ -58,7 +64,7 @@ pub fn evaluate_trading_opportunities(
     trading_opportunities: &[TradingOpportunity],
     budget_for_trading: i64,
 ) -> Vec<EvaluatedTradingOpportunity> {
-    let top_trading_opps = trading_opportunities.iter().sorted_by_key(|t| -(t.profit_per_unit as i64)).take(15).collect_vec();
+    let top_trading_opps = trading_opportunities.iter().sorted_by_key(|t| -t.profit_per_unit_per_distance).take(15).collect_vec();
 
     let budget_for_ship = if unassigned_ships.is_empty() {
         0

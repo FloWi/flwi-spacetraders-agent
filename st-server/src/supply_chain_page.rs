@@ -6,7 +6,7 @@ use leptos_meta::Title;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    find_complete_supply_chain, trade_map, EvaluatedTradingOpportunity, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain,
+    calc_trade_map, find_complete_supply_chain, EvaluatedTradingOpportunity, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain,
     SupplyChainNodeVecExt, TradeGoodSymbol, Waypoint, WaypointSymbol,
 };
 use std::collections::HashMap;
@@ -59,7 +59,7 @@ async fn get_supply_chain_data(
 
     let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await.expect("Ships");
 
-    let trading_opportunities = trading::find_trading_opportunities(&market_data, &waypoint_map);
+    let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map);
     let cargo_capable_ships = ships.iter().filter(|s| s.cargo.capacity > 0).collect_vec();
 
     let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
@@ -216,7 +216,7 @@ pub fn SupplyChainPage() -> impl IntoView {
 }
 
 fn render_mermaid_chains(supply_chain: SupplyChain, goods_of_interest: &[TradeGoodSymbol]) -> impl IntoView {
-    let trade_map = trade_map(&supply_chain);
+    let trade_map = calc_trade_map(&supply_chain);
 
     let complete_chain = find_complete_supply_chain(goods_of_interest.iter().cloned().collect_vec(), &trade_map);
 
