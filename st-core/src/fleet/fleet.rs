@@ -20,11 +20,11 @@ use st_domain::FleetTask::{ConstructJumpGate, InitialExploration, MineOres, Obse
 use st_domain::ShipRegistrationRole::{Command, Explorer, Interceptor, Refinery, Satellite, Surveyor};
 use st_domain::TradeGoodSymbol::{MOUNT_GAS_SIPHON_I, MOUNT_MINING_LASER_I, MOUNT_SURVEYOR_I};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, Agent, ConstructJumpGateFleetConfig, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase,
-    FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MiningFleetConfig,
-    OperationExpenseEvent, PurchaseShipTicketDetails, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask, ShipType,
-    SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeTicket, TradingFleetConfig, TransactionActionEvent,
-    Waypoint, WaypointSymbol,
+    get_exploration_tasks_for_waypoint, trading, Agent, ConstructJumpGateFleetConfig, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId,
+    FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MarketTradeGood,
+    MiningFleetConfig, OperationExpenseEvent, PurchaseShipTicketDetails, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask,
+    ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket,
+    TradingFleetConfig, TransactionActionEvent, Waypoint, WaypointSymbol,
 };
 use st_store::bmc::Bmc;
 use st_store::{load_fleet_overview, upsert_fleets_data, Ctx};
@@ -1068,6 +1068,34 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
     let maybe_construction_site: Option<GetConstructionResponse> =
         bmc.construction_bmc().get_construction_site_for_system(&Ctx::Anonymous, system_symbol.clone()).await?;
 
+    let supply_chain = bmc.supply_chain_bmc().get_supply_chain(&Ctx::Anonymous).await?.unwrap();
+
+    let agent = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await.expect("agent");
+    let headquarters_waypoint = agent.headquarters;
+
+    let market_data = bmc.market_bmc().get_latest_market_data_for_system(&Ctx::Anonymous, &headquarters_waypoint.system_symbol()).await.expect("status");
+
+    let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
+
+    let maybe_construction_site =
+        bmc.construction_bmc().get_construction_site_for_system(&Ctx::Anonymous, headquarters_waypoint.system_symbol()).await.expect("construction_site");
+
+    let waypoints_of_system = bmc.system_bmc().get_waypoints_of_system(&Ctx::Anonymous, &headquarters_waypoint.system_symbol()).await.expect("waypoints");
+
+    let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints_of_system.iter().map(|wp| (wp.symbol.clone(), wp)).collect::<HashMap<_, _>>();
+
+    let goods_of_interest = vec![
+        TradeGoodSymbol::ADVANCED_CIRCUITRY,
+        TradeGoodSymbol::FAB_MATS,
+        TradeGoodSymbol::SHIP_PLATING,
+        TradeGoodSymbol::SHIP_PARTS,
+        TradeGoodSymbol::MICROPROCESSORS,
+        TradeGoodSymbol::CLOTHING,
+    ];
+
+    let materialized_supply_chain =
+        st_domain::supply_chain::materialize_supply_chain(&supply_chain, &market_data, &waypoint_map, &maybe_construction_site, &goods_of_interest);
+
     Ok(FleetDecisionFacts {
         marketplaces_of_interest: marketplace_symbols_of_interest.clone(),
         marketplaces_with_up_to_date_infos: diff_waypoint_symbols(&marketplace_symbols_of_interest, &marketplaces_to_explore),
@@ -1075,7 +1103,7 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         shipyards_with_up_to_date_infos: diff_waypoint_symbols(&shipyard_symbols_of_interest, &shipyards_to_explore),
         construction_site: maybe_construction_site.map(|resp| resp.data),
         ships,
-        materialized_supply_chain: None,
+        materialized_supply_chain: Some(materialized_supply_chain),
         agent_info,
     })
 }

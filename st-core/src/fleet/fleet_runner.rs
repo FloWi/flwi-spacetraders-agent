@@ -946,6 +946,9 @@ impl FleetRunner {
             }
         };
 
+        let supply_chain_data = client.get_supply_chain().await?;
+        bmc.supply_chain_bmc().insert_supply_chain(&Ctx::Anonymous, supply_chain_data.into(), Utc::now()).await?;
+
         Ok(())
     }
 }

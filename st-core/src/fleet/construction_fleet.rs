@@ -26,6 +26,9 @@ impl ConstructJumpGateFleet {
         let fleet_ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
         let fleet_ship_symbols = fleet_ships.iter().map(|&s| s.symbol.clone()).collect_vec();
 
+        println!("facts:\n{}", serde_json::to_string(&facts)?);
+        println!("latest_market_data: {}", serde_json::to_string(&latest_market_data)?);
+
         Ok(Vec::new())
     }
 }

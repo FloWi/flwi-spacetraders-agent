@@ -1150,7 +1150,7 @@ pub struct SupplyChainMap {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSupplyChainResponse {
-    pub(crate) data: SupplyChainMap,
+    pub data: SupplyChainMap,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]

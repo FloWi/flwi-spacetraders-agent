@@ -14,8 +14,8 @@ use st_domain::{
     NavigateShipResponse, NotEnoughFuelInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody, PurchaseTradeGoodResponse,
     PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest, RegistrationResponse, Route,
     SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction, ShipRegistrationRole, ShipSymbol, ShipTransaction,
-    ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, TradeGoodType,
-    Transaction, TransactionType, Waypoint, WaypointSymbol,
+    ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyChain, SupplyChainMap, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData,
+    TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, Waypoint, WaypointSymbol,
 };
 use std::collections::HashMap;
 use std::ops::Add;
@@ -35,6 +35,7 @@ pub struct InMemoryUniverse {
     pub(crate) agent: Agent,
     pub(crate) transactions: Vec<Transaction>,
     pub(crate) jump_gates: HashMap<WaypointSymbol, JumpGate>,
+    pub(crate) supply_chain: SupplyChain,
 }
 
 impl InMemoryUniverse {
@@ -393,7 +394,12 @@ impl StClientTrait for InMemoryUniverseClient {
     }
 
     async fn get_supply_chain(&self) -> anyhow::Result<GetSupplyChainResponse> {
-        todo!()
+        let supply_chain = self.universe.read().await.supply_chain.clone();
+        Ok(GetSupplyChainResponse {
+            data: SupplyChainMap {
+                export_to_import_map: Default::default(),
+            },
+        })
     }
 
     async fn dock_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<DockShipResponse> {

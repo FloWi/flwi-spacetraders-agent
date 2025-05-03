@@ -1,7 +1,7 @@
 use crate::supply_chain::RawMaterialSourceType::{Extraction, Siphoning};
 use crate::{
-    ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, TradeGoodSymbol, TradeGoodType,
-    Waypoint, WaypointSymbol, WaypointType,
+    ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, SupplyChainMap, TradeGoodSymbol,
+    TradeGoodType, Waypoint, WaypointSymbol, WaypointType,
 };
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,17 @@ impl From<GetSupplyChainResponse> for SupplyChain {
         let relations = response.data.export_to_import_map.into_iter().map(|(export, imports)| TradeRelation { export, imports }).collect();
 
         SupplyChain { relations }
+    }
+}
+
+// reverse function to convert from model to server format
+impl From<SupplyChain> for GetSupplyChainResponse {
+    fn from(supply_chain: SupplyChain) -> Self {
+        let export_to_import_map = supply_chain.relations.into_iter().map(|trade_relation| (trade_relation.export, trade_relation.imports)).collect();
+
+        GetSupplyChainResponse {
+            data: SupplyChainMap { export_to_import_map },
+        }
     }
 }
 
