@@ -351,6 +351,8 @@ pub fn compute_raw_delivery_routes(
     //     serde_json::to_string_pretty(&raw_delivery_routes).unwrap()
     // );
 
+    println!("hello, breakpoint");
+
     raw_delivery_routes
 }
 

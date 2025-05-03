@@ -393,13 +393,10 @@ impl StClientTrait for InMemoryUniverseClient {
         }
     }
 
-    async fn get_supply_chain(&self) -> anyhow::Result<GetSupplyChainResponse> {
+    async fn get_supply_chain(&self) -> Result<GetSupplyChainResponse> {
         let supply_chain = self.universe.read().await.supply_chain.clone();
-        Ok(GetSupplyChainResponse {
-            data: SupplyChainMap {
-                export_to_import_map: Default::default(),
-            },
-        })
+        let result = Ok(supply_chain.into());
+        result
     }
 
     async fn dock_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<DockShipResponse> {
