@@ -53,6 +53,7 @@ pub struct MaterializedSupplyChain {
     pub trading_opportunities: Vec<TradingOpportunity>,
     pub raw_delivery_routes: Vec<RawDeliveryRoute>,
     pub relevant_supply_chain: Vec<SupplyChainNode>,
+    pub all_routes: Vec<DeliveryRoute>,
 }
 
 pub fn find_complete_supply_chain(products: &[TradeGoodSymbol], trade_relations: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>) -> Vec<SupplyChainNode> {
@@ -179,6 +180,7 @@ pub fn materialize_supply_chain(
         relevant_supply_chain,
         trading_opportunities,
         raw_delivery_routes,
+        all_routes,
     }
 }
 
@@ -246,8 +248,22 @@ fn compute_all_routes(
     println!("consume_markets: {}", serde_json::to_string(&consume_markets).unwrap());
 
     // Note that we deliver some of the ores directly to the smelting location (e.g. COPPER_ORE --> COPPER), which means that we don't have provider-market of COPPER_ORE
-    let mut input_sources: HashMap<TradeGoodSymbol, (WaypointSymbol, u32)> =
-        raw_delivery_routes.iter().map(|raw_route| (raw_route.delivery_market_entry.symbol.clone(), (raw_route.delivery_location.clone(), 1))).collect();
+    let mut input_sources: HashMap<TradeGoodSymbol, (WaypointSymbol, u32)> = raw_delivery_routes
+        .iter()
+        .flat_map(|raw_route| {
+            if raw_route.export_entry.symbol == raw_route.source.trade_good {
+                // we deliver the raw material to an exchange market
+                vec![(raw_route.delivery_market_entry.symbol.clone(), (raw_route.delivery_location.clone(), 1))]
+            } else {
+                // we deliver the raw material directly to a producing market (e.g. smelter of ores)
+                // This means we have already have a provider of the processed material
+                vec![
+                    (raw_route.delivery_market_entry.symbol.clone(), (raw_route.delivery_location.clone(), 1)),
+                    (raw_route.export_entry.symbol.clone(), (raw_route.delivery_location.clone(), 2)),
+                ]
+            }
+        })
+        .collect();
 
     let rest: Vec<TradeGoodSymbol> = all_products_involved
         .iter()
@@ -300,13 +316,12 @@ fn compute_all_routes(
                     .find_map(|(wps, mtg)| (wps == &candidate_export_wps).then_some(mtg.clone()))
                     .expect(format!("An import market of {} should exist at {}", dep_trade_good, candidate_export_wps).as_str());
 
-                let relevant_supply_markets = supply_markets.get(dep_trade_good).cloned().unwrap_or_default();
+                let relevant_supply_markets = supply_markets.get(&dep_trade_good).cloned().unwrap_or_default();
 
-                let (provider_wps, providing_mtg): (WaypointSymbol, MarketTradeGood) = relevant_supply_markets
-                    .iter()
-                    .find(|(wps, export_or_exchange_mtg)| dep_wps == wps)
-                    .cloned()
-                    .expect(format!("An export/exchange market of {} should exist at {}", dep_trade_good, dep_wps).as_str());
+                let Some((provider_wps, providing_mtg)) = relevant_supply_markets.iter().find(|(wps, export_or_exchange_mtg)| dep_wps == wps).cloned() else {
+                    eprintln!("An export/exchange market of {} should exist at {}", dep_trade_good, dep_wps);
+                    panic!("boom");
+                };
 
                 let from_wp = waypoint_map.get(&provider_wps).unwrap();
                 let to_wp = waypoint_map.get(&candidate_export_wps).unwrap();
@@ -319,6 +334,7 @@ fn compute_all_routes(
                         delivery_location: candidate_export_wps.clone(),
                         distance: from_wp.distance_to(to_wp),
                         delivery_market_entry: import_entry_at_destination,
+                        producing_trade_good: candidate.clone(),
                         producing_market_entry: candidate_export_mtg.clone(),
                     },
                     rank: rank + 1,
@@ -497,11 +513,36 @@ pub fn compute_raw_delivery_routes(
                         None
                     };
                     let source = raw_material_sources.iter().find(|rms| rms.trade_good == *raw_material).expect("RawMaterialSource").clone();
-                    maybe_best_one.map(|(mtg, wps, distance)| RawDeliveryRoute {
-                        source,
-                        delivery_location: wps,
-                        distance,
-                        delivery_market_entry: mtg,
+                    maybe_best_one.map(|(mtg, best_wps, distance)| {
+                        let (delivery_market_entry, export_entry) = match mtg.trade_good_type {
+                            TradeGoodType::Export => {
+                                let import_mtg_at_destination_waypoint: MarketTradeGood = market_data
+                                    .iter()
+                                    .find_map(|(wps, market_data_at_destination)| {
+                                        if &best_wps == wps {
+                                            market_data_at_destination
+                                                .iter()
+                                                .find(|mtg| &mtg.symbol == raw_material && mtg.trade_good_type == TradeGoodType::Import)
+                                                .cloned()
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .expect(format!("Expected to find Import market for {} at {} ({})", raw_material, best_wps, mtg.symbol).as_str());
+                                (import_mtg_at_destination_waypoint, mtg.clone())
+                            }
+                            TradeGoodType::Exchange => (mtg.clone(), mtg.clone()),
+                            TradeGoodType::Import => {
+                                unreachable!()
+                            }
+                        };
+                        RawDeliveryRoute {
+                            source,
+                            delivery_location: best_wps,
+                            distance,
+                            delivery_market_entry,
+                            export_entry,
+                        }
                     })
                 }
             }
@@ -623,28 +664,30 @@ pub enum DeliveryRoute {
 
 #[derive(Eq, Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct RawDeliveryRoute {
-    source: RawMaterialSource,
-    delivery_location: WaypointSymbol,
-    distance: u32,
-    delivery_market_entry: MarketTradeGood,
+    pub source: RawMaterialSource,
+    pub delivery_location: WaypointSymbol,
+    pub distance: u32,
+    pub delivery_market_entry: MarketTradeGood,
+    pub export_entry: MarketTradeGood,
 }
 
 #[derive(Eq, Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct HigherDeliveryRoute {
-    trade_good: TradeGoodSymbol,
-    source_location: WaypointSymbol,
-    source_market_entry: MarketTradeGood,
-    delivery_location: WaypointSymbol,
-    distance: u32,
-    delivery_market_entry: MarketTradeGood,
-    producing_market_entry: MarketTradeGood,
+    pub trade_good: TradeGoodSymbol,
+    pub source_location: WaypointSymbol,
+    pub source_market_entry: MarketTradeGood,
+    pub delivery_location: WaypointSymbol,
+    pub distance: u32,
+    pub delivery_market_entry: MarketTradeGood,
+    pub producing_trade_good: TradeGoodSymbol,
+    pub producing_market_entry: MarketTradeGood,
 }
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug, Serialize, Deserialize)]
 pub struct RawMaterialSource {
-    trade_good: TradeGoodSymbol,
-    source_type: RawMaterialSourceType,
-    source_waypoint: WaypointSymbol,
+    pub trade_good: TradeGoodSymbol,
+    pub source_type: RawMaterialSourceType,
+    pub source_waypoint: WaypointSymbol,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
