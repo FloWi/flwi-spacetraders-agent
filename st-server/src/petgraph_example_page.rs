@@ -5,41 +5,86 @@ use petgraph::algo::toposort;
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
 use serde::{Deserialize, Serialize};
-use st_domain::{ActivityLevel, SupplyLevel, TradeGoodSymbol, TradeGoodType, WaypointSymbol};
-use std::collections::HashMap;
+use st_domain::{
+    ActivityLevel, DeliveryRoute, HigherDeliveryRoute, MarketTradeGood, MaterializedSupplyChain, RawMaterialSource, SupplyLevel, TradeGoodSymbol,
+    TradeGoodType, WaypointSymbol, WaypointType,
+};
+
+use itertools::Itertools;
+use std::collections::{HashMap, HashSet};
+use std::ops::Not;
+use std::sync::Arc;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum TechNodeSource {
+    Raw(RawMaterialSource),
+    Market(MarketTradeGood),
+}
 
 // Define data structures for tech tree
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct TechNode {
-    id: String,
-    name: TradeGoodSymbol,
-    waypoint_symbol: WaypointSymbol,
-    waypoint_type: TradeGoodType,
-    supply: SupplyLevel,
-    activity: ActivityLevel,
-    cost: u32,
-    volume: u32,
-    width: f64,
-    height: f64,
+pub struct TechNode {
+    pub id: String,
+    pub name: TradeGoodSymbol,
+    pub waypoint_symbol: WaypointSymbol,
+    pub source: TechNodeSource,
+    pub width: f64,
+    pub height: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    x: Option<f64>,
+    pub x: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    y: Option<f64>,
+    pub y: Option<f64>,
+}
+
+pub struct ColoredLabel {
+    pub label: String,
+    pub color: String,
+}
+
+impl TechNode {
+    pub(crate) fn maybe_supply_text(&self) -> Option<ColoredLabel> {
+        match &self.source {
+            TechNodeSource::Raw(_) => None,
+            TechNodeSource::Market(mtg) => Some(ColoredLabel {
+                label: mtg.supply.to_string(),
+                color: get_supply_color(&mtg.supply),
+            }),
+        }
+    }
+
+    pub(crate) fn maybe_activity_text(&self) -> Option<ColoredLabel> {
+        match &self.source {
+            TechNodeSource::Raw(_) => None,
+            TechNodeSource::Market(mtg) => Some(ColoredLabel {
+                label: mtg.activity.clone().map(|activity| activity.to_string()).unwrap_or("---".to_string()),
+                color: mtg.activity.clone().map(|activity| get_activity_color(&activity)).unwrap_or("lightgray".to_string()),
+            }),
+        }
+    }
+}
+
+impl TechEdge {
+    pub(crate) fn maybe_activity_text(&self) -> Option<ColoredLabel> {
+        Some(ColoredLabel {
+            label: self.activity.clone().map(|activity| activity.to_string()).unwrap_or("---".to_string()),
+            color: self.activity.clone().map(|activity| get_activity_color(&activity)).unwrap_or("lightgray".to_string()),
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct TechEdge {
-    source: String,
-    target: String,
-    cost: u32,
-    activity: ActivityLevel,
-    volume: u32,
-    supply: SupplyLevel,
+pub struct TechEdge {
+    pub source: String,
+    pub target: String,
+    pub cost: u32,
+    pub activity: Option<ActivityLevel>,
+    pub volume: u32,
+    pub supply: SupplyLevel,
     #[serde(skip_serializing_if = "Option::is_none")]
-    points: Option<Vec<Point>>,
+    pub points: Option<Vec<Point>>,
     // Add a curve factor for each edge
     #[serde(skip_serializing_if = "Option::is_none")]
-    curve_factor: Option<f64>,
+    pub curve_factor: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -85,9 +130,250 @@ struct NodeRank {
     index_in_rank: usize,
 }
 
+#[server]
+async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec<TechNode>, Vec<TechEdge>), ServerFnError> {
+    use st_core::fleet::fleet::collect_fleet_decision_facts;
+    use st_core::fleet::fleet_runner::FleetRunner;
+    use st_core::st_client::StClientTrait;
+    use st_core::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient, InMemoryUniverseOverrides};
+    use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
+    use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
+    use st_store::bmc::{Bmc, InMemoryBmc};
+    use st_store::shipyard_bmc::InMemoryShipyardBmc;
+    use st_store::trade_bmc::InMemoryTradeBmc;
+    use st_store::{
+        InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc,
+    };
+
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+
+    let json_path = std::path::Path::new(manifest_dir).parent().unwrap().join("resources").join("universe_snapshot.json");
+
+    let in_memory_universe = InMemoryUniverse::from_snapshot(json_path).expect("InMemoryUniverse::from_snapshot");
+
+    let shipyard_waypoints = in_memory_universe.shipyards.keys().cloned().collect::<HashSet<_>>();
+    let marketplace_waypoints = in_memory_universe.marketplaces.keys().cloned().collect::<HashSet<_>>();
+
+    let in_memory_client = InMemoryUniverseClient::new_with_overrides(
+        in_memory_universe,
+        InMemoryUniverseOverrides {
+            always_respond_with_detailed_marketplace_data: true,
+        },
+    );
+
+    let agent = in_memory_client.get_agent().await.expect("agent").data;
+    let hq_system_symbol = agent.headquarters.system_symbol();
+
+    let ship_bmc = InMemoryShipsBmc::new(InMemoryShips::new());
+    let agent_bmc = InMemoryAgentBmc::new(agent);
+    let trade_bmc = InMemoryTradeBmc::new();
+    let fleet_bmc = InMemoryFleetBmc::new();
+    let system_bmc = InMemorySystemsBmc::new();
+    let construction_bmc = InMemoryConstructionBmc::new();
+
+    //insert some data
+    //construction_bmc.save_construction_site(&Ctx::Anonymous, in_memory_client.get_construction_site().unwrap())
+
+    let market_bmc = InMemoryMarketBmc::new();
+    let shipyard_bmc = InMemoryShipyardBmc::new();
+    let jump_gate_bmc = InMemoryJumpGateBmc::new();
+    let supply_chain_bmc = InMemorySupplyChainBmc::new();
+    let status_bmc = InMemoryStatusBmc::new();
+
+    let trade_bmc = Arc::new(trade_bmc);
+    let market_bmc = Arc::new(market_bmc);
+    let bmc = InMemoryBmc {
+        in_mem_ship_bmc: Arc::new(ship_bmc),
+        in_mem_fleet_bmc: Arc::new(fleet_bmc),
+        in_mem_trade_bmc: Arc::clone(&trade_bmc),
+        in_mem_system_bmc: Arc::new(system_bmc),
+        in_mem_agent_bmc: Arc::new(agent_bmc),
+        in_mem_construction_bmc: Arc::new(construction_bmc),
+        in_mem_market_bmc: Arc::clone(&market_bmc),
+        in_mem_jump_gate_bmc: Arc::new(jump_gate_bmc),
+        in_mem_shipyard_bmc: Arc::new(shipyard_bmc),
+        in_mem_supply_chain_bmc: Arc::new(supply_chain_bmc),
+        in_mem_status_bmc: Arc::new(status_bmc),
+    };
+
+    let client = Arc::new(in_memory_client) as Arc<dyn StClientTrait>;
+    let bmc = Arc::new(bmc) as Arc<dyn Bmc>;
+
+    // because of the override, we should have detailed market data
+    FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
+
+    // easier to get the supply chain this way, since we need plenty of things for computing it
+    let facts = collect_fleet_decision_facts(bmc, &hq_system_symbol).await.expect("facts");
+
+    let materialized_supply_chain = facts.materialized_supply_chain.unwrap();
+
+    assert!(
+        materialized_supply_chain.raw_delivery_routes.is_empty().not(),
+        "raw_delivery_routes should not be empty"
+    );
+
+    let (nodes, edges) = to_nodes_and_edges(&materialized_supply_chain);
+
+    Ok((materialized_supply_chain, nodes, edges))
+}
+
+fn to_nodes_and_edges(materialized_supply_chain: &MaterializedSupplyChain) -> (Vec<TechNode>, Vec<TechEdge>) {
+    let mut nodes: Vec<TechNode> = vec![];
+    let mut edges: Vec<TechEdge> = vec![];
+
+    for route in materialized_supply_chain.all_routes.iter() {
+        match route {
+            DeliveryRoute::Raw(raw_route) => {
+                let source_id = format!("{} at {}", raw_route.source.trade_good, raw_route.source.source_waypoint);
+                let source_node = TechNode {
+                    id: source_id.clone(),
+                    name: raw_route.source.trade_good.clone(),
+                    waypoint_symbol: raw_route.source.source_waypoint.clone(),
+                    source: TechNodeSource::Raw(raw_route.source.clone()),
+                    width: 180.0,
+                    height: 100.0,
+                    x: None,
+                    y: None,
+                };
+
+                let destination_id = format!("{} at {}", raw_route.export_entry.symbol, raw_route.delivery_location);
+                let destination_node = TechNode {
+                    id: destination_id.clone(),
+                    name: raw_route.export_entry.symbol.clone(),
+                    waypoint_symbol: raw_route.delivery_location.clone(),
+                    source: TechNodeSource::Market(raw_route.export_entry.clone()),
+                    width: 180.0,
+                    height: 100.0,
+                    x: None,
+                    y: None,
+                };
+
+                nodes.push(source_node);
+                nodes.push(destination_node);
+
+                let edge = TechEdge {
+                    source: source_id,
+                    target: destination_id,
+                    cost: raw_route.delivery_market_entry.sell_price as u32,
+                    activity: raw_route.delivery_market_entry.activity.clone(),
+                    volume: raw_route.delivery_market_entry.trade_volume as u32,
+                    supply: raw_route.delivery_market_entry.supply.clone(),
+                    points: None,
+                    curve_factor: None,
+                };
+
+                edges.push(edge);
+            }
+            DeliveryRoute::Processed {
+                route:
+                    HigherDeliveryRoute {
+                        trade_good,
+                        source_location,
+                        source_market_entry,
+                        delivery_location,
+                        distance,
+                        delivery_market_entry,
+                        producing_trade_good,
+                        producing_market_entry,
+                    },
+                rank,
+            } => {
+                let target_id = format!("{} at {}", producing_trade_good, delivery_location);
+                let node = TechNode {
+                    id: target_id.clone(),
+                    name: producing_trade_good.clone(),
+                    waypoint_symbol: delivery_location.clone(),
+                    source: TechNodeSource::Market(producing_market_entry.clone()),
+                    width: 180.0,
+                    height: 100.0,
+                    x: None,
+                    y: None,
+                };
+
+                let source_id = format!("{} at {}", trade_good, source_location);
+
+                let edge = TechEdge {
+                    source: source_id,
+                    target: target_id,
+                    cost: delivery_market_entry.sell_price as u32,
+                    activity: delivery_market_entry.activity.clone(),
+                    volume: delivery_market_entry.trade_volume as u32,
+                    supply: delivery_market_entry.supply.clone(),
+                    points: None,
+                    curve_factor: None,
+                };
+
+                nodes.push(node);
+                edges.push(edge);
+            }
+        }
+    }
+
+    (nodes.into_iter().unique_by(|n| n.id.clone()).collect_vec(), edges)
+}
+
 #[component]
 pub fn TechTreePetgraph() -> impl IntoView {
-    // Define layout options
+    // Define hardcoded tech tree data
+    let resource = OnceResource::new(get_materialized_supply_chain());
+
+    view! {
+        // <Title text="Leptos + Tailwindcss" />
+        <main>
+            <div class="flex flex-col min-h-screen">
+                <Suspense fallback=move || view! { <p>"Loading..."</p> }>
+                    <ErrorBoundary fallback=|errors| {
+                        view! { <p>"Error: " {format!("{errors:?}")}</p> }
+                    }>
+                        {move || {
+                            resource
+                                .get()
+                                .map(|result| {
+                                    match result {
+                                        Ok((materialized_supply_chain, nodes, edges)) => {
+                                            view! {
+                                                <div>
+                                                    <div>"Hello, supply-chain"</div>
+                                                    <div>
+                                                        <pre>
+                                                            {edges
+                                                                .iter()
+                                                                .map(|e| format!("{} --> {} {}", e.source, e.target, serde_json::to_string(&e).unwrap_or("---".to_string())))
+                                                                .join("\n")}
+                                                        </pre>
+                                                        <pre>
+                                                            {nodes.iter().map(|n| format!("{} {}", n.id, serde_json::to_string(&n).unwrap_or("---".to_string()))).join("\n")}
+                                                        </pre>
+                                                    </div>
+                                                    <div>
+                                                        <TechTreeGraph
+                                                            node_data=nodes.clone()
+                                                            edge_data=edges.clone()
+                                                        />
+                                                    </div>
+
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                        Err(e) => {
+
+                                            view! { <p>"Error: " {e.to_string()}</p> }
+                                                .into_any()
+                                        }
+                                    }
+                                })
+                        }}
+                    </ErrorBoundary>
+                </Suspense>
+            </div>
+
+        </main>
+    }
+}
+
+#[component]
+pub fn TechTreeGraph(node_data: Vec<TechNode>, edge_data: Vec<TechEdge>) -> impl IntoView {
     let (options, set_options) = signal(GraphConfig {
         rankdir: "LR".to_string(),
         align: None,
@@ -96,143 +382,6 @@ pub fn TechTreePetgraph() -> impl IntoView {
         horizontal_spacing: 316.0, // Increased from 200.0
         padding: 33.0,
     });
-
-    // Define hardcoded tech tree data
-    let (nodes, set_nodes) = signal(vec![
-        TechNode {
-            id: "silicon".to_string(),
-            name: TradeGoodSymbol::SILICON_CRYSTALS,
-            supply: SupplyLevel::Moderate,
-            activity: ActivityLevel::Weak,
-            cost: 84,
-            volume: 60,
-            waypoint_symbol: WaypointSymbol("X1-RX40-F00".to_string()),
-            width: 180.0,
-            height: 100.0,
-            x: None,
-            y: None,
-            waypoint_type: TradeGoodType::Export,
-        },
-        TechNode {
-            id: "copper".to_string(),
-            name: TradeGoodSymbol::COPPER,
-            supply: SupplyLevel::High,
-            activity: ActivityLevel::Weak,
-            cost: 173,
-            volume: 60,
-            waypoint_symbol: WaypointSymbol("X1-RX40-F00".to_string()),
-            width: 180.0,
-            height: 100.0,
-            x: None,
-            y: None,
-            waypoint_type: TradeGoodType::Export,
-        },
-        TechNode {
-            id: "electronics".to_string(),
-            name: TradeGoodSymbol::ELECTRONICS,
-            supply: SupplyLevel::Moderate,
-            activity: ActivityLevel::Weak,
-            cost: 1857,
-            volume: 20,
-            waypoint_symbol: WaypointSymbol("X1-RX40-F00".to_string()),
-            width: 180.0,
-            height: 100.0,
-            x: None,
-            y: None,
-            waypoint_type: TradeGoodType::Export,
-        },
-        TechNode {
-            id: "microprocessors".to_string(),
-            name: TradeGoodSymbol::MICROPROCESSORS,
-            supply: SupplyLevel::Moderate,
-            activity: ActivityLevel::Weak,
-            cost: 7000,
-            volume: 20,
-            waypoint_symbol: WaypointSymbol("X1-RX40-F00".to_string()),
-            width: 180.0,
-            height: 100.0,
-            x: None,
-            y: None,
-            waypoint_type: TradeGoodType::Export,
-        },
-        TechNode {
-            id: "advanced".to_string(),
-            name: TradeGoodSymbol::ADVANCED_CIRCUITRY,
-            supply: SupplyLevel::High,
-            activity: ActivityLevel::Weak,
-            cost: 4032,
-            volume: 20,
-            waypoint_symbol: WaypointSymbol("X1-RX40-F00".to_string()),
-            width: 180.0,
-            height: 100.0,
-            x: None,
-            y: None,
-            waypoint_type: TradeGoodType::Export,
-        },
-    ]);
-
-    let (edges, set_edges) = signal(vec![
-        TechEdge {
-            source: "silicon".to_string(),
-            target: "electronics".to_string(),
-            cost: 40,
-            supply: SupplyLevel::Moderate,
-            volume: 60,
-            activity: ActivityLevel::Weak,
-            points: None,
-            curve_factor: Some(30.0), // Add curve to avoid crossing labels
-        },
-        TechEdge {
-            source: "silicon".to_string(),
-            target: "microprocessors".to_string(),
-            cost: 83,
-            supply: SupplyLevel::High,
-            volume: 60,
-            activity: ActivityLevel::Weak,
-            points: None,
-            curve_factor: None,
-        },
-        TechEdge {
-            source: "copper".to_string(),
-            target: "microprocessors".to_string(),
-            cost: 83,
-            supply: SupplyLevel::High,
-            volume: 60,
-            activity: ActivityLevel::Weak,
-            points: None,
-            curve_factor: Some(-30.0), // Opposite curve to avoid crossing labels
-        },
-        TechEdge {
-            source: "copper".to_string(),
-            target: "electronics".to_string(),
-            cost: 40,
-            supply: SupplyLevel::Moderate,
-            volume: 60,
-            activity: ActivityLevel::Weak,
-            points: None,
-            curve_factor: None,
-        },
-        TechEdge {
-            source: "electronics".to_string(),
-            target: "advanced".to_string(),
-            cost: 878,
-            supply: SupplyLevel::Moderate,
-            volume: 20,
-            activity: ActivityLevel::Weak,
-            points: None,
-            curve_factor: Some(30.0), // Add curve to avoid crossing labels
-        },
-        TechEdge {
-            source: "microprocessors".to_string(),
-            target: "advanced".to_string(),
-            cost: 3303,
-            supply: SupplyLevel::Moderate,
-            volume: 20,
-            activity: ActivityLevel::Weak,
-            points: None,
-            curve_factor: Some(-30.0), // Opposite curve to avoid crossing labels
-        },
-    ]);
 
     // Store the layout result
     let (layout_result, set_layout_result) = signal(None::<LayoutResult>);
@@ -371,8 +520,6 @@ pub fn TechTreePetgraph() -> impl IntoView {
         let mut node_indices = HashMap::new();
 
         // Get current data
-        let node_data = nodes.get();
-        let edge_data = edges.get();
         let layout_config = options.get();
 
         // Add nodes to the graph
@@ -620,7 +767,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                 layout.bounds.min_x, layout.bounds.min_y, layout.bounds.width, layout.bounds.height
             );
             let svg_content = view! {
-                <svg width="100%" height="600px" viewBox=viewbox xmlns="http://www.w3.org/2000/svg">
+                <svg width="100%" viewBox=viewbox xmlns="http://www.w3.org/2000/svg">
                     // Background
                     <rect
                         x=layout.bounds.min_x
@@ -653,7 +800,13 @@ pub fn TechTreePetgraph() -> impl IntoView {
                             if let (Some(x), Some(y)) = (node.x, node.y) {
                                 let x_pos = x - node.width / 2.0;
                                 let y_pos = y - node.height / 2.0;
-                                let stroke_color: String = get_stroke_color(&node.activity);
+                                let maybe_activity = match &node.source {
+                                    TechNodeSource::Raw(_) => None,
+                                    TechNodeSource::Market(mtg) => mtg.activity.clone(),
+                                };
+                                let stroke_color: String = maybe_activity
+                                    .map(|activity| get_stroke_color(&activity))
+                                    .unwrap_or("lightgray".to_string());
 
                                 view! {
                                     <g
@@ -701,25 +854,29 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                             font-size="12"
                                             fill="white"
                                         >
-                                            <tspan class=get_supply_color(
-                                                &node.supply,
-                                            )>{node.supply.to_string()}</tspan>
+                                            {node
+                                                .maybe_supply_text()
+                                                .map(|colored_text| {
+                                                    view! {
+                                                        <tspan class=colored_text.color>{colored_text.label}</tspan>
+                                                    }
+                                                })}
                                             <tspan fill="white">" • "</tspan>
-                                            <tspan class=get_activity_color(
-                                                &node.activity,
-                                            )>{node.activity.to_string()}</tspan>
+                                            {node
+                                                .maybe_activity_text()
+                                                .map(|colored_text| {
+                                                    view! {
+                                                        <tspan class=colored_text.color>{colored_text.label}</tspan>
+                                                    }
+                                                })}
 
-                                            // Cost and volume
-                                            <tspan x=node.width / 2.0 dy="2em">
-                                                {format!("{}c • vol. {}", node.cost, node.volume)}
-                                            </tspan>
+                                            // // Cost and volume
+                                            // <tspan x=node.width / 2.0 dy="2em">
+                                            // {format!("{}c • vol. {}", node.cost, node.volume)}
+                                            // </tspan>
                                             // Waypoint Infos
                                             <tspan x=node.width / 2.0 dy="2em">
-                                                {format!(
-                                                    "{} ({})",
-                                                    node.waypoint_symbol.0.clone(),
-                                                    node.waypoint_type,
-                                                )}
+                                                {format!("{} ", node.waypoint_symbol.0.clone())}
 
                                             </tspan>
                                         </text>
@@ -830,9 +987,14 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                         >
                                             <tspan>{format!("{}c", edge.cost)}</tspan>
                                             <tspan>" | "</tspan>
-                                            <tspan class=get_activity_color(
-                                                &edge.activity,
-                                            )>{edge.activity.to_string().clone()}</tspan>
+                                            {edge
+                                                .maybe_activity_text()
+                                                .map(|colored_text| {
+                                                    view! {
+                                                        <tspan class=colored_text.color>{colored_text.label}</tspan>
+                                                    }
+                                                })}
+
                                             <tspan x=label_x dy="1.5em">
                                                 {format!("vol. {}", edge.volume)}
                                             </tspan>
@@ -931,7 +1093,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                     />
                 </div>
 
-                <button on:click=move |_| calculate_layout()>"Calculate Layout"</button>
+            // <button on:click=move |_| calculate_layout()>"Calculate Layout"</button>
             </div>
 
             <div class="visualization">{render_svg}</div>

@@ -55,7 +55,10 @@ pub fn App() -> impl IntoView {
                     <Route path=StaticSegment("fleet-overview") view=FleetOverviewPage />
                     <Route path=StaticSegment("behavior-overview") view=BehaviorTreePage />
                     <Route path=StaticSegment("petgraph-example") view=TechTreePetgraph />
-                    <Route path=StaticSegment("treasurer-experiment") view=TreasurerExperimentPage />
+                    <Route
+                        path=StaticSegment("treasurer-experiment")
+                        view=TreasurerExperimentPage
+                    />
                 </Routes>
             </main>
         </Router>

@@ -29,8 +29,8 @@ pub struct InMemoryUniverse {
     pub(crate) systems: HashMap<SystemSymbol, SystemsPageData>,
     pub(crate) waypoints: HashMap<WaypointSymbol, Waypoint>,
     pub(crate) ships: HashMap<ShipSymbol, Ship>,
-    pub(crate) marketplaces: HashMap<WaypointSymbol, MarketData>,
-    pub(crate) shipyards: HashMap<WaypointSymbol, Shipyard>,
+    pub marketplaces: HashMap<WaypointSymbol, MarketData>,
+    pub shipyards: HashMap<WaypointSymbol, Shipyard>,
     pub(crate) construction_sites: HashMap<WaypointSymbol, Construction>,
     pub(crate) agent: Agent,
     pub(crate) transactions: Vec<Transaction>,
@@ -366,7 +366,7 @@ impl InMemoryUniverseClient {
         Self::new_with_overrides(universe, Default::default())
     }
 
-    pub(crate) fn new_with_overrides(universe: InMemoryUniverse, overrides: InMemoryUniverseOverrides) -> Self {
+    pub fn new_with_overrides(universe: InMemoryUniverse, overrides: InMemoryUniverseOverrides) -> Self {
         Self {
             universe: Arc::new(RwLock::new(universe)),
             overrides,

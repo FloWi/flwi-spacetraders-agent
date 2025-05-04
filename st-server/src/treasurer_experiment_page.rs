@@ -38,16 +38,15 @@ pub fn TreasurerExperimentPage() -> impl IntoView {
                                                 {serde_json::to_string_pretty(&treasurer)
                                                     .unwrap_or("--".to_string())}
                                             </pre>
-                                        }.into_any()
+                                        }
+                                            .into_any()
                                     }
                                     Err(err) => {
                                         view! {
-                                            <div>
-                                                {format!("Error loading treasurer: {}", err)}
-                                            </div>
-                                        }.into_any()
-
-                                }
+                                            <div>{format!("Error loading treasurer: {}", err)}</div>
+                                        }
+                                            .into_any()
+                                    }
                                 }
                             })
                     }}

@@ -218,7 +218,7 @@ pub fn SupplyChainPage() -> impl IntoView {
 fn render_mermaid_chains(supply_chain: SupplyChain, goods_of_interest: &[TradeGoodSymbol]) -> impl IntoView {
     let trade_map = calc_trade_map(&supply_chain);
 
-    let complete_chain = find_complete_supply_chain(goods_of_interest.iter().cloned().collect_vec(), &trade_map);
+    let complete_chain = find_complete_supply_chain(goods_of_interest, &trade_map);
 
     view! {
         <div class="flex flex-col gap-4">
@@ -234,10 +234,7 @@ fn render_mermaid_chains(supply_chain: SupplyChain, goods_of_interest: &[TradeGo
                 .iter()
                 .cloned()
                 .map(|trade_good| {
-                    let chain = find_complete_supply_chain(
-                        Vec::from([trade_good.clone()]),
-                        &trade_map,
-                    );
+                    let chain = find_complete_supply_chain(&[trade_good.clone()], &trade_map);
                     view! {
                         <div class="flex flex-col">
                             <h2 class="text-2xl font-bold">{trade_good.to_string()}</h2>
