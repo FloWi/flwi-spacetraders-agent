@@ -201,9 +201,11 @@ fn compute_all_routes(
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
     market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
 ) -> Vec<DeliveryRoute> {
+    // Note that we deliver some of the ores directly to the smelting location (e.g. COPPER_ORE --> COPPER), which means that we don't have provider-market of COPPER_ORE
+
     let raw_input_sources: HashMap<TradeGoodSymbol, WaypointSymbol> = raw_delivery_routes
         .iter()
-        .map(|raw_route| (raw_route.source.trade_good.clone(), raw_route.delivery_location.clone()))
+        .map(|raw_route| (raw_route.source.trade_good.clone(), raw_route.source.source_waypoint.clone()))
         .collect::<HashMap<TradeGoodSymbol, WaypointSymbol>>();
 
     let all_products_involved = relevant_supply_chain
@@ -213,31 +215,120 @@ fn compute_all_routes(
             std::iter::once(scn.good.clone()).chain(scn.dependencies.clone().into_iter())
         })
         .unique()
+        .collect::<HashSet<_>>();
+
+    let relevant_market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = market_data
+        .into_iter()
+        .filter_map(|(wps, market_trade_goods)| {
+            let relevant_entries = market_trade_goods.iter().filter(|mtg| all_products_involved.contains(&mtg.symbol)).cloned().collect_vec();
+            relevant_entries.is_empty().not().then_some((wps.clone(), relevant_entries))
+        })
         .collect_vec();
 
-    let export_markets: HashMap<TradeGoodSymbol, Vec<(WaypointSymbol, MarketTradeGood)>> = group_markets_by_type(market_data, TradeGoodType::Export);
-    let import_markets = group_markets_by_type(market_data, TradeGoodType::Import);
-    let exchange_markets: HashMap<TradeGoodSymbol, Vec<(WaypointSymbol, MarketTradeGood)>> = group_markets_by_type(market_data, TradeGoodType::Exchange);
+    let export_markets: HashMap<TradeGoodSymbol, Vec<(WaypointSymbol, MarketTradeGood)>> = group_markets_by_type(&relevant_market_data, TradeGoodType::Export);
+    let import_markets = group_markets_by_type(&relevant_market_data, TradeGoodType::Import);
+    let exchange_markets: HashMap<TradeGoodSymbol, Vec<(WaypointSymbol, MarketTradeGood)>> =
+        group_markets_by_type(&relevant_market_data, TradeGoodType::Exchange);
 
     // Then use it like this:
     let supply_markets = combine_maps(&export_markets, &exchange_markets);
     let consume_markets = combine_maps(&import_markets, &exchange_markets);
 
-    let rest: Vec<TradeGoodSymbol> = all_products_involved.iter().filter(|tg| raw_input_sources.contains_key(tg.clone()).not()).cloned().collect();
+    println!("market_data: {}", serde_json::to_string(&market_data).unwrap());
+    println!("relevant_market_data: {}", serde_json::to_string(&relevant_market_data).unwrap());
+    println!("raw_delivery_routes: {}", serde_json::to_string(&raw_delivery_routes).unwrap());
+    println!("raw_input_sources: {}", serde_json::to_string(&raw_input_sources).unwrap());
+    println!("all_products_involved: {}", serde_json::to_string(&all_products_involved).unwrap());
+    println!("export_markets: {}", serde_json::to_string(&export_markets).unwrap());
+    println!("import_markets: {}", serde_json::to_string(&import_markets).unwrap());
+    println!("exchange_markets: {}", serde_json::to_string(&exchange_markets).unwrap());
+    println!("supply_markets: {}", serde_json::to_string(&supply_markets).unwrap());
+    println!("consume_markets: {}", serde_json::to_string(&consume_markets).unwrap());
 
-    assert_eq!(rest.len() + raw_input_sources.len(), all_products_involved.len());
+    // Note that we deliver some of the ores directly to the smelting location (e.g. COPPER_ORE --> COPPER), which means that we don't have provider-market of COPPER_ORE
+    let mut input_sources: HashMap<TradeGoodSymbol, (WaypointSymbol, u32)> =
+        raw_delivery_routes.iter().map(|raw_route| (raw_route.delivery_market_entry.symbol.clone(), (raw_route.delivery_location.clone(), 1))).collect();
 
-    let mut input_sources: HashMap<TradeGoodSymbol, WaypointSymbol> =
-        raw_delivery_routes.iter().map(|raw_route| (raw_route.source.trade_good.clone(), raw_route.delivery_location.clone())).collect();
+    let rest: Vec<TradeGoodSymbol> = all_products_involved
+        .iter()
+        .filter(|tg| raw_input_sources.contains_key(tg.clone()).not() && input_sources.contains_key(tg.clone()).not())
+        .cloned()
+        .collect();
+
+    //assert_eq!(rest.len() + raw_input_sources.len() + input_sources.len(), all_products_involved.len());
+
     let mut rest_queue = VecDeque::from_iter(rest.iter().cloned());
+    let mut higher_delivery_routes = vec![];
 
     while let Some(candidate) = rest_queue.pop_front() {
-        let node = relevant_supply_chain.iter().find(|scn| scn.good == candidate).unwrap();
-        let dependency_routes = node.dependencies.iter().filter_map(|dependency_trade_good| input_sources.get(dependency_trade_good).cloned()).collect_vec();
-        let supply_candidates = supply_markets.get(&candidate);
+        let node = relevant_supply_chain
+            .iter()
+            .find(|scn| scn.good == candidate)
+            .expect(format!("Unable to find supply_chain node for candidate {}", candidate).as_str());
 
-        let are_all_dependencies_fulfilled = node.dependencies.len() == dependency_routes.len();
+        let dependency_providers = node
+            .dependencies
+            .iter()
+            .filter_map(|dependency_trade_good| {
+                let maybe_market_input_source = input_sources.get(dependency_trade_good).cloned();
+
+                maybe_market_input_source.map(|dep_wps| (dependency_trade_good.clone(), dep_wps))
+            })
+            .collect_vec();
+
+        println!(
+            "{} has {} dependencies: {:?}. {} providers have been found {:?} ",
+            &node.good,
+            &node.dependencies.len(),
+            &node.dependencies,
+            dependency_providers.len(),
+            &dependency_providers
+        );
+
+        let are_all_dependencies_fulfilled = node.dependencies.len() == dependency_providers.len();
         if are_all_dependencies_fulfilled {
+            let candidate_export_entries = supply_markets.get(&candidate).expect(format!("Supply market of {} should exist", candidate).as_str());
+            assert_eq!(1, candidate_export_entries.len(), "We expect only one producing market of {}", candidate);
+            let (candidate_export_wps, candidate_export_mtg) = candidate_export_entries.first().cloned().unwrap();
+
+            for (dep_trade_good, (dep_wps, rank)) in dependency_providers.iter() {
+                let import_entry_at_destination = consume_markets
+                    .get(dep_trade_good)
+                    .cloned()
+                    .unwrap_or_default()
+                    .iter()
+                    .find_map(|(wps, mtg)| (wps == &candidate_export_wps).then_some(mtg.clone()))
+                    .expect(format!("An import market of {} should exist at {}", dep_trade_good, candidate_export_wps).as_str());
+
+                let relevant_supply_markets = supply_markets.get(dep_trade_good).cloned().unwrap_or_default();
+
+                let (provider_wps, providing_mtg): (WaypointSymbol, MarketTradeGood) = relevant_supply_markets
+                    .iter()
+                    .find(|(wps, export_or_exchange_mtg)| dep_wps == wps)
+                    .cloned()
+                    .expect(format!("An export/exchange market of {} should exist at {}", dep_trade_good, dep_wps).as_str());
+
+                let from_wp = waypoint_map.get(&provider_wps).unwrap();
+                let to_wp = waypoint_map.get(&candidate_export_wps).unwrap();
+
+                higher_delivery_routes.push(DeliveryRoute::Processed {
+                    route: HigherDeliveryRoute {
+                        trade_good: dep_trade_good.clone(),
+                        source_location: provider_wps.clone(),
+                        source_market_entry: providing_mtg,
+                        delivery_location: candidate_export_wps.clone(),
+                        distance: from_wp.distance_to(to_wp),
+                        delivery_market_entry: import_entry_at_destination,
+                        producing_market_entry: candidate_export_mtg.clone(),
+                    },
+                    rank: rank + 1,
+                })
+            }
+
+            let rank = dependency_providers.iter().map(|(_, (_, r))| *r).max().unwrap_or_default();
+
+            input_sources.insert(candidate, (candidate_export_wps, rank + 1));
+
             println!(
                 "All {} dependencies ({:?}) of {} fulfilled",
                 node.dependencies.len(),
@@ -247,7 +338,7 @@ fn compute_all_routes(
         } else {
             println!(
                 "Only {} out of {} dependencies ({:?}) of {} fulfilled.",
-                dependency_routes.len(),
+                dependency_providers.len(),
                 node.dependencies.len(),
                 node.dependencies,
                 node.good
@@ -256,7 +347,14 @@ fn compute_all_routes(
         }
     }
 
-    vec![]
+    println!("higher_delivery_routes: {}", serde_json::to_string(&higher_delivery_routes).unwrap());
+    println!("raw_delivery_routes: {}", serde_json::to_string(&raw_delivery_routes).unwrap());
+
+    let all_routes = higher_delivery_routes.into_iter().chain(raw_delivery_routes.into_iter().map(|r| DeliveryRoute::Raw(r.clone()))).collect_vec();
+
+    println!("all_routes: {}", serde_json::to_string(&all_routes).unwrap());
+
+    all_routes
 }
 
 fn combine_maps<K, V>(map1: &HashMap<K, Vec<V>>, map2: &HashMap<K, Vec<V>>) -> HashMap<K, Vec<V>>
@@ -539,6 +637,7 @@ pub struct HigherDeliveryRoute {
     delivery_location: WaypointSymbol,
     distance: u32,
     delivery_market_entry: MarketTradeGood,
+    producing_market_entry: MarketTradeGood,
 }
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug, Serialize, Deserialize)]
