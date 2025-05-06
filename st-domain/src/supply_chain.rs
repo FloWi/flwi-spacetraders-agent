@@ -1,7 +1,7 @@
 use crate::supply_chain::RawMaterialSourceType::{Extraction, Siphoning};
 use crate::{
-    ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, SupplyChainMap, TradeGoodSymbol,
-    TradeGoodType, Waypoint, WaypointSymbol, WaypointType,
+    ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, SupplyChainMap, SystemSymbol,
+    TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType,
 };
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
@@ -58,10 +58,14 @@ pub struct SupplyChainNode {
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct MaterializedSupplyChain {
     pub explanation: String,
+    pub system_symbol: SystemSymbol,
     pub trading_opportunities: Vec<TradingOpportunity>,
     pub raw_delivery_routes: Vec<RawDeliveryRoute>,
     pub relevant_supply_chain: Vec<SupplyChainNode>,
     pub all_routes: Vec<DeliveryRoute>,
+    pub products_for_sale: HashSet<TradeGoodSymbol>,
+    pub goods_for_sale_not_conflicting_with_construction: HashSet<TradeGoodSymbol>,
+    pub goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol>,
 }
 
 pub fn get_all_goods_involved(chain: &[SupplyChainNode]) -> HashSet<TradeGoodSymbol> {
@@ -163,11 +167,11 @@ graph LR
 }
 
 pub fn materialize_supply_chain(
+    system_symbol: SystemSymbol,
     supply_chain: &SupplyChain,
     market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
     maybe_construction_site: &Option<GetConstructionResponse>,
-    goods_of_interest: &[TradeGoodSymbol],
 ) -> MaterializedSupplyChain {
     let missing_construction_materials: Vec<&ConstructionMaterial> = match maybe_construction_site {
         None => {
@@ -184,7 +188,17 @@ pub fn materialize_supply_chain(
         })
         .join("\n");
 
-    let raw_delivery_routes = compute_raw_delivery_routes(market_data, waypoint_map, &missing_construction_materials, goods_of_interest, supply_chain);
+    //FIXME: compute myself
+    let goods_of_interest = vec![
+        TradeGoodSymbol::ADVANCED_CIRCUITRY,
+        TradeGoodSymbol::FAB_MATS,
+        TradeGoodSymbol::SHIP_PLATING,
+        TradeGoodSymbol::SHIP_PARTS,
+        TradeGoodSymbol::MICROPROCESSORS,
+        TradeGoodSymbol::CLOTHING,
+    ];
+
+    let raw_delivery_routes = compute_raw_delivery_routes(market_data, waypoint_map, &goods_of_interest, supply_chain);
 
     let relevant_products =
         goods_of_interest.iter().cloned().chain(missing_construction_materials.iter().map(|cm| cm.trade_symbol.clone())).unique().collect_vec();
@@ -195,16 +209,78 @@ pub fn materialize_supply_chain(
 
     let trading_opportunities = crate::trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map);
 
+    let missing_construction_material_map = maybe_construction_site.clone().map(|cs| cs.data.missing_construction_materials()).unwrap_or_default();
+
+    let products_for_sale: HashSet<TradeGoodSymbol> = market_data
+        .iter()
+        .flat_map(|(_, entries)| entries.iter().filter_map(|mtg| (mtg.trade_good_type == TradeGoodType::Export).then_some(mtg.symbol.clone())))
+        .collect();
+
+    let ConstructionRelatedTradeGoodsOverview {
+        goods_for_sale_not_conflicting_with_construction,
+        goods_for_sale_conflicting_with_construction,
+    } = calc_construction_related_trade_good_overview(supply_chain, market_data, missing_construction_material_map, &products_for_sale);
+
     MaterializedSupplyChain {
         explanation: format!(
             r#"Completion Overview:
 {completion_explanation}
 "#,
         ),
+        system_symbol,
         relevant_supply_chain,
         trading_opportunities,
         raw_delivery_routes,
         all_routes,
+        products_for_sale,
+        goods_for_sale_not_conflicting_with_construction,
+        goods_for_sale_conflicting_with_construction,
+    }
+}
+
+struct ConstructionRelatedTradeGoodsOverview {
+    goods_for_sale_not_conflicting_with_construction: HashSet<TradeGoodSymbol>,
+    goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol>,
+}
+
+fn calc_construction_related_trade_good_overview(
+    supply_chain: &SupplyChain,
+    market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
+    missing_construction_material: HashMap<TradeGoodSymbol, u32>,
+    products_for_sale: &HashSet<TradeGoodSymbol>,
+) -> ConstructionRelatedTradeGoodsOverview {
+    let construction_material_chains: HashMap<TradeGoodSymbol, HashSet<TradeGoodSymbol>> = missing_construction_material
+        .keys()
+        .filter_map(|construction_material| {
+            supply_chain
+                .individual_supply_chains
+                .get(construction_material)
+                .map(|(_, all_goods_involved)| (construction_material.clone(), all_goods_involved.clone()))
+        })
+        .collect();
+
+    let goods_for_sale_not_conflicting_with_construction: HashSet<TradeGoodSymbol> = products_for_sale
+        .iter()
+        .filter(|tg| missing_construction_material.contains_key(tg).not())
+        .cloned()
+        .filter(|trade_symbol| {
+            let products_involved = supply_chain.individual_supply_chains.get(trade_symbol).cloned().unwrap().1;
+
+            let no_conflict_with_construction_chains = construction_material_chains.iter().all(|(construction_material, construction_products_involved)| {
+                let intersection = products_involved.intersection(&construction_products_involved).collect_vec();
+                intersection.is_empty()
+            });
+
+            no_conflict_with_construction_chains
+        })
+        .collect();
+
+    let goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol> =
+        products_for_sale.difference(&goods_for_sale_not_conflicting_with_construction).cloned().collect::<HashSet<_>>();
+
+    ConstructionRelatedTradeGoodsOverview {
+        goods_for_sale_not_conflicting_with_construction,
+        goods_for_sale_conflicting_with_construction,
     }
 }
 
@@ -411,7 +487,6 @@ where
 pub fn compute_raw_delivery_routes(
     market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
-    missing_construction_materials: &[&ConstructionMaterial],
     goods_of_interest: &[TradeGoodSymbol],
     supply_chain: &SupplyChain,
 ) -> Vec<RawDeliveryRoute> {

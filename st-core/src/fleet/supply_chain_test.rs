@@ -1,6 +1,6 @@
 use anyhow::Result;
 use itertools::Itertools;
-use st_domain::{FleetDecisionFacts, FleetPhaseName, MarketEntry, ShipSymbol, SupplyChain, TradeGoodSymbol, WaypointSymbol};
+use st_domain::{FleetDecisionFacts, FleetPhaseName, MarketEntry, MaterializedSupplyChain, ShipSymbol, SupplyChain, TradeGoodSymbol, WaypointSymbol};
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use strum::IntoEnumIterator;
@@ -168,9 +168,9 @@ mod tests {
 
         let supply_chain = bmc.supply_chain_bmc().get_supply_chain(&Ctx::Anonymous).await?;
 
-        calc_trading_decisions(&facts, &phase, &active_trades, &vec![], supply_chain.unwrap(), &market_data);
+        let materialized_supply_chain = facts.materialized_supply_chain.clone().unwrap();
 
-        let materialized_supply_chain = facts.materialized_supply_chain.unwrap();
+        calc_trading_decisions(&facts, &phase, &active_trades, &vec![], &materialized_supply_chain, &market_data)?;
 
         assert!(
             materialized_supply_chain.raw_delivery_routes.is_empty().not(),
@@ -186,7 +186,7 @@ fn calc_trading_decisions(
     phase: &FleetPhaseName,
     active_trades: &[(ShipSymbol, (TradeGoodSymbol, WaypointSymbol), (TradeGoodSymbol, WaypointSymbol), u32)],
     active_construction_deliveries: &[(ShipSymbol, (TradeGoodSymbol, u32))],
-    supply_chain: SupplyChain,
+    materialized_supply_chain: &MaterializedSupplyChain,
     market_data: &[MarketEntry],
 ) -> Result<()> {
     let missing_construction_material: HashMap<TradeGoodSymbol, u32> = facts.missing_construction_materials();
@@ -208,44 +208,12 @@ fn calc_trading_decisions(
         .filter(|(_, remaining_amount)| *remaining_amount > 0)
         .collect();
 
-    let products_for_sale = market_data.iter().flat_map(|me| me.market_data.exports.iter().map(|tg| tg.symbol.clone())).collect::<HashSet<_>>();
-
-    let all_individual_trade_good_chains = supply_chain.individual_supply_chains;
-    let all_construction_materials = facts.all_construction_materials();
-
-    let construction_material_chains: HashMap<TradeGoodSymbol, HashSet<TradeGoodSymbol>> = missing_construction_material
-        .keys()
-        .filter_map(|construction_material| {
-            all_individual_trade_good_chains
-                .get(construction_material)
-                .map(|(_, all_goods_involved)| (construction_material.clone(), all_goods_involved.clone()))
-        })
-        .collect();
-
-    let non_conflicting_goods_for_sale: HashSet<TradeGoodSymbol> = products_for_sale
-        .iter()
-        .filter(|tg| all_construction_materials.contains_key(tg).not())
-        .cloned()
-        .filter(|trade_symbol| {
-            let products_involved = all_individual_trade_good_chains.get(trade_symbol).cloned().unwrap().1;
-
-            let no_conflict_with_construction_chains = construction_material_chains.iter().all(|(construction_material, construction_products_involved)| {
-                let intersection = products_involved.intersection(&construction_products_involved).collect_vec();
-                intersection.is_empty()
-            });
-
-            no_conflict_with_construction_chains
-        })
-        .collect();
-
-    let conflicting_goods_for_sale = products_for_sale.difference(&non_conflicting_goods_for_sale).collect::<HashSet<_>>();
-
     println!(
         "Found {} out of {} trade goods for sale that don't conflict with the supply chains of the construction materials:\nnon conflicting goods: {:?}\n    conflicting_goods: {:?}",
-        non_conflicting_goods_for_sale.len(),
-        products_for_sale.len(),
-        non_conflicting_goods_for_sale,
-        conflicting_goods_for_sale,
+        materialized_supply_chain.goods_for_sale_not_conflicting_with_construction.len(),
+        materialized_supply_chain.products_for_sale.len(),
+        materialized_supply_chain.goods_for_sale_not_conflicting_with_construction,
+        materialized_supply_chain.goods_for_sale_conflicting_with_construction,
     );
 
     Ok(())

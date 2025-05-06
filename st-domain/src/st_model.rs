@@ -304,6 +304,26 @@ pub struct Construction {
     pub is_complete: bool,
 }
 
+impl Construction {
+    pub(crate) fn all_construction_materials(&self) -> HashMap<TradeGoodSymbol, u32> {
+        self.materials.iter().map(|cm| (cm.trade_symbol.clone(), cm.required)).collect()
+    }
+
+    pub(crate) fn missing_construction_materials(&self) -> HashMap<TradeGoodSymbol, u32> {
+        if self.is_complete {
+            Default::default()
+        } else {
+            self.materials
+                .iter()
+                .filter_map(|cm| {
+                    let missing = cm.required - cm.fulfilled;
+                    (missing > 0).then(|| (cm.trade_symbol.clone(), missing))
+                })
+                .collect()
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GetConstructionResponse {

@@ -54,18 +54,7 @@ pub struct FleetDecisionFacts {
 impl FleetDecisionFacts {
     pub fn missing_construction_materials(&self) -> HashMap<TradeGoodSymbol, u32> {
         if let Some(construction_site) = self.construction_site.clone() {
-            if construction_site.is_complete {
-                Default::default()
-            } else {
-                construction_site
-                    .materials
-                    .iter()
-                    .filter_map(|cm| {
-                        let missing = cm.required - cm.fulfilled;
-                        (missing >= 0).then(|| (cm.trade_symbol.clone(), missing))
-                    })
-                    .collect()
-            }
+            construction_site.missing_construction_materials()
         } else {
             Default::default()
         }
@@ -73,7 +62,7 @@ impl FleetDecisionFacts {
 
     pub fn all_construction_materials(&self) -> HashMap<TradeGoodSymbol, u32> {
         if let Some(construction_site) = self.construction_site.clone() {
-            construction_site.materials.iter().map(|cm| (cm.trade_symbol.clone(), cm.required)).collect()
+            construction_site.all_construction_materials()
         } else {
             Default::default()
         }

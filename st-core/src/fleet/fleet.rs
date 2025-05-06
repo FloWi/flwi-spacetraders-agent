@@ -1084,17 +1084,13 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
 
     let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints_of_system.iter().map(|wp| (wp.symbol.clone(), wp)).collect::<HashMap<_, _>>();
 
-    let goods_of_interest = vec![
-        TradeGoodSymbol::ADVANCED_CIRCUITRY,
-        TradeGoodSymbol::FAB_MATS,
-        TradeGoodSymbol::SHIP_PLATING,
-        TradeGoodSymbol::SHIP_PARTS,
-        TradeGoodSymbol::MICROPROCESSORS,
-        TradeGoodSymbol::CLOTHING,
-    ];
-
-    let materialized_supply_chain =
-        st_domain::supply_chain::materialize_supply_chain(&supply_chain, &market_data, &waypoint_map, &maybe_construction_site, &goods_of_interest);
+    let materialized_supply_chain = st_domain::supply_chain::materialize_supply_chain(
+        headquarters_waypoint.system_symbol(),
+        &supply_chain,
+        &market_data,
+        &waypoint_map,
+        &maybe_construction_site,
+    );
 
     Ok(FleetDecisionFacts {
         marketplaces_of_interest: marketplace_symbols_of_interest.clone(),
