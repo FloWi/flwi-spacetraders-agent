@@ -244,6 +244,14 @@ pub fn materialize_supply_chain(
 
     let trading_opportunities = crate::trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map);
 
+    // println!("\n\nTop 10 trading opportunities");
+    // trading_opportunities.iter().take(10).for_each(|to| {
+    //     println!(
+    //         "{}; Profit: {}; Profit per distance: {}",
+    //         to.sell_market_trade_good_entry.symbol, to.profit_per_unit, to.profit_per_unit_per_distance
+    //     );
+    // });
+
     let missing_construction_material_map = maybe_construction_site.clone().map(|cs| cs.data.missing_construction_materials()).unwrap_or_default();
 
     let ConstructionRelatedTradeGoodsOverview {

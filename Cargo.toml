@@ -19,3 +19,6 @@ tracing = { version = "0.1.40" }
 mockall = { version = "0.13.0" }
 async-trait = { version = "0.1.78" }
 
+# pretty ascii tables
+cli-table = { version = "0.5.0", features = ["derive"] }
+numfmt = { version = "1.1.1" }

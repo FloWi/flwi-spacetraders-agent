@@ -18,7 +18,10 @@ mod tests {
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient, InMemoryUniverseOverrides};
     use anyhow::Result;
+    use cli_table::format::Justify;
+    use cli_table::{print_stdout, Table, WithTitle};
     use itertools::Itertools;
+    use numfmt::{Formatter, Precision};
     use st_domain::{trading, FleetPhaseName, MarketTradeGood, ShipSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol};
     use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
@@ -29,6 +32,7 @@ mod tests {
         Ctx, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc,
     };
     use std::collections::{HashMap, HashSet};
+    use std::convert::identity;
     use std::ops::Not;
     use std::sync::Arc;
     use test_log::test;
@@ -185,6 +189,63 @@ mod tests {
             materialized_supply_chain.raw_delivery_routes.is_empty().not(),
             "raw_delivery_routes should not be empty"
         );
+
+        let top_10_products = materialized_supply_chain
+            .trading_opportunities
+            .iter()
+            .map(|topp| topp.purchase_market_trade_good_entry.symbol.clone())
+            .unique_by(|tgs| tgs.clone())
+            .take(10)
+            .collect::<HashSet<_>>();
+
+        let trades_of_top_10_products = materialized_supply_chain
+            .trading_opportunities
+            .iter()
+            .filter(|topp| top_10_products.contains(&topp.purchase_market_trade_good_entry.symbol))
+            .sorted_by_key(|topp| -topp.profit_per_unit_per_distance)
+            .map(|topp| TabledTradingOpp {
+                purchase_market_trade_good_entry: topp.purchase_market_trade_good_entry.symbol.to_string(),
+                purchase_waypoint_symbol: topp.purchase_waypoint_symbol.to_string(),
+                sell_waypoint_symbol: topp.sell_waypoint_symbol.to_string(),
+                direct_distance: topp.direct_distance,
+                profit_per_unit: topp.profit_per_unit as u32,
+                profit_per_unit_per_distance: (topp.profit_per_unit_per_distance.0 * 100.0).round() / 100.0,
+            })
+            .collect_vec();
+
+        #[derive(Table)]
+        struct TabledTradingOpp {
+            purchase_market_trade_good_entry: String,
+            purchase_waypoint_symbol: String,
+            sell_waypoint_symbol: String,
+            #[table(justify = "Justify::Right", display_fn = "format_integer")]
+            direct_distance: u32,
+            #[table(justify = "Justify::Right", display_fn = "format_integer")]
+            profit_per_unit: u32,
+            #[table(justify = "Justify::Right", display_fn = "format_float")]
+            profit_per_unit_per_distance: f64,
+        }
+
+        // For integers (u32, u64, etc.)
+        // Very inefficient, because we're creating a new formatter every time, but good enough for small amount of testdata.
+        // unfortunately the api requires the formatter to be mutable :-/
+        fn format_integer<T: Into<f64> + Clone>(value: &T) -> String {
+            let mut formatter = Formatter::new().separator(',').unwrap().precision(Precision::Decimals(0));
+
+            // Convert the returned &str to String
+            formatter.fmt2(value.clone().into()).to_string()
+        }
+
+        // For floating point numbers (f64)
+        fn format_float(value: &f64) -> String {
+            let mut formatter = Formatter::new().separator(',').unwrap().precision(Precision::Decimals(2));
+
+            // Convert the returned &str to String
+            formatter.fmt2(*value).to_string()
+        }
+
+        // Immutable approach - no table mutation needed
+        print_stdout(trades_of_top_10_products.with_title()).unwrap();
 
         Ok(())
     }
