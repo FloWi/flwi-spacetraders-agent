@@ -35,7 +35,7 @@ pub struct InMemoryUniverse {
     pub(crate) agent: Agent,
     pub(crate) transactions: Vec<Transaction>,
     pub(crate) jump_gates: HashMap<WaypointSymbol, JumpGate>,
-    pub(crate) supply_chain: SupplyChain,
+    pub(crate) supply_chain: GetSupplyChainResponse,
 }
 
 impl InMemoryUniverse {

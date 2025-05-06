@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
-use strum::{Display, EnumString};
+use strum::{Display, EnumIter, EnumString};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Data<T> {
@@ -1172,7 +1172,7 @@ pub enum WaypointType {
     FUEL_STATION,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Display)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Display, EnumIter)]
 #[allow(non_camel_case_types)]
 pub enum TradeGoodSymbol {
     PRECIOUS_STONES,

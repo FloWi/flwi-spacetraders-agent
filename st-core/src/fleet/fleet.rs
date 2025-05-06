@@ -1073,7 +1073,7 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
     let agent = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await.expect("agent");
     let headquarters_waypoint = agent.headquarters;
 
-    let market_data = bmc.market_bmc().get_latest_market_data_for_system(&Ctx::Anonymous, &headquarters_waypoint.system_symbol()).await.expect("status");
+    let market_data = bmc.market_bmc().get_latest_market_data_for_system(&Ctx::Anonymous, &headquarters_waypoint.system_symbol()).await.expect("market_data");
 
     let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
 

@@ -7574,908 +7574,523 @@
     "startingFaction": "LORDS"
   },
   "supply_chain": {
-    "relations": [
-      {
-        "export": "MOUNT_SURVEYOR_II",
-        "imports": [
-          "ALUMINUM",
-          "MACHINERY",
-          "ELECTRONICS"
-        ]
-      },
-      {
-        "export": "MODULE_MINERAL_PROCESSOR_I",
-        "imports": [
-          "IRON",
+    "data": {
+      "exportToImportMap": {
+        "LIQUID_HYDROGEN": [
           "MACHINERY"
-        ]
-      },
-      {
-        "export": "MODULE_SHIELD_GENERATOR_II",
-        "imports": [
-          "ALUMINUM",
-          "MACHINERY",
-          "URANITE"
-        ]
-      },
-      {
-        "export": "SHIP_ORE_HOUND",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "FERTILIZERS",
-        "imports": [
-          "LIQUID_NITROGEN"
-        ]
-      },
-      {
-        "export": "FUEL",
-        "imports": [
-          "HYDROCARBON"
-        ]
-      },
-      {
-        "export": "PRECIOUS_STONES",
-        "imports": [
+        ],
+        "LIQUID_NITROGEN": [
+          "MACHINERY"
+        ],
+        "HYDROCARBON": [
+          "MACHINERY"
+        ],
+        "AMMONIA_ICE": [
+          "MACHINERY"
+        ],
+        "ICE_WATER": [
+          "MACHINERY"
+        ],
+        "PRECIOUS_STONES": [
           "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "MOUNT_SURVEYOR_I",
-        "imports": [
-          "IRON",
-          "MACHINERY",
-          "ELECTRONICS"
-        ]
-      },
-      {
-        "export": "NEURAL_CHIPS",
-        "imports": [
-          "POLYNUCLEOTIDES",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "SHIP_COMMAND_FRIGATE",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "DRUGS",
-        "imports": [
-          "AMMONIA_ICE",
-          "POLYNUCLEOTIDES"
-        ]
-      },
-      {
-        "export": "COPPER_ORE",
-        "imports": [
+        ],
+        "QUARTZ_SAND": [
           "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "SILVER_ORE",
-        "imports": [
+        ],
+        "SILICON_CRYSTALS": [
           "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "QUARTZ_SAND",
-        "imports": [
+        ],
+        "IRON_ORE": [
           "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "ADVANCED_CIRCUITRY",
-        "imports": [
-          "ELECTRONICS",
-          "MICROPROCESSORS"
-        ]
-      },
-      {
-        "export": "MODULE_CARGO_HOLD_II",
-        "imports": [
-          "ALUMINUM",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "AMMUNITION",
-        "imports": [
-          "IRON",
-          "LIQUID_NITROGEN"
-        ]
-      },
-      {
-        "export": "MODULE_CARGO_HOLD_III",
-        "imports": [
-          "PLATINUM",
-          "MACHINERY",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "QUANTUM_STABILIZERS",
-        "imports": [
-          "PLATINUM",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "MOUNT_MINING_LASER_III",
-        "imports": [
-          "PLATINUM",
-          "MACHINERY",
-          "ADVANCED_CIRCUITRY",
-          "URANITE"
-        ]
-      },
-      {
-        "export": "SHIP_SIPHON_DRONE",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "MICRO_FUSION_GENERATORS",
-        "imports": [
-          "ADVANCED_CIRCUITRY",
-          "PLATINUM",
-          "DIAMONDS"
-        ]
-      },
-      {
-        "export": "FOOD",
-        "imports": [
-          "FERTILIZERS"
-        ]
-      },
-      {
-        "export": "ALUMINUM",
-        "imports": [
-          "ALUMINUM_ORE"
-        ]
-      },
-      {
-        "export": "MODULE_WARP_DRIVE_III",
-        "imports": [
-          "PLATINUM",
-          "ADVANCED_CIRCUITRY",
-          "MERITIUM",
-          "MERITIUM"
-        ]
-      },
-      {
-        "export": "FABRICS",
-        "imports": [
-          "FERTILIZERS"
-        ]
-      },
-      {
-        "export": "EQUIPMENT",
-        "imports": [
-          "ALUMINUM",
-          "PLASTICS"
-        ]
-      },
-      {
-        "export": "REACTOR_FUSION_I",
-        "imports": [
-          "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "MOUNT_SENSOR_ARRAY_I",
-        "imports": [
-          "IRON",
-          "MACHINERY",
-          "ELECTRONICS"
-        ]
-      },
-      {
-        "export": "MICROPROCESSORS",
-        "imports": [
-          "SILICON_CRYSTALS",
-          "COPPER"
-        ]
-      },
-      {
-        "export": "MILITARY_EQUIPMENT",
-        "imports": [
-          "ALUMINUM",
-          "ELECTRONICS"
-        ]
-      },
-      {
-        "export": "LAB_INSTRUMENTS",
-        "imports": [
-          "ELECTRONICS",
-          "EQUIPMENT"
-        ]
-      },
-      {
-        "export": "SHIP_PLATING",
-        "imports": [
-          "ALUMINUM",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "GOLD_ORE",
-        "imports": [
+        ],
+        "ALUMINUM_ORE": [
           "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "REACTOR_FISSION_I",
-        "imports": [
-          "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "MODULE_GAS_PROCESSOR_I",
-        "imports": [
-          "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "SILVER",
-        "imports": [
-          "SILVER_ORE"
-        ]
-      },
-      {
-        "export": "EXOTIC_MATTER",
-        "imports": [
-          "LAB_INSTRUMENTS",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "QUANTUM_DRIVES",
-        "imports": [
-          "ADVANCED_CIRCUITRY",
-          "DIAMONDS"
-        ]
-      },
-      {
-        "export": "CLOTHING",
-        "imports": [
-          "FABRICS"
-        ]
-      },
-      {
-        "export": "MODULE_ENVOY_QUARTERS_I",
-        "imports": [
-          "IRON",
-          "MACHINERY",
-          "FABRICS"
-        ]
-      },
-      {
-        "export": "MOUNT_GAS_SIPHON_II",
-        "imports": [
-          "ALUMINUM",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "LASER_RIFLES",
-        "imports": [
-          "DIAMONDS",
-          "PLATINUM",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "MODULE_SCIENCE_LAB_I",
-        "imports": [
-          "PLATINUM",
-          "MACHINERY",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "SHIP_LIGHT_SHUTTLE",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "DIAMONDS",
-        "imports": [
+        ],
+        "SILVER_ORE": [
           "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "GENE_THERAPEUTICS",
-        "imports": [
-          "POLYNUCLEOTIDES",
+        ],
+        "COPPER_ORE": [
+          "EXPLOSIVES"
+        ],
+        "PLATINUM_ORE": [
+          "EXPLOSIVES"
+        ],
+        "GOLD_ORE": [
+          "EXPLOSIVES"
+        ],
+        "URANITE_ORE": [
+          "EXPLOSIVES"
+        ],
+        "MERITIUM_ORE": [
+          "EXPLOSIVES"
+        ],
+        "DIAMONDS": [
+          "EXPLOSIVES"
+        ],
+        "SHIP_SALVAGE": [
+          "MACHINERY"
+        ],
+        "CULTURAL_ARTIFACTS": [
           "LAB_INSTRUMENTS"
-        ]
-      },
-      {
-        "export": "MOUNT_TURRET_I",
-        "imports": [
-          "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "MODULE_MICRO_REFINERY_I",
-        "imports": [
-          "PLATINUM",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "ENGINE_HYPER_DRIVE_I",
-        "imports": [
-          "PLATINUM",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "MODULE_JUMP_DRIVE_I",
-        "imports": [
-          "IRON",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "SHIP_SURVEYOR",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "SHIP_EXPLORER",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "ASSAULT_RIFLES",
-        "imports": [
-          "ALUMINUM",
-          "AMMUNITION"
-        ]
-      },
-      {
-        "export": "MODULE_ORE_REFINERY_I",
-        "imports": [
-          "PLATINUM",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "FIREARMS",
-        "imports": [
-          "IRON",
-          "AMMUNITION"
-        ]
-      },
-      {
-        "export": "MODULE_CREW_QUARTERS_I",
-        "imports": [
-          "IRON",
-          "MACHINERY",
-          "FABRICS"
-        ]
-      },
-      {
-        "export": "VIRAL_AGENTS",
-        "imports": [
-          "POLYNUCLEOTIDES",
-          "LAB_INSTRUMENTS"
-        ]
-      },
-      {
-        "export": "SUPERGRAINS",
-        "imports": [
-          "FERTILIZERS",
-          "POLYNUCLEOTIDES",
-          "LAB_INSTRUMENTS"
-        ]
-      },
-      {
-        "export": "NOVEL_LIFEFORMS",
-        "imports": [
-          "LAB_INSTRUMENTS",
-          "EQUIPMENT"
-        ]
-      },
-      {
-        "export": "PLATINUM",
-        "imports": [
-          "PLATINUM_ORE"
-        ]
-      },
-      {
-        "export": "BIOCOMPOSITES",
-        "imports": [
-          "FABRICS",
-          "POLYNUCLEOTIDES"
-        ]
-      },
-      {
-        "export": "PLASTICS",
-        "imports": [
+        ],
+        "PLASTICS": [
           "LIQUID_HYDROGEN"
-        ]
-      },
-      {
-        "export": "MODULE_PASSENGER_CABIN_I",
-        "imports": [
-          "IRON",
-          "MACHINERY",
-          "FABRICS"
-        ]
-      },
-      {
-        "export": "MOUNT_MISSILE_LAUNCHER_I",
-        "imports": [
-          "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "ICE_WATER",
-        "imports": [
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "MODULE_JUMP_DRIVE_II",
-        "imports": [
-          "PLATINUM",
-          "ADVANCED_CIRCUITRY",
-          "GOLD"
-        ]
-      },
-      {
-        "export": "MOOD_REGULATORS",
-        "imports": [
-          "POLYNUCLEOTIDES",
-          "LAB_INSTRUMENTS"
-        ]
-      },
-      {
-        "export": "ENGINE_ION_DRIVE_II",
-        "imports": [
-          "PLATINUM",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "LIQUID_HYDROGEN",
-        "imports": [
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "MERITIUM",
-        "imports": [
+        ],
+        "FERTILIZERS": [
+          "LIQUID_NITROGEN"
+        ],
+        "FUEL": [
+          "HYDROCARBON"
+        ],
+        "IRON": [
+          "IRON_ORE"
+        ],
+        "ALUMINUM": [
+          "ALUMINUM_ORE"
+        ],
+        "POLYNUCLEOTIDES": [
+          "LIQUID_HYDROGEN",
+          "LIQUID_NITROGEN"
+        ],
+        "EXPLOSIVES": [
+          "LIQUID_HYDROGEN",
+          "LIQUID_NITROGEN"
+        ],
+        "COPPER": [
+          "COPPER_ORE"
+        ],
+        "SILVER": [
+          "SILVER_ORE"
+        ],
+        "PLATINUM": [
+          "PLATINUM_ORE"
+        ],
+        "GOLD": [
+          "GOLD_ORE"
+        ],
+        "URANITE": [
+          "URANITE_ORE"
+        ],
+        "MERITIUM": [
           "MERITIUM_ORE"
-        ]
-      },
-      {
-        "export": "SHIP_BULK_FREIGHTER",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "MOUNT_SURVEYOR_III",
-        "imports": [
-          "PLATINUM",
-          "MACHINERY",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "FAB_MATS",
-        "imports": [
+        ],
+        "AMMUNITION": [
+          "IRON",
+          "LIQUID_NITROGEN"
+        ],
+        "FAB_MATS": [
           "IRON",
           "QUARTZ_SAND"
-        ]
-      },
-      {
-        "export": "URANITE_ORE",
-        "imports": [
-          "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "SHIP_PROBE",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "SHIP_REFINING_FREIGHTER",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "HYDROCARBON",
-        "imports": [
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "GOLD",
-        "imports": [
-          "GOLD_ORE"
-        ]
-      },
-      {
-        "export": "MERITIUM_ORE",
-        "imports": [
-          "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "ENGINE_IMPULSE_DRIVE_I",
-        "imports": [
-          "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "ENGINE_ION_DRIVE_I",
-        "imports": [
-          "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "MOUNT_SENSOR_ARRAY_II",
-        "imports": [
+        ],
+        "FOOD": [
+          "FERTILIZERS"
+        ],
+        "FABRICS": [
+          "FERTILIZERS"
+        ],
+        "ELECTRONICS": [
+          "SILICON_CRYSTALS",
+          "COPPER"
+        ],
+        "MACHINERY": [
+          "IRON"
+        ],
+        "EQUIPMENT": [
           "ALUMINUM",
-          "MACHINERY",
-          "ELECTRONICS"
-        ]
-      },
-      {
-        "export": "BOTANICAL_SPECIMENS",
-        "imports": [
-          "LAB_INSTRUMENTS",
-          "EQUIPMENT"
-        ]
-      },
-      {
-        "export": "SHIP_HEAVY_FREIGHTER",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "RELIC_TECH",
-        "imports": [
-          "LAB_INSTRUMENTS",
-          "EQUIPMENT"
-        ]
-      },
-      {
-        "export": "MOUNT_SENSOR_ARRAY_III",
-        "imports": [
-          "PLATINUM",
-          "MACHINERY",
-          "ADVANCED_CIRCUITRY",
-          "URANITE"
-        ]
-      },
-      {
-        "export": "JEWELRY",
-        "imports": [
+          "PLASTICS"
+        ],
+        "JEWELRY": [
           "GOLD",
           "SILVER",
           "PRECIOUS_STONES",
           "DIAMONDS"
-        ]
-      },
-      {
-        "export": "IRON",
-        "imports": [
-          "IRON_ORE"
-        ]
-      },
-      {
-        "export": "SHIP_PARTS",
-        "imports": [
+        ],
+        "MICROPROCESSORS": [
+          "SILICON_CRYSTALS",
+          "COPPER"
+        ],
+        "FIREARMS": [
+          "IRON",
+          "AMMUNITION"
+        ],
+        "ASSAULT_RIFLES": [
+          "ALUMINUM",
+          "AMMUNITION"
+        ],
+        "CLOTHING": [
+          "FABRICS"
+        ],
+        "SHIP_PLATING": [
+          "ALUMINUM",
+          "MACHINERY"
+        ],
+        "SHIP_PARTS": [
           "EQUIPMENT",
           "ELECTRONICS"
-        ]
-      },
-      {
-        "export": "SHIP_LIGHT_HAULER",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "MODULE_WARP_DRIVE_I",
-        "imports": [
+        ],
+        "MEDICINE": [
+          "FABRICS",
+          "POLYNUCLEOTIDES"
+        ],
+        "DRUGS": [
+          "AMMONIA_ICE",
+          "POLYNUCLEOTIDES"
+        ],
+        "MILITARY_EQUIPMENT": [
+          "ALUMINUM",
+          "ELECTRONICS"
+        ],
+        "LAB_INSTRUMENTS": [
+          "ELECTRONICS",
+          "EQUIPMENT"
+        ],
+        "BIOCOMPOSITES": [
+          "FABRICS",
+          "POLYNUCLEOTIDES"
+        ],
+        "ADVANCED_CIRCUITRY": [
+          "ELECTRONICS",
+          "MICROPROCESSORS"
+        ],
+        "REACTOR_SOLAR_I": [
           "IRON",
+          "MACHINERY"
+        ],
+        "REACTOR_FUSION_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "REACTOR_FISSION_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "REACTOR_CHEMICAL_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "REACTOR_ANTIMATTER_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "ENGINE_IMPULSE_DRIVE_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "ENGINE_ION_DRIVE_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "MODULE_CARGO_HOLD_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "MODULE_CARGO_HOLD_II": [
+          "ALUMINUM",
+          "MACHINERY"
+        ],
+        "MODULE_MINERAL_PROCESSOR_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "MODULE_GAS_PROCESSOR_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "MODULE_CREW_QUARTERS_I": [
+          "IRON",
+          "MACHINERY",
+          "FABRICS"
+        ],
+        "MODULE_ENVOY_QUARTERS_I": [
+          "IRON",
+          "MACHINERY",
+          "FABRICS"
+        ],
+        "MODULE_PASSENGER_CABIN_I": [
+          "IRON",
+          "MACHINERY",
+          "FABRICS"
+        ],
+        "MODULE_SCIENCE_LAB_I": [
+          "PLATINUM",
+          "MACHINERY",
           "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "MOUNT_MINING_LASER_I",
-        "imports": [
+        ],
+        "MODULE_ORE_REFINERY_I": [
+          "PLATINUM",
+          "MACHINERY"
+        ],
+        "MODULE_FUEL_REFINERY_I": [
+          "PLATINUM",
+          "MACHINERY"
+        ],
+        "MODULE_MICRO_REFINERY_I": [
+          "PLATINUM",
+          "MACHINERY"
+        ],
+        "MOUNT_GAS_SIPHON_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "MOUNT_GAS_SIPHON_II": [
+          "ALUMINUM",
+          "MACHINERY"
+        ],
+        "MOUNT_SURVEYOR_I": [
+          "IRON",
+          "MACHINERY",
+          "ELECTRONICS"
+        ],
+        "MOUNT_SURVEYOR_II": [
+          "ALUMINUM",
+          "MACHINERY",
+          "ELECTRONICS"
+        ],
+        "MOUNT_SENSOR_ARRAY_I": [
+          "IRON",
+          "MACHINERY",
+          "ELECTRONICS"
+        ],
+        "MOUNT_SENSOR_ARRAY_II": [
+          "ALUMINUM",
+          "MACHINERY",
+          "ELECTRONICS"
+        ],
+        "MOUNT_MINING_LASER_I": [
           "IRON",
           "MACHINERY",
           "DIAMONDS"
-        ]
-      },
-      {
-        "export": "HOLOGRAPHICS",
-        "imports": [
-          "GOLD",
-          "SILVER",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "REACTOR_SOLAR_I",
-        "imports": [
-          "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "ALUMINUM_ORE",
-        "imports": [
-          "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "COPPER",
-        "imports": [
-          "COPPER_ORE"
-        ]
-      },
-      {
-        "export": "CYBER_IMPLANTS",
-        "imports": [
-          "ADVANCED_CIRCUITRY",
-          "BIOCOMPOSITES"
-        ]
-      },
-      {
-        "export": "MOUNT_GAS_SIPHON_III",
-        "imports": [
-          "PLATINUM",
-          "MACHINERY",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "SILICON_CRYSTALS",
-        "imports": [
-          "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "GRAVITON_EMITTERS",
-        "imports": [
-          "ADVANCED_CIRCUITRY",
-          "GOLD"
-        ]
-      },
-      {
-        "export": "CULTURAL_ARTIFACTS",
-        "imports": [
-          "LAB_INSTRUMENTS"
-        ]
-      },
-      {
-        "export": "URANITE",
-        "imports": [
-          "URANITE_ORE"
-        ]
-      },
-      {
-        "export": "MODULE_FUEL_REFINERY_I",
-        "imports": [
-          "PLATINUM",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "IRON_ORE",
-        "imports": [
-          "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "MOUNT_MINING_LASER_II",
-        "imports": [
+        ],
+        "MOUNT_MINING_LASER_II": [
           "ALUMINUM",
           "MACHINERY",
           "DIAMONDS"
-        ]
-      },
-      {
-        "export": "MODULE_JUMP_DRIVE_III",
-        "imports": [
+        ],
+        "MOUNT_TURRET_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "MOUNT_LASER_CANNON_I": [
+          "IRON",
+          "MACHINERY",
+          "DIAMONDS"
+        ],
+        "MOUNT_MISSILE_LAUNCHER_I": [
+          "IRON",
+          "MACHINERY"
+        ],
+        "QUANTUM_STABILIZERS": [
+          "PLATINUM",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "ANTIMATTER": [
+          "LAB_INSTRUMENTS",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "EXOTIC_MATTER": [
+          "LAB_INSTRUMENTS",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "RELIC_TECH": [
+          "LAB_INSTRUMENTS",
+          "EQUIPMENT"
+        ],
+        "NOVEL_LIFEFORMS": [
+          "LAB_INSTRUMENTS",
+          "EQUIPMENT"
+        ],
+        "BOTANICAL_SPECIMENS": [
+          "LAB_INSTRUMENTS",
+          "EQUIPMENT"
+        ],
+        "AI_MAINFRAMES": [
+          "ADVANCED_CIRCUITRY",
+          "MICROPROCESSORS"
+        ],
+        "QUANTUM_DRIVES": [
+          "ADVANCED_CIRCUITRY",
+          "DIAMONDS"
+        ],
+        "GRAVITON_EMITTERS": [
+          "ADVANCED_CIRCUITRY",
+          "GOLD"
+        ],
+        "ROBOTIC_DRONES": [
+          "ADVANCED_CIRCUITRY",
+          "ALUMINUM"
+        ],
+        "CYBER_IMPLANTS": [
+          "ADVANCED_CIRCUITRY",
+          "BIOCOMPOSITES"
+        ],
+        "NANOBOTS": [
+          "POLYNUCLEOTIDES",
+          "LAB_INSTRUMENTS"
+        ],
+        "GENE_THERAPEUTICS": [
+          "POLYNUCLEOTIDES",
+          "LAB_INSTRUMENTS"
+        ],
+        "NEURAL_CHIPS": [
+          "POLYNUCLEOTIDES",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "MOOD_REGULATORS": [
+          "POLYNUCLEOTIDES",
+          "LAB_INSTRUMENTS"
+        ],
+        "VIRAL_AGENTS": [
+          "POLYNUCLEOTIDES",
+          "LAB_INSTRUMENTS"
+        ],
+        "MICRO_FUSION_GENERATORS": [
+          "ADVANCED_CIRCUITRY",
+          "PLATINUM",
+          "DIAMONDS"
+        ],
+        "SUPERGRAINS": [
+          "FERTILIZERS",
+          "POLYNUCLEOTIDES",
+          "LAB_INSTRUMENTS"
+        ],
+        "LASER_RIFLES": [
+          "DIAMONDS",
+          "PLATINUM",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "HOLOGRAPHICS": [
+          "GOLD",
+          "SILVER",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "ENGINE_ION_DRIVE_II": [
+          "PLATINUM",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "ENGINE_HYPER_DRIVE_I": [
+          "PLATINUM",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "MODULE_CARGO_HOLD_III": [
+          "PLATINUM",
+          "MACHINERY",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "MODULE_JUMP_DRIVE_I": [
+          "IRON",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "MODULE_JUMP_DRIVE_II": [
+          "PLATINUM",
+          "ADVANCED_CIRCUITRY",
+          "GOLD"
+        ],
+        "MODULE_JUMP_DRIVE_III": [
           "PLATINUM",
           "ADVANCED_CIRCUITRY",
           "GOLD",
           "MERITIUM"
-        ]
-      },
-      {
-        "export": "LIQUID_NITROGEN",
-        "imports": [
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "REACTOR_CHEMICAL_I",
-        "imports": [
+        ],
+        "MODULE_WARP_DRIVE_I": [
           "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "ELECTRONICS",
-        "imports": [
-          "SILICON_CRYSTALS",
-          "COPPER"
-        ]
-      },
-      {
-        "export": "SHIP_INTERCEPTOR",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "EXPLOSIVES",
-        "imports": [
-          "LIQUID_HYDROGEN",
-          "LIQUID_NITROGEN"
-        ]
-      },
-      {
-        "export": "NANOBOTS",
-        "imports": [
-          "POLYNUCLEOTIDES",
-          "LAB_INSTRUMENTS"
-        ]
-      },
-      {
-        "export": "SHIP_MINING_DRONE",
-        "imports": [
-          "SHIP_PLATING",
-          "SHIP_PARTS"
-        ]
-      },
-      {
-        "export": "MACHINERY",
-        "imports": [
-          "IRON"
-        ]
-      },
-      {
-        "export": "MODULE_SHIELD_GENERATOR_I",
-        "imports": [
-          "IRON",
-          "MACHINERY",
-          "URANITE"
-        ]
-      },
-      {
-        "export": "MOUNT_LASER_CANNON_I",
-        "imports": [
-          "IRON",
-          "MACHINERY",
-          "DIAMONDS"
-        ]
-      },
-      {
-        "export": "AI_MAINFRAMES",
-        "imports": [
-          "ADVANCED_CIRCUITRY",
-          "MICROPROCESSORS"
-        ]
-      },
-      {
-        "export": "MODULE_WARP_DRIVE_II",
-        "imports": [
+          "ADVANCED_CIRCUITRY"
+        ],
+        "MODULE_WARP_DRIVE_II": [
           "PLATINUM",
           "ADVANCED_CIRCUITRY",
           "URANITE"
-        ]
-      },
-      {
-        "export": "SHIP_SALVAGE",
-        "imports": [
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "POLYNUCLEOTIDES",
-        "imports": [
-          "LIQUID_HYDROGEN",
-          "LIQUID_NITROGEN"
-        ]
-      },
-      {
-        "export": "ANTIMATTER",
-        "imports": [
-          "LAB_INSTRUMENTS",
-          "ADVANCED_CIRCUITRY"
-        ]
-      },
-      {
-        "export": "MOUNT_GAS_SIPHON_I",
-        "imports": [
-          "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "MEDICINE",
-        "imports": [
-          "FABRICS",
-          "POLYNUCLEOTIDES"
-        ]
-      },
-      {
-        "export": "PLATINUM_ORE",
-        "imports": [
-          "EXPLOSIVES"
-        ]
-      },
-      {
-        "export": "REACTOR_ANTIMATTER_I",
-        "imports": [
-          "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "MODULE_CARGO_HOLD_I",
-        "imports": [
-          "IRON",
-          "MACHINERY"
-        ]
-      },
-      {
-        "export": "ROBOTIC_DRONES",
-        "imports": [
+        ],
+        "MODULE_WARP_DRIVE_III": [
+          "PLATINUM",
           "ADVANCED_CIRCUITRY",
-          "ALUMINUM"
-        ]
-      },
-      {
-        "export": "AMMONIA_ICE",
-        "imports": [
-          "MACHINERY"
+          "MERITIUM",
+          "MERITIUM"
+        ],
+        "MOUNT_GAS_SIPHON_III": [
+          "PLATINUM",
+          "MACHINERY",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "MODULE_SHIELD_GENERATOR_I": [
+          "IRON",
+          "MACHINERY",
+          "URANITE"
+        ],
+        "MODULE_SHIELD_GENERATOR_II": [
+          "ALUMINUM",
+          "MACHINERY",
+          "URANITE"
+        ],
+        "MOUNT_SURVEYOR_III": [
+          "PLATINUM",
+          "MACHINERY",
+          "ADVANCED_CIRCUITRY"
+        ],
+        "MOUNT_SENSOR_ARRAY_III": [
+          "PLATINUM",
+          "MACHINERY",
+          "ADVANCED_CIRCUITRY",
+          "URANITE"
+        ],
+        "MOUNT_MINING_LASER_III": [
+          "PLATINUM",
+          "MACHINERY",
+          "ADVANCED_CIRCUITRY",
+          "URANITE"
+        ],
+        "SHIP_PROBE": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_MINING_DRONE": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_SIPHON_DRONE": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_LIGHT_HAULER": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_COMMAND_FRIGATE": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_INTERCEPTOR": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_EXPLORER": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_LIGHT_SHUTTLE": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_HEAVY_FREIGHTER": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_ORE_HOUND": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_REFINING_FREIGHTER": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_SURVEYOR": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
+        ],
+        "SHIP_BULK_FREIGHTER": [
+          "SHIP_PLATING",
+          "SHIP_PARTS"
         ]
       }
-    ]
+    }
   }
 }

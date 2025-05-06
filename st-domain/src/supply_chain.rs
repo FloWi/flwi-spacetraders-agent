@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::ops::Not;
+use strum::IntoEnumIterator;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TradeRelation {
@@ -19,14 +20,21 @@ pub struct TradeRelation {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SupplyChain {
     pub relations: Vec<TradeRelation>,
+    pub trade_map: HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>,
+    pub individual_supply_chains: HashMap<TradeGoodSymbol, (Vec<SupplyChainNode>, HashSet<TradeGoodSymbol>)>,
 }
 
 // Function to convert from server format to your model
 impl From<GetSupplyChainResponse> for SupplyChain {
     fn from(response: GetSupplyChainResponse) -> Self {
-        let relations = response.data.export_to_import_map.into_iter().map(|(export, imports)| TradeRelation { export, imports }).collect();
-
-        SupplyChain { relations }
+        let relations = response.data.export_to_import_map.into_iter().map(|(export, imports)| TradeRelation { export, imports }).collect_vec();
+        let trade_map = calc_trade_map(&relations);
+        let individual_supply_chains = calc_individual_chains(&trade_map);
+        SupplyChain {
+            relations,
+            trade_map,
+            individual_supply_chains,
+        }
     }
 }
 
@@ -56,7 +64,11 @@ pub struct MaterializedSupplyChain {
     pub all_routes: Vec<DeliveryRoute>,
 }
 
-pub fn find_complete_supply_chain(products: &[TradeGoodSymbol], trade_relations: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>) -> Vec<SupplyChainNode> {
+pub fn get_all_goods_involved(chain: &[SupplyChainNode]) -> HashSet<TradeGoodSymbol> {
+    chain.iter().flat_map(|scn| scn.dependencies.iter().cloned().chain(std::iter::once(scn.good.clone()))).collect()
+}
+
+pub fn find_complete_supply_chain(products: &[TradeGoodSymbol], trade_map: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>) -> Vec<SupplyChainNode> {
     fn recursive_search(
         product: &TradeGoodSymbol,
         trade_relations: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>,
@@ -81,14 +93,13 @@ pub fn find_complete_supply_chain(products: &[TradeGoodSymbol], trade_relations:
     let mut visited = HashSet::new();
     let mut result = Vec::new();
     for product in products {
-        recursive_search(&product, trade_relations, &mut visited, &mut result);
+        recursive_search(&product, trade_map, &mut visited, &mut result);
     }
     result
 }
 
-pub fn calc_trade_map(supply_chain: &SupplyChain) -> HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>> {
-    supply_chain
-        .relations
+fn calc_trade_map(trade_relations: &[TradeRelation]) -> HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>> {
+    trade_relations
         .iter()
         .map(|relation| (relation.export.clone(), relation.imports.clone()))
         .filter(|(exp, imp)| {
@@ -99,6 +110,21 @@ pub fn calc_trade_map(supply_chain: &SupplyChain) -> HashMap<TradeGoodSymbol, Ve
             }
         })
         .collect()
+}
+
+fn calc_individual_chains(
+    trade_map: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>,
+) -> HashMap<TradeGoodSymbol, (Vec<SupplyChainNode>, HashSet<TradeGoodSymbol>)> {
+    let all_individual_trade_good_chains: HashMap<TradeGoodSymbol, (Vec<SupplyChainNode>, HashSet<TradeGoodSymbol>)> = TradeGoodSymbol::iter()
+        .map(|trade_good| {
+            let chain = find_complete_supply_chain(&[trade_good.clone()], &trade_map);
+            let products_involved = get_all_goods_involved(&chain);
+
+            (trade_good.clone(), (chain, products_involved))
+        })
+        .collect();
+
+    all_individual_trade_good_chains
 }
 
 pub trait SupplyChainNodeVecExt {
@@ -163,9 +189,7 @@ pub fn materialize_supply_chain(
     let relevant_products =
         goods_of_interest.iter().cloned().chain(missing_construction_materials.iter().map(|cm| cm.trade_symbol.clone())).unique().collect_vec();
 
-    let trade_map = calc_trade_map(supply_chain);
-
-    let relevant_supply_chain = find_complete_supply_chain(&relevant_products, &trade_map);
+    let relevant_supply_chain = find_complete_supply_chain(&relevant_products, &supply_chain.trade_map);
 
     let all_routes = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data);
 
@@ -391,8 +415,7 @@ pub fn compute_raw_delivery_routes(
     goods_of_interest: &[TradeGoodSymbol],
     supply_chain: &SupplyChain,
 ) -> Vec<RawDeliveryRoute> {
-    let trade_map = calc_trade_map(supply_chain);
-    let complete_supply_chain = find_complete_supply_chain(&goods_of_interest.iter().cloned().collect_vec(), &trade_map);
+    let complete_supply_chain = find_complete_supply_chain(&goods_of_interest.iter().cloned().collect_vec(), &supply_chain.trade_map);
 
     let inputs: HashSet<TradeGoodSymbol> = complete_supply_chain.iter().flat_map(|scn| scn.dependencies.iter()).unique().cloned().collect::<HashSet<_>>();
     let outputs: HashSet<TradeGoodSymbol> = complete_supply_chain.iter().map(|scn| scn.good.clone()).unique().collect::<HashSet<_>>();

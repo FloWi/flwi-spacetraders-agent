@@ -89,6 +89,8 @@ pub fn SupplyChainPage() -> impl IntoView {
         TradeGoodSymbol::SHIP_PARTS,
         TradeGoodSymbol::MICROPROCESSORS,
         TradeGoodSymbol::CLOTHING,
+        TradeGoodSymbol::FUEL,
+        TradeGoodSymbol::EQUIPMENT,
     ];
 
     let supply_chain_resource = OnceResource::new(get_supply_chain_data(goods_of_interest.clone()));

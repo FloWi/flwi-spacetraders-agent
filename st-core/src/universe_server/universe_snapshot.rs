@@ -1,6 +1,6 @@
 use crate::universe_server::universe_server::InMemoryUniverse;
 use serde::{Deserialize, Serialize};
-use st_domain::{Agent, Construction, JumpGate, MarketData, Ship, Shipyard, SupplyChain, SystemsPageData, Waypoint};
+use st_domain::{Agent, Construction, GetSupplyChainResponse, JumpGate, MarketData, Ship, Shipyard, SupplyChain, SystemsPageData, Waypoint};
 
 use std::fs::File;
 use std::io::BufReader;
@@ -16,7 +16,7 @@ pub struct UniverseSnapshot {
     construction_sites: Vec<Construction>,
     agent: Agent,
     jump_gates: Vec<JumpGate>,
-    supply_chain: SupplyChain,
+    supply_chain: GetSupplyChainResponse,
 }
 
 impl UniverseSnapshot {
