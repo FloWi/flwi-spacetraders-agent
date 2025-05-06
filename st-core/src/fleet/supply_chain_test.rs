@@ -1,6 +1,10 @@
 use anyhow::Result;
 use itertools::Itertools;
-use st_domain::{FleetDecisionFacts, FleetPhaseName, MarketEntry, MaterializedSupplyChain, ShipSymbol, SupplyChain, TradeGoodSymbol, WaypointSymbol};
+use st_domain::trading::{evaluate_trading_opportunities, find_trading_opportunities_sorted_by_profit_per_distance_unit};
+use st_domain::{
+    FleetDecisionFacts, FleetPhaseName, MarketEntry, MarketTradeGood, MaterializedSupplyChain, ShipSymbol, SupplyChain, TradeGoodSymbol, Waypoint,
+    WaypointSymbol,
+};
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use strum::IntoEnumIterator;
@@ -15,7 +19,7 @@ mod tests {
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient, InMemoryUniverseOverrides};
     use anyhow::Result;
     use itertools::Itertools;
-    use st_domain::{FleetPhaseName, ShipSymbol, TradeGoodSymbol, WaypointSymbol};
+    use st_domain::{trading, FleetPhaseName, MarketTradeGood, ShipSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol};
     use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
     use st_store::bmc::{Bmc, InMemoryBmc};
@@ -24,7 +28,7 @@ mod tests {
     use st_store::{
         Ctx, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc,
     };
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use std::ops::Not;
     use std::sync::Arc;
     use test_log::test;
@@ -157,6 +161,9 @@ mod tests {
         // because of the override, we should have detailed market data
         FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
 
+        let waypoints_of_system = bmc.system_bmc().get_waypoints_of_system(&Ctx::Anonymous, &hq_system_symbol).await?;
+        let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints_of_system.iter().map(|wp| (wp.symbol.clone(), wp)).collect::<HashMap<_, _>>();
+
         let market_data = bmc.market_bmc().get_latest_market_data_for_system(&Ctx::Anonymous, &hq_system_symbol).await.expect("market_data");
 
         // easier to get the supply chain this way, since we need plenty of things for computing it
@@ -170,7 +177,9 @@ mod tests {
 
         let materialized_supply_chain = facts.materialized_supply_chain.clone().unwrap();
 
-        calc_trading_decisions(&facts, &phase, &active_trades, &vec![], &materialized_supply_chain, &market_data)?;
+        let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
+
+        calc_trading_decisions(&facts, &phase, &active_trades, &vec![], &materialized_supply_chain, &market_data, &waypoint_map)?;
 
         assert!(
             materialized_supply_chain.raw_delivery_routes.is_empty().not(),
@@ -187,7 +196,8 @@ fn calc_trading_decisions(
     active_trades: &[(ShipSymbol, (TradeGoodSymbol, WaypointSymbol), (TradeGoodSymbol, WaypointSymbol), u32)],
     active_construction_deliveries: &[(ShipSymbol, (TradeGoodSymbol, u32))],
     materialized_supply_chain: &MaterializedSupplyChain,
-    market_data: &[MarketEntry],
+    market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
+    waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
 ) -> Result<()> {
     let missing_construction_material: HashMap<TradeGoodSymbol, u32> = facts.missing_construction_materials();
 
@@ -215,6 +225,11 @@ fn calc_trading_decisions(
         materialized_supply_chain.goods_for_sale_not_conflicting_with_construction,
         materialized_supply_chain.goods_for_sale_conflicting_with_construction,
     );
+
+    let trading_opportunities = find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map);
+    //evaluate_trading_opportunities()
+
+    println!("found {} trading opportunities", trading_opportunities.len());
 
     Ok(())
 }

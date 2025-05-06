@@ -3,7 +3,7 @@ use crate::{
     ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, SupplyChainMap, SystemSymbol,
     TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType,
 };
-use itertools::Itertools;
+use itertools::{all, Itertools};
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -198,6 +198,41 @@ pub fn materialize_supply_chain(
         TradeGoodSymbol::CLOTHING,
     ];
 
+    let products_for_sale: HashSet<TradeGoodSymbol> = market_data
+        .iter()
+        .flat_map(|(_, entries)| entries.iter().filter_map(|mtg| (mtg.trade_good_type == TradeGoodType::Export).then_some(mtg.symbol.clone())))
+        .collect();
+
+    let raw_materials = get_raw_material_source();
+
+    let mut individual_materialized_routes = HashMap::new();
+
+    for p in products_for_sale.iter().filter(|tg| raw_materials.contains_key(tg).not()) {
+        let goods_of_interest = vec![p.clone()];
+        let raw_delivery_routes = compute_raw_delivery_routes(market_data, waypoint_map, &goods_of_interest, supply_chain);
+
+        let relevant_products = goods_of_interest.iter().cloned().collect_vec();
+
+        let relevant_supply_chain = find_complete_supply_chain(&relevant_products, &supply_chain.trade_map);
+
+        let all_routes = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data);
+
+        let total_distance: u32 = all_routes
+            .iter()
+            .map(|r| match r {
+                DeliveryRoute::Raw(r) => r.distance,
+                DeliveryRoute::Processed { route, .. } => route.distance,
+            })
+            .sum();
+        individual_materialized_routes.insert(p.clone(), (total_distance, all_routes));
+    }
+
+    println!("Total distances of all {} products for sale\n", products_for_sale.len());
+
+    individual_materialized_routes.iter().sorted_by_key(|(_, (d, _))| d).for_each(|(tg, (distance, _))| {
+        println!("{}; {}", distance, tg);
+    });
+
     let raw_delivery_routes = compute_raw_delivery_routes(market_data, waypoint_map, &goods_of_interest, supply_chain);
 
     let relevant_products =
@@ -211,15 +246,10 @@ pub fn materialize_supply_chain(
 
     let missing_construction_material_map = maybe_construction_site.clone().map(|cs| cs.data.missing_construction_materials()).unwrap_or_default();
 
-    let products_for_sale: HashSet<TradeGoodSymbol> = market_data
-        .iter()
-        .flat_map(|(_, entries)| entries.iter().filter_map(|mtg| (mtg.trade_good_type == TradeGoodType::Export).then_some(mtg.symbol.clone())))
-        .collect();
-
     let ConstructionRelatedTradeGoodsOverview {
         goods_for_sale_not_conflicting_with_construction,
         goods_for_sale_conflicting_with_construction,
-    } = calc_construction_related_trade_good_overview(supply_chain, market_data, missing_construction_material_map, &products_for_sale);
+    } = calc_construction_related_trade_good_overview(supply_chain, missing_construction_material_map, &products_for_sale);
 
     MaterializedSupplyChain {
         explanation: format!(
@@ -245,7 +275,6 @@ struct ConstructionRelatedTradeGoodsOverview {
 
 fn calc_construction_related_trade_good_overview(
     supply_chain: &SupplyChain,
-    market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
     missing_construction_material: HashMap<TradeGoodSymbol, u32>,
     products_for_sale: &HashSet<TradeGoodSymbol>,
 ) -> ConstructionRelatedTradeGoodsOverview {
@@ -336,16 +365,16 @@ fn compute_all_routes(
     let supply_markets = combine_maps(&export_markets, &exchange_markets);
     let consume_markets = combine_maps(&import_markets, &exchange_markets);
 
-    println!("market_data: {}", serde_json::to_string(&market_data).unwrap());
-    println!("relevant_market_data: {}", serde_json::to_string(&relevant_market_data).unwrap());
-    println!("raw_delivery_routes: {}", serde_json::to_string(&raw_delivery_routes).unwrap());
-    println!("raw_input_sources: {}", serde_json::to_string(&raw_input_sources).unwrap());
-    println!("all_products_involved: {}", serde_json::to_string(&all_products_involved).unwrap());
-    println!("export_markets: {}", serde_json::to_string(&export_markets).unwrap());
-    println!("import_markets: {}", serde_json::to_string(&import_markets).unwrap());
-    println!("exchange_markets: {}", serde_json::to_string(&exchange_markets).unwrap());
-    println!("supply_markets: {}", serde_json::to_string(&supply_markets).unwrap());
-    println!("consume_markets: {}", serde_json::to_string(&consume_markets).unwrap());
+    // println!("market_data: {}", serde_json::to_string(&market_data).unwrap());
+    // println!("relevant_market_data: {}", serde_json::to_string(&relevant_market_data).unwrap());
+    // println!("raw_delivery_routes: {}", serde_json::to_string(&raw_delivery_routes).unwrap());
+    // println!("raw_input_sources: {}", serde_json::to_string(&raw_input_sources).unwrap());
+    // println!("all_products_involved: {}", serde_json::to_string(&all_products_involved).unwrap());
+    // println!("export_markets: {}", serde_json::to_string(&export_markets).unwrap());
+    // println!("import_markets: {}", serde_json::to_string(&import_markets).unwrap());
+    // println!("exchange_markets: {}", serde_json::to_string(&exchange_markets).unwrap());
+    // println!("supply_markets: {}", serde_json::to_string(&supply_markets).unwrap());
+    // println!("consume_markets: {}", serde_json::to_string(&consume_markets).unwrap());
 
     // Note that we deliver some of the ores directly to the smelting location (e.g. COPPER_ORE --> COPPER), which means that we don't have provider-market of COPPER_ORE
     let mut input_sources: HashMap<TradeGoodSymbol, (WaypointSymbol, u32)> = raw_delivery_routes
@@ -392,18 +421,18 @@ fn compute_all_routes(
             })
             .collect_vec();
 
-        println!(
-            "{} has {} dependencies: {:?}. {} providers have been found {:?} ",
-            &node.good,
-            &node.dependencies.len(),
-            &node.dependencies,
-            dependency_providers.len(),
-            &dependency_providers
-        );
+        // println!(
+        //     "{} has {} dependencies: {:?}. {} providers have been found {:?} ",
+        //     &node.good,
+        //     &node.dependencies.len(),
+        //     &node.dependencies,
+        //     dependency_providers.len(),
+        //     &dependency_providers
+        // );
 
         let are_all_dependencies_fulfilled = node.dependencies.len() == dependency_providers.len();
         if are_all_dependencies_fulfilled {
-            let candidate_export_entries = supply_markets.get(&candidate).expect(format!("Supply market of {} should exist", candidate).as_str());
+            let candidate_export_entries = export_markets.get(&candidate).expect(format!("Supply market of {} should exist", candidate).as_str());
             assert_eq!(1, candidate_export_entries.len(), "We expect only one producing market of {}", candidate);
             let (candidate_export_wps, candidate_export_mtg) = candidate_export_entries.first().cloned().unwrap();
 
@@ -445,30 +474,30 @@ fn compute_all_routes(
 
             input_sources.insert(candidate, (candidate_export_wps, rank + 1));
 
-            println!(
-                "All {} dependencies ({:?}) of {} fulfilled",
-                node.dependencies.len(),
-                node.dependencies,
-                node.good
-            );
+            // println!(
+            //     "All {} dependencies ({:?}) of {} fulfilled",
+            //     node.dependencies.len(),
+            //     node.dependencies,
+            //     node.good
+            // );
         } else {
-            println!(
-                "Only {} out of {} dependencies ({:?}) of {} fulfilled.",
-                dependency_providers.len(),
-                node.dependencies.len(),
-                node.dependencies,
-                node.good
-            );
+            // println!(
+            //     "Only {} out of {} dependencies ({:?}) of {} fulfilled.",
+            //     dependency_providers.len(),
+            //     node.dependencies.len(),
+            //     node.dependencies,
+            //     node.good
+            // );
             rest_queue.push_back(candidate)
         }
     }
 
-    println!("higher_delivery_routes: {}", serde_json::to_string(&higher_delivery_routes).unwrap());
-    println!("raw_delivery_routes: {}", serde_json::to_string(&raw_delivery_routes).unwrap());
+    // println!("higher_delivery_routes: {}", serde_json::to_string(&higher_delivery_routes).unwrap());
+    // println!("raw_delivery_routes: {}", serde_json::to_string(&raw_delivery_routes).unwrap());
 
     let all_routes = higher_delivery_routes.into_iter().chain(raw_delivery_routes.into_iter().map(|r| DeliveryRoute::Raw(r.clone()))).collect_vec();
 
-    println!("all_routes: {}", serde_json::to_string(&all_routes).unwrap());
+    // println!("all_routes: {}", serde_json::to_string(&all_routes).unwrap());
 
     all_routes
 }
@@ -514,7 +543,7 @@ pub fn compute_raw_delivery_routes(
     let raw_material_sources: Vec<RawMaterialSource> = raw_materials
         .iter()
         .map(|raw_tgs| {
-            let source_type = source_type_map.get(raw_tgs).expect("source_type must be known");
+            let source_type = source_type_map.get(raw_tgs).expect(format!("source_type of {} should be known", raw_tgs).as_str());
             let source_waypoints = source_waypoints.get(source_type).expect("source_waypoint must be known");
             let source_waypoint_symbols = source_waypoints.iter().map(|wp| wp.symbol.clone()).collect_vec();
             RawMaterialSource {
@@ -693,7 +722,7 @@ pub fn compute_raw_delivery_routes(
     //     serde_json::to_string_pretty(&raw_delivery_routes).unwrap()
     // );
 
-    println!("hello, breakpoint");
+    // println!("hello, breakpoint");
 
     raw_delivery_routes
 }
@@ -719,11 +748,18 @@ pub fn get_raw_material_source() -> HashMap<TradeGoodSymbol, RawMaterialSourceTy
 
     HashMap::from([
         (AMMONIA_ICE, Extraction),
+        (DIAMONDS, Extraction),
         (IRON_ORE, Extraction),
         (COPPER_ORE, Extraction),
         (SILICON_CRYSTALS, Extraction),
         (QUARTZ_SAND, Extraction),
         (ALUMINUM_ORE, Extraction),
+        (PRECIOUS_STONES, Extraction),
+        (ICE_WATER, Extraction),
+        (SILVER_ORE, Extraction),
+        (GOLD_ORE, Extraction),
+        (PLATINUM_ORE, Extraction),
+        (URANITE_ORE, Extraction),
         (LIQUID_NITROGEN, Siphoning),
         (LIQUID_HYDROGEN, Siphoning),
         (HYDROCARBON, Siphoning),
