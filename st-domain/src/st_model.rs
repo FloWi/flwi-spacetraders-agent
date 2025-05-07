@@ -26,6 +26,12 @@ impl SystemSymbol {
     }
 }
 
+impl Display for SystemSymbol {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct WaypointSymbol(pub String);
 
@@ -255,6 +261,10 @@ pub struct WaypointModifier {
 impl WaypointSymbol {
     pub fn system_symbol(&self) -> SystemSymbol {
         SystemSymbol(self.0.splitn(3, "-").take(2).join("-"))
+    }
+
+    pub fn symbol_ex_system_symbol(&self) -> String {
+        self.0.rsplit_once('-').unwrap().1.to_string()
     }
 }
 
@@ -588,10 +598,10 @@ pub enum SupplyLevel {
 #[derive(Serialize, Deserialize, Clone, Debug, Display, EnumIter, Eq, PartialEq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ActivityLevel {
-    Weak = 0,
-    Growing = 1,
-    Strong = 2,
-    Restricted = 3,
+    Strong = 4,
+    Growing = 3,
+    Weak = 2,
+    Restricted = 1,
 }
 
 lazy_static! {

@@ -21,7 +21,7 @@ impl TableClassesProvider for TailwindClassesPreset {
             _ => "text-black dark:text-white",
         };
 
-        format!("cursor-pointer px-5 py-2 {} {}", sort_class, template_classes)
+        format!("cursor-pointer px-3 py-2 {} {}", sort_class, template_classes)
     }
 
     fn thead_cell_inner(&self) -> String {
@@ -45,7 +45,7 @@ impl TableClassesProvider for TailwindClassesPreset {
     }
 
     fn loading_cell(&self, _row_index: usize, _col_index: usize, prop_class: &str) -> String {
-        format!("{} {}", "px-5 py-2", prop_class)
+        format!("{} {}", "px-3 py-2", prop_class)
     }
 
     fn loading_cell_inner(&self, row_index: usize, _col_index: usize, prop_class: &str) -> String {
@@ -62,6 +62,6 @@ impl TableClassesProvider for TailwindClassesPreset {
     }
 
     fn cell(&self, template_classes: &str) -> String {
-        format!("{} {}", "px-5 py-2", template_classes)
+        format!("{} {}", "text-sm px-3 py-2", template_classes)
     }
 }

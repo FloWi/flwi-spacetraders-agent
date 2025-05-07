@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use st_domain::{ActivityLevel, SupplyLevel, TradeGoodType, TradingOpportunity, WaypointSymbol};
 
 use crate::tables::renderers::*;
+use crate::tailwind::TailwindClassesPreset;
 
 #[derive(Serialize, Deserialize, Clone, Debug, TableRow)]
 #[table(impl_vec_data_provider, sortable, classes_provider = "TailwindClassesPreset")]

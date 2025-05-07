@@ -264,7 +264,7 @@ async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec
         .iter()
         .cloned()
         .enumerate()
-        .map(|(idx, tg)| (tg, idx as u32))
+        .map(|(idx, tg)| (tg, (goods_of_interest.len() - idx) as u32))
         .collect();
 
     let scored_supply_routes: Vec<ScoredSupplyChainSupportRoute> = materialized_supply_chain
@@ -426,11 +426,10 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                 .collect_vec();
 
                                             view! {
-                                                <div>
-                                                    <div>"Hello, supply-chain"</div>
+                                                <div class="flex flex-col gap-4">
                                                     <div>
                                                         <h2 class="text-2xl font-bold">
-                                                            "Scored Supply Chain Routes"
+                                                            {format!("Scored Supply Chain Routes for System {}", materialized_supply_chain.system_symbol)}
                                                         </h2>
                                                         <div class="rounded-md overflow-clip m-10 border dark:border-gray-700 float-left"
                                                             .to_string()>
@@ -439,36 +438,8 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                                     rows=scored_supply_chains_table_data
                                                                     scroll_container="html"
                                                                 />
-
                                                             </table>
                                                         </div>
-                                                    </div>
-                                                    <div>
-                                                        <pre>
-                                                            {edges
-                                                                .iter()
-                                                                .map(|e| {
-                                                                    format!(
-                                                                        "{} --> {} {}",
-                                                                        e.source,
-                                                                        e.target,
-                                                                        serde_json::to_string(&e).unwrap_or("---".to_string()),
-                                                                    )
-                                                                })
-                                                                .join("\n")}
-                                                        </pre>
-                                                        <pre>
-                                                            {nodes
-                                                                .iter()
-                                                                .map(|n| {
-                                                                    format!(
-                                                                        "{} {}",
-                                                                        n.id,
-                                                                        serde_json::to_string(&n).unwrap_or("---".to_string()),
-                                                                    )
-                                                                })
-                                                                .join("\n")}
-                                                        </pre>
                                                     </div>
                                                     <div>
                                                         <TechTreeGraph
@@ -1231,17 +1202,6 @@ pub fn TechTreeGraph(node_data: Vec<TechNode>, edge_data: Vec<TechEdge>) -> impl
 
             <div class="visualization">{render_svg}</div>
 
-            <div class="layout-result">
-                <h3>"Layout Result (JSON)"</h3>
-                <pre node_ref=container_ref>
-                    {move || {
-                        layout_result
-                            .get()
-                            .map(|result| serde_json::to_string_pretty(&result).unwrap_or_default())
-                            .unwrap_or_else(|| "No layout calculated yet".to_string())
-                    }}
-                </pre>
-            </div>
         </div>
     }
 }

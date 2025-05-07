@@ -6,7 +6,7 @@ use thousands::Separable;
 // WaypointSymbolCellRenderer (you already had this one)
 #[component]
 pub fn WaypointSymbolCellRenderer<F>(class: String, value: Signal<WaypointSymbol>, row: RwSignal<F>, index: usize) -> impl IntoView {
-    view! { <td class=class>{move || value.get_untracked().0}</td> }
+    view! { <td class=class>{move || value.get_untracked().symbol_ex_system_symbol()}</td> }
 }
 
 // TradeGoodTypeCellRenderer
@@ -19,11 +19,11 @@ pub fn TradeGoodTypeCellRenderer<F>(class: String, value: Signal<TradeGoodType>,
 #[component]
 pub fn SupplyLevelCellRenderer<F>(class: String, value: Signal<SupplyLevel>, row: RwSignal<F>, index: usize) -> impl IntoView {
     let supply_class = move || match value.get_untracked() {
-        SupplyLevel::Scarce => "text-red-600 font-bold",
-        SupplyLevel::Limited => "text-orange-500",
-        SupplyLevel::Moderate => "text-blue-500",
-        SupplyLevel::Abundant => "text-green-500",
-        _ => "",
+        SupplyLevel::Scarce => "text-red-600",       // Bright red for urgency/scarcity
+        SupplyLevel::Limited => "text-amber-500",    // Amber/orange for caution
+        SupplyLevel::Moderate => "text-yellow-500",  // Yellow for neutral/average
+        SupplyLevel::High => "text-blue-500",        // Blue for good supply
+        SupplyLevel::Abundant => "text-emerald-600", // Emerald green for abundance
     };
 
     view! {
@@ -41,12 +41,16 @@ pub fn ActivityLevelCellRenderer<F>(class: String, value: Signal<Option<Activity
         None => "N/A".to_string(),
     };
 
-    let activity_class = move || match value.get_untracked() {
-        Some(ActivityLevel::Strong) => "text-green-600 font-bold",
-        Some(ActivityLevel::Growing) => "text-green-500",
-        Some(ActivityLevel::Weak) => "text-red-500",
-        Some(ActivityLevel::Restricted) => "text-red-600 font-bold",
-        _ => "",
+    let activity_class = move || {
+        value
+            .get_untracked()
+            .map(|act| match act {
+                ActivityLevel::Strong => "text-emerald-600", // Emerald green for excellent activity
+                ActivityLevel::Growing => "text-blue-500",   // Blue for positive growth
+                ActivityLevel::Weak => "text-amber-500",     // Amber for caution/weak
+                ActivityLevel::Restricted => "text-red-600", // Red for restricted/problematic
+            })
+            .unwrap_or("")
     };
 
     view! {

@@ -1031,8 +1031,8 @@ pub struct ScoredSupplyChainSupportRoute {
     pub activity_level_at_source: Option<ActivityLevel>,
     pub supply_level_of_import_at_destination: SupplyLevel,
     pub activity_level_of_import_at_destination: Option<ActivityLevel>,
-    pub supply_level_score: i32,
-    pub activity_level_score: i32,
+    pub import_supply_level_score: i32,
+    pub import_activity_level_score: i32,
     pub level_score: i32,
     pub max_prio_score: u32,
     pub purchase_price: i32,
@@ -1056,8 +1056,8 @@ impl ScoredSupplyChainSupportRoute {
 
         let activity_level_of_import_at_destination = tgr.delivery_market_entry.activity.clone();
 
-        let supply_level_score: i32 = calc_supply_level_demand_score(&supply_level_of_import_at_destination);
-        let activity_level_score: i32 = calc_activity_level_demand_score(&supply_level_of_import_at_destination, &activity_level_of_import_at_destination);
+        let import_supply_level_score: i32 = calc_supply_level_demand_score(&supply_level_of_import_at_destination);
+        let import_activity_level_score: i32 = calc_activity_level_demand_score(&supply_level_of_import_at_destination, &activity_level_of_import_at_destination);
         let level_score: i32 = max_level as i32 - tgr.rank as i32 + 1;
 
         let priorities_of_chains_containing_this_route = individual_materialized_routes
@@ -1111,7 +1111,7 @@ impl ScoredSupplyChainSupportRoute {
             .unwrap();
 
         let score = if is_spread_ok && supply_level_at_source != SupplyLevel::Scarce {
-            (supply_level_score + activity_level_score) * level_score * max_prio_score as i32
+            (import_supply_level_score + import_activity_level_score) * level_score * max_prio_score as i32
         } else {
             0
         };
@@ -1127,8 +1127,8 @@ impl ScoredSupplyChainSupportRoute {
             activity_level_at_source,
             supply_level_of_import_at_destination,
             activity_level_of_import_at_destination,
-            supply_level_score,
-            activity_level_score,
+            import_supply_level_score,
+            import_activity_level_score,
             level_score,
             max_prio_score,
             purchase_price,
