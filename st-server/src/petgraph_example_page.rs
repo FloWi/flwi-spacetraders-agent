@@ -6,11 +6,13 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    ActivityLevel, DeliveryRoute, HigherDeliveryRoute, MarketTradeGood, MaterializedSupplyChain, RawMaterialSource, SupplyLevel, TradeGoodSymbol,
-    TradeGoodType, WaypointSymbol, WaypointType,
+    ActivityLevel, DeliveryRoute, HigherDeliveryRoute, MarketTradeGood, MaterializedSupplyChain, RawMaterialSource, ScoredSupplyChainSupportRoute, SupplyLevel,
+    TradeGoodSymbol, TradeGoodType, WaypointSymbol, WaypointType,
 };
 
+use crate::tables::scored_supply_chain_route_table::ScoredSupplyChainRouteRow;
 use itertools::Itertools;
+use leptos_struct_table::TableContent;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::sync::Arc;
@@ -147,7 +149,7 @@ struct NodeRank {
 }
 
 #[server]
-async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec<TechNode>, Vec<TechEdge>), ServerFnError> {
+async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec<TechNode>, Vec<TechEdge>, Vec<ScoredSupplyChainSupportRoute>), ServerFnError> {
     use st_core::fleet::fleet::collect_fleet_decision_facts;
     use st_core::fleet::fleet_runner::FleetRunner;
     use st_core::st_client::StClientTrait;
@@ -239,6 +241,47 @@ async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec
 
     let materialized_supply_chain = facts.materialized_supply_chain.unwrap();
 
+    //FIXME: compute myself
+    let goods_of_interest = vec![
+        TradeGoodSymbol::ADVANCED_CIRCUITRY,
+        TradeGoodSymbol::FAB_MATS,
+        TradeGoodSymbol::SHIP_PLATING,
+        TradeGoodSymbol::SHIP_PARTS,
+        TradeGoodSymbol::MICROPROCESSORS,
+        TradeGoodSymbol::CLOTHING,
+    ];
+    let max_level = materialized_supply_chain
+        .all_routes
+        .iter()
+        .map(|route| match route {
+            DeliveryRoute::Raw(_) => 0,
+            DeliveryRoute::Processed { rank, .. } => *rank,
+        })
+        .max()
+        .unwrap_or_default();
+
+    let priorities_of_products_to_boost = goods_of_interest
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(idx, tg)| (tg, idx as u32))
+        .collect();
+
+    let scored_supply_routes: Vec<ScoredSupplyChainSupportRoute> = materialized_supply_chain
+        .all_routes
+        .iter()
+        .filter_map(|route| match route {
+            DeliveryRoute::Raw(_) => None,
+            DeliveryRoute::Processed { route, .. } => Some(ScoredSupplyChainSupportRoute::calc(
+                route,
+                max_level,
+                &materialized_supply_chain.individual_materialized_routes,
+                &priorities_of_products_to_boost,
+            )),
+        })
+        .sorted_by_key(|r| (r.score * -1, r.spread * -1))
+        .collect_vec();
+
     assert!(
         materialized_supply_chain
             .raw_delivery_routes
@@ -249,7 +292,7 @@ async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec
 
     let (nodes, edges) = to_nodes_and_edges(&materialized_supply_chain);
 
-    Ok((materialized_supply_chain, nodes, edges))
+    Ok((materialized_supply_chain, nodes, edges, scored_supply_routes))
 }
 
 fn to_nodes_and_edges(materialized_supply_chain: &MaterializedSupplyChain) -> (Vec<TechNode>, Vec<TechEdge>) {
@@ -310,6 +353,7 @@ fn to_nodes_and_edges(materialized_supply_chain: &MaterializedSupplyChain) -> (V
                         delivery_market_entry,
                         producing_trade_good,
                         producing_market_entry,
+                        ..
                     },
                 rank,
             } => {
@@ -365,19 +409,65 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                 .get()
                                 .map(|result| {
                                     match result {
-                                        Ok((materialized_supply_chain, nodes, edges)) => {
+                                        Ok(
+                                            (
+                                                materialized_supply_chain,
+                                                nodes,
+                                                edges,
+                                                scored_supply_chain_routes,
+                                            ),
+                                        ) => {
+                                            let scored_supply_chains_table_data: Vec<
+                                                ScoredSupplyChainRouteRow,
+                                            > = scored_supply_chain_routes
+                                                .iter()
+                                                .cloned()
+                                                .map(ScoredSupplyChainRouteRow::from)
+                                                .collect_vec();
+
                                             view! {
                                                 <div>
                                                     <div>"Hello, supply-chain"</div>
                                                     <div>
+                                                        <h2 class="text-2xl font-bold">
+                                                            "Scored Supply Chain Routes"
+                                                        </h2>
+                                                        <div class="rounded-md overflow-clip m-10 border dark:border-gray-700 float-left"
+                                                            .to_string()>
+                                                            <table class="text-sm text-left text-gray-500 dark:text-gray-400 mb-[-1px]">
+                                                                <TableContent
+                                                                    rows=scored_supply_chains_table_data
+                                                                    scroll_container="html"
+                                                                />
+
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                    <div>
                                                         <pre>
                                                             {edges
                                                                 .iter()
-                                                                .map(|e| format!("{} --> {} {}", e.source, e.target, serde_json::to_string(&e).unwrap_or("---".to_string())))
+                                                                .map(|e| {
+                                                                    format!(
+                                                                        "{} --> {} {}",
+                                                                        e.source,
+                                                                        e.target,
+                                                                        serde_json::to_string(&e).unwrap_or("---".to_string()),
+                                                                    )
+                                                                })
                                                                 .join("\n")}
                                                         </pre>
                                                         <pre>
-                                                            {nodes.iter().map(|n| format!("{} {}", n.id, serde_json::to_string(&n).unwrap_or("---".to_string()))).join("\n")}
+                                                            {nodes
+                                                                .iter()
+                                                                .map(|n| {
+                                                                    format!(
+                                                                        "{} {}",
+                                                                        n.id,
+                                                                        serde_json::to_string(&n).unwrap_or("---".to_string()),
+                                                                    )
+                                                                })
+                                                                .join("\n")}
                                                         </pre>
                                                     </div>
                                                     <div>

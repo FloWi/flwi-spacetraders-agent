@@ -4168,6 +4168,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "itertools 0.14.0",
+ "lazy_static",
  "mockall",
  "ordered-float 5.0.0",
  "serde",

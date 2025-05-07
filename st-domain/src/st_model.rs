@@ -1,12 +1,13 @@
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
-use strum::{Display, EnumIter, EnumString};
+use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Data<T> {
@@ -559,23 +560,53 @@ pub enum TradeGoodType {
     Exchange,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, Display, Ord, PartialOrd)]
+/*
+ case object SCARCE extends SupplyLevel("SCARCE", "SCARCE", 0, Hints())
+ case object LIMITED extends SupplyLevel("LIMITED", "LIMITED", 1, Hints())
+ case object MODERATE extends SupplyLevel("MODERATE", "MODERATE", 2, Hints())
+ case object HIGH extends SupplyLevel("HIGH", "HIGH", 3, Hints())
+ case object ABUNDANT extends SupplyLevel("ABUNDANT", "ABUNDANT", 4, Hints())
+
+
+ case object WEAK extends ActivityLevel("WEAK", "WEAK", 0, Hints())
+ case object GROWING extends ActivityLevel("GROWING", "GROWING", 1, Hints())
+ case object STRONG extends ActivityLevel("STRONG", "STRONG", 2, Hints())
+ case object RESTRICTED extends ActivityLevel("RESTRICTED", "RESTRICTED", 3, Hints())
+
+*/
+
+#[derive(Serialize, Deserialize, Clone, Debug, Display, EnumIter, Eq, PartialEq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SupplyLevel {
-    Abundant,
-    High,
-    Moderate,
-    Limited,
-    Scarce,
+    Scarce = 0,
+    Limited = 1,
+    Moderate = 2,
+    High = 3,
+    Abundant = 4,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, Display, Ord, PartialOrd)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display, EnumIter, Eq, PartialEq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ActivityLevel {
-    Weak,
-    Growing,
-    Strong,
-    Restricted,
+    Weak = 0,
+    Growing = 1,
+    Strong = 2,
+    Restricted = 3,
+}
+
+lazy_static! {
+    pub static ref MAX_SUPPLY_LEVEL_SCORE: i32 = {
+        SupplyLevel::iter()
+            .map(|level| level as i32)
+            .max()
+            .unwrap_or(0)
+    };
+    pub static ref MAX_ACTIVITY_LEVEL_SCORE: i32 = {
+        ActivityLevel::iter()
+            .map(|level| level as i32)
+            .max()
+            .unwrap_or(0)
+    };
 }
 
 pub trait LabelledCoordinate<T: Clone + PartialEq + Eq + Hash> {

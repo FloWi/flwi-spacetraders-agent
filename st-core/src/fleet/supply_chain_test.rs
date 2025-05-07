@@ -6,8 +6,9 @@ use comfy_table::{ContentArrangement, Table};
 use itertools::Itertools;
 use st_domain::trading::find_trading_opportunities_sorted_by_profit_per_distance_unit;
 use st_domain::{
-    ActivityLevel, DeliveryRoute, FleetDecisionFacts, FleetPhaseName, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, ShipSymbol,
-    SupplyLevel, TradeGoodSymbol, Waypoint, WaypointSymbol,
+    ActivityLevel, DeliveryRoute, FleetDecisionFacts, FleetPhaseName, HigherDeliveryRoute, MarketTradeGood, MaterializedIndividualSupplyChain,
+    MaterializedSupplyChain, ScoredSupplyChainSupportRoute, ShipSymbol, SupplyLevel, TradeGoodSymbol, Waypoint, WaypointSymbol, MAX_ACTIVITY_LEVEL_SCORE,
+    MAX_SUPPLY_LEVEL_SCORE,
 };
 use std::collections::HashMap;
 use std::ops::Not;
@@ -294,6 +295,8 @@ fn render_cli_table_trading_opp(rows: &[TradingOppRow]) -> String {
 
     for row in rows.into_iter() {
         table.add_row(vec![
+            row.purchase_waypoint_symbol.as_str(),
+            row.sell_waypoint_symbol.as_str(),
             row.purchase_market_trade_good_entry.as_str(),
             row.direct_distance.separate_with_commas().as_str(),
             row.profit_per_unit.separate_with_commas().as_str(),
@@ -368,11 +371,11 @@ fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -
             match &route {
                 DeliveryRoute::Raw(raw) => {
                     table.add_row(vec![
-                        Cell::new(0).fg(Color::Green),
+                        Cell::new(0),
                         Cell::new(raw.source.trade_good.to_string()),
-                        Cell::new(raw.source.source_waypoint.to_string()).fg(Color::Green),
-                        Cell::new(raw.delivery_location.to_string()).fg(Color::Green),
-                        Cell::new(raw.export_entry.symbol.to_string()).fg(Color::Green),
+                        Cell::new(raw.source.source_waypoint.to_string()),
+                        Cell::new(raw.delivery_location.to_string()),
+                        Cell::new(raw.export_entry.symbol.to_string()),
                         Cell::new(raw.source.source_type.to_string()),
                         Cell::new(raw.delivery_market_entry.trade_good_type.to_string()),
                         Cell::new("---"),
@@ -387,13 +390,13 @@ fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -
                                 .map(|act| act.to_string())
                                 .unwrap_or_default(),
                         ),
-                        Cell::new("---").fg(Color::Green),
+                        Cell::new("---"),
                         Cell::new(raw.delivery_market_entry.trade_volume),
                     ]);
                 }
                 DeliveryRoute::Processed { route, rank } => {
                     table.add_row(vec![
-                        Cell::new(rank).fg(Color::Green),
+                        Cell::new(rank),
                         Cell::new(route.trade_good.to_string()),
                         Cell::new(route.source_location.to_string()),
                         Cell::new(route.delivery_location.to_string()),
@@ -431,7 +434,7 @@ fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -
         None => {}
         Some((wp, export_entry)) => {
             table.add_row(vec![
-                Cell::new("---").fg(Color::Green),                   //rank
+                Cell::new("---"),                                    //rank
                 Cell::new(export_entry.symbol.to_string()),          //trade_good
                 Cell::new(wp.to_string()),                           //from
                 Cell::new("---"),                                    //to

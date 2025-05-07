@@ -1,5 +1,5 @@
 use crate::components::clipboard_button::ClipboardButton;
-use crate::trading_opportunity_table::TradingOpportunityRow;
+use crate::tables::trading_opportunity_table::TradingOpportunityRow;
 use itertools::Itertools;
 use leptos::prelude::*;
 use leptos_meta::Title;
@@ -264,7 +264,10 @@ fn render_mermaid_chains(supply_chain: SupplyChain, goods_of_interest: &[TradeGo
                 .iter()
                 .cloned()
                 .map(|trade_good| {
-                    let chain = find_complete_supply_chain(&[trade_good.clone()], &supply_chain.trade_map);
+                    let chain = find_complete_supply_chain(
+                        &[trade_good.clone()],
+                        &supply_chain.trade_map,
+                    );
                     view! {
                         <div class="flex flex-col">
                             <h2 class="text-2xl font-bold">{trade_good.to_string()}</h2>

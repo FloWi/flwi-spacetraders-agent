@@ -1,7 +1,7 @@
 use crate::supply_chain::RawMaterialSourceType::{Extraction, Siphoning};
 use crate::{
-    ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, SupplyChainMap, SystemSymbol,
-    TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType,
+    ActivityLevel, ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, SupplyChainMap,
+    SupplyLevel, SystemSymbol, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType, MAX_ACTIVITY_LEVEL_SCORE, MAX_SUPPLY_LEVEL_SCORE,
 };
 use itertools::{all, Itertools};
 use ordered_float::OrderedFloat;
@@ -69,6 +69,19 @@ pub struct MaterializedIndividualSupplyChain {
     pub trade_good: TradeGoodSymbol,
     pub total_distance: u32,
     pub all_routes: Vec<DeliveryRoute>,
+}
+
+impl MaterializedIndividualSupplyChain {
+    pub fn higher_order_routes(&self) -> Vec<HigherDeliveryRoute> {
+        self.all_routes
+            .iter()
+            .filter_map(|r| match r {
+                DeliveryRoute::Raw(_) => None,
+                DeliveryRoute::Processed { route, rank } => Some(route),
+            })
+            .cloned()
+            .collect_vec()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -562,6 +575,7 @@ fn compute_all_routes(
                         delivery_market_entry: import_entry_at_destination,
                         producing_trade_good: candidate.clone(),
                         producing_market_entry: candidate_export_mtg.clone(),
+                        rank: rank + 1,
                     },
                     rank: rank + 1,
                 })
@@ -973,6 +987,7 @@ pub struct HigherDeliveryRoute {
     pub delivery_market_entry: MarketTradeGood,
     pub producing_trade_good: TradeGoodSymbol,
     pub producing_market_entry: MarketTradeGood,
+    pub rank: u32,
 }
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug, Serialize, Deserialize)]
@@ -1002,4 +1017,142 @@ pub struct EvaluatedTradingOpportunity {
     pub profit_per_distance_unit: u64,
     pub units: u32,
     pub trading_opportunity: TradingOpportunity,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ScoredSupplyChainSupportRoute {
+    pub tgr: HigherDeliveryRoute,
+    pub priorities_of_chains_containing_this_route: Vec<u32>,
+    pub source_market: MarketTradeGood,
+    pub delivery_market_export_volume: i32,
+    pub delivery_market_import_volume: i32,
+    pub is_import_volume_too_low: bool,
+    pub supply_level_at_source: SupplyLevel,
+    pub activity_level_at_source: Option<ActivityLevel>,
+    pub supply_level_of_import_at_destination: SupplyLevel,
+    pub activity_level_of_import_at_destination: Option<ActivityLevel>,
+    pub supply_level_score: i32,
+    pub activity_level_score: i32,
+    pub level_score: i32,
+    pub max_prio_score: u32,
+    pub purchase_price: i32,
+    pub sell_price: i32,
+    pub spread: i32,
+    pub num_parallel_pickups: u32,
+    pub score: i32,
+}
+
+impl ScoredSupplyChainSupportRoute {
+    pub fn calc(
+        tgr: &HigherDeliveryRoute,
+        max_level: u32,
+        individual_materialized_routes: &HashMap<TradeGoodSymbol, MaterializedIndividualSupplyChain>,
+        priorities_of_products_to_boost: &HashMap<TradeGoodSymbol, u32>,
+    ) -> Self {
+        let delivery_market_export_volume: i32 = tgr.producing_market_entry.trade_volume;
+        let delivery_market_import_volume: i32 = tgr.delivery_market_entry.trade_volume;
+        let is_import_volume_too_low: bool = delivery_market_import_volume <= delivery_market_export_volume;
+        let supply_level_of_import_at_destination = tgr.delivery_market_entry.supply.clone();
+
+        let activity_level_of_import_at_destination = tgr.delivery_market_entry.activity.clone();
+
+        let supply_level_score: i32 = calc_supply_level_demand_score(&supply_level_of_import_at_destination);
+        let activity_level_score: i32 = calc_activity_level_demand_score(&supply_level_of_import_at_destination, &activity_level_of_import_at_destination);
+        let level_score: i32 = max_level as i32 - tgr.rank as i32 + 1;
+
+        let priorities_of_chains_containing_this_route = individual_materialized_routes
+            .iter()
+            .filter(|(_, chain)| {
+                chain
+                    .higher_order_routes()
+                    .iter()
+                    .any(|r| r.source_location == tgr.source_location && r.delivery_location == tgr.delivery_location && r.trade_good == tgr.trade_good)
+            })
+            .map(|chain| {
+                priorities_of_products_to_boost
+                    .get(chain.0)
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .unique()
+            .collect_vec();
+
+        if priorities_of_chains_containing_this_route.is_empty() {
+            println!("couldn't find this chain elsewhere: \n{:?}", tgr);
+        }
+
+        let source_market = tgr.source_market_entry.clone();
+        let supply_level_at_source = source_market.supply.clone();
+        let activity_level_at_source = source_market.activity.clone();
+
+        let purchase_price = source_market.purchase_price;
+        let sell_price = tgr.delivery_market_entry.sell_price;
+
+        let spread = sell_price - purchase_price;
+        let is_spread_ok = spread >= -25;
+
+        let num_parallel_pickups: u32 = match supply_level_at_source {
+            SupplyLevel::Abundant => 3,
+            SupplyLevel::High => 2,
+            SupplyLevel::Moderate => 1,
+            SupplyLevel::Limited => {
+                if is_spread_ok {
+                    1
+                } else {
+                    0
+                }
+            }
+            SupplyLevel::Scarce => 0,
+        };
+
+        let max_prio_score = *priorities_of_chains_containing_this_route
+            .iter()
+            .max()
+            .unwrap();
+
+        let score = if is_spread_ok && supply_level_at_source != SupplyLevel::Scarce {
+            (supply_level_score + activity_level_score) * level_score * max_prio_score as i32
+        } else {
+            0
+        };
+
+        ScoredSupplyChainSupportRoute {
+            tgr: tgr.clone(),
+            priorities_of_chains_containing_this_route,
+            source_market: source_market.clone(),
+            delivery_market_export_volume,
+            delivery_market_import_volume,
+            is_import_volume_too_low,
+            supply_level_at_source,
+            activity_level_at_source,
+            supply_level_of_import_at_destination,
+            activity_level_of_import_at_destination,
+            supply_level_score,
+            activity_level_score,
+            level_score,
+            max_prio_score,
+            purchase_price,
+            sell_price,
+            spread,
+            num_parallel_pickups,
+            score,
+        }
+    }
+}
+
+fn calc_supply_level_demand_score(supply_level: &SupplyLevel) -> i32 {
+    let supply_level_score = supply_level.clone() as i32;
+    *MAX_SUPPLY_LEVEL_SCORE - supply_level_score
+}
+
+fn calc_activity_level_demand_score(supply_level_of_export_at_this_producer: &SupplyLevel, maybe_activity_level_of_import: &Option<ActivityLevel>) -> i32 {
+    if *supply_level_of_export_at_this_producer == SupplyLevel::Abundant {
+        0
+    } else {
+        maybe_activity_level_of_import
+            .clone()
+            .map(|level| level as i32)
+            .map(|score| *MAX_ACTIVITY_LEVEL_SCORE - score)
+            .unwrap_or(0)
+    }
 }
