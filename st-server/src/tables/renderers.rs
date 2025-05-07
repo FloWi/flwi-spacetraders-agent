@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::*;
 use st_domain::{ActivityLevel, SupplyLevel, TradeGoodSymbol, TradeGoodType, WaypointSymbol};
+use thousands::Separable;
 
 // WaypointSymbolCellRenderer (you already had this one)
 #[component]
@@ -81,13 +82,13 @@ pub fn ProfitCellRenderer<F>(class: String, value: Signal<u64>, row: RwSignal<F>
 // PriceCellRenderer (for purchase_price and sell_price)
 #[component]
 pub fn PriceCellRenderer<F>(class: String, value: Signal<i32>, row: RwSignal<F>, index: usize) -> impl IntoView {
-    view! { <td class=class>{move || format!("{} cr", value.get_untracked())}</td> }
+    view! { <td class=class>{move || format!("{}c", value.get_untracked().separate_with_commas())}</td> }
 }
 
 // TradeVolumeCellRenderer
 #[component]
 pub fn TradeVolumeCellRenderer<F>(class: String, value: Signal<i32>, row: RwSignal<F>, index: usize) -> impl IntoView {
-    view! { <td class=class>{move || format!("{} units", value.get_untracked())}</td> }
+    view! { <td class=class>{move || format!("{}", value.get_untracked())}</td> }
 }
 
 // TradeGoodSymbolCellRenderer

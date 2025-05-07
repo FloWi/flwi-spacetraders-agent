@@ -4202,6 +4202,7 @@ dependencies = [
  "st-core",
  "st-domain",
  "st-store",
+ "thousands",
  "time",
  "tokio",
  "tracing",
