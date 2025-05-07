@@ -1,4 +1,5 @@
 use anyhow::Result;
+use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::*;
 use comfy_table::{ContentArrangement, Table};
@@ -114,6 +115,7 @@ mod tests {
         let in_memory_universe = InMemoryUniverse::from_snapshot(json_path).expect("InMemoryUniverse::from_snapshot");
 
         let shipyard_waypoints = in_memory_universe.shipyards.keys().cloned().collect::<HashSet<_>>();
+
         let marketplace_waypoints = in_memory_universe.marketplaces.keys().cloned().collect::<HashSet<_>>();
 
         let in_memory_client = InMemoryUniverseClient::new_with_overrides(
@@ -232,24 +234,18 @@ struct TradingOppRow {
 
 fn render_cli_table_trading_opp(rows: &[TradingOppRow]) -> String {
     let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .set_content_arrangement(ContentArrangement::Dynamic)
-        //.set_width(80)
-        .set_header(vec![
-            "purchase market trade good entry",
-            "purchase waypoint symbol",
-            "sell waypoint symbol",
-            "direct distance",
-            "profit per unit",
-            "profit per unit per distance",
-        ]);
+    table.load_preset(UTF8_FULL).force_no_tty().enforce_styling().set_content_arrangement(ContentArrangement::Dynamic).set_header(vec![
+        "purchase market trade good entry",
+        "purchase waypoint symbol",
+        "sell waypoint symbol",
+        "direct distance",
+        "profit per unit",
+        "profit per unit per distance",
+    ]);
 
     for row in rows.into_iter() {
         table.add_row(vec![
             row.purchase_market_trade_good_entry.as_str(),
-            row.purchase_waypoint_symbol.as_str(),
-            row.sell_waypoint_symbol.as_str(),
             row.direct_distance.separate_with_commas().as_str(),
             row.profit_per_unit.separate_with_commas().as_str(),
             format_number(row.profit_per_unit_per_distance).as_str(),
@@ -279,27 +275,23 @@ struct SupplyChainRouteLeg {
 
 fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -> String {
     let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .set_content_arrangement(ContentArrangement::Dynamic)
-        //.set_width(80)
-        .set_header(vec![
-            "rank",
-            "trade_good",
-            "from",
-            "to",
-            "destination",
-            "source type",
-            "destination type",
-            "purchase_price",
-            "sell_price",
-            "purchase_supply",
-            "sell_supply",
-            "purchase_activity",
-            "sell_activity",
-            "purchase_trade_volume",
-            "sell_trade_volume",
-        ]);
+    table.load_preset(UTF8_FULL).force_no_tty().enforce_styling().set_content_arrangement(ContentArrangement::Dynamic).set_header(vec![
+        "rank",
+        "trade_good",
+        "from",
+        "to",
+        "destination",
+        "source type",
+        "destination type",
+        "purchase_price",
+        "sell_price",
+        "purchase_supply",
+        "sell_supply",
+        "purchase_activity",
+        "sell_activity",
+        "purchase_trade_volume",
+        "sell_trade_volume",
+    ]);
 
     let final_export_market_entry = chain.all_routes.iter().find_map(|route| match route {
         DeliveryRoute::Raw(_) => None,
@@ -416,6 +408,9 @@ fn calc_trading_decisions(
     println!("Checking health of supply chain routes for construction material");
     missing_construction_material.keys().for_each(|missing_construction_mat| {
         if let Some(chain) = materialized_supply_chain.individual_materialized_routes.get(missing_construction_mat) {
+            let construction_site_wps = facts.construction_site.clone().unwrap().symbol;
+            let construction_site_wp = waypoint_map.get(&construction_site_wps).unwrap();
+
             println!(
                 "\nEvaluation of supply chain for {}\n{}",
                 missing_construction_mat,
