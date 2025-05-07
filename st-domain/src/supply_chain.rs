@@ -1057,7 +1057,8 @@ impl ScoredSupplyChainSupportRoute {
         let activity_level_of_import_at_destination = tgr.delivery_market_entry.activity.clone();
 
         let import_supply_level_score: i32 = calc_supply_level_demand_score(&supply_level_of_import_at_destination);
-        let import_activity_level_score: i32 = calc_activity_level_demand_score(&supply_level_of_import_at_destination, &activity_level_of_import_at_destination);
+        let import_activity_level_score: i32 =
+            calc_activity_level_demand_score(&supply_level_of_import_at_destination, &activity_level_of_import_at_destination);
         let level_score: i32 = max_level as i32 - tgr.rank as i32 + 1;
 
         let priorities_of_chains_containing_this_route = individual_materialized_routes

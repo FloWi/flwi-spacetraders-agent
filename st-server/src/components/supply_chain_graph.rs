@@ -1,0 +1,675 @@
+use crate::petgraph_example_page::{ColoredLabel, Point, TechEdge, TechNode, TechNodeSource};
+use leptos::html::Pre;
+use leptos::logging::log;
+use leptos::prelude::*;
+use leptos::{component, view, IntoView};
+use petgraph::graph::NodeIndex;
+use petgraph::prelude::StableDiGraph;
+use rust_sugiyama::configure::{CrossingMinimization, RankingType};
+use rust_sugiyama::{configure::Config, from_graph};
+use st_domain::{ActivityLevel, SupplyLevel};
+use std::collections::HashMap;
+
+enum Orientation {
+    TopDown,
+    LeftRight,
+}
+
+#[component]
+pub fn SupplyChainGraph(node_data: Vec<TechNode>, edge_data: Vec<TechEdge>) -> impl IntoView {
+    // Container reference for the output
+    let container_ref: NodeRef<Pre> = NodeRef::new();
+
+    let orientation = Orientation::LeftRight;
+
+    let x_scale = 1.5;
+    let y_scale = 0.75;
+    let (layout_nodes, layout_edges) = build_supply_chain_layout(&node_data, &edge_data, orientation, x_scale, y_scale);
+
+    view! {
+        <div class="tech-tree-layout">
+            <h1>"Supply Chain (petgraph Layout)"</h1>
+            <div class="visualization">{
+            view! {
+                <div inner_html={move || output_svg(&layout_nodes, &layout_edges) }/>
+
+            }
+        }</div>
+
+        </div>
+    }
+}
+
+fn output_svg(nodes: &[TechNode], edges: &[TechEdge]) -> String {
+    // Calculate SVG dimensions based on node positions
+    let margin = 50.0;
+    let mut min_x = f64::MAX;
+    let mut min_y = f64::MAX;
+    let mut max_x = f64::MIN;
+    let mut max_y = f64::MIN;
+
+    for node in nodes {
+        if let (Some(x), Some(y)) = (node.x, node.y) {
+            min_x = min_x.min(x - node.width / 2.0);
+            min_y = min_y.min(y - node.height / 2.0);
+            max_x = max_x.max(x + node.width / 2.0);
+            max_y = max_y.max(y + node.height / 2.0);
+        }
+    }
+
+    let svg_width = max_x - min_x + 2.0 * margin;
+    let svg_height = max_y - min_y + 2.0 * margin;
+
+    // SVG header
+    let mut svg = format!(r#"<svg width="{}" height="{}" xmlns="http://www.w3.org/2000/svg">"#, svg_width, svg_height);
+
+    // Transform to adjust for margins and any negative coordinates
+    svg.push_str(&format!(r#"<g transform="translate({},{})">"#, margin - min_x, margin - min_y));
+
+    // Draw edges
+    for edge in edges {
+        if let Some(ref points) = edge.points {
+            if points.len() >= 2 {
+                if points.len() == 2 {
+                    // Simple straight line
+                    svg.push_str(&format!(
+                        r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="gray" stroke-width="2" />"#,
+                        points[0].x, points[0].y, points[1].x, points[1].y
+                    ));
+                } else {
+                    // Path with control points
+                    svg.push_str(&format!(
+                        r#"<path d="M{},{} Q{},{} {},{}" fill="none" stroke="gray" stroke-width="2" />"#,
+                        points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y
+                    ));
+
+                    // Add an arrow at the end
+                    svg.push_str(&format!(r#"<circle cx="{}" cy="{}" r="4" fill="black" />"#, points[2].x, points[2].y));
+                }
+            }
+        }
+    }
+
+    // Draw nodes using the new node generator
+    for node in nodes {
+        svg.push_str(&generate_node_svg(node));
+    }
+
+    // Add edge labels after nodes to ensure they're in the foreground
+    // But only for target nodes as per your update
+    for edge in edges {
+        if let Some(ref points) = edge.points {
+            if points.len() >= 2 {
+                // Get target node
+                let target_node = nodes.iter().find(|n| n.id == edge.target).unwrap();
+
+                if let (Some(tx), Some(ty)) = (target_node.x, target_node.y) {
+                    // For target label:
+                    // Calculate target node border intersection
+                    let (target_ix, target_iy) = calculate_node_border_intersection(
+                        tx,
+                        ty,
+                        target_node.width,
+                        target_node.height,
+                        points[points.len() - 1].x,
+                        points[points.len() - 1].y,
+                        points[points.len() - 2].x,
+                        points[points.len() - 2].y,
+                    );
+
+                    // Calculate direction vector - pointing from node to edge (outward)
+                    let direction_x = points[points.len() - 2].x - tx;
+                    let direction_y = points[points.len() - 2].y - ty;
+
+                    // Add label with direction vector for proper positioning
+                    svg.push_str(&generate_edge_label_svg(target_ix, target_iy, edge, direction_x, direction_y));
+                }
+            }
+        }
+    }
+    // Close SVG
+    svg.push_str("</g></svg>");
+
+    svg
+}
+
+#[derive(Clone)]
+pub struct TextColorClass(String);
+
+// A utility function to generate SVG multiline text with varying colors
+// Now with support for a font size multiplier for the first line
+fn generate_multiline_text_svg(
+    x: f64,                                  // X position (anchor point)
+    y: f64,                                  // Y position (top of first line)
+    lines: &[ColoredLabel],                  // Text content and colors
+    text_anchor: &str,                       // "start", "middle", or "end"
+    font_family: &str,                       // Font family
+    font_size: u32,                          // Base font size
+    line_height: f64,                        // Space between lines
+    dominant_baseline: Option<&str>,         // Optional baseline alignment
+    first_line_size_multiplier: Option<f64>, // Optional font size multiplier for the first line
+) -> String {
+    let baseline_attr = if let Some(baseline) = dominant_baseline {
+        format!(" dominant-baseline=\"{}\"", baseline)
+    } else {
+        String::new()
+    };
+
+    let mut svg = format!(
+        r#"<text x="{}" y="{}" font-family="{}" font-size="{}"{} text-anchor="{}">"#,
+        x, y, font_family, font_size, baseline_attr, text_anchor
+    );
+
+    for (i, colored_label) in lines.iter().enumerate() {
+        let dy = if i == 0 {
+            "0".to_string()
+        } else {
+            format!("{}", line_height)
+        };
+
+        // Apply font size multiplier to first line if specified
+        let font_size_attr = if i == 0 && first_line_size_multiplier.is_some() {
+            let multiplier = first_line_size_multiplier.unwrap();
+            let adjusted_size = (font_size as f64 * multiplier).round() as u32;
+            format!(" font-size=\"{}\"", adjusted_size)
+        } else {
+            String::new()
+        };
+
+        svg.push_str(&format!(
+            r#"<tspan x="{}" dy="{}"{} class="{}">{}</tspan>"#,
+            x, dy, font_size_attr, colored_label.color_class, colored_label.label
+        ));
+    }
+
+    svg.push_str("</text>");
+    svg
+}
+
+// Refactored node SVG generator with increased padding and first line font size multiplier
+fn generate_node_svg(node: &TechNode) -> String {
+    if let (Some(x), Some(y)) = (node.x, node.y) {
+        // Colors
+        let bold_text_class = TextColorClass("".to_string());
+        let normal_text_class = TextColorClass("".to_string());
+
+        // Get activity color for border
+        let border_stroke = node
+            .activity_level
+            .clone()
+            .map(|a| get_activity_stroke_color(&a))
+            .unwrap_or_default();
+
+        let rect_class: String = format!("stroke-4 fill-black {}", border_stroke);
+
+        // Layout parameters
+        let node_x = x - node.width / 2.0;
+        let node_y = y - node.height / 2.0;
+        let text_right_x = x + node.width / 2.0 - 16.0; // Increased padding from 10px to 16px
+        let line_height = 20.0;
+
+        // Text styling
+        let font_family = "Arial";
+        let normal_font_size = 10;
+        let title_font_size_multiplier = 1.3; // Make first line 30% larger
+        let border_width = 4;
+        let corner_radius = 5;
+
+        let waypoint_type = match &node.source {
+            TechNodeSource::Raw(raw_material_source) => raw_material_source.source_type.to_string(),
+            TechNodeSource::Market(_) => "Market".to_string(),
+        };
+
+        // Prepare text lines with their colors
+        let text_lines: Vec<ColoredLabel> = vec![
+            // Name (bold, title font)
+            ColoredLabel::new(node.name.to_string(), bold_text_class.0.clone()),
+            // Waypoint symbol
+            ColoredLabel::new(node.waypoint_symbol.to_string(), normal_text_class.0.clone()),
+            // Waypoint type
+            ColoredLabel::new(waypoint_type, normal_text_class.0.clone()),
+            // Activity
+            node.maybe_activity_text().unwrap_or(ColoredLabel::empty()),
+            // Supply
+            node.maybe_supply_text().unwrap_or(ColoredLabel::empty()),
+            // Volume
+            ColoredLabel::new(format!("v: {}", node.volume), normal_text_class.0.clone()),
+            // Costs
+            ColoredLabel::new(format!("p: {}c", node.cost), normal_text_class.0.clone()),
+        ];
+
+        format!(
+            r#"<g>
+                <!-- Node background -->
+                <rect
+                    x="{node_x}"
+                    y="{node_y}"
+                    width="{}"
+                    height="{}"
+                    rx="{corner_radius}"
+                    ry="{corner_radius}"
+                    class="{rect_class}"
+                />
+
+                <!-- Node text content (using multiline text) -->
+                {}
+            </g>"#,
+            node.width,
+            node.height,
+            generate_multiline_text_svg(
+                text_right_x,                     // x position (right-aligned with increased padding)
+                node_y + 30.0,                    // y position (starting from top with padding)
+                &text_lines,                      // text content and colors
+                "end",                            // right-aligned text
+                font_family,                      // font family
+                normal_font_size,                 // font size
+                line_height,                      // line spacing
+                None,                             // no special baseline alignment
+                Some(title_font_size_multiplier), // Increase size of first line
+            )
+        )
+    } else {
+        // Return empty string if node has no position
+        String::new()
+    }
+}
+
+// Refactored edge label SVG generator with increased padding
+fn generate_edge_label_svg(x: f64, y: f64, edge: &TechEdge, direction_x: f64, direction_y: f64) -> String {
+    // Label parameters
+    let label_width = 105.0;
+    let label_height = 60.0; // Increased height from 55.0 to 60.0 for more padding
+    let padding = 8.0; // Increased padding from 5.0 to 8.0
+
+    // Calculate offset distance to move label along direction vector
+    // Normalize direction vector
+    let direction_length = (direction_x * direction_x + direction_y * direction_y).sqrt();
+
+    // Prevent division by zero
+    if direction_length < 0.001 {
+        return String::new(); // Return empty string if direction vector is too small
+    }
+
+    let norm_dir_x = direction_x / direction_length;
+    let norm_dir_y = direction_y / direction_length;
+
+    // Move label out from the intersection point along the direction vector
+    let offset_distance = 30.0;
+    let offset_x = norm_dir_x * offset_distance;
+    let offset_y = norm_dir_y * offset_distance;
+
+    // Apply offset to position
+    let center_x = x + offset_x;
+    let center_y = y + offset_y;
+
+    // Calculate label corner position
+    let label_x = center_x - label_width / 2.0;
+    let label_y = center_y - label_height / 2.0;
+
+    // Text styling
+    let font_size = 10;
+    let font_family = "Arial";
+    let normal_text_class = TextColorClass("".to_string());
+    let line_height = 18.0;
+
+    // Background styling
+    let background_fill = "#666";
+    let background_opacity = 1.0;
+    let border_color = "gray";
+    let border_width = 1;
+    let corner_radius = 4;
+
+    // Content from edge
+    let cost = edge.cost;
+    let volume = edge.volume;
+    let activity = &edge.activity;
+    let supply = &edge.supply;
+
+    // New fields
+    let distance = edge.distance.unwrap_or(0);
+    let profit = edge.profit.unwrap_or(0);
+
+    // Colors for activity and supply
+    let activity_color = edge
+        .activity
+        .clone()
+        .map(|a| get_activity_fill_color(&a))
+        .unwrap_or_default();
+    let supply_color = get_supply_fill_color(&edge.supply);
+
+    // Profit color (green for positive, red for negative)
+    let profit_color = if profit <= 0 {
+        //Amber/orange
+        TextColorClass("text-amber-500".to_string())
+    } else {
+        // Emerald/green
+        TextColorClass("text-emerald-600".to_string())
+    };
+
+    // Prepare left and right text content
+    let left_text_lines = vec![
+        ColoredLabel::new(format!("d: {}", distance), normal_text_class.0.clone()),
+        ColoredLabel::new(format!("v: {}", volume), normal_text_class.0.clone()),
+        ColoredLabel::new(format!("p: {}c", cost), normal_text_class.0.clone()),
+    ];
+
+    let right_text_lines = vec![
+        edge.maybe_activity_text().unwrap_or_default(),
+        ColoredLabel::new(format!("d: {}", distance), normal_text_class.0.clone()),
+        ColoredLabel::new(format!("d: {}", distance), normal_text_class.0.clone()),
+        // (format!("A: {}", activity), activity_color),
+        // (format!("S: {}", supply), supply_color),
+        // (format!("{:+}", profit), profit_color.0.clone()),
+    ];
+
+    // Calculate vertical center position with adjustment for 3 lines of text
+    // For perfect vertical centering, we position the middle line at the center
+    // and adjust the first line position accordingly
+    let total_text_height = line_height * 2.0; // Height of 3 lines (with 2 line-height spaces)
+    let vertical_center = label_y + label_height / 2.0;
+    let row1_y = vertical_center - total_text_height / 2.0;
+
+    format!(
+        r#"<g>
+            <!-- Label background -->
+            <rect
+                x="{label_x}"
+                y="{label_y}"
+                width="{label_width}"
+                height="{label_height}"
+                rx="{corner_radius}"
+                ry="{corner_radius}"
+                fill="{background_fill}"
+                fill-opacity="{background_opacity}"
+                stroke="{border_color}"
+                stroke-width="{border_width}"
+            />
+
+            <!-- Left-aligned text (using multiline text) -->
+            {}
+
+            <!-- Right-aligned text (using multiline text) -->
+            {}
+        </g>"#,
+        generate_multiline_text_svg(
+            label_x + padding, // x position (left side with increased padding)
+            row1_y,            // y position (starting from top, adjusted for padding)
+            &left_text_lines,  // text content and colors
+            "start",           // left-aligned text
+            font_family,       // font family
+            font_size,         // font size
+            line_height,       // line spacing
+            Some("middle"),    // middle baseline alignment
+            None,              // no font size multiplier for first line
+        ),
+        generate_multiline_text_svg(
+            label_x + label_width - padding, // x position (right side with increased padding)
+            row1_y,                          // y position (starting from top, adjusted for padding)
+            &right_text_lines,               // text content and colors
+            "end",                           // right-aligned text
+            font_family,                     // font family
+            font_size,                       // font size
+            line_height,                     // line spacing
+            Some("middle"),                  // middle baseline alignment
+            None,                            // no font size multiplier for first line
+        )
+    )
+}
+
+// Helper function to calculate the intersection of a line with a node's rectangle border
+fn calculate_node_border_intersection(
+    node_x: f64,
+    node_y: f64,
+    node_width: f64,
+    node_height: f64,
+    line_x1: f64,
+    line_y1: f64,
+    line_x2: f64,
+    line_y2: f64,
+) -> (f64, f64) {
+    // Calculate node rectangle boundaries
+    let left = node_x - node_width / 2.0;
+    let right = node_x + node_width / 2.0;
+    let top = node_y - node_height / 2.0;
+    let bottom = node_y + node_height / 2.0;
+
+    // Direction vector of the line
+    let dx = line_x2 - line_x1;
+    let dy = line_y2 - line_y1;
+
+    // Parameters for intersection with each edge
+    let t_left = if dx != 0.0 {
+        (left - line_x1) / dx
+    } else {
+        f64::INFINITY
+    };
+    let t_right = if dx != 0.0 {
+        (right - line_x1) / dx
+    } else {
+        f64::INFINITY
+    };
+    let t_top = if dy != 0.0 {
+        (top - line_y1) / dy
+    } else {
+        f64::INFINITY
+    };
+    let t_bottom = if dy != 0.0 {
+        (bottom - line_y1) / dy
+    } else {
+        f64::INFINITY
+    };
+
+    // Find valid intersections (0 <= t <= 1)
+    let mut valid_intersections = Vec::new();
+
+    if t_left >= 0.0 && t_left <= 1.0 {
+        let y = line_y1 + t_left * dy;
+        if y >= top && y <= bottom {
+            valid_intersections.push((t_left, left, y));
+        }
+    }
+
+    if t_right >= 0.0 && t_right <= 1.0 {
+        let y = line_y1 + t_right * dy;
+        if y >= top && y <= bottom {
+            valid_intersections.push((t_right, right, y));
+        }
+    }
+
+    if t_top >= 0.0 && t_top <= 1.0 {
+        let x = line_x1 + t_top * dx;
+        if x >= left && x <= right {
+            valid_intersections.push((t_top, x, top));
+        }
+    }
+
+    if t_bottom >= 0.0 && t_bottom <= 1.0 {
+        let x = line_x1 + t_bottom * dx;
+        if x >= left && x <= right {
+            valid_intersections.push((t_bottom, x, bottom));
+        }
+    }
+
+    // Sort by parameter t and get the closest intersection
+    valid_intersections.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    if valid_intersections.is_empty() {
+        // Fallback - if no intersection found, use the point on the node's center
+        (node_x, node_y)
+    } else {
+        // Return the first valid intersection (closest to line_x1, line_y1)
+        (valid_intersections[0].1, valid_intersections[0].2)
+    }
+}
+
+pub fn get_activity_fill_color(activity: &ActivityLevel) -> String {
+    match activity {
+        ActivityLevel::Strong => "fill-green-500",
+        ActivityLevel::Growing => "fill-green-300",
+        ActivityLevel::Weak => "fill-yellow-500",
+        ActivityLevel::Restricted => "fill-red-500",
+    }
+    .to_string()
+}
+
+pub fn get_activity_text_color(activity: &ActivityLevel) -> String {
+    match activity {
+        ActivityLevel::Strong => "text-green-500",
+        ActivityLevel::Growing => "text-green-300",
+        ActivityLevel::Weak => "text-yellow-500",
+        ActivityLevel::Restricted => "text-red-500",
+    }
+    .to_string()
+}
+
+pub fn get_supply_fill_color(supply: &SupplyLevel) -> String {
+    match supply {
+        SupplyLevel::Abundant => "fill-green-500",
+        SupplyLevel::High => "fill-green-300",
+        SupplyLevel::Moderate => "fill-yellow-300",
+        SupplyLevel::Limited => "fill-orange-500",
+        SupplyLevel::Scarce => "fill-red-500",
+    }
+    .to_string()
+}
+
+pub fn get_supply_text_color(supply: &SupplyLevel) -> String {
+    match supply {
+        SupplyLevel::Abundant => "text-green-500",
+        SupplyLevel::High => "text-green-300",
+        SupplyLevel::Moderate => "text-yellow-300",
+        SupplyLevel::Limited => "text-orange-500",
+        SupplyLevel::Scarce => "text-red-500",
+    }
+    .to_string()
+}
+
+pub fn get_activity_stroke_color(activity: &ActivityLevel) -> String {
+    match activity {
+        ActivityLevel::Strong => "stroke-green-500",
+        ActivityLevel::Growing => "stroke-green-300",
+        ActivityLevel::Weak => "stroke-yellow-500",
+        ActivityLevel::Restricted => "stroke-red-500",
+    }
+    .to_string()
+}
+
+// Function to build the supply chain layout with separate x and y scaling
+fn build_supply_chain_layout(
+    nodes: &[TechNode],
+    edges: &[TechEdge],
+    orientation: Orientation,
+    x_scale: f64, // Scaling factor for horizontal spacing
+    y_scale: f64, // Scaling factor for vertical spacing
+) -> (Vec<TechNode>, Vec<TechEdge>) {
+    // Create a new directed graph
+    let mut graph: StableDiGraph<String, u32> = StableDiGraph::new();
+
+    // Create a mapping from node ID to NodeIndex
+    let mut node_indices: HashMap<String, NodeIndex> = HashMap::new();
+
+    // Add all nodes to the graph
+    for node in nodes {
+        let node_idx = graph.add_node(node.id.clone());
+        node_indices.insert(node.id.clone(), node_idx);
+    }
+
+    // Add all edges to the graph
+    for edge in edges {
+        if let (Some(source_idx), Some(target_idx)) = (node_indices.get(&edge.source), node_indices.get(&edge.target)) {
+            graph.add_edge(*source_idx, *target_idx, edge.cost);
+        }
+    }
+
+    // Configure the layout algorithm
+    let config = Config {
+        minimum_length: 1, // Increase this from 0
+        vertex_spacing: 300,
+        dummy_vertices: true,                          // Enable dummy vertices
+        dummy_size: 150.0,                             // Give them a size
+        ranking_type: RankingType::MinimizeEdgeLength, // Change from Original
+        c_minimization: CrossingMinimization::Barycenter,
+        transpose: true,
+        // ..Default::default()
+    };
+
+    // Run the layout algorithm
+    let layouts = from_graph(&graph).with_config(config);
+
+    // Process the layout results
+    let mut updated_nodes = nodes.to_vec();
+    let mut updated_edges = edges.to_vec();
+
+    // Create reverse lookup from NodeIndex to position in nodes array
+    let mut node_positions: HashMap<String, usize> = HashMap::new();
+    for (i, node) in nodes.iter().enumerate() {
+        node_positions.insert(node.id.clone(), i);
+    }
+
+    let built_layouts = layouts.build();
+
+    let mut best_layout_index = 0;
+    let mut best_layout_metric = 0.0; // Or some other appropriate initial value
+
+    for (i, (layout, width, height)) in built_layouts.iter().enumerate() {
+        // Define some metric to evaluate layout quality
+        // For example, you might prefer layouts with more balanced width/height ratio
+        let layout_metric = (*width as f64) / (*height as f64);
+
+        // Compare with current best
+        if layout_metric > 1.0 && layout_metric < best_layout_metric || best_layout_metric == 0.0 {
+            best_layout_index = i;
+            best_layout_metric = layout_metric;
+        }
+    }
+
+    log!("Found {} layouts. Best one is idx #{}", built_layouts.len(), best_layout_index);
+
+    // Use the best layout instead of just the first
+    if let Some((layout, width, height)) = built_layouts.get(best_layout_index) {
+        for (node_idx, (x, y)) in layout.iter() {
+            let node_id = &graph[NodeIndex::from(*node_idx)];
+            if let Some(&pos) = node_positions.get(node_id) {
+                match orientation {
+                    Orientation::LeftRight => {
+                        // Update node coordinates and rotate 90 degrees (swap and invert as needed)
+                        // Also apply scaling factors
+                        updated_nodes[pos].x = Some(-*y as f64 * x_scale);
+                        updated_nodes[pos].y = Some(*x as f64 * y_scale);
+                    }
+                    Orientation::TopDown => {
+                        updated_nodes[pos].x = Some(*x as f64 * x_scale);
+                        updated_nodes[pos].y = Some(*y as f64 * y_scale);
+                    }
+                }
+            }
+        }
+
+        // Process edge routing with scaling
+        for edge in &mut updated_edges {
+            if let (Some(source_pos), Some(target_pos)) = (node_positions.get(&edge.source), node_positions.get(&edge.target)) {
+                let source_node = &updated_nodes[*source_pos];
+                let target_node = &updated_nodes[*target_pos];
+
+                if let (Some(sx), Some(sy), Some(tx), Some(ty)) = (source_node.x, source_node.y, target_node.x, target_node.y) {
+                    // For curved edges with control points
+                    let mid_x = (sx + tx) / 2.0;
+                    let mid_y = (sy + ty) / 2.0;
+
+                    // Create a path with control points
+                    edge.points = Some(vec![
+                        Point::new(sx, sy),       // Start point
+                        Point::new(mid_x, mid_y), // Control point
+                        Point::new(tx, ty),       // End point
+                    ]);
+
+                    // Calculate curve factor based on distance
+                    let distance = ((tx - sx).powi(2) + (ty - sy).powi(2)).sqrt();
+                    edge.curve_factor = Some((distance / 500.0).min(0.5).max(0.1));
+                }
+            }
+        }
+    }
+
+    (updated_nodes, updated_edges)
+}
