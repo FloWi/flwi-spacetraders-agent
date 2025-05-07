@@ -34,7 +34,9 @@ pub fn create_client(maybe_bearer_token: Option<String>, reset_tx: Option<Sender
 
     match maybe_bearer_token {
         None => client_builder.build(),
-        Some(token) => client_builder.with(AuthenticatedHeaderMiddleware::new(token)).build(),
+        Some(token) => client_builder
+            .with(AuthenticatedHeaderMiddleware::new(token))
+            .build(),
     }
 }
 #[derive(Debug, Clone)]
@@ -98,7 +100,8 @@ impl AuthenticatedHeaderMiddleware {
 #[async_trait::async_trait]
 impl Middleware for AuthenticatedHeaderMiddleware {
     async fn handle(&self, mut req: Request, extensions: &mut Extensions, next: Next<'_>) -> reqwest_middleware::Result<reqwest::Response> {
-        req.headers_mut().insert(reqwest::header::AUTHORIZATION, format!("Bearer {}", self.bearer_token).parse().unwrap());
+        req.headers_mut()
+            .insert(reqwest::header::AUTHORIZATION, format!("Bearer {}", self.bearer_token).parse().unwrap());
 
         next.run(req, extensions).await
     }

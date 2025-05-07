@@ -20,7 +20,11 @@ pub fn find_shipyards_for_exploration(all_shipyards: Vec<ShipyardData>) -> Vec<W
 }
 
 pub fn filter_waypoints_with_trait(waypoints_of_system: &[Waypoint], filter_trait: WaypointTraitSymbol) -> impl Iterator<Item = &Waypoint> + '_ {
-    let filtered_waypoints = waypoints_of_system.iter().filter(move |wp| wp.traits.iter().any(|waypoint_trait| waypoint_trait.symbol == filter_trait));
+    let filtered_waypoints = waypoints_of_system.iter().filter(move |wp| {
+        wp.traits
+            .iter()
+            .any(|waypoint_trait| waypoint_trait.symbol == filter_trait)
+    });
 
     filtered_waypoints
 }

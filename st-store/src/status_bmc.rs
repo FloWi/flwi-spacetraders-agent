@@ -22,7 +22,9 @@ pub struct DbStatusBmc {
 #[async_trait]
 impl StatusBmcTrait for DbStatusBmc {
     async fn get_status(&self, ctx: &Ctx) -> Result<Option<StStatusResponse>> {
-        Ok(crate::db::load_status(self.mm.pool()).await?.map(|db_status| db_status.entry.0))
+        Ok(crate::db::load_status(self.mm.pool())
+            .await?
+            .map(|db_status| db_status.entry.0))
     }
 }
 

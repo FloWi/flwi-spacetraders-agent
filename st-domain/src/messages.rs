@@ -134,12 +134,24 @@ impl TradeTicket {
                 purchase_completion_status,
                 sale_completion_status,
                 evaluation_result: _evaluation_result,
-            } => purchase_completion_status.iter().all(|(_, is_complete)| *is_complete) && sale_completion_status.iter().all(|(_, is_complete)| *is_complete),
+            } => {
+                purchase_completion_status
+                    .iter()
+                    .all(|(_, is_complete)| *is_complete)
+                    && sale_completion_status
+                        .iter()
+                        .all(|(_, is_complete)| *is_complete)
+            }
             TradeTicket::DeliverConstructionMaterials {
                 ticket_id,
                 purchase_completion_status,
                 delivery_status,
-            } => purchase_completion_status.iter().all(|(_, is_complete)| *is_complete) && delivery_status.iter().all(|(_, is_complete)| *is_complete),
+            } => {
+                purchase_completion_status
+                    .iter()
+                    .all(|(_, is_complete)| *is_complete)
+                    && delivery_status.iter().all(|(_, is_complete)| *is_complete)
+            }
             TradeTicket::PurchaseShipTicket { ticket_id, details } => details.is_complete,
         }
     }
@@ -454,7 +466,13 @@ impl ShipPriceInfo {
     pub fn compute_ship_type_purchase_location_map(&self) -> HashMap<ShipType, Vec<WaypointSymbol>> {
         self.latest_shipyard_infos
             .iter()
-            .flat_map(|shipyard_data| shipyard_data.shipyard.ship_types.iter().map(|st| (st.r#type, shipyard_data.waypoint_symbol.clone())))
+            .flat_map(|shipyard_data| {
+                shipyard_data
+                    .shipyard
+                    .ship_types
+                    .iter()
+                    .map(|st| (st.r#type, shipyard_data.waypoint_symbol.clone()))
+            })
             .into_group_map_by(|(st, _)| *st)
             .into_iter()
             .map(|(k, values)| (k, values.into_iter().map(|tup| tup.1).collect_vec()))
@@ -464,7 +482,11 @@ impl ShipPriceInfo {
     pub fn compute_ship_type_purchase_price_map(&self) -> HashMap<ShipType, Vec<(WaypointSymbol, u32)>> {
         self.price_infos
             .iter()
-            .flat_map(|(wps, shipyard_ships)| shipyard_ships.iter().map(|shipyard_ship| (shipyard_ship.r#type, (wps.clone(), shipyard_ship.purchase_price))))
+            .flat_map(|(wps, shipyard_ships)| {
+                shipyard_ships
+                    .iter()
+                    .map(|shipyard_ship| (shipyard_ship.r#type, (wps.clone(), shipyard_ship.purchase_price)))
+            })
             .into_group_map_by(|(st, _)| *st)
             .into_iter()
             .map(|(k, values)| (k, values.into_iter().map(|tup| tup.1).collect_vec()))
@@ -476,11 +498,17 @@ impl ShipPriceInfo {
         purchase_price_map: &HashMap<ShipType, Vec<(WaypointSymbol, u32)>>,
         purchase_location_map: &HashMap<ShipType, Vec<WaypointSymbol>>,
     ) -> Option<(WaypointSymbol, u32)> {
-        purchase_price_map.get(ship_type).and_then(|prices| prices.iter().min_by_key(|(wps, p)| p)).cloned().or_else(|| {
-            purchase_location_map
-                .get(ship_type)
-                .and_then(|waypoints| waypoints.first().and_then(|wps| Self::guess_price_for_ship(ship_type).map(|guessed_price| (wps.clone(), guessed_price))))
-        })
+        purchase_price_map
+            .get(ship_type)
+            .and_then(|prices| prices.iter().min_by_key(|(wps, p)| p))
+            .cloned()
+            .or_else(|| {
+                purchase_location_map.get(ship_type).and_then(|waypoints| {
+                    waypoints
+                        .first()
+                        .and_then(|wps| Self::guess_price_for_ship(ship_type).map(|guessed_price| (wps.clone(), guessed_price)))
+                })
+            })
     }
 
     pub fn get_best_purchase_location(&self, ship_type: &ShipType) -> Option<(ShipType, (WaypointSymbol, u32))> {

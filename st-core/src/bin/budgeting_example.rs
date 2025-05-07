@@ -20,11 +20,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     finance.create_fleet_budget(market_observation_fleet_id.clone(), Credits::new(50_000), Credits::new(0))?;
 
     println!("Created fleets with initial budgets:");
-    println!("  TRADING_FLEET: {}", finance.get_fleet_budget(&trading_fleet_id)?.available_capital);
-    println!("  MINING_FLEET: {}", finance.get_fleet_budget(&mining_fleet_id)?.available_capital);
+    println!(
+        "  TRADING_FLEET: {}",
+        finance
+            .get_fleet_budget(&trading_fleet_id)?
+            .available_capital
+    );
+    println!(
+        "  MINING_FLEET: {}",
+        finance
+            .get_fleet_budget(&mining_fleet_id)?
+            .available_capital
+    );
     println!(
         "  MARKET_OBSERVATION_FLEET: {}",
-        finance.get_fleet_budget(&market_observation_fleet_id)?.available_capital
+        finance
+            .get_fleet_budget(&market_observation_fleet_id)?
+            .available_capital
     );
 
     println!("Created fleets with budgets");
@@ -161,7 +173,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!(
         "  Market Observation Fleet: {}",
-        finance.get_fleet_budget(&market_observation_fleet_id)?.available_capital
+        finance
+            .get_fleet_budget(&market_observation_fleet_id)?
+            .available_capital
     );
 
     // Create a ship purchase ticket

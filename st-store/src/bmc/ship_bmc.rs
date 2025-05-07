@@ -84,7 +84,12 @@ select ship_symbol
         .fetch_all(self.mm.pool())
         .await?;
 
-        anyhow::Ok(entries.into_iter().map(|db_entry| (ShipSymbol(db_entry.ship_symbol), db_entry.task.0)).collect())
+        anyhow::Ok(
+            entries
+                .into_iter()
+                .map(|db_entry| (ShipSymbol(db_entry.ship_symbol), db_entry.task.0))
+                .collect(),
+        )
     }
 
     async fn save_ship_tasks(&self, ctx: &Ctx, ship_task_assignments: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
@@ -202,13 +207,24 @@ impl InMemoryShipsBmc {
 #[async_trait]
 impl ShipBmcTrait for InMemoryShipsBmc {
     async fn get_ships(&self, ctx: &Ctx, timestamp_filter_gte: Option<DateTime<Utc>>) -> Result<Vec<Ship>> {
-        Ok(self.in_memory_ships.read().await.ships.values().cloned().collect_vec())
+        Ok(self
+            .in_memory_ships
+            .read()
+            .await
+            .ships
+            .values()
+            .cloned()
+            .collect_vec())
     }
 
     async fn get_ship(&self, ctx: &Ctx, ship_symbol: ShipSymbol) -> Result<Ship> {
         let read_data = self.in_memory_ships.read().await;
 
-        read_data.ships.get(&ship_symbol).cloned().ok_or(anyhow!("Ship not found"))
+        read_data
+            .ships
+            .get(&ship_symbol)
+            .cloned()
+            .ok_or(anyhow!("Ship not found"))
     }
 
     async fn load_ship_tasks(&self, ctx: &Ctx) -> Result<HashMap<ShipSymbol, ShipTask>> {
@@ -222,11 +238,22 @@ impl ShipBmcTrait for InMemoryShipsBmc {
     }
 
     async fn get_stationary_probes(&self, ctx: &Ctx) -> Result<Vec<StationaryProbeLocation>> {
-        Ok(self.in_memory_ships.read().await.stationary_probe_locations.values().cloned().collect_vec())
+        Ok(self
+            .in_memory_ships
+            .read()
+            .await
+            .stationary_probe_locations
+            .values()
+            .cloned()
+            .collect_vec())
     }
 
     async fn insert_stationary_probe(&self, ctx: &Ctx, location: StationaryProbeLocation) -> Result<()> {
-        self.in_memory_ships.write().await.stationary_probe_locations.insert(location.waypoint_symbol.clone(), location);
+        self.in_memory_ships
+            .write()
+            .await
+            .stationary_probe_locations
+            .insert(location.waypoint_symbol.clone(), location);
         Ok(())
     }
 

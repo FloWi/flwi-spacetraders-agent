@@ -57,7 +57,10 @@ impl From<TradingOpportunity> for TradingOpportunityRow {
     fn from(opportunity: TradingOpportunity) -> Self {
         TradingOpportunityRow {
             purchase_waypoint_symbol: opportunity.purchase_waypoint_symbol,
-            trade_good_symbol: opportunity.purchase_market_trade_good_entry.symbol.to_string(),
+            trade_good_symbol: opportunity
+                .purchase_market_trade_good_entry
+                .symbol
+                .to_string(),
             purchase_trade_good_type: opportunity.purchase_market_trade_good_entry.trade_good_type,
             purchase_trade_volume: opportunity.purchase_market_trade_good_entry.trade_volume,
             purchase_supply: opportunity.purchase_market_trade_good_entry.supply,

@@ -19,7 +19,10 @@ async fn get_behavior_trees() -> Result<Vec<(String, MermaidString)>, ServerFnEr
     let behaviors = st_core::behavior_tree::ship_behaviors::ship_behaviors();
     let labelled_behaviors: HashMap<String, Behavior<ShipAction>> = behaviors.to_labelled_sub_behaviors();
 
-    let mermaid_strings = labelled_behaviors.iter().map(|(label, behavior)| (label.clone(), MermaidString(behavior.to_mermaid()))).collect_vec();
+    let mermaid_strings = labelled_behaviors
+        .iter()
+        .map(|(label, behavior)| (label.clone(), MermaidString(behavior.to_mermaid())))
+        .collect_vec();
 
     Ok(mermaid_strings)
 }
@@ -40,9 +43,15 @@ async fn get_trading_behavior() -> Result<Vec<(String, MermaidString)>, ServerFn
         MermaidString(behavior.to_mermaid_without_repeats(&sub_behavior_hashes)),
     )];
 
-    let sub_behavior_mermaid_list = labelled_behaviors.iter().map(|(label, behavior)| (label.to_string(), MermaidString(behavior.to_mermaid()))).collect_vec();
+    let sub_behavior_mermaid_list = labelled_behaviors
+        .iter()
+        .map(|(label, behavior)| (label.to_string(), MermaidString(behavior.to_mermaid())))
+        .collect_vec();
 
-    Ok(mermaid_strings.into_iter().chain(sub_behavior_mermaid_list.into_iter()).collect_vec())
+    Ok(mermaid_strings
+        .into_iter()
+        .chain(sub_behavior_mermaid_list.into_iter())
+        .collect_vec())
 }
 
 #[component]

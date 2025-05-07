@@ -27,7 +27,12 @@ impl AppConfig {
             spacetraders_registration_email: get_env_var("SPACETRADERS_REGISTRATION_EMAIL")?,
             spacetraders_account_token: get_env_var("SPACETRADERS_ACCOUNT_TOKEN")?,
             spacetraders_base_url: get_env_var("SPACETRADERS_BASE_URL")?,
-            skip_running_agent: bool::from_str(get_env_var("SPACETRADERS_SKIP_RUNNING_AGENT").unwrap_or("false".to_string()).as_str()).unwrap_or(false),
+            skip_running_agent: bool::from_str(
+                get_env_var("SPACETRADERS_SKIP_RUNNING_AGENT")
+                    .unwrap_or("false".to_string())
+                    .as_str(),
+            )
+            .unwrap_or(false),
         })
     }
 }

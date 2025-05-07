@@ -152,7 +152,9 @@ impl FleetRunner {
                 {
                     Ok(maybe_task_finished_result) => {
                         if let Some((ship, ship_task)) = maybe_task_finished_result {
-                            ship_status_report_tx_clone.send(ShipStatusReport::ShipFinishedBehaviorTree(ship, ship_task)).await?;
+                            ship_status_report_tx_clone
+                                .send(ShipStatusReport::ShipFinishedBehaviorTree(ship, ship_task))
+                                .await?;
                         }
                     }
                     Err(err) => {
@@ -183,12 +185,26 @@ impl FleetRunner {
         let not_running_ships = {
             let runner_guard = runner.lock().await;
 
-            let completed_fibers =
-                runner_guard.ship_fibers.iter().filter_map(|(ss, ship_fiber)| ship_fiber.is_finished().then_some(ss)).cloned().collect::<HashSet<_>>();
-            let running_fibers =
-                runner_guard.ship_fibers.iter().filter_map(|(ss, ship_fiber)| ship_fiber.is_finished().not().then_some(ss)).cloned().collect::<HashSet<_>>();
+            let completed_fibers = runner_guard
+                .ship_fibers
+                .iter()
+                .filter_map(|(ss, ship_fiber)| ship_fiber.is_finished().then_some(ss))
+                .cloned()
+                .collect::<HashSet<_>>();
+            let running_fibers = runner_guard
+                .ship_fibers
+                .iter()
+                .filter_map(|(ss, ship_fiber)| ship_fiber.is_finished().not().then_some(ss))
+                .cloned()
+                .collect::<HashSet<_>>();
 
-            let not_running_ships = all_ships.difference(&running_fibers).cloned().collect::<HashSet<_>>().union(&completed_fibers).cloned().collect_vec();
+            let not_running_ships = all_ships
+                .difference(&running_fibers)
+                .cloned()
+                .collect::<HashSet<_>>()
+                .union(&completed_fibers)
+                .cloned()
+                .collect_vec();
 
             event!(
                 Level::INFO,
@@ -252,7 +268,9 @@ impl FleetRunner {
                 {
                     Ok(maybe_task_finished_result) => {
                         if let Some((ship, ship_task)) = maybe_task_finished_result {
-                            ship_status_report_tx_clone.send(ShipStatusReport::ShipFinishedBehaviorTree(ship, ship_task)).await?;
+                            ship_status_report_tx_clone
+                                .send(ShipStatusReport::ShipFinishedBehaviorTree(ship, ship_task))
+                                .await?;
                         }
                     }
                     Err(err) => {
@@ -415,8 +433,12 @@ impl FleetRunner {
                 }
                 _ => {
                     //event!(Level::DEBUG, "Ship {} updated", updated_ship.symbol.0);
-                    ship_bmc.upsert_ships(&Ctx::Anonymous, &vec![updated_ship.ship.clone()], Utc::now()).await?;
-                    admiral.all_ships.insert(updated_ship.symbol.clone(), updated_ship.ship);
+                    ship_bmc
+                        .upsert_ships(&Ctx::Anonymous, &vec![updated_ship.ship.clone()], Utc::now())
+                        .await?;
+                    admiral
+                        .all_ships
+                        .insert(updated_ship.symbol.clone(), updated_ship.ship);
                 }
             }
         }
@@ -444,7 +466,12 @@ impl FleetRunner {
                 // Log the error but continue the loop
                 let maybe_fleet = {
                     let guard = fleet_admiral.lock().await;
-                    guard.ship_fleet_assignment.get(&msg.ship_symbol()).cloned().and_then(|id| guard.fleets.get(&id)).cloned()
+                    guard
+                        .ship_fleet_assignment
+                        .get(&msg.ship_symbol())
+                        .cloned()
+                        .and_then(|id| guard.fleets.get(&id))
+                        .cloned()
                 };
                 event!(
                     Level::ERROR,
@@ -478,7 +505,9 @@ impl FleetRunner {
         let _enter = ship_span.enter();
 
         let mut admiral_guard = fleet_admiral.lock().await;
-        admiral_guard.report_ship_action_completed(&msg, Arc::clone(&bmc)).await?;
+        admiral_guard
+            .report_ship_action_completed(&msg, Arc::clone(&bmc))
+            .await?;
 
         let treasurer = Arc::clone(&admiral_guard.treasurer);
 
@@ -506,11 +535,16 @@ impl FleetRunner {
                         event!(
                             Level::INFO,
                             "Dismantling fleets {}",
-                            fleets_to_dismantle.iter().map(|fleet_id| format!("#{}", fleet_id.0)).join(", ")
+                            fleets_to_dismantle
+                                .iter()
+                                .map(|fleet_id| format!("#{}", fleet_id.0))
+                                .join(", ")
                         );
 
                         FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle.clone());
-                        bmc.fleet_bmc().delete_fleets(&Ctx::Anonymous, &fleets_to_dismantle).await?;
+                        bmc.fleet_bmc()
+                            .delete_fleets(&Ctx::Anonymous, &fleets_to_dismantle)
+                            .await?;
 
                         let system_symbol = ship.nav.system_symbol.clone();
                         let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
@@ -525,35 +559,59 @@ impl FleetRunner {
                         admiral_guard.ship_purchase_demand = VecDeque::from(current_ship_demands);
 
                         admiral_guard.fleets = fleets.into_iter().map(|f| (f.id.clone(), f)).collect();
-                        admiral_guard.fleet_tasks = fleet_tasks.into_iter().map(|(fleet_id, task)| (fleet_id, vec![task])).collect();
+                        admiral_guard.fleet_tasks = fleet_tasks
+                            .into_iter()
+                            .map(|(fleet_id, task)| (fleet_id, vec![task]))
+                            .collect();
                         admiral_guard.fleet_phase = fleet_phase;
 
                         //FIXME: assuming one fleet task per fleet
-                        let fleet_task_list =
-                            admiral_guard.fleet_tasks.iter().map(|(fleet_id, tasks)| (fleet_id.clone(), tasks.first().cloned().unwrap())).collect_vec();
+                        let fleet_task_list = admiral_guard
+                            .fleet_tasks
+                            .iter()
+                            .map(|(fleet_id, tasks)| (fleet_id.clone(), tasks.first().cloned().unwrap()))
+                            .collect_vec();
                         let ship_fleet_assignment =
                             FleetAdmiral::assign_ships(&fleet_task_list, &admiral_guard.all_ships, &admiral_guard.fleet_phase.shopping_list_in_order);
                         admiral_guard.ship_fleet_assignment = ship_fleet_assignment;
 
-                        let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
+                        let ship_price_info = bmc
+                            .shipyard_bmc()
+                            .get_latest_ship_prices(&Ctx::Anonymous, &system_symbol)
+                            .await?;
 
-                        let fleet_tasks: Vec<(FleetId, FleetTask)> =
-                            admiral_guard.fleet_tasks.iter().map(|t| (t.0.clone(), t.1.first().cloned().unwrap())).collect_vec();
+                        let fleet_tasks: Vec<(FleetId, FleetTask)> = admiral_guard
+                            .fleet_tasks
+                            .iter()
+                            .map(|t| (t.0.clone(), t.1.first().cloned().unwrap()))
+                            .collect_vec();
 
-                        admiral_guard.treasurer.lock().await.redistribute_distribute_fleet_budgets(
-                            &admiral_guard.fleet_phase,
-                            &fleet_tasks,
-                            &admiral_guard.ship_fleet_assignment,
-                            &ship_price_info,
-                            &admiral_guard.ship_purchase_demand.iter().cloned().collect_vec(),
-                        )?;
+                        admiral_guard
+                            .treasurer
+                            .lock()
+                            .await
+                            .redistribute_distribute_fleet_budgets(
+                                &admiral_guard.fleet_phase,
+                                &fleet_tasks,
+                                &admiral_guard.ship_fleet_assignment,
+                                &ship_price_info,
+                                &admiral_guard
+                                    .ship_purchase_demand
+                                    .iter()
+                                    .cloned()
+                                    .collect_vec(),
+                            )?;
 
                         let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
                         FleetAdmiral::assign_ship_tasks(&mut admiral_guard, new_ship_tasks);
 
                         Self::launch_ship_fibers_of_idle_or_new_ships(
                             Arc::clone(&runner),
-                            admiral_guard.all_ships.keys().cloned().collect::<HashSet<_>>(),
+                            admiral_guard
+                                .all_ships
+                                .keys()
+                                .cloned()
+                                .collect::<HashSet<_>>(),
                             admiral_guard.ship_tasks.clone(),
                             sleep_duration,
                         )
@@ -579,7 +637,9 @@ impl FleetRunner {
                             probe_ship_symbol: ship_symbol.clone(),
                             exploration_tasks,
                         };
-                        bmc.ship_bmc().insert_stationary_probe(&Ctx::Anonymous, location.clone()).await?;
+                        bmc.ship_bmc()
+                            .insert_stationary_probe(&Ctx::Anonymous, location.clone())
+                            .await?;
                         FleetAdmiral::add_stationary_probe_location(&mut admiral_guard, location);
                         // FleetAdmiral::remove_ship_from_fleet(&mut admiral_guard, &ship_symbol);
                         // FleetAdmiral::remove_ship_task(&mut admiral_guard, &ship_symbol);
@@ -663,9 +723,15 @@ impl FleetRunner {
                     );
 
                     let new_ship = response.data.ship.clone();
-                    bmc.ship_bmc().upsert_ships(&Ctx::Anonymous, &vec![new_ship.clone()], Utc::now()).await?;
-                    admiral_guard.all_ships.insert(new_ship.symbol.clone(), new_ship.clone());
-                    admiral_guard.ship_fleet_assignment.insert(new_ship.symbol.clone(), ticket_details.beneficiary_fleet.clone());
+                    bmc.ship_bmc()
+                        .upsert_ships(&Ctx::Anonymous, &vec![new_ship.clone()], Utc::now())
+                        .await?;
+                    admiral_guard
+                        .all_ships
+                        .insert(new_ship.symbol.clone(), new_ship.clone());
+                    admiral_guard
+                        .ship_fleet_assignment
+                        .insert(new_ship.symbol.clone(), ticket_details.beneficiary_fleet.clone());
 
                     let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &new_ship.nav.system_symbol).await?;
                     let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
@@ -716,7 +782,9 @@ impl FleetRunner {
                             action = %ship_action,
                         );
                         if ship_action == ShipAction::CollectWaypointInfos {
-                            ship_status_report_tx.send(ShipStatusReport::ShipActionCompleted(ship_op.ship.clone(), ship_action)).await?;
+                            ship_status_report_tx
+                                .send(ShipStatusReport::ShipActionCompleted(ship_op.ship.clone(), ship_action))
+                                .await?;
                         }
                     }
                     Err(err) => {
@@ -753,11 +821,15 @@ impl FleetRunner {
                         ship = ship.symbol.0,
                         transaction = %transaction.to_string(),
                     );
-                    ship_status_report_tx.send(ShipStatusReport::TransactionCompleted(ship.ship, transaction, ticket)).await?;
+                    ship_status_report_tx
+                        .send(ShipStatusReport::TransactionCompleted(ship.ship, transaction, ticket))
+                        .await?;
                 }
 
                 ActionEvent::Expense(ship, operation_expense) => {
-                    ship_status_report_tx.send(ShipStatusReport::Expense(ship.ship, operation_expense)).await?;
+                    ship_status_report_tx
+                        .send(ShipStatusReport::Expense(ship.ship, operation_expense))
+                        .await?;
                 }
             }
         }
@@ -906,48 +978,74 @@ impl FleetRunner {
 
         if ships.is_empty() {
             let ships: Vec<Ship> = fetch_all_pages(|p| client.list_ships(p)).await?;
-            bmc.ship_bmc().upsert_ships(&Ctx::Anonymous, &ships, Utc::now()).await?;
+            bmc.ship_bmc()
+                .upsert_ships(&Ctx::Anonymous, &ships, Utc::now())
+                .await?;
         }
 
         let headquarters_system_symbol = agent.headquarters.system_symbol();
 
-        let waypoint_entries_of_home_system = match bmc.system_bmc().get_waypoints_of_system(ctx, &headquarters_system_symbol).await {
+        let waypoint_entries_of_home_system = match bmc
+            .system_bmc()
+            .get_waypoints_of_system(ctx, &headquarters_system_symbol)
+            .await
+        {
             Ok(waypoints) if waypoints.is_empty().not() => waypoints,
             _ => {
                 let waypoints = fetch_all_pages(|p| client.list_waypoints_of_system_page(&headquarters_system_symbol, p)).await?;
-                bmc.system_bmc().save_waypoints_of_system(ctx, &headquarters_system_symbol, waypoints.clone()).await?;
+                bmc.system_bmc()
+                    .save_waypoints_of_system(ctx, &headquarters_system_symbol, waypoints.clone())
+                    .await?;
                 waypoints
             }
         };
 
-        let marketplaces_to_collect_remotely =
-            filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::MARKETPLACE).map(|wp| wp.symbol.clone()).collect_vec();
+        let marketplaces_to_collect_remotely = filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::MARKETPLACE)
+            .map(|wp| wp.symbol.clone())
+            .collect_vec();
 
-        let shipyards_to_collect_remotely =
-            filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::SHIPYARD).map(|wp| wp.symbol.clone()).collect_vec();
+        let shipyards_to_collect_remotely = filter_waypoints_with_trait(&waypoint_entries_of_home_system, WaypointTraitSymbol::SHIPYARD)
+            .map(|wp| wp.symbol.clone())
+            .collect_vec();
 
         for wps in marketplaces_to_collect_remotely {
             let market = client.get_marketplace(wps).await?;
-            bmc.market_bmc().save_market_data(ctx, vec![market.data], Utc::now()).await?;
+            bmc.market_bmc()
+                .save_market_data(ctx, vec![market.data], Utc::now())
+                .await?;
         }
         for wps in shipyards_to_collect_remotely {
             let shipyard = client.get_shipyard(wps).await?;
-            bmc.shipyard_bmc().save_shipyard_data(ctx, shipyard.data, Utc::now()).await?;
+            bmc.shipyard_bmc()
+                .save_shipyard_data(ctx, shipyard.data, Utc::now())
+                .await?;
         }
-        let jump_gate_wp_of_home_system =
-            waypoint_entries_of_home_system.iter().find(|wp| wp.r#type == WaypointType::JUMP_GATE).expect("home system should have a jump-gate");
+        let jump_gate_wp_of_home_system = waypoint_entries_of_home_system
+            .iter()
+            .find(|wp| wp.r#type == WaypointType::JUMP_GATE)
+            .expect("home system should have a jump-gate");
 
-        let construction_site = match bmc.construction_bmc().get_construction_site_for_system(ctx, headquarters_system_symbol).await {
+        let construction_site = match bmc
+            .construction_bmc()
+            .get_construction_site_for_system(ctx, headquarters_system_symbol)
+            .await
+        {
             Ok(Some(cs)) => cs,
             _ => {
-                let cs = client.get_construction_site(&jump_gate_wp_of_home_system.symbol).await?;
-                bmc.construction_bmc().save_construction_site(ctx, cs.clone()).await?;
+                let cs = client
+                    .get_construction_site(&jump_gate_wp_of_home_system.symbol)
+                    .await?;
+                bmc.construction_bmc()
+                    .save_construction_site(ctx, cs.clone())
+                    .await?;
                 cs
             }
         };
 
         let supply_chain_data = client.get_supply_chain().await?;
-        bmc.supply_chain_bmc().insert_supply_chain(&Ctx::Anonymous, supply_chain_data.into(), Utc::now()).await?;
+        bmc.supply_chain_bmc()
+            .insert_supply_chain(&Ctx::Anonymous, supply_chain_data.into(), Utc::now())
+            .await?;
 
         Ok(())
     }
@@ -987,12 +1085,24 @@ mod tests {
 
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-        let json_path = std::path::Path::new(manifest_dir).parent().unwrap().join("resources").join("universe_snapshot.json");
+        let json_path = std::path::Path::new(manifest_dir)
+            .parent()
+            .unwrap()
+            .join("resources")
+            .join("universe_snapshot.json");
 
         let in_memory_universe = InMemoryUniverse::from_snapshot(json_path).expect("InMemoryUniverse::from_snapshot");
 
-        let shipyard_waypoints = in_memory_universe.shipyards.keys().cloned().collect::<HashSet<_>>();
-        let marketplace_waypoints = in_memory_universe.marketplaces.keys().cloned().collect::<HashSet<_>>();
+        let shipyard_waypoints = in_memory_universe
+            .shipyards
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let marketplace_waypoints = in_memory_universe
+            .marketplaces
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>();
 
         let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
 
@@ -1035,18 +1145,32 @@ mod tests {
         let bmc = Arc::new(bmc) as Arc<dyn Bmc>;
         let blackboard = BmcBlackboard::new(Arc::clone(&bmc));
 
-        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
+        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
+            .await
+            .expect("FleetRunner::load_and_store_initial_data");
 
         println!("Creating fleet admiral");
 
-        let fleet_admiral = FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_symbol, Arc::clone(&client)).await.expect("FleetAdmiral::load_or_create");
+        let fleet_admiral = FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_symbol, Arc::clone(&client))
+            .await
+            .expect("FleetAdmiral::load_or_create");
 
         assert!(matches!(
-            fleet_admiral.fleet_tasks.get(&FleetId(0)).cloned().unwrap_or_default().first(),
+            fleet_admiral
+                .fleet_tasks
+                .get(&FleetId(0))
+                .cloned()
+                .unwrap_or_default()
+                .first(),
             Some(FleetTask::InitialExploration { .. })
         ));
         assert!(matches!(
-            fleet_admiral.fleet_tasks.get(&FleetId(1)).cloned().unwrap_or_default().first(),
+            fleet_admiral
+                .fleet_tasks
+                .get(&FleetId(1))
+                .cloned()
+                .unwrap_or_default()
+                .first(),
             Some(FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. })
         ));
 
@@ -1056,7 +1180,9 @@ mod tests {
         // This task runs your fleets
         let fleet_future = async {
             println!("Running fleets");
-            FleetRunner::run_fleets(Arc::clone(&admiral_mutex), Arc::clone(&client), Arc::clone(&bmc), Duration::from_millis(1)).await.unwrap();
+            FleetRunner::run_fleets(Arc::clone(&admiral_mutex), Arc::clone(&client), Arc::clone(&bmc), Duration::from_millis(1))
+                .await
+                .unwrap();
         };
 
         // This task periodically checks if the condition is met
@@ -1069,33 +1195,67 @@ mod tests {
 
                 let condition_met = {
                     let admiral = admiral_clone.lock().await;
-                    let has_finished_initial_observation = admiral.completed_fleet_tasks.iter().any(|t| matches!(t.task, FleetTask::InitialExploration { .. }));
+                    let has_finished_initial_observation = admiral
+                        .completed_fleet_tasks
+                        .iter()
+                        .any(|t| matches!(t.task, FleetTask::InitialExploration { .. }));
 
                     let fleet_budgets = admiral.treasurer.lock().await.get_fleet_budgets();
-                    let has_all_fleets_registered_in_treasurer = admiral.fleets.keys().all(|id| fleet_budgets.contains_key(id));
+                    let has_all_fleets_registered_in_treasurer = admiral
+                        .fleets
+                        .keys()
+                        .all(|id| fleet_budgets.contains_key(id));
 
                     let is_in_construction_phase = admiral.fleet_phase.name == FleetPhaseName::ConstructJumpGate;
                     let num_ships = admiral.all_ships.len();
                     let has_bought_ships = num_ships > 2;
                     let num_stationary_probes = admiral.stationary_probe_locations.len();
-                    let stationary_probe_locations: HashSet<WaypointSymbol> =
-                        admiral.stationary_probe_locations.iter().map(|spl| spl.waypoint_symbol.clone()).collect::<HashSet<_>>();
+                    let stationary_probe_locations: HashSet<WaypointSymbol> = admiral
+                        .stationary_probe_locations
+                        .iter()
+                        .map(|spl| spl.waypoint_symbol.clone())
+                        .collect::<HashSet<_>>();
 
-                    let has_probes_at_every_shipyard = shipyard_waypoints.difference(&stationary_probe_locations).count() == 0;
-                    let has_probes_at_every_marketplace = marketplace_waypoints.difference(&stationary_probe_locations).count() == 0;
+                    let has_probes_at_every_shipyard = shipyard_waypoints
+                        .difference(&stationary_probe_locations)
+                        .count()
+                        == 0;
+                    let has_probes_at_every_marketplace = marketplace_waypoints
+                        .difference(&stationary_probe_locations)
+                        .count()
+                        == 0;
 
-                    let num_haulers = admiral.all_ships.iter().filter(|(_, s)| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER).count();
+                    let num_haulers = admiral
+                        .all_ships
+                        .iter()
+                        .filter(|(_, s)| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER)
+                        .count();
                     let has_bought_all_haulers = num_haulers == 4;
 
-                    let num_mining_drones = admiral.all_ships.iter().filter(|(_, s)| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER).count();
+                    let num_mining_drones = admiral
+                        .all_ships
+                        .iter()
+                        .filter(|(_, s)| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER)
+                        .count();
                     let has_bought_all_mining_drones = num_mining_drones == 7;
 
-                    let home_system = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await.expect("agent").headquarters.system_symbol();
+                    let home_system = bmc
+                        .agent_bmc()
+                        .load_agent(&Ctx::Anonymous)
+                        .await
+                        .expect("agent")
+                        .headquarters
+                        .system_symbol();
 
-                    let maybe_construction_site =
-                        bmc.construction_bmc().get_construction_site_for_system(&Ctx::Anonymous, home_system).await.expect("construction_site");
+                    let maybe_construction_site = bmc
+                        .construction_bmc()
+                        .get_construction_site_for_system(&Ctx::Anonymous, home_system)
+                        .await
+                        .expect("construction_site");
 
-                    let has_started_construction = maybe_construction_site.map(|cs| cs.data.materials.iter().any(|cm| cm.fulfilled > 0)).unwrap_or(false);
+                    let has_started_construction = maybe_construction_site
+                        .map(|cs| cs.data.materials.iter().any(|cm| cm.fulfilled > 0))
+                        .unwrap_or(false);
 
                     let evaluation_result = has_finished_initial_observation
                         && has_all_fleets_registered_in_treasurer
@@ -1153,7 +1313,11 @@ evaluation_result: {evaluation_result}
         }
 
         // Your validation code remains the same
-        let completed_tasks = bmc.fleet_bmc().load_completed_fleet_tasks(&Ctx::Anonymous).await.unwrap();
+        let completed_tasks = bmc
+            .fleet_bmc()
+            .load_completed_fleet_tasks(&Ctx::Anonymous)
+            .await
+            .unwrap();
         let fleets = bmc.fleet_bmc().load_fleets(&Ctx::Anonymous).await.unwrap();
 
         assert_eq!(1, completed_tasks.len());
@@ -1192,10 +1356,34 @@ evaluation_result: {evaluation_result}
             })
             .expect("One ConstructJumpGate Fleet");
 
-        let siphoning_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&siphoning_fleet.0).into_iter().cloned().collect_vec();
-        let mining_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&mining_fleet.0).into_iter().cloned().collect_vec();
-        let construct_jump_gate_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&construct_jump_gate_fleet.0).into_iter().cloned().collect_vec();
-        let market_observation_fleet_ships = admiral_mutex.lock().await.get_ships_of_fleet(&market_observation_fleet.0).into_iter().cloned().collect_vec();
+        let siphoning_fleet_ships = admiral_mutex
+            .lock()
+            .await
+            .get_ships_of_fleet(&siphoning_fleet.0)
+            .into_iter()
+            .cloned()
+            .collect_vec();
+        let mining_fleet_ships = admiral_mutex
+            .lock()
+            .await
+            .get_ships_of_fleet(&mining_fleet.0)
+            .into_iter()
+            .cloned()
+            .collect_vec();
+        let construct_jump_gate_fleet_ships = admiral_mutex
+            .lock()
+            .await
+            .get_ships_of_fleet(&construct_jump_gate_fleet.0)
+            .into_iter()
+            .cloned()
+            .collect_vec();
+        let market_observation_fleet_ships = admiral_mutex
+            .lock()
+            .await
+            .get_ships_of_fleet(&market_observation_fleet.0)
+            .into_iter()
+            .cloned()
+            .collect_vec();
 
         assert!(siphoning_fleet_ships.len() > 4);
         assert!(mining_fleet_ships.len() > 4);
@@ -1206,8 +1394,20 @@ evaluation_result: {evaluation_result}
                 panic!("expected one ship, but got 0")
             }
             ships => {
-                assert_eq!(1, ships.iter().filter(|s| s.frame.symbol == ShipFrameSymbol::FRAME_FRIGATE).count());
-                assert!(ships.iter().filter(|s| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER).count() <= 4);
+                assert_eq!(
+                    1,
+                    ships
+                        .iter()
+                        .filter(|s| s.frame.symbol == ShipFrameSymbol::FRAME_FRIGATE)
+                        .count()
+                );
+                assert!(
+                    ships
+                        .iter()
+                        .filter(|s| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER)
+                        .count()
+                        <= 4
+                );
             }
         }
 

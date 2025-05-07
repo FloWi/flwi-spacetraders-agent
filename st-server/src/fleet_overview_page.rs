@@ -29,16 +29,28 @@ async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, FleetsOvervie
     let state = expect_context::<crate::app::AppState>();
     let bmc = state.bmc;
 
-    let home_waypoint_symbol = bmc.agent_bmc().get_initial_agent(&Ctx::Anonymous).await.expect("get_initial_agent").headquarters;
+    let home_waypoint_symbol = bmc
+        .agent_bmc()
+        .get_initial_agent(&Ctx::Anonymous)
+        .await
+        .expect("get_initial_agent")
+        .headquarters;
     let home_system_symbol = home_waypoint_symbol.system_symbol();
 
-    let decision_facts = fleet::collect_fleet_decision_facts(Arc::clone(&bmc), &home_system_symbol).await.expect("collect_fleet_decision_facts");
+    let decision_facts = fleet::collect_fleet_decision_facts(Arc::clone(&bmc), &home_system_symbol)
+        .await
+        .expect("collect_fleet_decision_facts");
 
-    let fleet_overview = st_store::load_fleet_overview(Arc::clone(&bmc), &Ctx::Anonymous).await.expect("load_overview");
+    let fleet_overview = st_store::load_fleet_overview(Arc::clone(&bmc), &Ctx::Anonymous)
+        .await
+        .expect("load_overview");
 
     let marketplaces_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(decision_facts.marketplaces_of_interest.iter().cloned());
     let shipyards_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(decision_facts.shipyards_of_interest.iter().cloned());
-    let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest.difference(&shipyards_of_interest).cloned().collect_vec();
+    let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest
+        .difference(&shipyards_of_interest)
+        .cloned()
+        .collect_vec();
 
     // Create a construction fleet phase
     let fleet_phase = fleet::compute_fleet_phase_with_tasks(home_system_symbol, &decision_facts, &fleet_overview.completed_fleet_tasks);

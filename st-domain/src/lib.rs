@@ -11,13 +11,25 @@ pub use supply_chain::*;
 
 pub fn get_exploration_tasks_for_waypoint(wp: &Waypoint) -> Vec<ExplorationTask> {
     let mut tasks = Vec::new();
-    if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::UNCHARTED) {
+    if wp
+        .traits
+        .iter()
+        .any(|t| t.symbol == WaypointTraitSymbol::UNCHARTED)
+    {
         tasks.push(ExplorationTask::CreateChart);
     }
-    if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::SHIPYARD) {
+    if wp
+        .traits
+        .iter()
+        .any(|t| t.symbol == WaypointTraitSymbol::SHIPYARD)
+    {
         tasks.push(ExplorationTask::GetShipyard);
     }
-    if wp.traits.iter().any(|t| t.symbol == WaypointTraitSymbol::MARKETPLACE) {
+    if wp
+        .traits
+        .iter()
+        .any(|t| t.symbol == WaypointTraitSymbol::MARKETPLACE)
+    {
         tasks.push(ExplorationTask::GetMarket);
     }
     if wp.r#type == WaypointType::JUMP_GATE {

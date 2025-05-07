@@ -17,11 +17,24 @@ async fn get_db_overview() -> Result<DbOverview, ServerFnError> {
     let state = expect_context::<crate::app::AppState>();
     let bmc = state.bmc;
 
-    let num_systems = bmc.system_bmc().get_num_systems(&Ctx::Anonymous).await.expect("num_systems");
+    let num_systems = bmc
+        .system_bmc()
+        .get_num_systems(&Ctx::Anonymous)
+        .await
+        .expect("num_systems");
 
-    let num_waypoints = bmc.system_bmc().get_num_waypoints(&Ctx::Anonymous).await.expect("num_waypoints");
+    let num_waypoints = bmc
+        .system_bmc()
+        .get_num_waypoints(&Ctx::Anonymous)
+        .await
+        .expect("num_waypoints");
 
-    let status = bmc.status_bmc().get_status(&Ctx::Anonymous).await.expect("status").unwrap();
+    let status = bmc
+        .status_bmc()
+        .get_status(&Ctx::Anonymous)
+        .await
+        .expect("status")
+        .unwrap();
 
     Ok(DbOverview {
         num_systems,

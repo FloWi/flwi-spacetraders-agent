@@ -225,7 +225,12 @@ impl Treasurer for InMemoryTreasurer {
     }
 
     fn get_ticket(&self, id: TicketId) -> Result<TransactionTicket, Self::Error> {
-        let either_ticket = self.tickets.get(&id).cloned().or(self.completed_tickets.get(&id).cloned()).ok_or(FinanceError::TicketNotFound);
+        let either_ticket = self
+            .tickets
+            .get(&id)
+            .cloned()
+            .or(self.completed_tickets.get(&id).cloned())
+            .ok_or(FinanceError::TicketNotFound);
         match either_ticket {
             Ok(ticket) => Ok(ticket),
             Err(err) => {
@@ -237,7 +242,10 @@ impl Treasurer for InMemoryTreasurer {
 
     fn fund_fleet_for_next_purchase(&mut self, source: FundingSource) -> Result<(), Self::Error> {
         // Check that the fleet exists and has enough funds
-        let fleet_budget = self.fleet_budgets.get_mut(&source.source_fleet).ok_or(FinanceError::FleetNotFound)?;
+        let fleet_budget = self
+            .fleet_budgets
+            .get_mut(&source.source_fleet)
+            .ok_or(FinanceError::FleetNotFound)?;
 
         let diff = source.amount - fleet_budget.available_capital;
 
@@ -257,10 +265,16 @@ impl Treasurer for InMemoryTreasurer {
 
     fn fund_ticket(&mut self, id: TicketId, source: FundingSource) -> Result<(), Self::Error> {
         // Get the ticket
-        let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
+        let ticket = self
+            .tickets
+            .get_mut(&id)
+            .ok_or(FinanceError::TicketNotFound)?;
 
         // Check that the fleet exists and has enough funds
-        let fleet_budget = self.fleet_budgets.get_mut(&source.source_fleet).ok_or(FinanceError::FleetNotFound)?;
+        let fleet_budget = self
+            .fleet_budgets
+            .get_mut(&source.source_fleet)
+            .ok_or(FinanceError::FleetNotFound)?;
 
         if fleet_budget.available_capital < source.amount {
             return Err(FinanceError::InsufficientFunds);
@@ -288,7 +302,10 @@ impl Treasurer for InMemoryTreasurer {
     }
 
     fn start_ticket_execution(&mut self, id: TicketId) -> Result<(), Self::Error> {
-        let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
+        let ticket = self
+            .tickets
+            .get_mut(&id)
+            .ok_or(FinanceError::TicketNotFound)?;
 
         // Check if ticket is funded
         if ticket.status != TicketStatus::Funded {
@@ -303,13 +320,17 @@ impl Treasurer for InMemoryTreasurer {
         ticket.update_from_event(&event);
 
         // Track active ticket for this vessel
-        self.active_tickets_by_vessel.insert(ticket.executing_vessel.clone(), id);
+        self.active_tickets_by_vessel
+            .insert(ticket.executing_vessel.clone(), id);
 
         Ok(())
     }
 
     fn record_event(&mut self, id: TicketId, event: TransactionEvent) -> Result<(), Self::Error> {
-        let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
+        let ticket = self
+            .tickets
+            .get_mut(&id)
+            .ok_or(FinanceError::TicketNotFound)?;
 
         // Process the event
         ticket.update_from_event(&event);
@@ -323,7 +344,10 @@ impl Treasurer for InMemoryTreasurer {
     }
 
     fn update_goal(&mut self, id: TicketId, goal_index: usize, updated_goal: TransactionGoal) -> Result<(), Self::Error> {
-        let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
+        let ticket = self
+            .tickets
+            .get_mut(&id)
+            .ok_or(FinanceError::TicketNotFound)?;
 
         if goal_index >= ticket.goals.len() {
             return Err(FinanceError::GoalNotFound);
@@ -340,7 +364,10 @@ impl Treasurer for InMemoryTreasurer {
             return Ok(());
         }
 
-        let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
+        let ticket = self
+            .tickets
+            .get_mut(&id)
+            .ok_or(FinanceError::TicketNotFound)?;
 
         if ticket.completed_at.is_some() {
             return Ok(());
@@ -390,7 +417,10 @@ impl Treasurer for InMemoryTreasurer {
                     net_profit: profit,
                 };
 
-                let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
+                let ticket = self
+                    .tickets
+                    .get_mut(&id)
+                    .ok_or(FinanceError::TicketNotFound)?;
                 ticket.update_from_event(&reconciliation_event);
 
                 println!(
@@ -431,7 +461,10 @@ impl Treasurer for InMemoryTreasurer {
                     net_profit: -ship_value,           // Negative profit because it's an expense
                 };
 
-                let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
+                let ticket = self
+                    .tickets
+                    .get_mut(&id)
+                    .ok_or(FinanceError::TicketNotFound)?;
                 ticket.update_from_event(&return_event);
 
                 // Add the ship value as an asset to the beneficiary fleet
@@ -449,7 +482,10 @@ impl Treasurer for InMemoryTreasurer {
                     to_fleet: beneficiary_fleet,
                 };
 
-                let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
+                let ticket = self
+                    .tickets
+                    .get_mut(&id)
+                    .ok_or(FinanceError::TicketNotFound)?;
                 ticket.update_from_event(&asset_event);
             }
 
@@ -473,14 +509,22 @@ impl Treasurer for InMemoryTreasurer {
                     net_profit: profit,
                 };
 
-                let ticket = self.tickets.get_mut(&id).ok_or(FinanceError::TicketNotFound)?;
+                let ticket = self
+                    .tickets
+                    .get_mut(&id)
+                    .ok_or(FinanceError::TicketNotFound)?;
                 ticket.update_from_event(&return_event);
             }
         }
 
         // Remove from active tickets
-        let ticket = self.tickets.get(&id).cloned().ok_or(FinanceError::TicketNotFound)?;
-        self.active_tickets_by_vessel.remove(&ticket.executing_vessel);
+        let ticket = self
+            .tickets
+            .get(&id)
+            .cloned()
+            .ok_or(FinanceError::TicketNotFound)?;
+        self.active_tickets_by_vessel
+            .remove(&ticket.executing_vessel);
         self.tickets.remove(&id);
         self.completed_tickets.insert(id, ticket);
 
@@ -547,7 +591,10 @@ impl Treasurer for InMemoryTreasurer {
     }
 
     fn get_fleet_budget(&self, fleet_id: &FleetId) -> Result<FleetBudget, Self::Error> {
-        self.fleet_budgets.get(fleet_id).cloned().ok_or(FinanceError::FleetNotFound)
+        self.fleet_budgets
+            .get(fleet_id)
+            .cloned()
+            .ok_or(FinanceError::FleetNotFound)
     }
 
     fn redistribute_distribute_fleet_budgets(
@@ -566,7 +613,10 @@ impl Treasurer for InMemoryTreasurer {
 
         let (new_ship_types, tasks_of_new_ships): (Vec<_>, Vec<_>) = all_next_ship_purchases.iter().cloned().unzip();
 
-        let fleet_task_lookup = fleet_tasks.iter().map(|(id, fleet_task)| (fleet_task.clone(), id.clone())).collect::<HashMap<_, _>>();
+        let fleet_task_lookup = fleet_tasks
+            .iter()
+            .map(|(id, fleet_task)| (fleet_task.clone(), id.clone()))
+            .collect::<HashMap<_, _>>();
 
         let market_observation_fleet_id = fleet_tasks
             .iter()
@@ -576,14 +626,20 @@ impl Treasurer for InMemoryTreasurer {
         match fleet_phase.name {
             FleetPhaseName::InitialExploration => {
                 // we start with one probe and want to keep 50k for trading. Let's try to reserve budget for purchasing one probe per shipyard
-                let command_ship_fleet_id =
-                    fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::InitialExploration { .. }).then_some(id)).unwrap();
+                let command_ship_fleet_id = fleet_tasks
+                    .iter()
+                    .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::InitialExploration { .. }).then_some(id))
+                    .unwrap();
 
                 let command_fleet_budget = self.treasury.min(Credits::new(51_000));
                 let command_ship_reserve = Credits::new(1_000);
                 self.create_fleet_budget(command_ship_fleet_id.clone(), command_fleet_budget, command_ship_reserve)?;
 
-                let other_fleets = fleet_tasks.iter().map(|(id, _)| id.clone()).filter(|id| self.fleet_budgets.contains_key(id).not()).collect_vec();
+                let other_fleets = fleet_tasks
+                    .iter()
+                    .map(|(id, _)| id.clone())
+                    .filter(|id| self.fleet_budgets.contains_key(id).not())
+                    .collect_vec();
 
                 for other_fleet_id in other_fleets {
                     self.create_fleet_budget(other_fleet_id, Credits::new(0), Credits::new(0))?
@@ -600,12 +656,19 @@ impl Treasurer for InMemoryTreasurer {
                 let reserve_per_ship = Credits::new(1_000);
                 let trading_budget_per_ship = Credits::new(75_000);
 
-                let construction_fleet_id =
-                    fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ConstructJumpGate { .. }).then_some(id)).unwrap();
+                let construction_fleet_id = fleet_tasks
+                    .iter()
+                    .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ConstructJumpGate { .. }).then_some(id))
+                    .unwrap();
 
-                let fleet_sizes = ship_fleet_assignment.iter().counts_by(|(_ss, fleet_id)| fleet_id.clone());
+                let fleet_sizes = ship_fleet_assignment
+                    .iter()
+                    .counts_by(|(_ss, fleet_id)| fleet_id.clone());
 
-                let num_trading_ships = fleet_sizes.get(construction_fleet_id).cloned().unwrap_or_default() as i64;
+                let num_trading_ships = fleet_sizes
+                    .get(construction_fleet_id)
+                    .cloned()
+                    .unwrap_or_default() as i64;
                 let trading_budget = Credits::new((trading_budget_per_ship.0 + reserve_per_ship.0) * num_trading_ships);
 
                 let construction_fleet_budget = self.treasury.min(trading_budget);
@@ -615,11 +678,17 @@ impl Treasurer for InMemoryTreasurer {
 
                 let rest_budget = self.treasury;
                 let ship_purchases_running_total = ship_price_info.get_running_total_of_all_ship_purchases(new_ship_types);
-                let affordable_ships =
-                    ship_purchases_running_total.iter().take_while(|(_, _, _, running_total)| (*running_total as i64) < rest_budget.0).collect_vec();
+                let affordable_ships = ship_purchases_running_total
+                    .iter()
+                    .take_while(|(_, _, _, running_total)| (*running_total as i64) < rest_budget.0)
+                    .collect_vec();
 
                 // we create a budget for the rest of the fleets
-                let other_fleets = fleet_tasks.iter().map(|(id, _)| id.clone()).filter(|id| self.fleet_budgets.contains_key(id).not()).collect_vec();
+                let other_fleets = fleet_tasks
+                    .iter()
+                    .map(|(id, _)| id.clone())
+                    .filter(|id| self.fleet_budgets.contains_key(id).not())
+                    .collect_vec();
                 for other_fleet_id in other_fleets {
                     self.create_fleet_budget(other_fleet_id, Credits::new(0), Credits::new(0))?
                 }

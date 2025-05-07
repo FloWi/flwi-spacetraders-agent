@@ -328,7 +328,11 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::HasRouteToDestination => {
-                if let Some((current_destination, last_travel_action)) = state.current_navigation_destination.clone().zip(state.last_travel_action()) {
+                if let Some((current_destination, last_travel_action)) = state
+                    .current_navigation_destination
+                    .clone()
+                    .zip(state.last_travel_action())
+                {
                     if current_destination == *last_travel_action.waypoint_and_time().0 {
                         Ok(Success)
                     } else {
@@ -370,11 +374,14 @@ impl Actionable for ShipAction {
                 let is_uncharted = exploration_tasks.contains(&ExplorationTask::CreateChart);
                 if is_uncharted {
                     let charted_waypoint = state.chart_waypoint().await?;
-                    args.insert_waypoint(&charted_waypoint.waypoint).await.map_err(|_| anyhow!("inserting waypoint failed"))?;
+                    args.insert_waypoint(&charted_waypoint.waypoint)
+                        .await
+                        .map_err(|_| anyhow!("inserting waypoint failed"))?;
                 }
 
                 let exploration_tasks = if is_uncharted {
-                    args.get_exploration_tasks_waypoint(&state.nav.waypoint_symbol).await?
+                    args.get_exploration_tasks_waypoint(&state.nav.waypoint_symbol)
+                        .await?
                 } else {
                     exploration_tasks
                 };
@@ -444,15 +451,20 @@ impl Actionable for ShipAction {
                                 destination_waypoint,
                                 ..
                             }) => {
-                                let is_in_cargo =
-                                    state.cargo.inventory.iter().any(|inventory| &inventory.symbol == good && &inventory.units >= target_quantity);
+                                let is_in_cargo = state
+                                    .cargo
+                                    .inventory
+                                    .iter()
+                                    .any(|inventory| &inventory.symbol == good && &inventory.units >= target_quantity);
                                 is_in_cargo.then_some(destination_waypoint.clone())
                             }
                             TransactionGoal::PurchaseShip(PurchaseShipTransactionGoal { shipyard_waypoint, .. }) => Some(shipyard_waypoint.clone()),
                         })
                         .collect_vec();
 
-                    let maybe_best_wps: Option<WaypointSymbol> = args.get_closest_waypoint(&state.nav.waypoint_symbol, &candidate_waypoints).await?;
+                    let maybe_best_wps: Option<WaypointSymbol> = args
+                        .get_closest_waypoint(&state.nav.waypoint_symbol, &candidate_waypoints)
+                        .await?;
 
                     match maybe_best_wps {
                         None => Err(anyhow!("No next trade waypoint found - maybe_best_waypoint is None")),
@@ -479,16 +491,27 @@ impl Actionable for ShipAction {
 
                     let current_location = &state.nav.waypoint_symbol.clone();
 
-                    for g in trade.get_incomplete_goals().into_iter().filter(|g| g.get_waypoint() == current_location) {
+                    for g in trade
+                        .get_incomplete_goals()
+                        .into_iter()
+                        .filter(|g| g.get_waypoint() == current_location)
+                    {
                         println!("processing incomplete goal {g:?}");
 
                         match g {
                             TransactionGoal::PurchaseTradeGoods(purchase_transaction_goal) => {
                                 let PurchaseTradeGoodsTransactionGoal { good, target_quantity, .. } = &purchase_transaction_goal;
-                                let response = state.purchase_trade_good(*target_quantity, good.clone()).await?;
+                                let response = state
+                                    .purchase_trade_good(*target_quantity, good.clone())
+                                    .await?;
 
-                                let updated_trade = args.mark_purchase_as_completed(trade.id, &purchase_transaction_goal, &response).await?;
-                                state.maybe_trade = updated_trade.is_complete().not().then_some(updated_trade.clone());
+                                let updated_trade = args
+                                    .mark_purchase_as_completed(trade.id, &purchase_transaction_goal, &response)
+                                    .await?;
+                                state.maybe_trade = updated_trade
+                                    .is_complete()
+                                    .not()
+                                    .then_some(updated_trade.clone());
 
                                 action_completed_tx
                                     .send(ActionEvent::TransactionCompleted(
@@ -512,10 +535,17 @@ impl Actionable for ShipAction {
                                     destination_waypoint,
                                 } = &sell_transaction_goal;
 
-                                let response = state.sell_trade_good(*target_quantity, good.clone()).await?;
+                                let response = state
+                                    .sell_trade_good(*target_quantity, good.clone())
+                                    .await?;
 
-                                let updated_trade = args.mark_sell_as_completed(trade.id, &sell_transaction_goal, &response).await?;
-                                state.maybe_trade = updated_trade.is_complete().not().then_some(updated_trade.clone());
+                                let updated_trade = args
+                                    .mark_sell_as_completed(trade.id, &sell_transaction_goal, &response)
+                                    .await?;
+                                state.maybe_trade = updated_trade
+                                    .is_complete()
+                                    .not()
+                                    .then_some(updated_trade.clone());
 
                                 action_completed_tx
                                     .send(ActionEvent::TransactionCompleted(
@@ -540,8 +570,13 @@ impl Actionable for ShipAction {
 
                                 let response = state.purchase_ship(ship_type, shipyard_waypoint).await?;
 
-                                let updated_trade = args.mark_ship_purchase_as_completed(trade.id, &ship_purchase_goal, &response).await?;
-                                state.maybe_trade = updated_trade.is_complete().not().then_some(updated_trade.clone());
+                                let updated_trade = args
+                                    .mark_ship_purchase_as_completed(trade.id, &ship_purchase_goal, &response)
+                                    .await?;
+                                state.maybe_trade = updated_trade
+                                    .is_complete()
+                                    .not()
+                                    .then_some(updated_trade.clone());
 
                                 action_completed_tx
                                     .send(ActionEvent::TransactionCompleted(
@@ -667,10 +702,14 @@ impl Actionable for ShipAction {
 
         match result {
             Ok(_res) => {
-                action_completed_tx.send(ActionEvent::ShipActionCompleted(state.clone(), self.clone(), Ok(()))).await?;
+                action_completed_tx
+                    .send(ActionEvent::ShipActionCompleted(state.clone(), self.clone(), Ok(())))
+                    .await?;
             }
             Err(err) => {
-                action_completed_tx.send(anyhow::bail!("Action failed {}", err)).await?;
+                action_completed_tx
+                    .send(anyhow::bail!("Action failed {}", err))
+                    .await?;
             }
         };
 
@@ -753,8 +792,12 @@ mod tests {
         drop(ship_action_completed_tx);
 
         // Wait for the collectors to finish and get their results
-        let received_action_state_messages = state_result_rx.await.map_err(|_| anyhow::anyhow!("Failed to receive action state messages"))?;
-        let received_action_completed_messages = action_result_rx.await.map_err(|_| anyhow::anyhow!("Failed to receive action completed messages"))?;
+        let received_action_state_messages = state_result_rx
+            .await
+            .map_err(|_| anyhow::anyhow!("Failed to receive action state messages"))?;
+        let received_action_completed_messages = action_result_rx
+            .await
+            .map_err(|_| anyhow::anyhow!("Failed to receive action completed messages"))?;
 
         Ok((result?, received_action_state_messages, received_action_completed_messages))
     }
@@ -763,16 +806,19 @@ mod tests {
     async fn test_experiment_with_mockall() {
         let mut mock_client = MockStClientTrait::new();
 
-        mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).return_once(move |_| {
-            Ok(DockShipResponse {
-                data: TestObjects::create_nav(
-                    FlightMode::Drift,
-                    NavStatus::InTransit,
-                    &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    &WaypointSymbol("X1-FOO-BAR".to_string()),
-                ),
-            })
-        });
+        mock_client
+            .expect_dock_ship()
+            .with(eq(ShipSymbol("FLWI-1".to_string())))
+            .return_once(move |_| {
+                Ok(DockShipResponse {
+                    data: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::InTransit,
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
+                })
+            });
 
         let ship = TestObjects::test_ship(500);
 
@@ -790,16 +836,19 @@ mod tests {
             treasurer: Arc::new(Mutex::new(InMemoryTreasurer::new(0.into()))),
         };
 
-        let mocked_client = mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).returning(move |_| {
-            Ok(DockShipResponse {
-                data: TestObjects::create_nav(
-                    FlightMode::Drift,
-                    NavStatus::InTransit,
-                    &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    &WaypointSymbol("X1-FOO-BAR".to_string()),
-                ),
-            })
-        });
+        let mocked_client = mock_client
+            .expect_dock_ship()
+            .with(eq(ShipSymbol("FLWI-1".to_string())))
+            .returning(move |_| {
+                Ok(DockShipResponse {
+                    data: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::InTransit,
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
+                })
+            });
 
         // if ship is docked
 
@@ -812,7 +861,9 @@ mod tests {
         mocked_client.never();
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
-        let (result, ship_states, action_events) = test_run_ship_behavior(&mut ship_ops, Duration::from_millis(1), args, ship_behavior).await.unwrap();
+        let (result, ship_states, action_events) = test_run_ship_behavior(&mut ship_ops, Duration::from_millis(1), args, ship_behavior)
+            .await
+            .unwrap();
 
         assert_eq!(result, Success);
     }
@@ -826,16 +877,19 @@ mod tests {
             treasurer: Arc::new(Mutex::new(InMemoryTreasurer::new(0.into()))),
         };
 
-        let mocked_client = mock_client.expect_dock_ship().with(eq(ShipSymbol("FLWI-1".to_string()))).returning(move |_| {
-            Ok(DockShipResponse {
-                data: TestObjects::create_nav(
-                    FlightMode::Drift,
-                    NavStatus::InTransit,
-                    &WaypointSymbol("X1-FOO-BAR".to_string()),
-                    &WaypointSymbol("X1-FOO-BAR".to_string()),
-                ),
-            })
-        });
+        let mocked_client = mock_client
+            .expect_dock_ship()
+            .with(eq(ShipSymbol("FLWI-1".to_string())))
+            .returning(move |_| {
+                Ok(DockShipResponse {
+                    data: TestObjects::create_nav(
+                        FlightMode::Drift,
+                        NavStatus::InTransit,
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                        &WaypointSymbol("X1-FOO-BAR".to_string()),
+                    ),
+                })
+            });
 
         // if ship is docked
 
@@ -849,7 +903,9 @@ mod tests {
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
 
-        let (result, ship_states, action_events) = test_run_ship_behavior(&mut ship_ops, Duration::from_millis(1), args, ship_behavior).await.unwrap();
+        let (result, ship_states, action_events) = test_run_ship_behavior(&mut ship_ops, Duration::from_millis(1), args, ship_behavior)
+            .await
+            .unwrap();
 
         assert_eq!(result, Success);
         assert_eq!(1, ship_states.len());
@@ -912,16 +968,30 @@ mod tests {
             .with(eq((*waypoint_bar).clone()), eq((*waypoint_a1).clone()), eq(30), eq(current_fuel), eq(600))
             .returning(move |_, _, _, _, _| Ok(first_hop_actions.clone()));
 
-        let waypoint_map = explorer_waypoints.iter().map(|wp| (wp.symbol.clone(), wp.clone())).collect::<HashMap<_, _>>();
+        let waypoint_map = explorer_waypoints
+            .iter()
+            .map(|wp| (wp.symbol.clone(), wp.clone()))
+            .collect::<HashMap<_, _>>();
 
-        mock_test_blackboard.expect_get_waypoint().returning(move |wps| waypoint_map.get(wps).cloned().ok_or(anyhow!("Waypoint not expected")));
+        mock_test_blackboard
+            .expect_get_waypoint()
+            .returning(move |wps| {
+                waypoint_map
+                    .get(wps)
+                    .cloned()
+                    .ok_or(anyhow!("Waypoint not expected"))
+            });
 
         mock_test_blackboard
             .expect_compute_path()
             .with(eq((*waypoint_a1).clone()), eq((*waypoint_a2).clone()), eq(30), eq(300), eq(600))
             .returning(move |_, _, _, _, _| Ok(second_hop_actions.clone()));
 
-        mock_test_blackboard.expect_insert_market().with(mockall::predicate::always()).times(2).returning(|_| Ok(()));
+        mock_test_blackboard
+            .expect_insert_market()
+            .with(mockall::predicate::always())
+            .times(2)
+            .returning(|_| Ok(()));
 
         let waypoint_a1_clone = Arc::clone(&waypoint_a1);
         let waypoint_a2_clone = Arc::clone(&waypoint_a2);
@@ -946,26 +1016,34 @@ mod tests {
             });
 
         let waypoint_bar_clone = Arc::clone(&waypoint_bar);
-        mock_client.expect_set_flight_mode().with(eq(ShipSymbol("FLWI-1".to_string())), eq(FlightMode::Burn)).times(1).returning(move |_, _| {
-            Ok(SetFlightModeResponse {
-                data: NavAndFuelResponse {
-                    nav: TestObjects::create_nav(FlightMode::Burn, NavStatus::InTransit, &waypoint_bar_clone, &waypoint_bar_clone).nav,
-                    fuel: TestObjects::create_fuel(current_fuel, 200),
-                },
-            })
-        });
+        mock_client
+            .expect_set_flight_mode()
+            .with(eq(ShipSymbol("FLWI-1".to_string())), eq(FlightMode::Burn))
+            .times(1)
+            .returning(move |_, _| {
+                Ok(SetFlightModeResponse {
+                    data: NavAndFuelResponse {
+                        nav: TestObjects::create_nav(FlightMode::Burn, NavStatus::InTransit, &waypoint_bar_clone, &waypoint_bar_clone).nav,
+                        fuel: TestObjects::create_fuel(current_fuel, 200),
+                    },
+                })
+            });
 
         let waypoint_a1_clone = Arc::clone(&waypoint_a1);
         let waypoint_a2_clone = Arc::clone(&waypoint_a2);
-        mock_client.expect_get_marketplace().withf(|wp| wp.0.contains("X1-FOO-A")).times(2).returning(move |wp| {
-            let market_data = if wp.0.ends_with("A1") {
-                TestObjects::create_market_data(&waypoint_a1_clone)
-            } else {
-                TestObjects::create_market_data(&waypoint_a2_clone)
-            };
+        mock_client
+            .expect_get_marketplace()
+            .withf(|wp| wp.0.contains("X1-FOO-A"))
+            .times(2)
+            .returning(move |wp| {
+                let market_data = if wp.0.ends_with("A1") {
+                    TestObjects::create_market_data(&waypoint_a1_clone)
+                } else {
+                    TestObjects::create_market_data(&waypoint_a2_clone)
+                };
 
-            Ok(GetMarketResponse { data: market_data })
-        });
+                Ok(GetMarketResponse { data: market_data })
+            });
 
         let behaviors = ship_behaviors();
         let mut ship_behavior = behaviors.explorer_behavior;
@@ -979,11 +1057,16 @@ mod tests {
             treasurer: Arc::new(Mutex::new(InMemoryTreasurer::new(0.into()))),
         };
 
-        let explorer_waypoint_symbols = explorer_waypoints.iter().map(|wp| wp.symbol.clone()).collect_vec();
+        let explorer_waypoint_symbols = explorer_waypoints
+            .iter()
+            .map(|wp| wp.symbol.clone())
+            .collect_vec();
 
         ship_ops.set_explore_locations(explorer_waypoint_symbols);
 
-        let (result, ship_states, action_events) = test_run_ship_behavior(&mut ship_ops, Duration::from_millis(1), args, ship_behavior).await.unwrap();
+        let (result, ship_states, action_events) = test_run_ship_behavior(&mut ship_ops, Duration::from_millis(1), args, ship_behavior)
+            .await
+            .unwrap();
 
         assert_eq!(result, Success);
         assert_eq!(ship_ops.nav.waypoint_symbol, *waypoint_a2);

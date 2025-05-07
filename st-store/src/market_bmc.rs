@@ -76,21 +76,35 @@ pub struct InMemoryMarketBmc {
 #[async_trait]
 impl MarketBmcTrait for InMemoryMarketBmc {
     async fn get_latest_market_data_for_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>> {
-        Ok(self.in_memory_market.read().await.latest_market_data.get(system_symbol).cloned().unwrap_or_default().values().cloned().collect_vec())
+        Ok(self
+            .in_memory_market
+            .read()
+            .await
+            .latest_market_data
+            .get(system_symbol)
+            .cloned()
+            .unwrap_or_default()
+            .values()
+            .cloned()
+            .collect_vec())
     }
 
     async fn save_market_data(&self, ctx: &Ctx, market_entries: Vec<MarketData>, now: DateTime<Utc>) -> Result<()> {
         let mut guard = self.in_memory_market.write().await;
 
         for me in market_entries {
-            guard.latest_market_data.entry(me.symbol.system_symbol()).or_default().insert(
-                me.symbol.clone(),
-                MarketEntry {
-                    waypoint_symbol: me.symbol.clone(),
-                    market_data: me.clone(),
-                    created_at: now,
-                },
-            );
+            guard
+                .latest_market_data
+                .entry(me.symbol.system_symbol())
+                .or_default()
+                .insert(
+                    me.symbol.clone(),
+                    MarketEntry {
+                        waypoint_symbol: me.symbol.clone(),
+                        market_data: me.clone(),
+                        created_at: now,
+                    },
+                );
         }
         Ok(())
     }

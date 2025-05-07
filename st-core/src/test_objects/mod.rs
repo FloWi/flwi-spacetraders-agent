@@ -325,8 +325,12 @@ mod tests {
         drop(ship_action_completed_tx);
 
         // Wait for the collectors to finish and get their results
-        let received_action_state_messages = state_result_rx.await.map_err(|_| anyhow::anyhow!("Failed to receive action state messages"))?;
-        let received_action_completed_messages = action_result_rx.await.map_err(|_| anyhow::anyhow!("Failed to receive action completed messages"))?;
+        let received_action_state_messages = state_result_rx
+            .await
+            .map_err(|_| anyhow::anyhow!("Failed to receive action state messages"))?;
+        let received_action_completed_messages = action_result_rx
+            .await
+            .map_err(|_| anyhow::anyhow!("Failed to receive action completed messages"))?;
 
         Ok((result?, received_action_state_messages, received_action_completed_messages))
     }

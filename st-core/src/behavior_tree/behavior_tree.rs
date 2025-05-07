@@ -170,13 +170,18 @@ impl<A: Display + Hash> Behavior<A> {
     }
 
     fn build_mermaid(&self, output: &mut String, parent: Option<usize>, labelled_sub_graphs: &HashMap<u64, String>) {
-        let current_index = self.index().expect("Index should be set before generating Mermaid diagram");
+        let current_index = self
+            .index()
+            .expect("Index should be set before generating Mermaid diagram");
 
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
         let hash = hasher.finish();
 
-        let node_label = labelled_sub_graphs.get(&hash).map(|str| format!("Sub Graph {}", str)).unwrap_or(format!("{}", self));
+        let node_label = labelled_sub_graphs
+            .get(&hash)
+            .map(|str| format!("Sub Graph {}", str))
+            .unwrap_or(format!("{}", self));
 
         let node_content = format!("`{}\nIndex: {}\nHash: {:016x}`", node_label, self.index().unwrap(), hash);
 
@@ -284,9 +289,14 @@ where
         event!(Level::DEBUG, message = "Starting run", index = self.index(), actionable = actionable_label,);
 
         let result = match self {
-            Behavior::Action(a, _) => a.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await,
+            Behavior::Action(a, _) => {
+                a.run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                    .await
+            }
             Behavior::Invert(b, _) => {
-                let result = b.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await;
+                let result = b
+                    .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                    .await;
                 match result {
                     Ok(r) => match r {
                         Response::Success => Err(Self::ActionError::from(anyhow!("Inverted Ok"))),
@@ -297,7 +307,9 @@ where
             }
             Behavior::Select(behaviors, maybe_idx) => {
                 for b in behaviors {
-                    let result = b.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await;
+                    let result = b
+                        .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                        .await;
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(r) => return Ok(r),
@@ -310,7 +322,9 @@ where
             // Behavior::While { .. } => {}
             Behavior::Sequence(behaviors, _) => {
                 for b in behaviors {
-                    let result = b.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await;
+                    let result = b
+                        .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                        .await;
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(_) => continue,
@@ -323,12 +337,16 @@ where
                 Ok(Response::Success)
             }
             Behavior::While { condition, action, .. } => loop {
-                let condition_result = condition.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await;
+                let condition_result = condition
+                    .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                    .await;
 
                 match condition_result {
                     Err(_) => return Ok(Response::Success),
                     Ok(_) => {
-                        let action_result = action.run(args, state, sleep_duration, state_changed_tx, action_completed_tx).await;
+                        let action_result = action
+                            .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                            .await;
                         match action_result {
                             Err(err) => {
                                 let maybe_idx = action.index();
@@ -456,7 +474,9 @@ mod tests {
         let (tx, rx) = mpsc::channel(32);
         let (tx2, rx2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2).await.unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2)
+            .await
+            .unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(1));
     }
@@ -472,7 +492,9 @@ mod tests {
         let (tx, rx) = mpsc::channel(32);
         let (tx2, rx2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2).await.unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2)
+            .await
+            .unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(0));
     }
@@ -489,7 +511,10 @@ mod tests {
         let (tx, rx) = mpsc::channel(32);
         let (tx2, rx2) = mpsc::channel(32);
 
-        let result = bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2).await.unwrap();
+        let result = bt
+            .run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2)
+            .await
+            .unwrap();
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(1));
         assert_eq!(result, Running)
@@ -503,7 +528,9 @@ mod tests {
         let (tx, rx) = mpsc::channel(32);
         let (tx2, rx2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2).await.unwrap();
+        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2)
+            .await
+            .unwrap();
 
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(2));
@@ -517,7 +544,9 @@ mod tests {
         let (tx, rx) = mpsc::channel(32);
         let (tx2, rx2) = mpsc::channel(32);
 
-        let result = bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2).await;
+        let result = bt
+            .run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2)
+            .await;
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(42));
         result.is_ok();

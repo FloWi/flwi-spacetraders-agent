@@ -82,10 +82,14 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
 
     let client: Arc<dyn StClientTrait> = Arc::new(authenticated_client);
 
-    let jump_gate_wp_of_home_system =
-        waypoint_entries_of_home_system.iter().find(|wp| wp.r#type == WaypointType::JUMP_GATE).expect("home system should have a jump-gate");
+    let jump_gate_wp_of_home_system = waypoint_entries_of_home_system
+        .iter()
+        .find(|wp| wp.r#type == WaypointType::JUMP_GATE)
+        .expect("home system should have a jump-gate");
 
-    let construction_site = client.get_construction_site(&jump_gate_wp_of_home_system.symbol).await?;
+    let construction_site = client
+        .get_construction_site(&jump_gate_wp_of_home_system.symbol)
+        .await?;
 
     db::upsert_construction_site(&pool, construction_site, now).await?;
 
@@ -257,7 +261,9 @@ async fn collect_waypoints_for_systems(
     home_system: &SystemSymbol,
     pool: &Pool<Postgres>,
 ) -> Result<()> {
-    let home_system = db::select_system_with_coordinate(pool, home_system).await?.unwrap();
+    let home_system = db::select_system_with_coordinate(pool, home_system)
+        .await?
+        .unwrap();
 
     // sort systems by the distance from our system
     event!(

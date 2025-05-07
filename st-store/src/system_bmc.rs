@@ -51,7 +51,8 @@ select count(*) as count
         .fetch_one(self.mm.pool())
         .await?;
 
-        row.count.ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
+        row.count
+            .ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
     }
 
     async fn get_num_waypoints(&self, ctx: &Ctx) -> Result<i64> {
@@ -64,7 +65,8 @@ select count(*) as count
         .fetch_one(self.mm.pool())
         .await?;
 
-        row.count.ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
+        row.count
+            .ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
     }
 }
 
@@ -97,28 +99,61 @@ impl InMemorySystemsBmc {
 #[async_trait]
 impl SystemBmcTrait for InMemorySystemsBmc {
     async fn get_waypoints_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<Waypoint>> {
-        Ok(self.in_memory_systems.read().await.waypoints_per_system.get(system_symbol).cloned().unwrap_or_default().values().cloned().collect_vec())
+        Ok(self
+            .in_memory_systems
+            .read()
+            .await
+            .waypoints_per_system
+            .get(system_symbol)
+            .cloned()
+            .unwrap_or_default()
+            .values()
+            .cloned()
+            .collect_vec())
     }
 
     async fn save_waypoints_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol, waypoints: Vec<Waypoint>) -> Result<()> {
-        let waypoint_map = waypoints.into_iter().map(|wp| (wp.symbol.clone(), wp)).collect();
-        self.in_memory_systems.write().await.waypoints_per_system.insert(system_symbol.clone(), waypoint_map);
+        let waypoint_map = waypoints
+            .into_iter()
+            .map(|wp| (wp.symbol.clone(), wp))
+            .collect();
+        self.in_memory_systems
+            .write()
+            .await
+            .waypoints_per_system
+            .insert(system_symbol.clone(), waypoint_map);
         Ok(())
     }
 
     async fn upsert_waypoint(&self, ctx: &Ctx, waypoint: Waypoint) -> Result<()> {
         let mut guard = self.in_memory_systems.write().await;
 
-        guard.waypoints_per_system.entry(waypoint.system_symbol.clone()).or_default().insert(waypoint.symbol.clone(), waypoint.clone());
+        guard
+            .waypoints_per_system
+            .entry(waypoint.system_symbol.clone())
+            .or_default()
+            .insert(waypoint.symbol.clone(), waypoint.clone());
         Ok(())
     }
 
     async fn get_num_systems(&self, ctx: &Ctx) -> Result<i64> {
-        Ok(self.in_memory_systems.read().await.waypoints_per_system.len() as i64)
+        Ok(self
+            .in_memory_systems
+            .read()
+            .await
+            .waypoints_per_system
+            .len() as i64)
     }
 
     async fn get_num_waypoints(&self, ctx: &Ctx) -> Result<i64> {
-        let result = self.in_memory_systems.read().await.waypoints_per_system.iter().map(|(_ss, waypoints)| waypoints.len() as i64).sum();
+        let result = self
+            .in_memory_systems
+            .read()
+            .await
+            .waypoints_per_system
+            .iter()
+            .map(|(_ss, waypoints)| waypoints.len() as i64)
+            .sum();
         Ok(result)
     }
 }

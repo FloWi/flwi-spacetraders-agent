@@ -306,7 +306,10 @@ pub struct Construction {
 
 impl Construction {
     pub(crate) fn all_construction_materials(&self) -> HashMap<TradeGoodSymbol, u32> {
-        self.materials.iter().map(|cm| (cm.trade_symbol.clone(), cm.required)).collect()
+        self.materials
+            .iter()
+            .map(|cm| (cm.trade_symbol.clone(), cm.required))
+            .collect()
     }
 
     pub(crate) fn missing_construction_materials(&self) -> HashMap<TradeGoodSymbol, u32> {
@@ -718,7 +721,12 @@ impl Ship {
         if self.cargo.units + units as i32 > self.cargo.capacity {
             return Err(anyhow!("Not enough cargo space"));
         }
-        if let Some(idx) = self.cargo.inventory.iter().position(|inv| &inv.symbol == trade_good_symbol) {
+        if let Some(idx) = self
+            .cargo
+            .inventory
+            .iter()
+            .position(|inv| &inv.symbol == trade_good_symbol)
+        {
             self.cargo.inventory.get_mut(idx).unwrap().units += units;
             self.cargo.units += units as i32;
         } else {
@@ -735,7 +743,12 @@ impl Ship {
     }
 
     pub fn try_remove_cargo(&mut self, units: u32, trade_good_symbol: &TradeGoodSymbol) -> Result<()> {
-        if let Some((idx, inv)) = self.cargo.inventory.iter().find_position(|inv| &inv.symbol == trade_good_symbol) {
+        if let Some((idx, inv)) = self
+            .cargo
+            .inventory
+            .iter()
+            .find_position(|inv| &inv.symbol == trade_good_symbol)
+        {
             if inv.units < units {
                 return Err(anyhow!(
                     "Cannot remove {} units of {} from cargo. Only {} units in inventory.",
@@ -1104,7 +1117,10 @@ impl Cargo {
         let mut cargo = self.clone();
 
         // Find the index of the inventory item with the matching symbol
-        let maybe_item_index = cargo.inventory.iter().position(|item| item.symbol == trade_good_symbol);
+        let maybe_item_index = cargo
+            .inventory
+            .iter()
+            .position(|item| item.symbol == trade_good_symbol);
 
         // If the item exists in inventory
         if let Some(index) = maybe_item_index {

@@ -85,7 +85,9 @@ where
 
             event!(Level::TRACE, "Downloaded page {} of {}", current_input.page, total_number_of_pages);
 
-            tx.send((response.data, now)).await.map_err(|e| anyhow::anyhow!("Failed to send data: {}", e))?;
+            tx.send((response.data, now))
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to send data: {}", e))?;
             current_input.page += 1;
         }
 
@@ -118,16 +120,21 @@ where
             input_parameter_type_name,
             output_parameter_type_name
         );
-        let results = future::try_join_all(collection.into_iter().enumerate().map(move |(index, item)| {
-            // Use move here
-            let f = f.clone(); // Clone f for each iteration
-            async move {
-                trace!("Processing item {} of {} {:?}", index + 1, total, item);
-                let result = f(item).await;
-                trace!("Finished processing item {} of {}", index + 1, total);
-                result
-            }
-        }))
+        let results = future::try_join_all(
+            collection
+                .into_iter()
+                .enumerate()
+                .map(move |(index, item)| {
+                    // Use move here
+                    let f = f.clone(); // Clone f for each iteration
+                    async move {
+                        trace!("Processing item {} of {} {:?}", index + 1, total, item);
+                        let result = f(item).await;
+                        trace!("Finished processing item {} of {}", index + 1, total);
+                        result
+                    }
+                }),
+        )
         .await?;
 
         trace!(

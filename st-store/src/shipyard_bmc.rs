@@ -75,26 +75,50 @@ impl InMemoryShipyardBmc {
 #[async_trait]
 impl ShipyardBmcTrait for InMemoryShipyardBmc {
     async fn get_latest_ship_prices(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<ShipPriceInfo> {
-        let shipyards = self.in_memory_shipyards.read().await.shipyards.get(system_symbol).cloned().unwrap_or_default().values().cloned().collect_vec();
+        let shipyards = self
+            .in_memory_shipyards
+            .read()
+            .await
+            .shipyards
+            .get(system_symbol)
+            .cloned()
+            .unwrap_or_default()
+            .values()
+            .cloned()
+            .collect_vec();
         let ship_price_info = extract_ship_price_infos_from_shipyards(&shipyards);
         Ok(ship_price_info)
     }
 
     async fn get_latest_shipyard_entries_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<ShipyardData>> {
-        let shipyards = self.in_memory_shipyards.read().await.shipyards.get(system_symbol).cloned().unwrap_or_default().values().cloned().collect_vec();
+        let shipyards = self
+            .in_memory_shipyards
+            .read()
+            .await
+            .shipyards
+            .get(system_symbol)
+            .cloned()
+            .unwrap_or_default()
+            .values()
+            .cloned()
+            .collect_vec();
         Ok(shipyards)
     }
 
     async fn save_shipyard_data(&self, ctx: &Ctx, shipyard: Shipyard, now: DateTime<Utc>) -> Result<()> {
         let mut guard = self.in_memory_shipyards.write().await;
-        guard.shipyards.entry(shipyard.symbol.system_symbol()).or_default().insert(
-            shipyard.symbol.clone(),
-            ShipyardData {
-                waypoint_symbol: shipyard.symbol.clone(),
-                shipyard,
-                created_at: now,
-            },
-        );
+        guard
+            .shipyards
+            .entry(shipyard.symbol.system_symbol())
+            .or_default()
+            .insert(
+                shipyard.symbol.clone(),
+                ShipyardData {
+                    waypoint_symbol: shipyard.symbol.clone(),
+                    shipyard,
+                    created_at: now,
+                },
+            );
         Ok(())
     }
 }

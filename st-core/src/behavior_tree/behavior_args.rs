@@ -139,8 +139,11 @@ impl BlackboardOps for DbBlackboard {
 
         let waypoints_of_system: Vec<Waypoint> = select_waypoints_of_system(self.pool(), &from.system_symbol()).await?;
 
-        let market_entries_of_system: Vec<MarketData> =
-            select_latest_marketplace_entry_of_system(self.pool(), &from.system_symbol()).await?.into_iter().map(|me| me.market_data.clone()).collect();
+        let market_entries_of_system: Vec<MarketData> = select_latest_marketplace_entry_of_system(self.pool(), &from.system_symbol())
+            .await?
+            .into_iter()
+            .map(|me| me.market_data.clone())
+            .collect();
 
         match pathfinder::compute_path(
             from.clone(),
@@ -175,12 +178,18 @@ impl BlackboardOps for DbBlackboard {
     async fn get_closest_waypoint(&self, current_location: &WaypointSymbol, candidates: &[WaypointSymbol]) -> Result<Option<WaypointSymbol>> {
         //TODO: improve by caching a waypoint_map
         let waypoints = select_waypoints_of_system(self.pool(), &current_location.system_symbol()).await?;
-        let current_waypoint = waypoints.iter().find(|wp| wp.symbol == *current_location).expect("Current location waypoint");
+        let current_waypoint = waypoints
+            .iter()
+            .find(|wp| wp.symbol == *current_location)
+            .expect("Current location waypoint");
 
         Ok(candidates
             .iter()
             .map(|wps| {
-                let wp = waypoints.iter().find(|wp| wp.symbol == *wps).expect("candidate waypoint");
+                let wp = waypoints
+                    .iter()
+                    .find(|wp| wp.symbol == *wps)
+                    .expect("candidate waypoint");
                 (wps.clone(), current_waypoint.distance_to(wp))
             })
             .sorted_by_key(|(_, distance)| *distance)
@@ -191,16 +200,27 @@ impl BlackboardOps for DbBlackboard {
 
     async fn get_waypoint(&self, waypoint_symbol: &WaypointSymbol) -> Result<Waypoint> {
         let waypoints = select_waypoints_of_system(self.pool(), &waypoint_symbol.system_symbol()).await?;
-        let waypoint = waypoints.into_iter().find(|wp| wp.symbol == *waypoint_symbol).expect("waypoint");
+        let waypoint = waypoints
+            .into_iter()
+            .find(|wp| wp.symbol == *waypoint_symbol)
+            .expect("waypoint");
 
         Ok(waypoint)
     }
 
     async fn get_ticket_by_id(&self, ticket_id: TicketId) -> Result<TransactionTicket> {
-        self.bmc.trade_bmc().get_ticket_by_id(&Ctx::Anonymous, ticket_id).await
+        self.bmc
+            .trade_bmc()
+            .get_ticket_by_id(&Ctx::Anonymous, ticket_id)
+            .await
     }
 
     async fn get_available_agent_credits(&self) -> anyhow::Result<i64> {
-        Ok(self.bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?.credits)
+        Ok(self
+            .bmc
+            .agent_bmc()
+            .load_agent(&Ctx::Anonymous)
+            .await?
+            .credits)
     }
 }

@@ -42,7 +42,12 @@ pub struct InMemorySupplyChains {
 #[async_trait]
 impl SupplyChainBmcTrait for InMemorySupplyChainBmc {
     async fn get_supply_chain(&self, _ctx: &Ctx) -> Result<Option<SupplyChain>> {
-        Ok(self.in_memory_supply_chain.read().await.supply_chain.clone())
+        Ok(self
+            .in_memory_supply_chain
+            .read()
+            .await
+            .supply_chain
+            .clone())
     }
 
     async fn insert_supply_chain(&self, ctx: &Ctx, supply_chain: SupplyChain, now: DateTime<Utc>) -> Result<()> {

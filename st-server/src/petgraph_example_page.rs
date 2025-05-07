@@ -56,8 +56,16 @@ impl TechNode {
         match &self.source {
             TechNodeSource::Raw(_) => None,
             TechNodeSource::Market(mtg) => Some(ColoredLabel {
-                label: mtg.activity.clone().map(|activity| activity.to_string()).unwrap_or("---".to_string()),
-                color: mtg.activity.clone().map(|activity| get_activity_color(&activity)).unwrap_or("lightgray".to_string()),
+                label: mtg
+                    .activity
+                    .clone()
+                    .map(|activity| activity.to_string())
+                    .unwrap_or("---".to_string()),
+                color: mtg
+                    .activity
+                    .clone()
+                    .map(|activity| get_activity_color(&activity))
+                    .unwrap_or("lightgray".to_string()),
             }),
         }
     }
@@ -66,8 +74,16 @@ impl TechNode {
 impl TechEdge {
     pub(crate) fn maybe_activity_text(&self) -> Option<ColoredLabel> {
         Some(ColoredLabel {
-            label: self.activity.clone().map(|activity| activity.to_string()).unwrap_or("---".to_string()),
-            color: self.activity.clone().map(|activity| get_activity_color(&activity)).unwrap_or("lightgray".to_string()),
+            label: self
+                .activity
+                .clone()
+                .map(|activity| activity.to_string())
+                .unwrap_or("---".to_string()),
+            color: self
+                .activity
+                .clone()
+                .map(|activity| get_activity_color(&activity))
+                .unwrap_or("lightgray".to_string()),
         })
     }
 }
@@ -147,12 +163,24 @@ async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec
 
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-    let json_path = std::path::Path::new(manifest_dir).parent().unwrap().join("resources").join("universe_snapshot.json");
+    let json_path = std::path::Path::new(manifest_dir)
+        .parent()
+        .unwrap()
+        .join("resources")
+        .join("universe_snapshot.json");
 
     let in_memory_universe = InMemoryUniverse::from_snapshot(json_path).expect("InMemoryUniverse::from_snapshot");
 
-    let shipyard_waypoints = in_memory_universe.shipyards.keys().cloned().collect::<HashSet<_>>();
-    let marketplace_waypoints = in_memory_universe.marketplaces.keys().cloned().collect::<HashSet<_>>();
+    let shipyard_waypoints = in_memory_universe
+        .shipyards
+        .keys()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let marketplace_waypoints = in_memory_universe
+        .marketplaces
+        .keys()
+        .cloned()
+        .collect::<HashSet<_>>();
 
     let in_memory_client = InMemoryUniverseClient::new_with_overrides(
         in_memory_universe,
@@ -200,15 +228,22 @@ async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec
     let bmc = Arc::new(bmc) as Arc<dyn Bmc>;
 
     // because of the override, we should have detailed market data
-    FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
+    FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
+        .await
+        .expect("FleetRunner::load_and_store_initial_data");
 
     // easier to get the supply chain this way, since we need plenty of things for computing it
-    let facts = collect_fleet_decision_facts(bmc, &hq_system_symbol).await.expect("facts");
+    let facts = collect_fleet_decision_facts(bmc, &hq_system_symbol)
+        .await
+        .expect("facts");
 
     let materialized_supply_chain = facts.materialized_supply_chain.unwrap();
 
     assert!(
-        materialized_supply_chain.raw_delivery_routes.is_empty().not(),
+        materialized_supply_chain
+            .raw_delivery_routes
+            .is_empty()
+            .not(),
         "raw_delivery_routes should not be empty"
     );
 
@@ -545,7 +580,11 @@ pub fn TechTreeGraph(node_data: Vec<TechNode>, edge_data: Vec<TechEdge>) -> impl
 
                 // Initialize ranks for source nodes (nodes with no incoming edges)
                 for node_idx in graph.node_indices() {
-                    if graph.neighbors_directed(node_idx, Direction::Incoming).count() == 0 {
+                    if graph
+                        .neighbors_directed(node_idx, Direction::Incoming)
+                        .count()
+                        == 0
+                    {
                         max_rank_by_node.insert(node_idx, 0);
                     }
                 }
@@ -630,9 +669,13 @@ pub fn TechTreeGraph(node_data: Vec<TechNode>, edge_data: Vec<TechEdge>) -> impl
             let mut new_edge = edge.clone();
 
             // Find the source and target nodes with calculated positions
-            let source_node = result_nodes.iter().find(|n| n.id == edge.source && n.x.is_some() && n.y.is_some());
+            let source_node = result_nodes
+                .iter()
+                .find(|n| n.id == edge.source && n.x.is_some() && n.y.is_some());
 
-            let target_node = result_nodes.iter().find(|n| n.id == edge.target && n.x.is_some() && n.y.is_some());
+            let target_node = result_nodes
+                .iter()
+                .find(|n| n.id == edge.target && n.x.is_some() && n.y.is_some());
 
             if let (Some(source), Some(target)) = (source_node, target_node) {
                 // Calculate edge points with the edge's curve factor

@@ -30,13 +30,18 @@ mod tests {
 
         let mut finance = InMemoryTreasurer::new(Credits::new(agent.credits));
 
-        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
+        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
+            .await
+            .expect("FleetRunner::load_and_store_initial_data");
 
         let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
 
         let marketplaces_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(facts.marketplaces_of_interest.iter().cloned());
         let shipyards_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(facts.shipyards_of_interest.iter().cloned());
-        let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest.difference(&shipyards_of_interest).cloned().collect_vec();
+        let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest
+            .difference(&shipyards_of_interest)
+            .cloned()
+            .collect_vec();
 
         let fleet_phase = fleet::create_initial_exploration_fleet_phase(&system_symbol, shipyards_of_interest.len());
         // let fleet_phase = fleet::create_construction_fleet_phase(&system_symbol, facts.shipyards_of_interest.len(), marketplaces_ex_shipyards.len());
@@ -44,14 +49,23 @@ mod tests {
         let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) =
             fleet::compute_fleets_with_tasks(&facts, &Default::default(), &Default::default(), &fleet_phase);
 
-        let ship_map = facts.ships.iter().map(|s| (s.symbol.clone(), s.clone())).collect();
+        let ship_map = facts
+            .ships
+            .iter()
+            .map(|s| (s.symbol.clone(), s.clone()))
+            .collect();
 
-        let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
+        let ship_price_info = bmc
+            .shipyard_bmc()
+            .get_latest_ship_prices(&Ctx::Anonymous, &system_symbol)
+            .await?;
 
         let ship_fleet_assignment = FleetAdmiral::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
 
-        let command_ship_fleet_id =
-            fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::InitialExploration { .. }).then_some(id)).unwrap();
+        let command_ship_fleet_id = fleet_tasks
+            .iter()
+            .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::InitialExploration { .. }).then_some(id))
+            .unwrap();
 
         let market_observation_fleet_id = fleet_tasks
             .iter()
@@ -80,36 +94,56 @@ mod tests {
 
         let mut finance = InMemoryTreasurer::new(Credits::new(agent.credits));
 
-        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
+        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
+            .await
+            .expect("FleetRunner::load_and_store_initial_data");
 
         let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
 
         let marketplaces_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(facts.marketplaces_of_interest.iter().cloned());
         let shipyards_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(facts.shipyards_of_interest.iter().cloned());
-        let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest.difference(&shipyards_of_interest).cloned().collect_vec();
+        let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest
+            .difference(&shipyards_of_interest)
+            .cloned()
+            .collect_vec();
 
         let fleet_phase = fleet::create_construction_fleet_phase(&system_symbol, facts.shipyards_of_interest.len(), marketplaces_ex_shipyards.len());
 
         let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) =
             fleet::compute_fleets_with_tasks(&facts, &Default::default(), &Default::default(), &fleet_phase);
 
-        let ship_map = facts.ships.iter().map(|s| (s.symbol.clone(), s.clone())).collect();
+        let ship_map = facts
+            .ships
+            .iter()
+            .map(|s| (s.symbol.clone(), s.clone()))
+            .collect();
 
-        let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
+        let ship_price_info = bmc
+            .shipyard_bmc()
+            .get_latest_ship_prices(&Ctx::Anonymous, &system_symbol)
+            .await?;
 
         let ship_fleet_assignment = FleetAdmiral::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
 
-        let construction_fleet_id =
-            fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ConstructJumpGate { .. }).then_some(id)).unwrap();
+        let construction_fleet_id = fleet_tasks
+            .iter()
+            .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ConstructJumpGate { .. }).then_some(id))
+            .unwrap();
 
         let market_observation_fleet_id = fleet_tasks
             .iter()
             .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. }).then_some(id))
             .unwrap();
 
-        let mining_fleet_id = fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::MineOres { .. }).then_some(id)).unwrap();
+        let mining_fleet_id = fleet_tasks
+            .iter()
+            .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::MineOres { .. }).then_some(id))
+            .unwrap();
 
-        let siphoning_fleet_id = fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::SiphonGases { .. }).then_some(id)).unwrap();
+        let siphoning_fleet_id = fleet_tasks
+            .iter()
+            .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::SiphonGases { .. }).then_some(id))
+            .unwrap();
 
         let all_next_ship_purchases = fleet::get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
@@ -143,13 +177,18 @@ mod tests {
         // Initialize with 200,000 credits for testing - a reasonable starting amount
         let mut finance = InMemoryTreasurer::new(Credits::new(200_000));
 
-        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
+        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
+            .await
+            .expect("FleetRunner::load_and_store_initial_data");
 
         let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
 
         let marketplaces_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(facts.marketplaces_of_interest.iter().cloned());
         let shipyards_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(facts.shipyards_of_interest.iter().cloned());
-        let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest.difference(&shipyards_of_interest).cloned().collect_vec();
+        let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest
+            .difference(&shipyards_of_interest)
+            .cloned()
+            .collect_vec();
 
         // Create a construction fleet phase
         let fleet_phase = fleet::create_construction_fleet_phase(&system_symbol, facts.shipyards_of_interest.len(), marketplaces_ex_shipyards.len());
@@ -157,17 +196,29 @@ mod tests {
         let (fleets, fleet_tasks): (Vec<Fleet>, Vec<(FleetId, FleetTask)>) =
             fleet::compute_fleets_with_tasks(&facts, &Default::default(), &Default::default(), &fleet_phase);
 
-        let ship_map = facts.ships.iter().map(|s| (s.symbol.clone(), s.clone())).collect();
+        let ship_map = facts
+            .ships
+            .iter()
+            .map(|s| (s.symbol.clone(), s.clone()))
+            .collect();
 
-        let ship_price_info = bmc.shipyard_bmc().get_latest_ship_prices(&Ctx::Anonymous, &system_symbol).await?;
+        let ship_price_info = bmc
+            .shipyard_bmc()
+            .get_latest_ship_prices(&Ctx::Anonymous, &system_symbol)
+            .await?;
 
         let ship_fleet_assignment = FleetAdmiral::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
 
         // Find our fleets
-        let construction_fleet_id =
-            fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ConstructJumpGate { .. }).then_some(id)).unwrap();
+        let construction_fleet_id = fleet_tasks
+            .iter()
+            .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::ConstructJumpGate { .. }).then_some(id))
+            .unwrap();
 
-        let mining_fleet_id = fleet_tasks.iter().find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::MineOres { .. }).then_some(id)).unwrap();
+        let mining_fleet_id = fleet_tasks
+            .iter()
+            .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::MineOres { .. }).then_some(id))
+            .unwrap();
 
         let all_next_ship_purchases = fleet::get_all_next_ship_purchases(&ship_map, &fleet_phase);
 

@@ -57,7 +57,9 @@ impl SystemSpawningFleet {
                 );
 
                 if marketplaces_to_explore.is_empty() && shipyards_to_explore.is_empty() {
-                    let maybe_matching_task = fleet_tasks.iter().find(|ft| matches!(ft, FleetTask::InitialExploration { .. }));
+                    let maybe_matching_task = fleet_tasks
+                        .iter()
+                        .find(|ft| matches!(ft, FleetTask::InitialExploration { .. }));
                     maybe_matching_task.map(|ft| FleetTaskCompletion {
                         task: ft.clone(),
                         completed_at: Utc::now(),
@@ -98,7 +100,12 @@ impl SystemSpawningFleet {
         let marketplaces_to_explore = diff_waypoint_symbols(&cfg.marketplace_waypoints_of_interest, &facts.marketplaces_with_up_to_date_infos);
         let shipyards_to_explore = diff_waypoint_symbols(&cfg.shipyard_waypoints_of_interest, &facts.shipyards_with_up_to_date_infos);
 
-        let all_locations_of_interest = marketplaces_to_explore.iter().chain(shipyards_to_explore.iter()).unique().cloned().collect_vec();
+        let all_locations_of_interest = marketplaces_to_explore
+            .iter()
+            .chain(shipyards_to_explore.iter())
+            .unique()
+            .cloned()
+            .collect_vec();
 
         //         println!(
         //             r#"SystemSpawningFleet::compute_ship_tasks

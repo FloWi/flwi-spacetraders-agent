@@ -32,10 +32,21 @@ impl BlackboardOps for BmcBlackboard {
     ) -> anyhow::Result<Vec<TravelAction>> {
         assert_eq!(from.system_symbol(), to.system_symbol(), "Pathfinder currently only works in same system");
 
-        let waypoints_of_system: Vec<Waypoint> = self.bmc.system_bmc().get_waypoints_of_system(&Ctx::Anonymous, &from.system_symbol()).await?;
+        let waypoints_of_system: Vec<Waypoint> = self
+            .bmc
+            .system_bmc()
+            .get_waypoints_of_system(&Ctx::Anonymous, &from.system_symbol())
+            .await?;
 
-        let market_entries_of_system = self.bmc.market_bmc().get_latest_market_data_for_system(&Ctx::Anonymous, &from.system_symbol()).await?;
-        let market_data = market_entries_of_system.iter().map(|me| me.market_data.clone()).collect_vec();
+        let market_entries_of_system = self
+            .bmc
+            .market_bmc()
+            .get_latest_market_data_for_system(&Ctx::Anonymous, &from.system_symbol())
+            .await?;
+        let market_data = market_entries_of_system
+            .iter()
+            .map(|me| me.market_data.clone())
+            .collect_vec();
 
         match pathfinder::compute_path(
             from.clone(),
@@ -52,29 +63,51 @@ impl BlackboardOps for BmcBlackboard {
     }
 
     async fn insert_waypoint(&self, waypoint: &Waypoint) -> anyhow::Result<()> {
-        self.bmc.system_bmc().upsert_waypoint(&Ctx::Anonymous, waypoint.clone()).await
+        self.bmc
+            .system_bmc()
+            .upsert_waypoint(&Ctx::Anonymous, waypoint.clone())
+            .await
     }
 
     async fn insert_market(&self, market_data: MarketData) -> anyhow::Result<()> {
-        self.bmc.market_bmc().save_market_data(&Ctx::Anonymous, vec![market_data], Utc::now()).await
+        self.bmc
+            .market_bmc()
+            .save_market_data(&Ctx::Anonymous, vec![market_data], Utc::now())
+            .await
     }
 
     async fn insert_jump_gate(&self, jump_gate: JumpGate) -> anyhow::Result<()> {
-        self.bmc.jump_gate_bmc().save_jump_gate_data(&Ctx::Anonymous, jump_gate, Utc::now()).await
+        self.bmc
+            .jump_gate_bmc()
+            .save_jump_gate_data(&Ctx::Anonymous, jump_gate, Utc::now())
+            .await
     }
 
     async fn insert_shipyard(&self, shipyard: Shipyard) -> anyhow::Result<()> {
-        self.bmc.shipyard_bmc().save_shipyard_data(&Ctx::Anonymous, shipyard, Utc::now()).await
+        self.bmc
+            .shipyard_bmc()
+            .save_shipyard_data(&Ctx::Anonymous, shipyard, Utc::now())
+            .await
     }
 
     async fn get_closest_waypoint(&self, current_waypoint: &WaypointSymbol, candidates: &[WaypointSymbol]) -> anyhow::Result<Option<WaypointSymbol>> {
-        let waypoints: Vec<Waypoint> = self.bmc.system_bmc().get_waypoints_of_system(&Ctx::Anonymous, &current_waypoint.system_symbol()).await?;
-        let current_waypoint = waypoints.iter().find(|wp| wp.symbol == *current_waypoint).expect("Current location waypoint");
+        let waypoints: Vec<Waypoint> = self
+            .bmc
+            .system_bmc()
+            .get_waypoints_of_system(&Ctx::Anonymous, &current_waypoint.system_symbol())
+            .await?;
+        let current_waypoint = waypoints
+            .iter()
+            .find(|wp| wp.symbol == *current_waypoint)
+            .expect("Current location waypoint");
 
         Ok(candidates
             .iter()
             .map(|wps| {
-                let wp = waypoints.iter().find(|wp| wp.symbol == *wps).expect("candidate waypoint");
+                let wp = waypoints
+                    .iter()
+                    .find(|wp| wp.symbol == *wps)
+                    .expect("candidate waypoint");
                 (wps.clone(), current_waypoint.distance_to(wp))
             })
             .sorted_by_key(|(_, distance)| *distance)
@@ -84,15 +117,30 @@ impl BlackboardOps for BmcBlackboard {
     }
 
     async fn get_waypoint(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<Waypoint> {
-        let waypoints: Vec<Waypoint> = self.bmc.system_bmc().get_waypoints_of_system(&Ctx::Anonymous, &waypoint_symbol.system_symbol()).await?;
-        waypoints.into_iter().find(|wp| wp.symbol == *waypoint_symbol).ok_or(anyhow!("Waypoint not found"))
+        let waypoints: Vec<Waypoint> = self
+            .bmc
+            .system_bmc()
+            .get_waypoints_of_system(&Ctx::Anonymous, &waypoint_symbol.system_symbol())
+            .await?;
+        waypoints
+            .into_iter()
+            .find(|wp| wp.symbol == *waypoint_symbol)
+            .ok_or(anyhow!("Waypoint not found"))
     }
 
     async fn get_ticket_by_id(&self, ticket_id: TicketId) -> anyhow::Result<TransactionTicket> {
-        self.bmc.trade_bmc().get_ticket_by_id(&Ctx::Anonymous, ticket_id).await
+        self.bmc
+            .trade_bmc()
+            .get_ticket_by_id(&Ctx::Anonymous, ticket_id)
+            .await
     }
 
     async fn get_available_agent_credits(&self) -> anyhow::Result<i64> {
-        Ok(self.bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?.credits)
+        Ok(self
+            .bmc
+            .agent_bmc()
+            .load_agent(&Ctx::Anonymous)
+            .await?
+            .credits)
     }
 }

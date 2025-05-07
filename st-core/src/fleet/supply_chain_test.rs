@@ -43,12 +43,24 @@ mod tests {
     async fn test_supply_chain_materialization() -> Result<()> {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-        let json_path = std::path::Path::new(manifest_dir).parent().unwrap().join("resources").join("universe_snapshot.json");
+        let json_path = std::path::Path::new(manifest_dir)
+            .parent()
+            .unwrap()
+            .join("resources")
+            .join("universe_snapshot.json");
 
         let in_memory_universe = InMemoryUniverse::from_snapshot(json_path).expect("InMemoryUniverse::from_snapshot");
 
-        let shipyard_waypoints = in_memory_universe.shipyards.keys().cloned().collect::<HashSet<_>>();
-        let marketplace_waypoints = in_memory_universe.marketplaces.keys().cloned().collect::<HashSet<_>>();
+        let shipyard_waypoints = in_memory_universe
+            .shipyards
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let marketplace_waypoints = in_memory_universe
+            .marketplaces
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>();
 
         let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
 
@@ -91,7 +103,9 @@ mod tests {
         let bmc = Arc::new(bmc) as Arc<dyn Bmc>;
         let blackboard = BmcBlackboard::new(Arc::clone(&bmc));
 
-        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
+        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
+            .await
+            .expect("FleetRunner::load_and_store_initial_data");
 
         // easier to get the supply chain this way, since we need plenty of things for computing it
         let facts = collect_fleet_decision_facts(bmc, &hq_system_symbol).await?;
@@ -110,13 +124,25 @@ mod tests {
     async fn test_supply_chain_materialization_with_precise_marketdata() -> Result<()> {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-        let json_path = std::path::Path::new(manifest_dir).parent().unwrap().join("resources").join("universe_snapshot.json");
+        let json_path = std::path::Path::new(manifest_dir)
+            .parent()
+            .unwrap()
+            .join("resources")
+            .join("universe_snapshot.json");
 
         let in_memory_universe = InMemoryUniverse::from_snapshot(json_path).expect("InMemoryUniverse::from_snapshot");
 
-        let shipyard_waypoints = in_memory_universe.shipyards.keys().cloned().collect::<HashSet<_>>();
+        let shipyard_waypoints = in_memory_universe
+            .shipyards
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>();
 
-        let marketplace_waypoints = in_memory_universe.marketplaces.keys().cloned().collect::<HashSet<_>>();
+        let marketplace_waypoints = in_memory_universe
+            .marketplaces
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>();
 
         let in_memory_client = InMemoryUniverseClient::new_with_overrides(
             in_memory_universe,
@@ -165,12 +191,24 @@ mod tests {
         let blackboard = BmcBlackboard::new(Arc::clone(&bmc));
 
         // because of the override, we should have detailed market data
-        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await.expect("FleetRunner::load_and_store_initial_data");
+        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
+            .await
+            .expect("FleetRunner::load_and_store_initial_data");
 
-        let waypoints_of_system = bmc.system_bmc().get_waypoints_of_system(&Ctx::Anonymous, &hq_system_symbol).await?;
-        let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints_of_system.iter().map(|wp| (wp.symbol.clone(), wp)).collect::<HashMap<_, _>>();
+        let waypoints_of_system = bmc
+            .system_bmc()
+            .get_waypoints_of_system(&Ctx::Anonymous, &hq_system_symbol)
+            .await?;
+        let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints_of_system
+            .iter()
+            .map(|wp| (wp.symbol.clone(), wp))
+            .collect::<HashMap<_, _>>();
 
-        let market_data = bmc.market_bmc().get_latest_market_data_for_system(&Ctx::Anonymous, &hq_system_symbol).await.expect("market_data");
+        let market_data = bmc
+            .market_bmc()
+            .get_latest_market_data_for_system(&Ctx::Anonymous, &hq_system_symbol)
+            .await
+            .expect("market_data");
 
         // easier to get the supply chain this way, since we need plenty of things for computing it
         let facts = collect_fleet_decision_facts(bmc.clone(), &hq_system_symbol).await?;
@@ -179,7 +217,10 @@ mod tests {
 
         let active_trades: Vec<(ShipSymbol, (TradeGoodSymbol, WaypointSymbol), (TradeGoodSymbol, WaypointSymbol), u32)> = vec![];
 
-        let supply_chain = bmc.supply_chain_bmc().get_supply_chain(&Ctx::Anonymous).await?;
+        let supply_chain = bmc
+            .supply_chain_bmc()
+            .get_supply_chain(&Ctx::Anonymous)
+            .await?;
 
         let materialized_supply_chain = facts.materialized_supply_chain.clone().unwrap();
 
@@ -188,7 +229,10 @@ mod tests {
         calc_trading_decisions(&facts, &phase, &active_trades, &vec![], &materialized_supply_chain, &market_data, &waypoint_map)?;
 
         assert!(
-            materialized_supply_chain.raw_delivery_routes.is_empty().not(),
+            materialized_supply_chain
+                .raw_delivery_routes
+                .is_empty()
+                .not(),
             "raw_delivery_routes should not be empty"
         );
 
@@ -234,14 +278,19 @@ struct TradingOppRow {
 
 fn render_cli_table_trading_opp(rows: &[TradingOppRow]) -> String {
     let mut table = Table::new();
-    table.load_preset(UTF8_FULL).force_no_tty().enforce_styling().set_content_arrangement(ContentArrangement::Dynamic).set_header(vec![
-        "purchase market trade good entry",
-        "purchase waypoint symbol",
-        "sell waypoint symbol",
-        "direct distance",
-        "profit per unit",
-        "profit per unit per distance",
-    ]);
+    table
+        .load_preset(UTF8_FULL)
+        .force_no_tty()
+        .enforce_styling()
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            "purchase market trade good entry",
+            "purchase waypoint symbol",
+            "sell waypoint symbol",
+            "direct distance",
+            "profit per unit",
+            "profit per unit per distance",
+        ]);
 
     for row in rows.into_iter() {
         table.add_row(vec![
@@ -253,7 +302,10 @@ fn render_cli_table_trading_opp(rows: &[TradingOppRow]) -> String {
     }
 
     for col_idx in 3..=5 {
-        table.column_mut(col_idx).unwrap().set_cell_alignment(CellAlignment::Right);
+        table
+            .column_mut(col_idx)
+            .unwrap()
+            .set_cell_alignment(CellAlignment::Right);
     }
 
     table.to_string()
@@ -275,23 +327,28 @@ struct SupplyChainRouteLeg {
 
 fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -> String {
     let mut table = Table::new();
-    table.load_preset(UTF8_FULL).force_no_tty().enforce_styling().set_content_arrangement(ContentArrangement::Dynamic).set_header(vec![
-        "rank",
-        "trade_good",
-        "from",
-        "to",
-        "destination",
-        "source type",
-        "destination type",
-        "purchase_price",
-        "sell_price",
-        "purchase_supply",
-        "sell_supply",
-        "purchase_activity",
-        "sell_activity",
-        "purchase_trade_volume",
-        "sell_trade_volume",
-    ]);
+    table
+        .load_preset(UTF8_FULL)
+        .force_no_tty()
+        .enforce_styling()
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            "rank",
+            "trade_good",
+            "from",
+            "to",
+            "destination",
+            "source type",
+            "destination type",
+            "purchase_price",
+            "sell_price",
+            "purchase_supply",
+            "sell_supply",
+            "purchase_activity",
+            "sell_activity",
+            "purchase_trade_volume",
+            "sell_trade_volume",
+        ]);
 
     let final_export_market_entry = chain.all_routes.iter().find_map(|route| match route {
         DeliveryRoute::Raw(_) => None,
@@ -323,7 +380,13 @@ fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -
                         Cell::new("---"),
                         Cell::new(raw.delivery_market_entry.supply.to_string()),
                         Cell::new("---"),
-                        Cell::new(raw.delivery_market_entry.activity.clone().map(|act| act.to_string()).unwrap_or_default()),
+                        Cell::new(
+                            raw.delivery_market_entry
+                                .activity
+                                .clone()
+                                .map(|act| act.to_string())
+                                .unwrap_or_default(),
+                        ),
                         Cell::new("---").fg(Color::Green),
                         Cell::new(raw.delivery_market_entry.trade_volume),
                     ]);
@@ -341,8 +404,22 @@ fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -
                         Cell::new(route.delivery_market_entry.sell_price),
                         Cell::new(route.source_market_entry.supply.to_string()),
                         Cell::new(route.delivery_market_entry.supply.to_string()),
-                        Cell::new(route.source_market_entry.activity.clone().map(|act| act.to_string()).unwrap_or_default()),
-                        Cell::new(route.delivery_market_entry.activity.clone().map(|act| act.to_string()).unwrap_or_default()),
+                        Cell::new(
+                            route
+                                .source_market_entry
+                                .activity
+                                .clone()
+                                .map(|act| act.to_string())
+                                .unwrap_or_default(),
+                        ),
+                        Cell::new(
+                            route
+                                .delivery_market_entry
+                                .activity
+                                .clone()
+                                .map(|act| act.to_string())
+                                .unwrap_or_default(),
+                        ),
                         Cell::new(route.source_market_entry.trade_volume),
                         Cell::new(route.delivery_market_entry.trade_volume),
                     ]);
@@ -354,21 +431,27 @@ fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -
         None => {}
         Some((wp, export_entry)) => {
             table.add_row(vec![
-                Cell::new("---").fg(Color::Green),                                                       //rank
-                Cell::new(export_entry.symbol.to_string()),                                              //trade_good
-                Cell::new(wp.to_string()),                                                               //from
-                Cell::new("---"),                                                                        //to
-                Cell::new("Jump gate"),                                                                  //destination
-                Cell::new(export_entry.trade_good_type.to_string()),                                     //source
-                Cell::new("---".to_string()),                                                            //destination
-                Cell::new(export_entry.purchase_price),                                                  //purchase_price
-                Cell::new("---"),                                                                        //sell_price
-                Cell::new(export_entry.supply.to_string()),                                              //purchase_supply
-                Cell::new("---".to_string()),                                                            //sell_supply
-                Cell::new(export_entry.activity.clone().map(|act| act.to_string()).unwrap_or_default()), //purchase_activity
-                Cell::new("---"),                                                                        //sell_activity
-                Cell::new(export_entry.trade_volume),                                                    //purchase_trade_volume
-                Cell::new("---"),                                                                        //sell_trade_volume
+                Cell::new("---").fg(Color::Green),                   //rank
+                Cell::new(export_entry.symbol.to_string()),          //trade_good
+                Cell::new(wp.to_string()),                           //from
+                Cell::new("---"),                                    //to
+                Cell::new("Jump gate"),                              //destination
+                Cell::new(export_entry.trade_good_type.to_string()), //source
+                Cell::new("---".to_string()),                        //destination
+                Cell::new(export_entry.purchase_price),              //purchase_price
+                Cell::new("---"),                                    //sell_price
+                Cell::new(export_entry.supply.to_string()),          //purchase_supply
+                Cell::new("---".to_string()),                        //sell_supply
+                Cell::new(
+                    export_entry
+                        .activity
+                        .clone()
+                        .map(|act| act.to_string())
+                        .unwrap_or_default(),
+                ), //purchase_activity
+                Cell::new("---"),                                    //sell_activity
+                Cell::new(export_entry.trade_volume),                //purchase_trade_volume
+                Cell::new("---"),                                    //sell_trade_volume
             ]);
         }
     }
@@ -406,18 +489,23 @@ fn calc_trading_decisions(
 
     //Check supply chain health of construction materials
     println!("Checking health of supply chain routes for construction material");
-    missing_construction_material.keys().for_each(|missing_construction_mat| {
-        if let Some(chain) = materialized_supply_chain.individual_materialized_routes.get(missing_construction_mat) {
-            let construction_site_wps = facts.construction_site.clone().unwrap().symbol;
-            let construction_site_wp = waypoint_map.get(&construction_site_wps).unwrap();
+    missing_construction_material
+        .keys()
+        .for_each(|missing_construction_mat| {
+            if let Some(chain) = materialized_supply_chain
+                .individual_materialized_routes
+                .get(missing_construction_mat)
+            {
+                let construction_site_wps = facts.construction_site.clone().unwrap().symbol;
+                let construction_site_wp = waypoint_map.get(&construction_site_wps).unwrap();
 
-            println!(
-                "\nEvaluation of supply chain for {}\n{}",
-                missing_construction_mat,
-                render_supply_chain_routes_table(chain)
-            )
-        }
-    });
+                println!(
+                    "\nEvaluation of supply chain for {}\n{}",
+                    missing_construction_mat,
+                    render_supply_chain_routes_table(chain)
+                )
+            }
+        });
 
     println!(
         "Found {} out of {} trade goods for sale that don't conflict with the supply chains of the construction materials:\nnon conflicting goods: {:?}\n    conflicting_goods: {:?}",

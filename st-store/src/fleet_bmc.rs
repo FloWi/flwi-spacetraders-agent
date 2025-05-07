@@ -48,8 +48,10 @@ pub trait FleetBmcTrait: Send + Sync + Debug {
     async fn delete_fleet(&self, _ctx: &Ctx, fleet_id: &FleetId) -> Result<()>;
     async fn delete_fleets(&self, ctx: &Ctx, fleets: &[FleetId]) -> Result<()> {
         for fleet_id in fleets {
-            self.delete_fleet_ship_assignments_for_fleet(ctx, fleet_id).await?;
-            self.delete_fleet_task_assignments_for_fleet(ctx, fleet_id).await?;
+            self.delete_fleet_ship_assignments_for_fleet(ctx, fleet_id)
+                .await?;
+            self.delete_fleet_task_assignments_for_fleet(ctx, fleet_id)
+                .await?;
             self.delete_fleet(ctx, fleet_id).await?;
         }
         Ok(())
@@ -79,7 +81,10 @@ SELECT fleet_id
         .fetch_all(self.mm.pool())
         .await?;
 
-        Ok(assignment_entries.into_iter().map(|db| (FleetId(db.fleet_id), db.tasks.0)).collect())
+        Ok(assignment_entries
+            .into_iter()
+            .map(|db| (FleetId(db.fleet_id), db.tasks.0))
+            .collect())
     }
 
     async fn load_ship_fleet_assignment(&self, ctx: &Ctx) -> Result<HashMap<ShipSymbol, FleetId>> {
@@ -94,7 +99,10 @@ SELECT fleet_id
         .fetch_all(self.mm.pool())
         .await?;
 
-        Ok(assignment_entries.into_iter().map(|db| (ShipSymbol(db.ship_symbol), FleetId(db.fleet_id))).collect())
+        Ok(assignment_entries
+            .into_iter()
+            .map(|db| (ShipSymbol(db.ship_symbol), FleetId(db.fleet_id)))
+            .collect())
     }
 
     async fn load_fleets(&self, ctx: &Ctx) -> Result<Vec<Fleet>> {
@@ -293,8 +301,12 @@ pub async fn upsert_fleets_data(
 
     fleet_bmc.upsert_fleets(_ctx, fleets).await?;
     fleet_bmc.upsert_fleet_tasks(_ctx, fleet_tasks).await?;
-    fleet_bmc.upsert_ship_fleet_assignment(_ctx, ship_fleet_assignment).await?;
-    bmc.ship_bmc().save_ship_tasks(_ctx, ship_task_assignment).await?;
+    fleet_bmc
+        .upsert_ship_fleet_assignment(_ctx, ship_fleet_assignment)
+        .await?;
+    bmc.ship_bmc()
+        .save_ship_tasks(_ctx, ship_task_assignment)
+        .await?;
 
     // fleet_bmc.upsert_ship_task_assignment(_ctx, &ship_task_assignment).await?;
 
@@ -375,15 +387,32 @@ impl FleetBmcTrait for InMemoryFleetBmc {
     }
 
     async fn load_ship_fleet_assignment(&self, ctx: &Ctx) -> Result<HashMap<ShipSymbol, FleetId>> {
-        Ok(self.in_memory_fleet.read().await.fleet_ship_assignments.clone())
+        Ok(self
+            .in_memory_fleet
+            .read()
+            .await
+            .fleet_ship_assignments
+            .clone())
     }
 
     async fn load_fleets(&self, ctx: &Ctx) -> Result<Vec<Fleet>> {
-        Ok(self.in_memory_fleet.read().await.fleets.values().cloned().collect_vec())
+        Ok(self
+            .in_memory_fleet
+            .read()
+            .await
+            .fleets
+            .values()
+            .cloned()
+            .collect_vec())
     }
 
     async fn load_completed_fleet_tasks(&self, _ctx: &Ctx) -> Result<Vec<FleetTaskCompletion>> {
-        Ok(self.in_memory_fleet.read().await.completed_fleet_tasks.clone())
+        Ok(self
+            .in_memory_fleet
+            .read()
+            .await
+            .completed_fleet_tasks
+            .clone())
     }
 
     async fn save_completed_fleet_task(&self, _ctx: &Ctx, completed_task: &FleetTaskCompletion) -> Result<()> {
@@ -405,7 +434,9 @@ impl FleetBmcTrait for InMemoryFleetBmc {
     async fn upsert_fleet_tasks(&self, _ctx: &Ctx, fleet_tasks: &HashMap<FleetId, Vec<FleetTask>>) -> Result<()> {
         let mut guard = self.in_memory_fleet.write().await;
         for (fleet_id, fleet_tasks) in fleet_tasks.iter() {
-            guard.fleet_tasks.insert(fleet_id.clone(), fleet_tasks.clone());
+            guard
+                .fleet_tasks
+                .insert(fleet_id.clone(), fleet_tasks.clone());
         }
         Ok(())
     }
@@ -413,7 +444,9 @@ impl FleetBmcTrait for InMemoryFleetBmc {
     async fn upsert_ship_fleet_assignment(&self, _ctx: &Ctx, ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>) -> Result<()> {
         let mut guard = self.in_memory_fleet.write().await;
         for (ship_symbol, fleet_id) in ship_fleet_assignment.iter() {
-            guard.fleet_ship_assignments.insert(ship_symbol.clone(), fleet_id.clone());
+            guard
+                .fleet_ship_assignments
+                .insert(ship_symbol.clone(), fleet_id.clone());
         }
         Ok(())
     }

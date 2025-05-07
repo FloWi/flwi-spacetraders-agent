@@ -62,5 +62,9 @@ where
     T: Display + 'a,
     I: IntoIterator<Item = &'a T>,
 {
-    collection.into_iter().map(|item| item.to_string()).sorted().join(", ")
+    collection
+        .into_iter()
+        .map(|item| item.to_string())
+        .sorted()
+        .join(", ")
 }

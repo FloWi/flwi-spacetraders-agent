@@ -84,7 +84,11 @@ fn setup_tracing() {
     let timer = UtcTime::new(time_format);
 
     // Create the console layer with colored output
-    let console_layer = fmt::layer().with_timer(timer.clone()).with_ansi(true).with_target(true).pretty();
+    let console_layer = fmt::layer()
+        .with_timer(timer.clone())
+        .with_ansi(true)
+        .with_target(true)
+        .pretty();
 
     // Create the JSON file layer
     let file_layer = fmt::layer()
@@ -100,7 +104,11 @@ fn setup_tracing() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     // Register all layers
-    Registry::default().with(filter).with(console_layer).with(file_layer).init();
+    Registry::default()
+        .with(filter)
+        .with(console_layer)
+        .with(file_layer)
+        .init();
 
     // Store guard in a static to keep it alive for the program duration
     if let Ok(mut g) = GUARD.lock() {

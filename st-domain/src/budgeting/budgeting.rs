@@ -194,11 +194,19 @@ impl TransactionTicket {
     }
 
     pub fn get_incomplete_goals(&self) -> Vec<TransactionGoal> {
-        self.goals.iter().filter(|g| g.is_completed().not()).cloned().collect_vec()
+        self.goals
+            .iter()
+            .filter(|g| g.is_completed().not())
+            .cloned()
+            .collect_vec()
     }
 
     pub fn get_completed_goals(&self) -> Vec<TransactionGoal> {
-        self.goals.iter().filter(|g| g.is_completed()).cloned().collect_vec()
+        self.goals
+            .iter()
+            .filter(|g| g.is_completed())
+            .cloned()
+            .collect_vec()
     }
 }
 

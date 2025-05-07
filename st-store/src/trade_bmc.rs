@@ -95,7 +95,10 @@ select ship_symbol
         .fetch_all(self.mm.pool())
         .await?;
 
-        Ok(entries.into_iter().map(|db_entry| (ShipSymbol(db_entry.ship_symbol), db_entry.entry.0)).collect())
+        Ok(entries
+            .into_iter()
+            .map(|db_entry| (ShipSymbol(db_entry.ship_symbol), db_entry.entry.0))
+            .collect())
     }
 
     async fn save_transaction_completed(&self, _ctx: &Ctx, tx_summary: &TransactionSummary) -> Result<()> {
@@ -200,9 +203,17 @@ impl TradeBmcTrait for InMemoryTradeBmc {
         is_complete: bool,
     ) -> Result<()> {
         if is_complete {
-            self.in_memory_trades.write().await.active_trades.remove(ship_symbol);
+            self.in_memory_trades
+                .write()
+                .await
+                .active_trades
+                .remove(ship_symbol);
         } else {
-            self.in_memory_trades.write().await.active_trades.insert(ship_symbol.clone(), trade_ticket.clone());
+            self.in_memory_trades
+                .write()
+                .await
+                .active_trades
+                .insert(ship_symbol.clone(), trade_ticket.clone());
         }
         Ok(())
     }

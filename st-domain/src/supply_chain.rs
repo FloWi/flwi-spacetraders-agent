@@ -27,7 +27,12 @@ pub struct SupplyChain {
 // Function to convert from server format to your model
 impl From<GetSupplyChainResponse> for SupplyChain {
     fn from(response: GetSupplyChainResponse) -> Self {
-        let relations = response.data.export_to_import_map.into_iter().map(|(export, imports)| TradeRelation { export, imports }).collect_vec();
+        let relations = response
+            .data
+            .export_to_import_map
+            .into_iter()
+            .map(|(export, imports)| TradeRelation { export, imports })
+            .collect_vec();
         let trade_map = calc_trade_map(&relations);
         let individual_supply_chains = calc_individual_chains(&trade_map);
         SupplyChain {
@@ -41,7 +46,11 @@ impl From<GetSupplyChainResponse> for SupplyChain {
 // reverse function to convert from model to server format
 impl From<SupplyChain> for GetSupplyChainResponse {
     fn from(supply_chain: SupplyChain) -> Self {
-        let export_to_import_map = supply_chain.relations.into_iter().map(|trade_relation| (trade_relation.export, trade_relation.imports)).collect();
+        let export_to_import_map = supply_chain
+            .relations
+            .into_iter()
+            .map(|trade_relation| (trade_relation.export, trade_relation.imports))
+            .collect();
 
         GetSupplyChainResponse {
             data: SupplyChainMap { export_to_import_map },
@@ -77,7 +86,15 @@ pub struct MaterializedSupplyChain {
 }
 
 pub fn get_all_goods_involved(chain: &[SupplyChainNode]) -> HashSet<TradeGoodSymbol> {
-    chain.iter().flat_map(|scn| scn.dependencies.iter().cloned().chain(std::iter::once(scn.good.clone()))).collect()
+    chain
+        .iter()
+        .flat_map(|scn| {
+            scn.dependencies
+                .iter()
+                .cloned()
+                .chain(std::iter::once(scn.good.clone()))
+        })
+        .collect()
 }
 
 pub fn find_complete_supply_chain(products: &[TradeGoodSymbol], trade_map: &HashMap<TradeGoodSymbol, Vec<TradeGoodSymbol>>) -> Vec<SupplyChainNode> {
@@ -185,7 +202,12 @@ pub fn materialize_supply_chain(
         None => {
             vec![]
         }
-        Some(construction_site) => construction_site.data.materials.iter().filter(|cm| cm.fulfilled < cm.required).collect_vec(),
+        Some(construction_site) => construction_site
+            .data
+            .materials
+            .iter()
+            .filter(|cm| cm.fulfilled < cm.required)
+            .collect_vec(),
     };
 
     let completion_explanation = missing_construction_materials
@@ -208,14 +230,21 @@ pub fn materialize_supply_chain(
 
     let products_for_sale: HashSet<TradeGoodSymbol> = market_data
         .iter()
-        .flat_map(|(_, entries)| entries.iter().filter_map(|mtg| (mtg.trade_good_type == TradeGoodType::Export).then_some(mtg.symbol.clone())))
+        .flat_map(|(_, entries)| {
+            entries
+                .iter()
+                .filter_map(|mtg| (mtg.trade_good_type == TradeGoodType::Export).then_some(mtg.symbol.clone()))
+        })
         .collect();
 
     let raw_materials = get_raw_material_source();
 
     let mut individual_materialized_routes = HashMap::new();
 
-    for p in products_for_sale.iter().filter(|tg| raw_materials.contains_key(tg).not()) {
+    for p in products_for_sale
+        .iter()
+        .filter(|tg| raw_materials.contains_key(tg).not())
+    {
         let goods_of_interest = vec![p.clone()];
         let raw_delivery_routes = compute_raw_delivery_routes(market_data, waypoint_map, &goods_of_interest, supply_chain);
 
@@ -244,14 +273,25 @@ pub fn materialize_supply_chain(
 
     println!("Total distances of all {} products for sale\n", products_for_sale.len());
 
-    individual_materialized_routes.iter().sorted_by_key(|(_, mat)| mat.total_distance).for_each(|(_, mat)| {
-        println!("{}; {}; {}", mat.total_distance, mat.trade_good, mat.all_routes.len());
-    });
+    individual_materialized_routes
+        .iter()
+        .sorted_by_key(|(_, mat)| mat.total_distance)
+        .for_each(|(_, mat)| {
+            println!("{}; {}; {}", mat.total_distance, mat.trade_good, mat.all_routes.len());
+        });
 
     let raw_delivery_routes = compute_raw_delivery_routes(market_data, waypoint_map, &goods_of_interest, supply_chain);
 
-    let relevant_products =
-        goods_of_interest.iter().cloned().chain(missing_construction_materials.iter().map(|cm| cm.trade_symbol.clone())).unique().collect_vec();
+    let relevant_products = goods_of_interest
+        .iter()
+        .cloned()
+        .chain(
+            missing_construction_materials
+                .iter()
+                .map(|cm| cm.trade_symbol.clone()),
+        )
+        .unique()
+        .collect_vec();
 
     let relevant_supply_chain = find_complete_supply_chain(&relevant_products, &supply_chain.trade_map);
 
@@ -267,7 +307,10 @@ pub fn materialize_supply_chain(
     //     );
     // });
 
-    let missing_construction_material_map = maybe_construction_site.clone().map(|cs| cs.data.missing_construction_materials()).unwrap_or_default();
+    let missing_construction_material_map = maybe_construction_site
+        .clone()
+        .map(|cs| cs.data.missing_construction_materials())
+        .unwrap_or_default();
 
     let ConstructionRelatedTradeGoodsOverview {
         goods_for_sale_not_conflicting_with_construction,
@@ -317,19 +360,30 @@ fn calc_construction_related_trade_good_overview(
         .filter(|tg| missing_construction_material.contains_key(tg).not())
         .cloned()
         .filter(|trade_symbol| {
-            let products_involved = supply_chain.individual_supply_chains.get(trade_symbol).cloned().unwrap().1;
+            let products_involved = supply_chain
+                .individual_supply_chains
+                .get(trade_symbol)
+                .cloned()
+                .unwrap()
+                .1;
 
-            let no_conflict_with_construction_chains = construction_material_chains.iter().all(|(construction_material, construction_products_involved)| {
-                let intersection = products_involved.intersection(&construction_products_involved).collect_vec();
-                intersection.is_empty()
-            });
+            let no_conflict_with_construction_chains = construction_material_chains
+                .iter()
+                .all(|(construction_material, construction_products_involved)| {
+                    let intersection = products_involved
+                        .intersection(&construction_products_involved)
+                        .collect_vec();
+                    intersection.is_empty()
+                });
 
             no_conflict_with_construction_chains
         })
         .collect();
 
-    let goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol> =
-        products_for_sale.difference(&goods_for_sale_not_conflicting_with_construction).cloned().collect::<HashSet<_>>();
+    let goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol> = products_for_sale
+        .difference(&goods_for_sale_not_conflicting_with_construction)
+        .cloned()
+        .collect::<HashSet<_>>();
 
     ConstructionRelatedTradeGoodsOverview {
         goods_for_sale_not_conflicting_with_construction,
@@ -344,7 +398,10 @@ fn group_markets_by_type(
     market_data
         .iter()
         .flat_map(|(wps, entries)| {
-            entries.iter().filter(|mtg| mtg.trade_good_type == trade_good_type).map(|mtg| (mtg.symbol.clone(), (wps.clone(), mtg.clone())))
+            entries
+                .iter()
+                .filter(|mtg| mtg.trade_good_type == trade_good_type)
+                .map(|mtg| (mtg.symbol.clone(), (wps.clone(), mtg.clone())))
         })
         .into_group_map()
 }
@@ -375,8 +432,15 @@ fn compute_all_routes(
     let relevant_market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = market_data
         .into_iter()
         .filter_map(|(wps, market_trade_goods)| {
-            let relevant_entries = market_trade_goods.iter().filter(|mtg| all_products_involved.contains(&mtg.symbol)).cloned().collect_vec();
-            relevant_entries.is_empty().not().then_some((wps.clone(), relevant_entries))
+            let relevant_entries = market_trade_goods
+                .iter()
+                .filter(|mtg| all_products_involved.contains(&mtg.symbol))
+                .cloned()
+                .collect_vec();
+            relevant_entries
+                .is_empty()
+                .not()
+                .then_some((wps.clone(), relevant_entries))
         })
         .collect_vec();
 
@@ -456,7 +520,9 @@ fn compute_all_routes(
 
         let are_all_dependencies_fulfilled = node.dependencies.len() == dependency_providers.len();
         if are_all_dependencies_fulfilled {
-            let candidate_export_entries = export_markets.get(&candidate).expect(format!("Supply market of {} should exist", candidate).as_str());
+            let candidate_export_entries = export_markets
+                .get(&candidate)
+                .expect(format!("Supply market of {} should exist", candidate).as_str());
             assert_eq!(1, candidate_export_entries.len(), "We expect only one producing market of {}", candidate);
             let (candidate_export_wps, candidate_export_mtg) = candidate_export_entries.first().cloned().unwrap();
 
@@ -469,9 +535,16 @@ fn compute_all_routes(
                     .find_map(|(wps, mtg)| (wps == &candidate_export_wps).then_some(mtg.clone()))
                     .expect(format!("An import market of {} should exist at {}", dep_trade_good, candidate_export_wps).as_str());
 
-                let relevant_supply_markets = supply_markets.get(&dep_trade_good).cloned().unwrap_or_default();
+                let relevant_supply_markets = supply_markets
+                    .get(&dep_trade_good)
+                    .cloned()
+                    .unwrap_or_default();
 
-                let Some((provider_wps, providing_mtg)) = relevant_supply_markets.iter().find(|(wps, export_or_exchange_mtg)| dep_wps == wps).cloned() else {
+                let Some((provider_wps, providing_mtg)) = relevant_supply_markets
+                    .iter()
+                    .find(|(wps, export_or_exchange_mtg)| dep_wps == wps)
+                    .cloned()
+                else {
                     eprintln!("An export/exchange market of {} should exist at {}", dep_trade_good, dep_wps);
                     panic!("boom");
                 };
@@ -494,7 +567,11 @@ fn compute_all_routes(
                 })
             }
 
-            let rank = dependency_providers.iter().map(|(_, (_, r))| *r).max().unwrap_or_default();
+            let rank = dependency_providers
+                .iter()
+                .map(|(_, (_, r))| *r)
+                .max()
+                .unwrap_or_default();
 
             input_sources.insert(candidate, (candidate_export_wps, rank + 1));
 
@@ -519,7 +596,14 @@ fn compute_all_routes(
     // println!("higher_delivery_routes: {}", serde_json::to_string(&higher_delivery_routes).unwrap());
     // println!("raw_delivery_routes: {}", serde_json::to_string(&raw_delivery_routes).unwrap());
 
-    let all_routes = higher_delivery_routes.into_iter().chain(raw_delivery_routes.into_iter().map(|r| DeliveryRoute::Raw(r.clone()))).collect_vec();
+    let all_routes = higher_delivery_routes
+        .into_iter()
+        .chain(
+            raw_delivery_routes
+                .into_iter()
+                .map(|r| DeliveryRoute::Raw(r.clone())),
+        )
+        .collect_vec();
 
     // println!("all_routes: {}", serde_json::to_string(&all_routes).unwrap());
 
@@ -531,10 +615,13 @@ where
     K: Clone + Eq + Hash,
     V: Clone,
 {
-    map1.iter().map(|(k, v)| (k.clone(), v.clone())).chain(map2.iter().map(|(k, v)| (k.clone(), v.clone()))).fold(HashMap::new(), |mut acc, (k, vs)| {
-        acc.entry(k).or_insert_with(Vec::new).extend(vs);
-        acc
-    })
+    map1.iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .chain(map2.iter().map(|(k, v)| (k.clone(), v.clone())))
+        .fold(HashMap::new(), |mut acc, (k, vs)| {
+            acc.entry(k).or_insert_with(Vec::new).extend(vs);
+            acc
+        })
 }
 
 pub fn compute_raw_delivery_routes(
@@ -545,9 +632,21 @@ pub fn compute_raw_delivery_routes(
 ) -> Vec<RawDeliveryRoute> {
     let complete_supply_chain = find_complete_supply_chain(&goods_of_interest.iter().cloned().collect_vec(), &supply_chain.trade_map);
 
-    let inputs: HashSet<TradeGoodSymbol> = complete_supply_chain.iter().flat_map(|scn| scn.dependencies.iter()).unique().cloned().collect::<HashSet<_>>();
-    let outputs: HashSet<TradeGoodSymbol> = complete_supply_chain.iter().map(|scn| scn.good.clone()).unique().collect::<HashSet<_>>();
-    let intermediates: HashSet<TradeGoodSymbol> = inputs.intersection(&outputs).cloned().collect::<HashSet<_>>();
+    let inputs: HashSet<TradeGoodSymbol> = complete_supply_chain
+        .iter()
+        .flat_map(|scn| scn.dependencies.iter())
+        .unique()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let outputs: HashSet<TradeGoodSymbol> = complete_supply_chain
+        .iter()
+        .map(|scn| scn.good.clone())
+        .unique()
+        .collect::<HashSet<_>>();
+    let intermediates: HashSet<TradeGoodSymbol> = inputs
+        .intersection(&outputs)
+        .cloned()
+        .collect::<HashSet<_>>();
 
     /*
     SupplyChain::materialize:
@@ -558,8 +657,16 @@ pub fn compute_raw_delivery_routes(
     5 end_products: ADVANCED_CIRCUITRY, FAB_MATS, SHIP_PLATING, SHIP_PARTS, CLOTHING
              */
 
-    let raw_materials = inputs.iter().filter(|t| intermediates.contains(t).not() && outputs.contains(t).not()).cloned().collect::<HashSet<_>>();
-    let end_products = outputs.iter().filter(|t| intermediates.contains(t).not() && inputs.contains(t).not()).cloned().collect::<HashSet<_>>();
+    let raw_materials = inputs
+        .iter()
+        .filter(|t| intermediates.contains(t).not() && outputs.contains(t).not())
+        .cloned()
+        .collect::<HashSet<_>>();
+    let end_products = outputs
+        .iter()
+        .filter(|t| intermediates.contains(t).not() && inputs.contains(t).not())
+        .cloned()
+        .collect::<HashSet<_>>();
 
     let source_type_map: HashMap<TradeGoodSymbol, RawMaterialSourceType> = get_raw_material_source();
     let source_waypoints: HashMap<RawMaterialSourceType, Vec<Waypoint>> = get_sourcing_waypoints(waypoint_map);
@@ -567,21 +674,33 @@ pub fn compute_raw_delivery_routes(
     let raw_material_sources: Vec<RawMaterialSource> = raw_materials
         .iter()
         .map(|raw_tgs| {
-            let source_type = source_type_map.get(raw_tgs).expect(format!("source_type of {} should be known", raw_tgs).as_str());
-            let source_waypoints = source_waypoints.get(source_type).expect("source_waypoint must be known");
-            let source_waypoint_symbols = source_waypoints.iter().map(|wp| wp.symbol.clone()).collect_vec();
+            let source_type = source_type_map
+                .get(raw_tgs)
+                .expect(format!("source_type of {} should be known", raw_tgs).as_str());
+            let source_waypoints = source_waypoints
+                .get(source_type)
+                .expect("source_waypoint must be known");
+            let source_waypoint_symbols = source_waypoints
+                .iter()
+                .map(|wp| wp.symbol.clone())
+                .collect_vec();
             RawMaterialSource {
                 trade_good: raw_tgs.clone(),
                 source_type: source_type.clone(),
-                source_waypoint: source_waypoint_symbols.first().expect("At least one waypoint").clone(),
+                source_waypoint: source_waypoint_symbols
+                    .first()
+                    .expect("At least one waypoint")
+                    .clone(),
             }
 
             // raw_tgs.clone(), source_type.clone(), source_waypoint_symbols);
         })
         .collect_vec();
 
-    let flattened_market_data: Vec<(MarketTradeGood, WaypointSymbol)> =
-        market_data.iter().flat_map(|(wps, mtg_vec)| mtg_vec.iter().map(|mtg| (mtg.clone(), wps.clone()))).collect_vec();
+    let flattened_market_data: Vec<(MarketTradeGood, WaypointSymbol)> = market_data
+        .iter()
+        .flat_map(|(wps, mtg_vec)| mtg_vec.iter().map(|mtg| (mtg.clone(), wps.clone())))
+        .collect_vec();
 
     /*
     val exchangeMarketsOfRawMaterials: Map[TradeSymbol, List[(MarketEntry, Waypoint)]]
@@ -644,9 +763,14 @@ pub fn compute_raw_delivery_routes(
                 (mtg.clone(), wps.clone(), distance)
             });
 
-            let export_markets_to_supply =
-                delivery_markets_with_distances.clone().filter(|(mtg, _, _)| mtg.trade_good_type == TradeGoodType::Export).collect_vec();
-            let exchange_markets = delivery_markets_with_distances.clone().filter(|(mtg, _, _)| mtg.trade_good_type == TradeGoodType::Exchange).collect_vec();
+            let export_markets_to_supply = delivery_markets_with_distances
+                .clone()
+                .filter(|(mtg, _, _)| mtg.trade_good_type == TradeGoodType::Export)
+                .collect_vec();
+            let exchange_markets = delivery_markets_with_distances
+                .clone()
+                .filter(|(mtg, _, _)| mtg.trade_good_type == TradeGoodType::Exchange)
+                .collect_vec();
             let maybe_closest_one = delivery_markets_with_distances.min_by_key(|t| t.2);
 
             match maybe_closest_one {
@@ -663,7 +787,11 @@ pub fn compute_raw_delivery_routes(
                     } else {
                         None
                     };
-                    let source = raw_material_sources.iter().find(|rms| rms.trade_good == *raw_material).expect("RawMaterialSource").clone();
+                    let source = raw_material_sources
+                        .iter()
+                        .find(|rms| rms.trade_good == *raw_material)
+                        .expect("RawMaterialSource")
+                        .clone();
                     maybe_best_one.map(|(mtg, best_wps, distance)| {
                         let (delivery_market_entry, export_entry) = match mtg.trade_good_type {
                             TradeGoodType::Export => {
@@ -760,7 +888,13 @@ where
         .chain(map2.keys())
         .unique()
         .map(|key| {
-            let combined = map1.get(key).into_iter().flatten().chain(map2.get(key).into_iter().flatten()).cloned().collect();
+            let combined = map1
+                .get(key)
+                .into_iter()
+                .flatten()
+                .chain(map2.get(key).into_iter().flatten())
+                .cloned()
+                .collect();
 
             (key.clone(), combined)
         })

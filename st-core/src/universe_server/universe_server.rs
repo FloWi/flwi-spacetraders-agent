@@ -83,11 +83,17 @@ impl InMemoryUniverse {
             let number_fuel_barrels = (fuel_units as f64 / 100.0).ceil() as u32;
 
             if from_cargo {
-                let maybe_inventory_entry = ship.cargo.inventory.iter().find(|inv| inv.symbol == TradeGoodSymbol::FUEL);
+                let maybe_inventory_entry = ship
+                    .cargo
+                    .inventory
+                    .iter()
+                    .find(|inv| inv.symbol == TradeGoodSymbol::FUEL);
 
                 match maybe_inventory_entry {
                     Some(inv) if inv.units >= number_fuel_barrels => {
-                        let either_new_cargo = ship.cargo.with_units_removed(TradeGoodSymbol::FUEL, number_fuel_barrels);
+                        let either_new_cargo = ship
+                            .cargo
+                            .with_units_removed(TradeGoodSymbol::FUEL, number_fuel_barrels);
 
                         match either_new_cargo {
                             Ok(new_cargo) => Ok(RefuelTaskAnalysisSuccess::CanRefuelFromCargo {
@@ -109,7 +115,9 @@ impl InMemoryUniverse {
                         }
                     }
                     _ => {
-                        let inventory_fuel_barrels = maybe_inventory_entry.map(|inv| inv.units).unwrap_or_default();
+                        let inventory_fuel_barrels = maybe_inventory_entry
+                            .map(|inv| inv.units)
+                            .unwrap_or_default();
                         Err(NotEnoughFuelInCargo {
                             reason: NotEnoughFuelInCargoError {
                                 required: number_fuel_barrels,
@@ -122,7 +130,14 @@ impl InMemoryUniverse {
                 let maybe_fuel_mtg = self
                     .marketplaces
                     .get(&ship.nav.waypoint_symbol)
-                    .and_then(|mp| mp.trade_goods.clone().unwrap_or_default().iter().find(|mtg| mtg.symbol == TradeGoodSymbol::FUEL).cloned());
+                    .and_then(|mp| {
+                        mp.trade_goods
+                            .clone()
+                            .unwrap_or_default()
+                            .iter()
+                            .find(|mtg| mtg.symbol == TradeGoodSymbol::FUEL)
+                            .cloned()
+                    });
                 match maybe_fuel_mtg {
                     None => Err(WaypointDoesntSellFuel {
                         waypoint_symbol: ship.nav.waypoint_symbol.clone(),
@@ -171,9 +186,14 @@ impl InMemoryUniverse {
             let mtg = match self.marketplaces.get(&ship.nav.waypoint_symbol) {
                 None => Err(anyhow!("No marketplace found at waypoint.")),
                 Some(market_data) => {
-                    match market_data.trade_goods.clone().unwrap_or_default().iter().find(|mtg| {
-                        mtg.symbol == trade_good && (mtg.trade_good_type == TradeGoodType::Export || mtg.trade_good_type == TradeGoodType::Exchange)
-                    }) {
+                    match market_data
+                        .trade_goods
+                        .clone()
+                        .unwrap_or_default()
+                        .iter()
+                        .find(|mtg| {
+                            mtg.symbol == trade_good && (mtg.trade_good_type == TradeGoodType::Export || mtg.trade_good_type == TradeGoodType::Exchange)
+                        }) {
                         None => Err(anyhow!("TradeGood cannot be purchased at waypoint.")),
                         Some(mtg) => {
                             if mtg.trade_volume < units as i32 {
@@ -240,9 +260,14 @@ impl InMemoryUniverse {
             let mtg = match self.marketplaces.get(&ship.nav.waypoint_symbol) {
                 None => Err(anyhow!("No marketplace found at waypoint.")),
                 Some(market_data) => {
-                    match market_data.trade_goods.clone().unwrap_or_default().iter().find(|mtg| {
-                        mtg.symbol == trade_good && (mtg.trade_good_type == TradeGoodType::Import || mtg.trade_good_type == TradeGoodType::Exchange)
-                    }) {
+                    match market_data
+                        .trade_goods
+                        .clone()
+                        .unwrap_or_default()
+                        .iter()
+                        .find(|mtg| {
+                            mtg.symbol == trade_good && (mtg.trade_good_type == TradeGoodType::Import || mtg.trade_good_type == TradeGoodType::Exchange)
+                        }) {
                         None => Err(anyhow!("TradeGood cannot be sold at waypoint.")),
                         Some(mtg) => {
                             if mtg.trade_volume < units as i32 {
@@ -396,7 +421,13 @@ impl StClientTrait for InMemoryUniverseClient {
     }
 
     async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<GetConstructionResponse> {
-        match self.universe.read().await.construction_sites.get(waypoint_symbol) {
+        match self
+            .universe
+            .read()
+            .await
+            .construction_sites
+            .get(waypoint_symbol)
+        {
             None => {
                 anyhow::bail!("Marketplace not found")
             }
@@ -474,9 +505,21 @@ impl StClientTrait for InMemoryUniverseClient {
     async fn navigate(&self, ship_symbol: ShipSymbol, to: &WaypointSymbol) -> anyhow::Result<NavigateShipResponse> {
         let (from_wp, to_wp) = {
             let read_universe = self.universe.read().await;
-            let ship_location = read_universe.ships.get(&ship_symbol).ok_or(anyhow!("ship not found not found"))?.nav.waypoint_symbol.clone();
-            let from_wp = read_universe.waypoints.get(&ship_location).ok_or(anyhow!("from_wp not found"))?;
-            let to_wp = read_universe.waypoints.get(to).ok_or(anyhow!("to_wp not found"))?;
+            let ship_location = read_universe
+                .ships
+                .get(&ship_symbol)
+                .ok_or(anyhow!("ship not found not found"))?
+                .nav
+                .waypoint_symbol
+                .clone();
+            let from_wp = read_universe
+                .waypoints
+                .get(&ship_location)
+                .ok_or(anyhow!("from_wp not found"))?;
+            let to_wp = read_universe
+                .waypoints
+                .get(to)
+                .ok_or(anyhow!("to_wp not found"))?;
             (from_wp.clone(), to_wp.clone())
         };
 
@@ -627,67 +670,80 @@ impl StClientTrait for InMemoryUniverseClient {
 
     async fn purchase_ship(&self, ship_type: ShipType, symbol: WaypointSymbol) -> anyhow::Result<PurchaseShipResponse> {
         let mut universe = self.universe.write().await;
-        universe.ensure_any_ship_docked_at_waypoint(&symbol).and_then(|_| match universe.shipyards.get(&symbol) {
-            None => {
-                anyhow::bail!("There's no shipyard at this waypoint")
-            }
-            Some(sy) => match sy.ships.clone().unwrap_or_default().iter().find(|sy_ship| sy_ship.r#type == ship_type) {
+        universe
+            .ensure_any_ship_docked_at_waypoint(&symbol)
+            .and_then(|_| match universe.shipyards.get(&symbol) {
                 None => {
-                    anyhow::bail!("This ship_type {} is not being sold at this waypoint", ship_type.to_string())
+                    anyhow::bail!("There's no shipyard at this waypoint")
                 }
-                Some(sy_ship) => {
-                    let ship_price = sy_ship.purchase_price as i64;
-
-                    if ship_price > universe.agent.credits {
-                        anyhow::bail!(
-                            "This ship_type {} is too expensive. Price: {}, credits: {}",
-                            ship_type.to_string(),
-                            sy_ship.purchase_price,
-                            universe.agent.credits
-                        )
-                    } else {
-                        let waypoint = universe.waypoints.get(&symbol).ok_or(anyhow!("Waypoint not found"))?;
-                        let new_ship: Ship = create_ship_from_shipyard_ship(
-                            &ship_type,
-                            sy_ship,
-                            &universe.agent.symbol,
-                            &universe.agent.starting_faction,
-                            waypoint,
-                            universe.ships.len(),
-                        );
-                        let shipyard_tx = ShipTransaction {
-                            waypoint_symbol: symbol.clone(),
-                            ship_type,
-                            price: ship_price as u32,
-                            agent_symbol: universe.agent.symbol.clone(),
-                            timestamp: Default::default(),
-                        };
-
-                        let tx = ShipPurchaseTransaction {
-                            ship_symbol: new_ship.symbol.clone(),
-                            waypoint_symbol: symbol.clone(),
-                            ship_type,
-                            price: ship_price as u64,
-                            agent_symbol: universe.agent.symbol.clone(),
-                            timestamp: Default::default(),
-                        };
-
-                        universe.agent.credits -= ship_price;
-                        universe.ships.insert(new_ship.symbol.clone(), new_ship.clone());
-                        universe.insert_shipyard_transaction(&symbol, shipyard_tx.clone());
-
-                        let response = PurchaseShipResponse {
-                            data: PurchaseShipResponseBody {
-                                ship: new_ship,
-                                transaction: tx,
-                                agent: universe.agent.clone(),
-                            },
-                        };
-                        Ok(response)
+                Some(sy) => match sy
+                    .ships
+                    .clone()
+                    .unwrap_or_default()
+                    .iter()
+                    .find(|sy_ship| sy_ship.r#type == ship_type)
+                {
+                    None => {
+                        anyhow::bail!("This ship_type {} is not being sold at this waypoint", ship_type.to_string())
                     }
-                }
-            },
-        })
+                    Some(sy_ship) => {
+                        let ship_price = sy_ship.purchase_price as i64;
+
+                        if ship_price > universe.agent.credits {
+                            anyhow::bail!(
+                                "This ship_type {} is too expensive. Price: {}, credits: {}",
+                                ship_type.to_string(),
+                                sy_ship.purchase_price,
+                                universe.agent.credits
+                            )
+                        } else {
+                            let waypoint = universe
+                                .waypoints
+                                .get(&symbol)
+                                .ok_or(anyhow!("Waypoint not found"))?;
+                            let new_ship: Ship = create_ship_from_shipyard_ship(
+                                &ship_type,
+                                sy_ship,
+                                &universe.agent.symbol,
+                                &universe.agent.starting_faction,
+                                waypoint,
+                                universe.ships.len(),
+                            );
+                            let shipyard_tx = ShipTransaction {
+                                waypoint_symbol: symbol.clone(),
+                                ship_type,
+                                price: ship_price as u32,
+                                agent_symbol: universe.agent.symbol.clone(),
+                                timestamp: Default::default(),
+                            };
+
+                            let tx = ShipPurchaseTransaction {
+                                ship_symbol: new_ship.symbol.clone(),
+                                waypoint_symbol: symbol.clone(),
+                                ship_type,
+                                price: ship_price as u64,
+                                agent_symbol: universe.agent.symbol.clone(),
+                                timestamp: Default::default(),
+                            };
+
+                            universe.agent.credits -= ship_price;
+                            universe
+                                .ships
+                                .insert(new_ship.symbol.clone(), new_ship.clone());
+                            universe.insert_shipyard_transaction(&symbol, shipyard_tx.clone());
+
+                            let response = PurchaseShipResponse {
+                                data: PurchaseShipResponseBody {
+                                    ship: new_ship,
+                                    transaction: tx,
+                                    agent: universe.agent.clone(),
+                                },
+                            };
+                            Ok(response)
+                        }
+                    }
+                },
+            })
     }
 
     async fn orbit_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<OrbitShipResponse> {
@@ -720,7 +776,12 @@ impl StClientTrait for InMemoryUniverseClient {
 
         let start_idx = pagination_input.limit * (pagination_input.page - 1);
         let num_skip = u32::try_from(start_idx as i32 - 1).unwrap_or(0);
-        let all_ships = read_universe.ships.values().sorted_by_key(|s| s.symbol.0.clone()).skip(num_skip as usize).take(pagination_input.limit as usize);
+        let all_ships = read_universe
+            .ships
+            .values()
+            .sorted_by_key(|s| s.symbol.0.clone())
+            .skip(num_skip as usize)
+            .take(pagination_input.limit as usize);
 
         let resp = PaginatedResponse {
             data: all_ships.cloned().collect_vec(),
@@ -748,11 +809,21 @@ impl StClientTrait for InMemoryUniverseClient {
         let start_idx = pagination_input.limit * (pagination_input.page - 1);
         let num_skip = u32::try_from(start_idx as i32 - 1).unwrap_or(0);
 
-        let system_waypoints = guard.systems.get(system_symbol).map(|s| s.waypoints.clone()).unwrap_or_default();
-        let waypoints =
-            system_waypoints.into_iter().filter_map(|s_wp| guard.waypoints.get(&s_wp.symbol).cloned()).sorted_by_key(|wp| wp.symbol.clone()).collect_vec();
+        let system_waypoints = guard
+            .systems
+            .get(system_symbol)
+            .map(|s| s.waypoints.clone())
+            .unwrap_or_default();
+        let waypoints = system_waypoints
+            .into_iter()
+            .filter_map(|s_wp| guard.waypoints.get(&s_wp.symbol).cloned())
+            .sorted_by_key(|wp| wp.symbol.clone())
+            .collect_vec();
 
-        let all_waypoints = waypoints.iter().skip(num_skip as usize).take(pagination_input.limit as usize);
+        let all_waypoints = waypoints
+            .iter()
+            .skip(num_skip as usize)
+            .take(pagination_input.limit as usize);
 
         let resp = PaginatedResponse {
             data: all_waypoints.cloned().collect_vec(),
@@ -781,7 +852,10 @@ impl StClientTrait for InMemoryUniverseClient {
                 anyhow::bail!("Marketplace not found")
             }
             Some(mp) => {
-                let is_ship_present = guard.ships.iter().any(|(_, s)| s.nav.waypoint_symbol == waypoint_symbol);
+                let is_ship_present = guard
+                    .ships
+                    .iter()
+                    .any(|(_, s)| s.nav.waypoint_symbol == waypoint_symbol);
                 if is_ship_present || self.overrides.always_respond_with_detailed_marketplace_data {
                     Ok(GetMarketResponse { data: mp.clone() })
                 } else {
@@ -812,7 +886,10 @@ impl StClientTrait for InMemoryUniverseClient {
                 anyhow::bail!("Marketplace not found")
             }
             Some(sy) => {
-                let is_ship_present = guard.ships.iter().any(|(_, s)| s.nav.waypoint_symbol == waypoint_symbol);
+                let is_ship_present = guard
+                    .ships
+                    .iter()
+                    .any(|(_, s)| s.nav.waypoint_symbol == waypoint_symbol);
                 if is_ship_present {
                     Ok(GetShipyardResponse { data: sy.clone() })
                 } else {

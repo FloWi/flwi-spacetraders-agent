@@ -134,19 +134,28 @@ maybe_trade: {:?},
     }
 
     pub(crate) async fn get_market(&self) -> Result<MarketData> {
-        let response = self.client.get_marketplace(self.nav.waypoint_symbol.clone()).await?;
+        let response = self
+            .client
+            .get_marketplace(self.nav.waypoint_symbol.clone())
+            .await?;
         //println!("{:?}", response);
         Ok(response.data)
     }
 
     pub(crate) async fn get_jump_gate(&self) -> Result<JumpGate> {
-        let response = self.client.get_jump_gate(self.nav.waypoint_symbol.clone()).await?;
+        let response = self
+            .client
+            .get_jump_gate(self.nav.waypoint_symbol.clone())
+            .await?;
         //println!("{:?}", response);
         Ok(response.data)
     }
 
     pub(crate) async fn get_shipyard(&self) -> Result<Shipyard> {
-        let response = self.client.get_shipyard(self.nav.waypoint_symbol.clone()).await?;
+        let response = self
+            .client
+            .get_shipyard(self.nav.waypoint_symbol.clone())
+            .await?;
         //println!("{:?}", response);
         Ok(response.data)
     }
@@ -158,7 +167,10 @@ maybe_trade: {:?},
     }
 
     pub(crate) async fn set_flight_mode(&self, mode: &FlightMode) -> Result<NavAndFuelResponse> {
-        let response = self.client.set_flight_mode(self.ship.symbol.clone(), mode).await?;
+        let response = self
+            .client
+            .set_flight_mode(self.ship.symbol.clone(), mode)
+            .await?;
         //println!("{:?}", response);
         Ok(response.data)
     }
@@ -178,13 +190,19 @@ maybe_trade: {:?},
     pub(crate) async fn refuel(&self, from_cargo: bool) -> Result<RefuelShipResponse> {
         let amount = self.fuel.capacity - self.fuel.current;
 
-        let response = self.client.refuel(self.ship.symbol.clone(), amount as u32, from_cargo).await?;
+        let response = self
+            .client
+            .refuel(self.ship.symbol.clone(), amount as u32, from_cargo)
+            .await?;
         //println!("{:?}", response);
         Ok(response)
     }
 
     pub async fn sell_trade_good(&mut self, quantity: u32, trade_good: TradeGoodSymbol) -> Result<SellTradeGoodResponse> {
-        let response = self.client.sell_trade_good(self.symbol.clone(), quantity, trade_good.clone()).await?;
+        let response = self
+            .client
+            .sell_trade_good(self.symbol.clone(), quantity, trade_good.clone())
+            .await?;
         self.cargo = response.data.cargo.clone();
 
         //println!("{:?}", response);
@@ -193,7 +211,10 @@ maybe_trade: {:?},
     }
 
     pub async fn purchase_trade_good(&mut self, quantity: u32, trade_good_symbol: TradeGoodSymbol) -> Result<PurchaseTradeGoodResponse> {
-        let response = self.client.purchase_trade_good(self.symbol.clone(), quantity, trade_good_symbol).await?;
+        let response = self
+            .client
+            .purchase_trade_good(self.symbol.clone(), quantity, trade_good_symbol)
+            .await?;
         self.cargo = response.data.cargo.clone();
         //println!("{:?}", response);
 
@@ -217,7 +238,10 @@ maybe_trade: {:?},
     }
 
     pub async fn purchase_ship(&self, ship_type: &ShipType, waypoint_symbol: &WaypointSymbol) -> Result<PurchaseShipResponse> {
-        let response = self.client.purchase_ship(*ship_type, waypoint_symbol.clone()).await?;
+        let response = self
+            .client
+            .purchase_ship(*ship_type, waypoint_symbol.clone())
+            .await?;
 
         Ok(response)
     }

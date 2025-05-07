@@ -10,8 +10,14 @@ pub fn find_trading_opportunities_sorted_by_profit_per_distance_unit(
     market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
 ) -> Vec<TradingOpportunity> {
-    let denormalized_trade_goods_with_wp_symbols =
-        market_data.iter().flat_map(|(wp_symbol, market_trade_goods)| market_trade_goods.iter().map(|mtg| (wp_symbol.clone(), mtg.clone()))).collect_vec();
+    let denormalized_trade_goods_with_wp_symbols = market_data
+        .iter()
+        .flat_map(|(wp_symbol, market_trade_goods)| {
+            market_trade_goods
+                .iter()
+                .map(|mtg| (wp_symbol.clone(), mtg.clone()))
+        })
+        .collect_vec();
     let exports = denormalized_trade_goods_with_wp_symbols
         .iter()
         .filter(|(wp_sym, mtg)| mtg.trade_good_type == TradeGoodType::Export || mtg.trade_good_type == TradeGoodType::Exchange)
@@ -55,7 +61,15 @@ pub fn find_trading_opportunities_sorted_by_profit_per_distance_unit(
 }
 
 pub fn to_trade_goods_with_locations(market_data: &Vec<MarketEntry>) -> Vec<(WaypointSymbol, Vec<MarketTradeGood>)> {
-    market_data.iter().filter_map(|md| md.market_data.trade_goods.as_ref().map(|trade_goods| (md.waypoint_symbol.clone(), trade_goods.clone()))).collect_vec()
+    market_data
+        .iter()
+        .filter_map(|md| {
+            md.market_data
+                .trade_goods
+                .as_ref()
+                .map(|trade_goods| (md.waypoint_symbol.clone(), trade_goods.clone()))
+        })
+        .collect_vec()
 }
 
 pub fn evaluate_trading_opportunities(
@@ -64,7 +78,11 @@ pub fn evaluate_trading_opportunities(
     trading_opportunities: &[TradingOpportunity],
     budget_for_trading: i64,
 ) -> Vec<EvaluatedTradingOpportunity> {
-    let top_trading_opps = trading_opportunities.iter().sorted_by_key(|t| -t.profit_per_unit_per_distance).take(15).collect_vec();
+    let top_trading_opps = trading_opportunities
+        .iter()
+        .sorted_by_key(|t| -t.profit_per_unit_per_distance)
+        .take(15)
+        .collect_vec();
 
     let budget_for_ship = if unassigned_ships.is_empty() {
         0
@@ -79,7 +97,9 @@ pub fn evaluate_trading_opportunities(
             let ship_cargo_space = (ship.cargo.capacity - ship.cargo.units) as u32;
 
             top_trading_opps.iter().map(move |trading_opp| {
-                let purchase_wp = waypoint_map.get(&trading_opp.purchase_waypoint_symbol).unwrap();
+                let purchase_wp = waypoint_map
+                    .get(&trading_opp.purchase_waypoint_symbol)
+                    .unwrap();
                 let distance_to_start = ship_wp.distance_to(purchase_wp);
                 let total_distance = distance_to_start + trading_opp.direct_distance;
                 let total_distance = if total_distance == 0 {
@@ -93,7 +113,10 @@ pub fn evaluate_trading_opportunities(
                 // after a bit of trading we should always be able to afford a full cargo load
 
                 let num_units_within_budget = budget_for_ship as u32 / trading_opp.purchase_market_trade_good_entry.purchase_price as u32;
-                let units = (trading_opp.purchase_market_trade_good_entry.trade_volume.min(trading_opp.sell_market_trade_good_entry.trade_volume) as u32)
+                let units = (trading_opp
+                    .purchase_market_trade_good_entry
+                    .trade_volume
+                    .min(trading_opp.sell_market_trade_good_entry.trade_volume) as u32)
                     .min(num_units_within_budget)
                     .min(ship_cargo_space);
 
@@ -160,12 +183,18 @@ pub fn find_optimal_trading_routes_exhaustive(
             "{}_{}_{}",
             option.trading_opportunity.purchase_waypoint_symbol.0,
             option.trading_opportunity.sell_waypoint_symbol.0,
-            option.trading_opportunity.purchase_market_trade_good_entry.symbol
+            option
+                .trading_opportunity
+                .purchase_market_trade_good_entry
+                .symbol
         )
     };
 
     // Group options by ship
-    let ship_options: HashMap<ShipSymbol, Vec<EvaluatedTradingOpportunity>> = options.iter().cloned().into_group_map_by(|option| option.ship_symbol.clone());
+    let ship_options: HashMap<ShipSymbol, Vec<EvaluatedTradingOpportunity>> = options
+        .iter()
+        .cloned()
+        .into_group_map_by(|option| option.ship_symbol.clone());
 
     let ships: Vec<ShipSymbol> = ship_options.keys().cloned().collect();
     let num_ships = ships.len();
@@ -228,5 +257,8 @@ pub fn find_optimal_trading_routes_exhaustive(
 
 // Function to calculate total profit across all assigned routes
 fn calculate_total_profit(assignments: &[EvaluatedTradingOpportunity]) -> u64 {
-    assignments.iter().map(|option| option.profit_per_distance_unit).sum()
+    assignments
+        .iter()
+        .map(|option| option.profit_per_distance_unit)
+        .sum()
 }

@@ -63,15 +63,32 @@ impl StClient {
 #[async_trait]
 impl StClientTrait for StClient {
     async fn register(&self, registration_request: RegistrationRequest) -> Result<Data<RegistrationResponse>> {
-        Self::make_api_call(self.client.post(self.base_url.join("register")?).json(&registration_request)).await
+        Self::make_api_call(
+            self.client
+                .post(self.base_url.join("register")?)
+                .json(&registration_request),
+        )
+        .await
     }
 
     async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> Result<AgentResponse> {
-        Ok(self.client.get(self.base_url.join(&format!("agents/{}", agent_symbol.0))?).send().await?.json().await?)
+        Ok(self
+            .client
+            .get(self.base_url.join(&format!("agents/{}", agent_symbol.0))?)
+            .send()
+            .await?
+            .json()
+            .await?)
     }
 
     async fn get_agent(&self) -> Result<AgentResponse> {
-        Ok(self.client.get(self.base_url.join("my/agent")?).send().await?.json().await?)
+        Ok(self
+            .client
+            .get(self.base_url.join("my/agent")?)
+            .send()
+            .await?
+            .json()
+            .await?)
     }
 
     async fn get_construction_site(&self, waypoint_symbol: &WaypointSymbol) -> Result<GetConstructionResponse> {
@@ -93,38 +110,71 @@ impl StClientTrait for StClient {
     }
 
     async fn dock_ship(&self, ship_symbol: ShipSymbol) -> Result<DockShipResponse> {
-        Self::make_api_call(self.client.post(self.base_url.join(&format!("my/ships/{}/dock", ship_symbol.0))?)).await
+        Self::make_api_call(
+            self.client.post(
+                self.base_url
+                    .join(&format!("my/ships/{}/dock", ship_symbol.0))?,
+            ),
+        )
+        .await
     }
 
     async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> Result<SetFlightModeResponse> {
         Self::make_api_call(
-            self.client.patch(self.base_url.join(&format!("my/ships/{}/nav", ship_symbol.0))?).json(&PatchShipNavRequest { flight_mode: mode.clone() }),
+            self.client
+                .patch(
+                    self.base_url
+                        .join(&format!("my/ships/{}/nav", ship_symbol.0))?,
+                )
+                .json(&PatchShipNavRequest { flight_mode: mode.clone() }),
         )
         .await
     }
 
     async fn navigate(&self, ship_symbol: ShipSymbol, to: &WaypointSymbol) -> Result<NavigateShipResponse> {
         Self::make_api_call(
-            self.client.post(self.base_url.join(&format!("my/ships/{}/navigate", ship_symbol.0))?).json(&NavigateShipRequest { waypoint_symbol: to.clone() }),
+            self.client
+                .post(
+                    self.base_url
+                        .join(&format!("my/ships/{}/navigate", ship_symbol.0))?,
+                )
+                .json(&NavigateShipRequest { waypoint_symbol: to.clone() }),
         )
         .await
     }
 
     async fn refuel(&self, ship_symbol: ShipSymbol, amount: u32, from_cargo: bool) -> Result<RefuelShipResponse> {
         Self::make_api_call(
-            self.client.post(self.base_url.join(&format!("my/ships/{}/refuel", ship_symbol.0))?).json(&RefuelShipRequest { amount, from_cargo }),
+            self.client
+                .post(
+                    self.base_url
+                        .join(&format!("my/ships/{}/refuel", ship_symbol.0))?,
+                )
+                .json(&RefuelShipRequest { amount, from_cargo }),
         )
         .await
     }
 
     async fn sell_trade_good(&self, ship_symbol: ShipSymbol, units: u32, symbol: TradeGoodSymbol) -> Result<SellTradeGoodResponse> {
-        Self::make_api_call(self.client.post(self.base_url.join(&format!("my/ships/{}/sell", ship_symbol.0))?).json(&SellTradeGoodRequest { symbol, units }))
-            .await
+        Self::make_api_call(
+            self.client
+                .post(
+                    self.base_url
+                        .join(&format!("my/ships/{}/sell", ship_symbol.0))?,
+                )
+                .json(&SellTradeGoodRequest { symbol, units }),
+        )
+        .await
     }
 
     async fn purchase_trade_good(&self, ship_symbol: ShipSymbol, units: u32, symbol: TradeGoodSymbol) -> Result<PurchaseTradeGoodResponse> {
         Self::make_api_call(
-            self.client.post(self.base_url.join(&format!("my/ships/{}/purchase", ship_symbol.0))?).json(&PurchaseTradeGoodRequest { symbol, units }),
+            self.client
+                .post(
+                    self.base_url
+                        .join(&format!("my/ships/{}/purchase", ship_symbol.0))?,
+                )
+                .json(&PurchaseTradeGoodRequest { symbol, units }),
         )
         .await
     }
@@ -153,11 +203,22 @@ impl StClientTrait for StClient {
     }
 
     async fn purchase_ship(&self, ship_type: ShipType, waypoint_symbol: WaypointSymbol) -> Result<PurchaseShipResponse> {
-        Self::make_api_call(self.client.post(self.base_url.join("my/ships")?).json(&PurchaseShipRequest { ship_type, waypoint_symbol })).await
+        Self::make_api_call(
+            self.client
+                .post(self.base_url.join("my/ships")?)
+                .json(&PurchaseShipRequest { ship_type, waypoint_symbol }),
+        )
+        .await
     }
 
     async fn orbit_ship(&self, ship_symbol: ShipSymbol) -> Result<OrbitShipResponse> {
-        Self::make_api_call(self.client.post(self.base_url.join(&format!("my/ships/{}/orbit", ship_symbol.0))?)).await
+        Self::make_api_call(
+            self.client.post(
+                self.base_url
+                    .join(&format!("my/ships/{}/orbit", ship_symbol.0))?,
+            ),
+        )
+        .await
     }
 
     async fn list_ships(&self, pagination_input: PaginationInput) -> Result<PaginatedResponse<Ship>> {
@@ -166,13 +227,18 @@ impl StClientTrait for StClient {
             ("limit", pagination_input.limit.to_string()),
         ];
 
-        let request = self.client.get(self.base_url.join("my/ships")?).query(&query_param_list);
+        let request = self
+            .client
+            .get(self.base_url.join("my/ships")?)
+            .query(&query_param_list);
 
         Self::make_api_call(request).await
     }
 
     async fn get_ship(&self, ship_symbol: ShipSymbol) -> Result<Data<Ship>> {
-        let request = self.client.get(self.base_url.join(&format!("my/ships/{}", ship_symbol.0))?);
+        let request = self
+            .client
+            .get(self.base_url.join(&format!("my/ships/{}", ship_symbol.0))?);
 
         Self::make_api_call(request).await
     }
@@ -183,7 +249,13 @@ impl StClientTrait for StClient {
             ("limit", pagination_input.limit.to_string()),
         ];
 
-        let request = self.client.get(self.base_url.join(&format!("systems/{}/waypoints", system_symbol.0))?).query(&query_param_list);
+        let request = self
+            .client
+            .get(
+                self.base_url
+                    .join(&format!("systems/{}/waypoints", system_symbol.0))?,
+            )
+            .query(&query_param_list);
 
         Self::make_api_call(request).await
     }
@@ -194,14 +266,20 @@ impl StClientTrait for StClient {
             ("limit", pagination_input.limit.to_string()),
         ];
 
-        let request = self.client.get(self.base_url.join("systems")?).query(&query_param_list);
+        let request = self
+            .client
+            .get(self.base_url.join("systems")?)
+            .query(&query_param_list);
 
         Self::make_api_call(request).await
     }
 
     async fn get_system(&self, system_symbol: &SystemSymbol) -> Result<GetSystemResponse> {
         log!(Level::Info, "Trying to load system {system_symbol:?}");
-        let request = self.client.get(self.base_url.join(&format!("systems/{}", system_symbol.0))?);
+        let request = self.client.get(
+            self.base_url
+                .join(&format!("systems/{}", system_symbol.0))?,
+        );
 
         let result = Self::make_api_call(request).await?;
         log!(Level::Info, "Done loading system {system_symbol:?}");
@@ -239,7 +317,10 @@ impl StClientTrait for StClient {
     }
 
     async fn create_chart(&self, ship_symbol: ShipSymbol) -> Result<CreateChartResponse> {
-        let request = self.client.post(self.base_url.join(&format!("my/ships/{}/chart", ship_symbol.0))?);
+        let request = self.client.post(
+            self.base_url
+                .join(&format!("my/ships/{}/chart", ship_symbol.0))?,
+        );
 
         Self::make_api_call(request).await
     }
@@ -250,7 +331,10 @@ impl StClientTrait for StClient {
             ("limit", pagination_input.limit.to_string()),
         ];
 
-        let request = self.client.get(self.base_url.join("agents")?).query(&query_param_list);
+        let request = self
+            .client
+            .get(self.base_url.join("agents")?)
+            .query(&query_param_list);
 
         Self::make_api_call(request).await
     }
@@ -338,7 +422,9 @@ mod test {
 
         let Data { data: registration } = registration;
 
-        assert!(registration.token.starts_with("eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9"));
+        assert!(registration
+            .token
+            .starts_with("eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9"));
 
         assert_eq!(registration.agent.account_id, Some("clzsskbz7ih38s60ci1xwiau1".to_string()));
 
@@ -367,17 +453,32 @@ mod test {
         let Data { data: market_data } = market_data_from_afar;
 
         assert_eq!(
-            market_data.exchange.clone().iter().map(|tg| tg.symbol.clone()).collect::<Vec<TradeGoodSymbol>>(),
+            market_data
+                .exchange
+                .clone()
+                .iter()
+                .map(|tg| tg.symbol.clone())
+                .collect::<Vec<TradeGoodSymbol>>(),
             vec![TradeGoodSymbol::FUEL]
         );
 
         assert_eq!(
-            market_data.exports.clone().iter().map(|tg| tg.symbol.clone()).collect::<Vec<TradeGoodSymbol>>(),
+            market_data
+                .exports
+                .clone()
+                .iter()
+                .map(|tg| tg.symbol.clone())
+                .collect::<Vec<TradeGoodSymbol>>(),
             Vec::<TradeGoodSymbol>::new()
         );
 
         assert_eq!(
-            market_data.imports.clone().iter().map(|tg| tg.symbol.clone()).collect::<HashSet<TradeGoodSymbol>>(),
+            market_data
+                .imports
+                .clone()
+                .iter()
+                .map(|tg| tg.symbol.clone())
+                .collect::<HashSet<TradeGoodSymbol>>(),
             HashSet::from([TradeGoodSymbol::SHIP_PARTS, TradeGoodSymbol::SHIP_PLATING])
         );
     }

@@ -32,7 +32,11 @@ async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOvervie
         GetShipsMode::OnlyChangesSince { filter_timestamp_gte } => Some(filter_timestamp_gte),
     };
 
-    let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, filter_timestamp_gte).await.expect("get_ships");
+    let ships = bmc
+        .ship_bmc()
+        .get_ships(&Ctx::Anonymous, filter_timestamp_gte)
+        .await
+        .expect("get_ships");
 
     Ok(ShipsOverview {
         ships,

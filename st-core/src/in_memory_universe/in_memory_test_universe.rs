@@ -14,12 +14,24 @@ pub async fn get_test_universe() -> (Arc<dyn Bmc>, Arc<dyn StClientTrait>) {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
     // Construct path to the shared JSON file
-    let json_path = std::path::Path::new(manifest_dir).parent().unwrap().join("resources").join("universe_snapshot.json");
+    let json_path = std::path::Path::new(manifest_dir)
+        .parent()
+        .unwrap()
+        .join("resources")
+        .join("universe_snapshot.json");
 
     let in_memory_universe = InMemoryUniverse::from_snapshot(json_path).expect("InMemoryUniverse::from_snapshot");
 
-    let shipyard_waypoints = in_memory_universe.shipyards.keys().cloned().collect::<HashSet<_>>();
-    let marketplace_waypoints = in_memory_universe.marketplaces.keys().cloned().collect::<HashSet<_>>();
+    let shipyard_waypoints = in_memory_universe
+        .shipyards
+        .keys()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let marketplace_waypoints = in_memory_universe
+        .marketplaces
+        .keys()
+        .cloned()
+        .collect::<HashSet<_>>();
 
     let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
 

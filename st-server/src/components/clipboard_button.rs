@@ -9,7 +9,10 @@ async fn write_to_clipboard(text: String) {
 
     let maybe_clipboard = leptos::web_sys::window().map(|w| w.navigator().clipboard());
     match maybe_clipboard {
-        Some(cp) => match JsFuture::from(cp.write_text(text.as_str())).await.map_err(|err| format!("Error writing to clipboard: {:?}", err)) {
+        Some(cp) => match JsFuture::from(cp.write_text(text.as_str()))
+            .await
+            .map_err(|err| format!("Error writing to clipboard: {:?}", err))
+        {
             Ok(_) => {}
             Err(_) => {
                 error!("Can't write to clipboard")

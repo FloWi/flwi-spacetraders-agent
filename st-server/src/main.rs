@@ -30,7 +30,10 @@ async fn main() {
         skip_running_agent,
     } = AppConfig::from_env().expect("cfg");
 
-    tracing_subscriber::registry().with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE)).with(EnvFilter::from_default_env()).init();
+    tracing_subscriber::registry()
+        .with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE))
+        .with(EnvFilter::from_default_env())
+        .init();
 
     let cfg: AgentConfiguration = AgentConfiguration {
         database_url,
@@ -44,7 +47,9 @@ async fn main() {
     // Create the agent manager and get the reset channel
     let (mut agent_manager, _reset_tx) = AgentManager::new(cfg.clone());
 
-    let pool = db::get_pg_connection_pool(cfg.pg_connection_string()).await.expect("should be able to get pool");
+    let pool = db::get_pg_connection_pool(cfg.pg_connection_string())
+        .await
+        .expect("should be able to get pool");
 
     let model_manager = DbModelManager::new(pool);
     let db_bmc = Arc::new(DbBmc::new(model_manager));
@@ -81,7 +86,9 @@ async fn main() {
         }
     });
 
-    axum::serve(listener, app.into_make_service()).await.unwrap();
+    axum::serve(listener, app.into_make_service())
+        .await
+        .unwrap();
     agent_runner_handle.await.unwrap();
 }
 

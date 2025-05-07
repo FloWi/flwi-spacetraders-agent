@@ -28,10 +28,14 @@ impl PgConnectionString {
 pub async fn get_pg_connection_pool(connection_string: PgConnectionString) -> Result<Pool<Postgres>> {
     let database_url = connection_string.0.clone();
 
-    let database_connection_options: PgConnectOptions =
-        database_url.parse::<PgConnectOptions>()?.log_slow_statements(LevelFilter::Warn, Duration::from_secs(60));
+    let database_connection_options: PgConnectOptions = database_url
+        .parse::<PgConnectOptions>()?
+        .log_slow_statements(LevelFilter::Warn, Duration::from_secs(60));
 
-    let pg_connection_pool: Pool<Postgres> = PgPoolOptions::new().max_connections(5).connect_with(database_connection_options).await?;
+    let pg_connection_pool: Pool<Postgres> = PgPoolOptions::new()
+        .max_connections(5)
+        .connect_with(database_connection_options)
+        .await?;
 
     Ok(pg_connection_pool)
 }
@@ -92,14 +96,18 @@ async fn perform_migration(pg_connection_pool: &Pool<Postgres>) -> Result<()> {
 
 async fn rename_schema(pg_connection_pool: &Pool<Postgres>, from_schema_name: &str, to_schema_name: String) -> Result<()> {
     // Rename the current public schema
-    sqlx::query(&format!("ALTER SCHEMA {} RENAME TO {}", from_schema_name, to_schema_name)).execute(pg_connection_pool).await?;
+    sqlx::query(&format!("ALTER SCHEMA {} RENAME TO {}", from_schema_name, to_schema_name))
+        .execute(pg_connection_pool)
+        .await?;
 
     Ok(())
 }
 
 async fn create_schema(pg_connection_pool: &Pool<Postgres>, schema_name: &str) -> Result<()> {
     // Rename the current public schema
-    sqlx::query(&format!("CREATE SCHEMA {}", schema_name)).execute(pg_connection_pool).await?;
+    sqlx::query(&format!("CREATE SCHEMA {}", schema_name))
+        .execute(pg_connection_pool)
+        .await?;
 
     Ok(())
 }
@@ -419,7 +427,10 @@ where system_symbol = $1
     .fetch_all(pool)
     .await?;
 
-    Ok(waypoint_entries.iter().map(|db_waypoint_entry| db_waypoint_entry.entry.0.clone()).collect_vec())
+    Ok(waypoint_entries
+        .iter()
+        .map(|db_waypoint_entry| db_waypoint_entry.entry.0.clone())
+        .collect_vec())
 }
 
 pub async fn select_ships(pool: &Pool<Postgres>) -> Result<Vec<Ship>> {
@@ -436,7 +447,10 @@ from ships
     .fetch_all(pool)
     .await?;
 
-    Ok(ship_entries.iter().map(|db_ship| db_ship.entry.0.clone()).collect_vec())
+    Ok(ship_entries
+        .iter()
+        .map(|db_ship| db_ship.entry.0.clone())
+        .collect_vec())
 }
 
 pub async fn select_waypoints_of_system_with_trait(
