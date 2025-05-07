@@ -18,9 +18,7 @@ pub struct RelevantMarketData {
 }
 
 #[server]
-async fn get_supply_chain_data(
-    goods_of_interest: Vec<TradeGoodSymbol>,
-) -> Result<
+async fn get_supply_chain_data() -> Result<
     (
         SupplyChain,
         Vec<(WaypointSymbol, Vec<MarketTradeGood>)>,
@@ -54,8 +52,13 @@ async fn get_supply_chain_data(
 
     let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints_of_system.iter().map(|wp| (wp.symbol.clone(), wp)).collect::<HashMap<_, _>>();
 
-    let materialized_supply_chain =
-        st_domain::supply_chain::materialize_supply_chain(&supply_chain, &market_data, &waypoint_map, &maybe_construction_site, &goods_of_interest);
+    let materialized_supply_chain = st_domain::supply_chain::materialize_supply_chain(
+        headquarters_waypoint.system_symbol(),
+        &supply_chain,
+        &market_data,
+        &waypoint_map,
+        &maybe_construction_site,
+    );
 
     let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await.expect("Ships");
 
@@ -93,7 +96,7 @@ pub fn SupplyChainPage() -> impl IntoView {
         TradeGoodSymbol::EQUIPMENT,
     ];
 
-    let supply_chain_resource = OnceResource::new(get_supply_chain_data(goods_of_interest.clone()));
+    let supply_chain_resource = OnceResource::new(get_supply_chain_data());
 
     view! {
         <Title text="Leptos + Tailwindcss" />

@@ -1,27 +1,26 @@
 use anyhow::Result;
+use comfy_table::presets::UTF8_FULL;
+use comfy_table::*;
+use comfy_table::{ContentArrangement, Table};
 use itertools::Itertools;
-use st_domain::trading::{evaluate_trading_opportunities, find_trading_opportunities_sorted_by_profit_per_distance_unit};
-use st_domain::{
-    FleetDecisionFacts, FleetPhaseName, MarketEntry, MarketTradeGood, MaterializedSupplyChain, ShipSymbol, SupplyChain, TradeGoodSymbol, Waypoint,
-    WaypointSymbol,
-};
-use std::collections::{HashMap, HashSet};
+use st_domain::trading::find_trading_opportunities_sorted_by_profit_per_distance_unit;
+use st_domain::{FleetDecisionFacts, FleetPhaseName, MarketTradeGood, MaterializedSupplyChain, ShipSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol};
+use std::cell::Cell;
+use std::collections::HashMap;
 use std::ops::Not;
 use strum::IntoEnumIterator;
+use thousands::Separable;
 
 #[cfg(test)]
 mod tests {
     use crate::bmc_blackboard::BmcBlackboard;
     use crate::fleet::fleet::collect_fleet_decision_facts;
     use crate::fleet::fleet_runner::FleetRunner;
-    use crate::fleet::supply_chain_test::calc_trading_decisions;
+    use crate::fleet::supply_chain_test::{calc_trading_decisions, render_cli_table_trading_opp, TradingOppRow};
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient, InMemoryUniverseOverrides};
     use anyhow::Result;
-    use cli_table::format::Justify;
-    use cli_table::{print_stdout, Table, WithTitle};
     use itertools::Itertools;
-    use numfmt::{Formatter, Precision};
     use st_domain::{trading, FleetPhaseName, MarketTradeGood, ShipSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol};
     use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
@@ -32,7 +31,6 @@ mod tests {
         Ctx, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc,
     };
     use std::collections::{HashMap, HashSet};
-    use std::convert::identity;
     use std::ops::Not;
     use std::sync::Arc;
     use test_log::test;
@@ -203,7 +201,7 @@ mod tests {
             .iter()
             .filter(|topp| top_10_products.contains(&topp.purchase_market_trade_good_entry.symbol))
             .sorted_by_key(|topp| -topp.profit_per_unit_per_distance)
-            .map(|topp| TabledTradingOpp {
+            .map(|topp| TradingOppRow {
                 purchase_market_trade_good_entry: topp.purchase_market_trade_good_entry.symbol.to_string(),
                 purchase_waypoint_symbol: topp.purchase_waypoint_symbol.to_string(),
                 sell_waypoint_symbol: topp.sell_waypoint_symbol.to_string(),
@@ -213,42 +211,54 @@ mod tests {
             })
             .collect_vec();
 
-        #[derive(Table)]
-        struct TabledTradingOpp {
-            purchase_market_trade_good_entry: String,
-            purchase_waypoint_symbol: String,
-            sell_waypoint_symbol: String,
-            #[table(justify = "Justify::Right", display_fn = "format_integer")]
-            direct_distance: u32,
-            #[table(justify = "Justify::Right", display_fn = "format_integer")]
-            profit_per_unit: u32,
-            #[table(justify = "Justify::Right", display_fn = "format_float")]
-            profit_per_unit_per_distance: f64,
-        }
-
-        // For integers (u32, u64, etc.)
-        // Very inefficient, because we're creating a new formatter every time, but good enough for small amount of testdata.
-        // unfortunately the api requires the formatter to be mutable :-/
-        fn format_integer<T: Into<f64> + Clone>(value: &T) -> String {
-            let mut formatter = Formatter::new().separator(',').unwrap().precision(Precision::Decimals(0));
-
-            // Convert the returned &str to String
-            formatter.fmt2(value.clone().into()).to_string()
-        }
-
-        // For floating point numbers (f64)
-        fn format_float(value: &f64) -> String {
-            let mut formatter = Formatter::new().separator(',').unwrap().precision(Precision::Decimals(2));
-
-            // Convert the returned &str to String
-            formatter.fmt2(*value).to_string()
-        }
-
         // Immutable approach - no table mutation needed
-        print_stdout(trades_of_top_10_products.with_title()).unwrap();
+
+        println!("{}", render_cli_table_trading_opp(&trades_of_top_10_products));
 
         Ok(())
     }
+}
+
+struct TradingOppRow {
+    purchase_market_trade_good_entry: String,
+    purchase_waypoint_symbol: String,
+    sell_waypoint_symbol: String,
+    direct_distance: u32,
+    profit_per_unit: u32,
+    profit_per_unit_per_distance: f64,
+}
+
+fn render_cli_table_trading_opp(rows: &[TradingOppRow]) -> String {
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        //.set_width(80)
+        .set_header(vec![
+            "purchase market trade good entry",
+            "purchase waypoint symbol",
+            "sell waypoint symbol",
+            "direct distance",
+            "profit per unit",
+            "profit per unit per distance",
+        ]);
+
+    for row in rows.into_iter() {
+        table.add_row(vec![
+            row.purchase_market_trade_good_entry.as_str(),
+            row.purchase_waypoint_symbol.as_str(),
+            row.sell_waypoint_symbol.as_str(),
+            row.direct_distance.separate_with_commas().as_str(),
+            row.profit_per_unit.separate_with_commas().as_str(),
+            format_number(row.profit_per_unit_per_distance).as_str(),
+        ]);
+    }
+
+    for col_idx in 3..=5 {
+        table.column_mut(col_idx).unwrap().set_cell_alignment(CellAlignment::Right);
+    }
+
+    table.to_string()
 }
 
 fn calc_trading_decisions(
@@ -313,3 +323,21 @@ fn calc_trading_decisions(
    }
  }
 */
+
+/// Print a number with 2 decimal places and comma-separated
+pub fn format_number(value: f64) -> String {
+    // thousands will format floating point numbers just fine, but we can't
+    // format the number this way _and_ specify the precision. So we're going
+    // to separate out the fractional part and format that separately, but this
+    // means we have to count the digits in the fractional part (up to 2).
+    let fractional = ((value - value.floor()) * 100.0).round() as u64;
+    let separated = (value.floor() as i64).separate_with_commas();
+
+    // because we multiply the fractional component by only 100.0, we can only
+    // ever have up to 2 digits.
+    let num_digits = fractional.checked_ilog10().unwrap_or_default() + 1;
+    match num_digits {
+        1 => format!("{}.0{}", separated, fractional),
+        _ => format!("{}.{}", separated, fractional),
+    }
+}
