@@ -4,8 +4,10 @@ use comfy_table::*;
 use comfy_table::{ContentArrangement, Table};
 use itertools::Itertools;
 use st_domain::trading::find_trading_opportunities_sorted_by_profit_per_distance_unit;
-use st_domain::{FleetDecisionFacts, FleetPhaseName, MarketTradeGood, MaterializedSupplyChain, ShipSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol};
-use std::cell::Cell;
+use st_domain::{
+    ActivityLevel, DeliveryRoute, FleetDecisionFacts, FleetPhaseName, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, ShipSymbol,
+    SupplyLevel, TradeGoodSymbol, Waypoint, WaypointSymbol,
+};
 use std::collections::HashMap;
 use std::ops::Not;
 use strum::IntoEnumIterator;
@@ -261,6 +263,127 @@ fn render_cli_table_trading_opp(rows: &[TradingOppRow]) -> String {
     table.to_string()
 }
 
+struct SupplyChainRouteLeg {
+    from: WaypointSymbol,
+    to: WaypointSymbol,
+    rank: u32,
+    purchase_price: u32,
+    sell_price: u32,
+    purchase_supply: SupplyLevel,
+    sell_supply: SupplyLevel,
+    purchase_activity: ActivityLevel,
+    sell_activity: ActivityLevel,
+    purchase_trade_volume: u32,
+    sell_trade_volume: u32,
+}
+
+fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -> String {
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        //.set_width(80)
+        .set_header(vec![
+            "rank",
+            "trade_good",
+            "from",
+            "to",
+            "destination",
+            "source type",
+            "destination type",
+            "purchase_price",
+            "sell_price",
+            "purchase_supply",
+            "sell_supply",
+            "purchase_activity",
+            "sell_activity",
+            "purchase_trade_volume",
+            "sell_trade_volume",
+        ]);
+
+    let final_export_market_entry = chain.all_routes.iter().find_map(|route| match route {
+        DeliveryRoute::Raw(_) => None,
+        DeliveryRoute::Processed { route, rank } => {
+            (route.producing_trade_good == chain.trade_good).then_some((route.delivery_location.clone(), route.producing_market_entry.clone()))
+        }
+    });
+
+    chain
+        .all_routes
+        .iter()
+        .sorted_by_key(|delivery_route| match delivery_route {
+            DeliveryRoute::Raw(_) => 0,
+            DeliveryRoute::Processed { rank, .. } => *rank,
+        })
+        .for_each(|route| {
+            match &route {
+                DeliveryRoute::Raw(raw) => {
+                    table.add_row(vec![
+                        Cell::new(0).fg(Color::Green),
+                        Cell::new(raw.source.trade_good.to_string()),
+                        Cell::new(raw.source.source_waypoint.to_string()).fg(Color::Green),
+                        Cell::new(raw.delivery_location.to_string()).fg(Color::Green),
+                        Cell::new(raw.export_entry.symbol.to_string()).fg(Color::Green),
+                        Cell::new(raw.source.source_type.to_string()),
+                        Cell::new(raw.delivery_market_entry.trade_good_type.to_string()),
+                        Cell::new("---"),
+                        Cell::new(raw.delivery_market_entry.sell_price),
+                        Cell::new("---"),
+                        Cell::new(raw.delivery_market_entry.supply.to_string()),
+                        Cell::new("---"),
+                        Cell::new(raw.delivery_market_entry.activity.clone().map(|act| act.to_string()).unwrap_or_default()),
+                        Cell::new("---").fg(Color::Green),
+                        Cell::new(raw.delivery_market_entry.trade_volume),
+                    ]);
+                }
+                DeliveryRoute::Processed { route, rank } => {
+                    table.add_row(vec![
+                        Cell::new(rank).fg(Color::Green),
+                        Cell::new(route.trade_good.to_string()),
+                        Cell::new(route.source_location.to_string()),
+                        Cell::new(route.delivery_location.to_string()),
+                        Cell::new(route.producing_market_entry.symbol.to_string()),
+                        Cell::new(route.source_market_entry.trade_good_type.to_string()),
+                        Cell::new(route.delivery_market_entry.trade_good_type.to_string()),
+                        Cell::new(route.source_market_entry.purchase_price),
+                        Cell::new(route.delivery_market_entry.sell_price),
+                        Cell::new(route.source_market_entry.supply.to_string()),
+                        Cell::new(route.delivery_market_entry.supply.to_string()),
+                        Cell::new(route.source_market_entry.activity.clone().map(|act| act.to_string()).unwrap_or_default()),
+                        Cell::new(route.delivery_market_entry.activity.clone().map(|act| act.to_string()).unwrap_or_default()),
+                        Cell::new(route.source_market_entry.trade_volume),
+                        Cell::new(route.delivery_market_entry.trade_volume),
+                    ]);
+                }
+            };
+        });
+
+    match final_export_market_entry {
+        None => {}
+        Some((wp, export_entry)) => {
+            table.add_row(vec![
+                Cell::new("---").fg(Color::Green),                                                       //rank
+                Cell::new(export_entry.symbol.to_string()),                                              //trade_good
+                Cell::new(wp.to_string()),                                                               //from
+                Cell::new("---"),                                                                        //to
+                Cell::new("Jump gate"),                                                                  //destination
+                Cell::new(export_entry.trade_good_type.to_string()),                                     //source
+                Cell::new("---".to_string()),                                                            //destination
+                Cell::new(export_entry.purchase_price),                                                  //purchase_price
+                Cell::new("---"),                                                                        //sell_price
+                Cell::new(export_entry.supply.to_string()),                                              //purchase_supply
+                Cell::new("---".to_string()),                                                            //sell_supply
+                Cell::new(export_entry.activity.clone().map(|act| act.to_string()).unwrap_or_default()), //purchase_activity
+                Cell::new("---"),                                                                        //sell_activity
+                Cell::new(export_entry.trade_volume),                                                    //purchase_trade_volume
+                Cell::new("---"),                                                                        //sell_trade_volume
+            ]);
+        }
+    }
+
+    table.to_string()
+}
+
 fn calc_trading_decisions(
     facts: &FleetDecisionFacts,
     phase: &FleetPhaseName,
@@ -289,6 +412,18 @@ fn calc_trading_decisions(
         .filter(|(_, remaining_amount)| *remaining_amount > 0)
         .collect();
 
+    //Check supply chain health of construction materials
+    println!("Checking health of supply chain routes for construction material");
+    missing_construction_material.keys().for_each(|missing_construction_mat| {
+        if let Some(chain) = materialized_supply_chain.individual_materialized_routes.get(missing_construction_mat) {
+            println!(
+                "\nEvaluation of supply chain for {}\n{}",
+                missing_construction_mat,
+                render_supply_chain_routes_table(chain)
+            )
+        }
+    });
+
     println!(
         "Found {} out of {} trade goods for sale that don't conflict with the supply chains of the construction materials:\nnon conflicting goods: {:?}\n    conflicting_goods: {:?}",
         materialized_supply_chain.goods_for_sale_not_conflicting_with_construction.len(),
@@ -304,25 +439,6 @@ fn calc_trading_decisions(
 
     Ok(())
 }
-
-/*
- // SHIP_PLATING bottlenecks FAB_MATS
- // SHIP_PARTS bottlenecks ADVANCED_CIRCUITRY (ELECTRONICS)
- def tradeGoodSymbolsToBoostBasedOnConstructionProgress(constructionMaterialRequired: Set[TradeSymbol]): List[TradeSymbol] = {
-   if (constructionMaterialRequired == completeContructionMaterials) {
-     List(FAB_MATS, ADVANCED_CIRCUITRY, FUEL, CLOTHING, EQUIPMENT)
-   } else if (constructionMaterialRequired == Set(TradeSymbol.ADVANCED_CIRCUITRY)) {
-     // FAB_MATS done
-     List(ADVANCED_CIRCUITRY, FUEL, CLOTHING, SHIP_PLATING)
-   } else if (constructionMaterialRequired == Set(TradeSymbol.FAB_MATS)) {
-     // ADVANCED_CIRCUITRY done
-     List(FAB_MATS, FUEL, CLOTHING, EQUIPMENT, SHIP_PARTS)
-   } else {
-     // both done
-     List(SHIP_PARTS, SHIP_PLATING, FUEL, CLOTHING)
-   }
- }
-*/
 
 /// Print a number with 2 decimal places and comma-separated
 pub fn format_number(value: f64) -> String {

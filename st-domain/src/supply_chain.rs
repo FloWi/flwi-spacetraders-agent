@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::ops::Not;
-use strum::IntoEnumIterator;
+use strum::{Display, IntoEnumIterator};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TradeRelation {
@@ -56,6 +56,13 @@ pub struct SupplyChainNode {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct MaterializedIndividualSupplyChain {
+    pub trade_good: TradeGoodSymbol,
+    pub total_distance: u32,
+    pub all_routes: Vec<DeliveryRoute>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct MaterializedSupplyChain {
     pub explanation: String,
     pub system_symbol: SystemSymbol,
@@ -66,6 +73,7 @@ pub struct MaterializedSupplyChain {
     pub products_for_sale: HashSet<TradeGoodSymbol>,
     pub goods_for_sale_not_conflicting_with_construction: HashSet<TradeGoodSymbol>,
     pub goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol>,
+    pub individual_materialized_routes: HashMap<TradeGoodSymbol, MaterializedIndividualSupplyChain>,
 }
 
 pub fn get_all_goods_involved(chain: &[SupplyChainNode]) -> HashSet<TradeGoodSymbol> {
@@ -224,13 +232,20 @@ pub fn materialize_supply_chain(
                 DeliveryRoute::Processed { route, .. } => route.distance,
             })
             .sum();
-        individual_materialized_routes.insert(p.clone(), (total_distance, all_routes));
+        individual_materialized_routes.insert(
+            p.clone(),
+            MaterializedIndividualSupplyChain {
+                trade_good: p.clone(),
+                total_distance,
+                all_routes,
+            },
+        );
     }
 
     println!("Total distances of all {} products for sale\n", products_for_sale.len());
 
-    individual_materialized_routes.iter().sorted_by_key(|(_, (d, _))| d).for_each(|(tg, (distance, _))| {
-        println!("{}; {}", distance, tg);
+    individual_materialized_routes.iter().sorted_by_key(|(_, mat)| mat.total_distance).for_each(|(_, mat)| {
+        println!("{}; {}; {}", mat.total_distance, mat.trade_good, mat.all_routes.len());
     });
 
     let raw_delivery_routes = compute_raw_delivery_routes(market_data, waypoint_map, &goods_of_interest, supply_chain);
@@ -273,6 +288,7 @@ pub fn materialize_supply_chain(
         products_for_sale,
         goods_for_sale_not_conflicting_with_construction,
         goods_for_sale_conflicting_with_construction,
+        individual_materialized_routes,
     }
 }
 
@@ -792,8 +808,8 @@ pub fn get_sourcing_waypoints(waypoint_map: &HashMap<WaypointSymbol, &Waypoint>)
         .collect()
 }
 
-#[derive(Eq, Clone, PartialEq, Hash, Debug, Serialize, Deserialize)]
-enum RawMaterialSourceType {
+#[derive(Eq, Clone, PartialEq, Hash, Debug, Display, Serialize, Deserialize)]
+pub enum RawMaterialSourceType {
     Extraction,
     Siphoning,
 }
