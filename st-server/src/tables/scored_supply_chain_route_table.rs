@@ -21,10 +21,11 @@ pub struct ScoredSupplyChainRouteRow {
     #[table(renderer = "TradeGoodSymbolCellRenderer")]
     pub producing_trade_good: TradeGoodSymbol,
     pub priorities_of_chains_containing_this_route: String,
+    #[table(class = "text-right")]
     pub delivery_market_export_volume: i32,
+    #[table(class = "text-right")]
     pub delivery_market_import_volume: i32,
     pub is_import_volume_too_low: bool,
-
     #[table(renderer = "SupplyLevelCellRenderer")]
     pub supply_level_at_source: SupplyLevel,
     #[table(renderer = "ActivityLevelCellRenderer")]
@@ -33,17 +34,23 @@ pub struct ScoredSupplyChainRouteRow {
     pub supply_level_of_import_at_destination: SupplyLevel,
     #[table(renderer = "ActivityLevelCellRenderer")]
     pub activity_level_of_import_at_destination: Option<ActivityLevel>,
+    #[table(class = "text-right")]
     pub supply_level_score: i32,
+    #[table(class = "text-right")]
     pub activity_level_score: i32,
+    #[table(class = "text-right")]
     pub level_score: i32,
+    #[table(class = "text-right")]
     pub max_prio_score: u32,
-    #[table(renderer = "PriceCellRenderer")]
+    #[table(renderer = "PriceCellRenderer", class = "text-right")]
     pub purchase_price: i32,
-    #[table(renderer = "PriceCellRenderer")]
+    #[table(renderer = "PriceCellRenderer", class = "text-right")]
     pub sell_price: i32,
-    #[table(renderer = "PriceCellRenderer")]
+    #[table(renderer = "PriceCellRenderer", class = "text-right")]
     pub spread: i32,
+    #[table(class = "text-right")]
     pub num_parallel_pickups: u32,
+    #[table(class = "text-right")]
     pub score: i32,
 }
 
