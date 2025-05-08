@@ -79,7 +79,7 @@ pub fn ProfitCellRenderer<F>(class: String, value: Signal<u64>, row: RwSignal<F>
 
     view! {
         <td class=class>
-            <span class=profit_class()>{move || format!("{} cr", value.get_untracked())}</span>
+            <span class=profit_class()>{move || format!("{}c", value.get_untracked().separate_with_commas())}</span>
         </td>
     }
 }

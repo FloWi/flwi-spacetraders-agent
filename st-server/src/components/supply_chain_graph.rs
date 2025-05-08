@@ -33,7 +33,7 @@ pub fn SupplyChainGraph(routes: Vec<DeliveryRoute>, label: String) -> impl IntoV
     let (layout_nodes, layout_edges) = build_supply_chain_layout(&nodes, &edges, orientation, x_scale, y_scale);
 
     view! {
-        <div class="p-4 bg-white dark:bg-gray-900 odd:bg-gray-50 dark:odd:bg-gray-700">
+        <div class="p-4 bg-white odd:bg-gray-50 dark:bg-gray-900 dark:odd:bg-gray-800">
             <h2 class="text-xl font-bold">{format!("{}", label)}</h2>
             <h1>"Supply Chain (sugiyama layout)"</h1>
             <div class="visualization">
@@ -204,7 +204,7 @@ fn generate_node_svg(node: &TechNode) -> String {
             .activity_level
             .clone()
             .map(|a| get_activity_stroke_color(&a))
-            .unwrap_or_default();
+            .unwrap_or("stroke-gray-600".to_string());
 
         let rect_class: String = format!("stroke-[4] fill-gray-50 dark:fill-gray-800 {}", border_stroke); // stroke-4 doesn't work, either set stroke-width property on node directly, or use this syntax
 
@@ -319,11 +319,8 @@ fn generate_edge_label_svg(x: f64, y: f64, edge: &TechEdge, direction_x: f64, di
     let normal_text_class = TextClass("fill-gray-700 dark:fill-gray-300".to_string());
     let line_height = 18.0;
 
-    // Background styling
-    let background_fill = "#666";
-    let background_opacity = 1.0;
-    let border_color = "gray";
-    let border_width = 1;
+    let rect_class = "stroke-[1] fill-gray-50 dark:fill-gray-700"; // stroke-4 doesn't work, either set stroke-width property on node directly, or use this syntax
+
     let corner_radius = 4;
 
     // Content from edge
@@ -350,12 +347,19 @@ fn generate_edge_label_svg(x: f64, y: f64, edge: &TechEdge, direction_x: f64, di
         ColoredLabel::new(format!("p: {}c", cost.separate_with_commas()), normal_text_class.0.clone()),
     ];
 
+    let sign = if profit.signum() < 0 {
+        "-"
+    } else if profit.signum() > 0 {
+        "+"
+    } else {
+        ""
+    };
     let right_text_lines = vec![
         edge.maybe_activity_text()
             .unwrap_or(ColoredLabel::new("---".to_string(), normal_text_class.0.clone())),
         edge.supply_text()
             .unwrap_or(ColoredLabel::new("---".to_string(), normal_text_class.0.clone())),
-        ColoredLabel::new(format!("{:+}", profit), profit_class.0.clone()),
+        ColoredLabel::new(format!("{sign}{}", profit.separate_with_commas()), profit_class.0.clone()),
     ];
 
     // Calculate vertical center position with adjustment for 3 lines of text
@@ -375,10 +379,7 @@ fn generate_edge_label_svg(x: f64, y: f64, edge: &TechEdge, direction_x: f64, di
                 height="{label_height}"
                 rx="{corner_radius}"
                 ry="{corner_radius}"
-                fill="{background_fill}"
-                fill-opacity="{background_opacity}"
-                stroke="{border_color}"
-                stroke-width="{border_width}"
+                class="{rect_class}"
             />
 
             <!-- Left-aligned text (using multiline text) -->
