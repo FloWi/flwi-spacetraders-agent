@@ -2,7 +2,7 @@ use itertools::Itertools;
 use leptos::prelude::*;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
-use st_domain::{ActivityLevel, ScoredSupplyChainSupportRoute, SupplyLevel, TradeGoodSymbol, WaypointSymbol};
+use st_domain::{ActivityLevel, ScoredSupplyChainSupportRoute, SupplyLevel, TradeGoodSymbol, TradeGoodType, WaypointSymbol};
 
 use crate::tables::renderers::*;
 use crate::tailwind::TailwindClassesPreset;
@@ -15,12 +15,16 @@ pub struct ScoredSupplyChainRouteRow {
     pub trade_good: TradeGoodSymbol,
     #[table(renderer = "WaypointSymbolCellRenderer")]
     pub purchase_waypoint_symbol: WaypointSymbol,
+    #[table(renderer = "TradeGoodTypeCellRenderer")]
+    pub purchase_trade_good_type: TradeGoodType,
     #[table(renderer = "SupplyLevelCellRenderer")]
     pub source_supply_level: SupplyLevel,
     #[table(renderer = "ActivityLevelCellRenderer")]
     pub source_activity: Option<ActivityLevel>,
     #[table(renderer = "WaypointSymbolCellRenderer")]
     pub delivery_waypoint_symbol: WaypointSymbol,
+    #[table(renderer = "TradeGoodTypeCellRenderer")]
+    pub delivery_trade_good_type: TradeGoodType,
     #[table(renderer = "TradeGoodSymbolCellRenderer")]
     pub producing_trade_good: TradeGoodSymbol,
     pub priorities_of_chains_containing_this_route: String,
@@ -64,6 +68,7 @@ impl From<ScoredSupplyChainSupportRoute> for ScoredSupplyChainRouteRow {
             trade_good: route.tgr.trade_good.clone(),
             purchase_waypoint_symbol: route.tgr.source_location.clone(),
             delivery_waypoint_symbol: route.tgr.delivery_location.clone(),
+            delivery_trade_good_type: route.tgr.delivery_market_entry.trade_good_type.clone(),
             producing_trade_good: route.tgr.producing_trade_good.clone(),
             priorities_of_chains_containing_this_route: route
                 .priorities_of_chains_containing_this_route
@@ -89,6 +94,7 @@ impl From<ScoredSupplyChainSupportRoute> for ScoredSupplyChainRouteRow {
             spread: route.spread.clone(),
             num_parallel_pickups: route.num_parallel_pickups.clone(),
             score: route.score.clone(),
+            purchase_trade_good_type: route.source_market.trade_good_type.clone(),
         }
     }
 }
