@@ -10,7 +10,7 @@ use st_domain::{
     TradeGoodSymbol, TradeGoodType, WaypointSymbol, WaypointType,
 };
 
-use crate::components::supply_chain_graph::{get_activity_fill_color, get_activity_text_color, get_supply_fill_color, get_supply_text_color, SupplyChainGraph};
+use crate::components::supply_chain_graph::{get_activity_fill_color, get_supply_fill_color, SupplyChainGraph};
 use crate::tables::scored_supply_chain_route_table::ScoredSupplyChainRouteRow;
 use itertools::Itertools;
 use leptos_struct_table::TableContent;
@@ -100,7 +100,7 @@ impl TechEdge {
             color_class: self
                 .activity
                 .clone()
-                .map(|activity| get_activity_text_color(&activity))
+                .map(|activity| get_activity_fill_color(&activity))
                 .unwrap_or_default(),
         })
     }
@@ -108,7 +108,7 @@ impl TechEdge {
     pub(crate) fn supply_text(&self) -> Option<ColoredLabel> {
         Some(ColoredLabel {
             label: self.supply.to_string(),
-            color_class: get_supply_text_color(&self.supply),
+            color_class: get_supply_fill_color(&self.supply),
         })
     }
 }
@@ -313,8 +313,8 @@ fn to_nodes_and_edges(materialized_supply_chain: &MaterializedSupplyChain) -> (V
                     activity_level: None,
                     cost: 0,
                     volume: 0,
-                    width: 180.0,
-                    height: 100.0,
+                    width: 200.0,
+                    height: 165.0,
                     x: None,
                     y: None,
                 };
@@ -325,12 +325,12 @@ fn to_nodes_and_edges(materialized_supply_chain: &MaterializedSupplyChain) -> (V
                     name: raw_route.export_entry.symbol.clone(),
                     waypoint_symbol: raw_route.delivery_location.clone(),
                     source: TechNodeSource::Market(raw_route.export_entry.clone()),
-                    supply_level: None,
-                    activity_level: None,
-                    cost: 0,
-                    volume: 0,
-                    width: 180.0,
-                    height: 100.0,
+                    supply_level: Some(raw_route.export_entry.supply.clone()),
+                    activity_level: raw_route.export_entry.activity.clone(),
+                    cost: raw_route.export_entry.purchase_price as u32,
+                    volume: raw_route.export_entry.trade_volume as u32,
+                    width: 200.0,
+                    height: 165.0,
                     x: None,
                     y: None,
                 };
@@ -347,7 +347,7 @@ fn to_nodes_and_edges(materialized_supply_chain: &MaterializedSupplyChain) -> (V
                     supply: raw_route.delivery_market_entry.supply.clone(),
                     points: None,
                     curve_factor: None,
-                    distance: None,
+                    distance: Some(raw_route.distance),
                     profit: None,
                 };
 
@@ -374,12 +374,12 @@ fn to_nodes_and_edges(materialized_supply_chain: &MaterializedSupplyChain) -> (V
                     name: producing_trade_good.clone(),
                     waypoint_symbol: delivery_location.clone(),
                     source: TechNodeSource::Market(producing_market_entry.clone()),
-                    supply_level: None,
-                    activity_level: None,
-                    cost: 0,
-                    volume: 0,
-                    width: 180.0,
-                    height: 100.0,
+                    supply_level: Some(producing_market_entry.supply.clone()),
+                    activity_level: producing_market_entry.activity.clone(),
+                    cost: producing_market_entry.purchase_price as u32,
+                    volume: producing_market_entry.trade_volume as u32,
+                    width: 200.0,
+                    height: 165.0,
                     x: None,
                     y: None,
                 };
@@ -395,8 +395,8 @@ fn to_nodes_and_edges(materialized_supply_chain: &MaterializedSupplyChain) -> (V
                     supply: delivery_market_entry.supply.clone(),
                     points: None,
                     curve_factor: None,
-                    distance: None,
-                    profit: None,
+                    distance: Some(*distance),
+                    profit: Some(delivery_market_entry.sell_price - source_market_entry.purchase_price),
                 };
 
                 nodes.push(node);

@@ -28,11 +28,10 @@ pub fn SupplyChainGraph(node_data: Vec<TechNode>, edge_data: Vec<TechEdge>) -> i
 
     view! {
         <div class="tech-tree-layout">
-            <h1>"Supply Chain (petgraph Layout)"</h1>
+            <h1>"Supply Chain (sugiyama layout)"</h1>
             <div class="visualization">{
             view! {
                 <div inner_html={move || output_svg(&layout_nodes, &layout_edges) }/>
-
             }
         }</div>
 
@@ -134,7 +133,7 @@ fn output_svg(nodes: &[TechNode], edges: &[TechEdge]) -> String {
 }
 
 #[derive(Clone)]
-pub struct TextColorClass(String);
+pub struct TextClass(String);
 
 // A utility function to generate SVG multiline text with varying colors
 // Now with support for a font size multiplier for the first line
@@ -190,8 +189,8 @@ fn generate_multiline_text_svg(
 fn generate_node_svg(node: &TechNode) -> String {
     if let (Some(x), Some(y)) = (node.x, node.y) {
         // Colors
-        let bold_text_class = TextColorClass("".to_string());
-        let normal_text_class = TextColorClass("".to_string());
+        let bold_text_class = TextClass("font-bold fill-gray-200".to_string()); // in svg-land, text-[color] doesn't work, use fill-[color] instead
+        let normal_text_class = TextClass("fill-gray-200".to_string());
 
         // Get activity color for border
         let border_stroke = node
@@ -217,7 +216,7 @@ fn generate_node_svg(node: &TechNode) -> String {
 
         let waypoint_type = match &node.source {
             TechNodeSource::Raw(raw_material_source) => raw_material_source.source_type.to_string(),
-            TechNodeSource::Market(_) => "Market".to_string(),
+            TechNodeSource::Market(m) => format!("{}", m.trade_good_type.to_string()),
         };
 
         // Prepare text lines with their colors
@@ -229,9 +228,11 @@ fn generate_node_svg(node: &TechNode) -> String {
             // Waypoint type
             ColoredLabel::new(waypoint_type, normal_text_class.0.clone()),
             // Activity
-            node.maybe_activity_text().unwrap_or(ColoredLabel::empty()),
+            node.maybe_activity_text()
+                .unwrap_or(ColoredLabel::new("---".to_string(), normal_text_class.0.clone())),
             // Supply
-            node.maybe_supply_text().unwrap_or(ColoredLabel::empty()),
+            node.maybe_supply_text()
+                .unwrap_or(ColoredLabel::new("---".to_string(), normal_text_class.0.clone())),
             // Volume
             ColoredLabel::new(format!("v: {}", node.volume), normal_text_class.0.clone()),
             // Costs
@@ -309,7 +310,7 @@ fn generate_edge_label_svg(x: f64, y: f64, edge: &TechEdge, direction_x: f64, di
     // Text styling
     let font_size = 10;
     let font_family = "Arial";
-    let normal_text_class = TextColorClass("".to_string());
+    let normal_text_class = TextClass("fill-gray-200".to_string());
     let line_height = 18.0;
 
     // Background styling
@@ -329,21 +330,13 @@ fn generate_edge_label_svg(x: f64, y: f64, edge: &TechEdge, direction_x: f64, di
     let distance = edge.distance.unwrap_or(0);
     let profit = edge.profit.unwrap_or(0);
 
-    // Colors for activity and supply
-    let activity_color = edge
-        .activity
-        .clone()
-        .map(|a| get_activity_fill_color(&a))
-        .unwrap_or_default();
-    let supply_color = get_supply_fill_color(&edge.supply);
-
     // Profit color (green for positive, red for negative)
-    let profit_color = if profit <= 0 {
+    let profit_class = if profit <= 0 {
         //Amber/orange
-        TextColorClass("text-amber-500".to_string())
+        TextClass("fill-amber-500".to_string())
     } else {
         // Emerald/green
-        TextColorClass("text-emerald-600".to_string())
+        TextClass("fill-green-300".to_string())
     };
 
     // Prepare left and right text content
@@ -354,12 +347,11 @@ fn generate_edge_label_svg(x: f64, y: f64, edge: &TechEdge, direction_x: f64, di
     ];
 
     let right_text_lines = vec![
-        edge.maybe_activity_text().unwrap_or_default(),
-        ColoredLabel::new(format!("d: {}", distance), normal_text_class.0.clone()),
-        ColoredLabel::new(format!("d: {}", distance), normal_text_class.0.clone()),
-        // (format!("A: {}", activity), activity_color),
-        // (format!("S: {}", supply), supply_color),
-        // (format!("{:+}", profit), profit_color.0.clone()),
+        edge.maybe_activity_text()
+            .unwrap_or(ColoredLabel::new("---".to_string(), normal_text_class.0.clone())),
+        edge.supply_text()
+            .unwrap_or(ColoredLabel::new("---".to_string(), normal_text_class.0.clone())),
+        ColoredLabel::new(format!("{:+}", profit), profit_class.0.clone()),
     ];
 
     // Calculate vertical center position with adjustment for 3 lines of text
@@ -502,6 +494,7 @@ fn calculate_node_border_intersection(
     }
 }
 
+/// in svg-land, text is colored by using the fill-classes
 pub fn get_activity_fill_color(activity: &ActivityLevel) -> String {
     match activity {
         ActivityLevel::Strong => "fill-green-500",
@@ -512,16 +505,7 @@ pub fn get_activity_fill_color(activity: &ActivityLevel) -> String {
     .to_string()
 }
 
-pub fn get_activity_text_color(activity: &ActivityLevel) -> String {
-    match activity {
-        ActivityLevel::Strong => "text-green-500",
-        ActivityLevel::Growing => "text-green-300",
-        ActivityLevel::Weak => "text-yellow-500",
-        ActivityLevel::Restricted => "text-red-500",
-    }
-    .to_string()
-}
-
+/// in svg-land, text is colored by using the fill-classes
 pub fn get_supply_fill_color(supply: &SupplyLevel) -> String {
     match supply {
         SupplyLevel::Abundant => "fill-green-500",
@@ -529,17 +513,6 @@ pub fn get_supply_fill_color(supply: &SupplyLevel) -> String {
         SupplyLevel::Moderate => "fill-yellow-300",
         SupplyLevel::Limited => "fill-orange-500",
         SupplyLevel::Scarce => "fill-red-500",
-    }
-    .to_string()
-}
-
-pub fn get_supply_text_color(supply: &SupplyLevel) -> String {
-    match supply {
-        SupplyLevel::Abundant => "text-green-500",
-        SupplyLevel::High => "text-green-300",
-        SupplyLevel::Moderate => "text-yellow-300",
-        SupplyLevel::Limited => "text-orange-500",
-        SupplyLevel::Scarce => "text-red-500",
     }
     .to_string()
 }
