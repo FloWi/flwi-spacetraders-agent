@@ -128,8 +128,8 @@ pub fn SupplyChainPage() -> impl IntoView {
     view! {
         <Title text="Leptos + Tailwindcss" />
         <main>
-            <div class="flex flex-col min-h-screen">
-                <Suspense fallback=move || view! { <p>"Loading..."</p> }>
+            <div class="flex flex-col">
+                <Transition fallback=move || view! { <p>"Loading..."</p> }>
                     <ErrorBoundary fallback=|errors| {
                         view! { <p>"Error: " {format!("{errors:?}")}</p> }
                     }>
@@ -204,7 +204,7 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                                 .unwrap()}
                                                         </pre>
                                                         <h2 class="text-2xl font-bold">"Trading Opportunities"</h2>
-                                                        <div class="rounded-md overflow-clip m-10 border dark:border-gray-700 float-left"
+                                                        <div class="rounded-md overflow-clip border dark:border-gray-700 w-full"
                                                             .to_string()>
                                                             <table class="text-sm text-left text-gray-500 dark:text-gray-400 mb-[-1px]">
                                                                 <TableContent
@@ -238,7 +238,7 @@ pub fn SupplyChainPage() -> impl IntoView {
                                 })
                         }}
                     </ErrorBoundary>
-                </Suspense>
+                </Transition>
             </div>
             <script type="module">
                 "import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';"

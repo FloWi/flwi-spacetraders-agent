@@ -16,7 +16,7 @@ use std::sync::Arc;
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
         <!DOCTYPE html>
-        <html lang="en">
+        <html lang="en" class="dark">
             <head>
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -44,7 +44,8 @@ pub fn App() -> impl IntoView {
         // sets the document title
         <Title text="Welcome to Leptos" />
 
-        // content for this welcome page
+        <div class="min-w-full p-4 bg-slate-900 text-slate-300">
+
         <Router>
             <main>
                 <Routes fallback=|| "Page not found.".into_view()>
@@ -62,6 +63,7 @@ pub fn App() -> impl IntoView {
                 </Routes>
             </main>
         </Router>
+        </div>
     }
 }
 

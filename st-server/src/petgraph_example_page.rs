@@ -270,7 +270,7 @@ async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec
             DeliveryRoute::Processed { route, .. } => Some(ScoredSupplyChainSupportRoute::calc(
                 route,
                 max_level,
-                &materialized_supply_chain.individual_materialized_routes,
+                &materialized_supply_chain.individual_routes_of_goods_for_sale,
                 &priorities_of_products_to_boost,
             )),
         })
@@ -296,8 +296,8 @@ pub fn TechTreePetgraph() -> impl IntoView {
     view! {
         // <Title text="Leptos + Tailwindcss" />
         <main>
-            <div class="flex flex-col min-h-screen">
-                <Suspense fallback=move || view! { <p>"Loading..."</p> }>
+            <div class="flex flex-col min-h-screen w-full">
+                <Transition fallback=move || view! { <p>"Loading..."</p> }>
                     <ErrorBoundary fallback=|errors| {
                         view! { <p>"Error: " {format!("{errors:?}")}</p> }
                     }>
@@ -326,9 +326,9 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                                 materialized_supply_chain.system_symbol,
                                                             )}
                                                         </h2>
-                                                        <div class="rounded-md overflow-clip m-10 border dark:border-gray-700 float-left"
+                                                        <div class="rounded-md overflow-clip border dark:border-gray-700 w-full mt-4"
                                                             .to_string()>
-                                                            <table class="text-sm text-left text-gray-500 dark:text-gray-400 mb-[-1px]">
+                                                            <table class="text-sm text-left mb-[-1px]">
                                                                 <TableContent
                                                                     rows=scored_supply_chains_table_data
                                                                     scroll_container="html"
@@ -343,18 +343,19 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                         />
                                                     </div>
                                                     <div>
-                                                        <h2 class="text-2xl font-bold">
+                                                        <h2 class="text-2xl font-bold my-4">
                                                             "Individual Supply Chains"
                                                         </h2>
 
                                                         {materialized_supply_chain
-                                                            .individual_materialized_routes
+                                                            .individual_routes_of_goods_for_sale
                                                             .iter()
+                                                            .sorted_by_key(|(tg, _)| materialized_supply_chain.goods_of_interest.iter().position(|tg_of_interest| tg_of_interest == *tg).unwrap_or(usize::MAX))
                                                             .map(|(tg, materialized_individual_chain)| {
                                                                 view! {
                                                                     <SupplyChainGraph
                                                                         routes=materialized_individual_chain.all_routes.clone()
-                                                                        label=tg.to_string()
+                                                                        label=format!("Individual Supply Chain for {tg}")
                                                                     />
                                                                 }
                                                             })
@@ -374,7 +375,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                 })
                         }}
                     </ErrorBoundary>
-                </Suspense>
+                </Transition>
             </div>
 
         </main>

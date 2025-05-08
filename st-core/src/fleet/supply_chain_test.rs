@@ -496,7 +496,7 @@ fn calc_trading_decisions(
         .keys()
         .for_each(|missing_construction_mat| {
             if let Some(chain) = materialized_supply_chain
-                .individual_materialized_routes
+                .individual_routes_of_goods_for_sale
                 .get(missing_construction_mat)
             {
                 let construction_site_wps = facts.construction_site.clone().unwrap().symbol;
@@ -513,7 +513,7 @@ fn calc_trading_decisions(
     println!(
         "Found {} out of {} trade goods for sale that don't conflict with the supply chains of the construction materials:\nnon conflicting goods: {:?}\n    conflicting_goods: {:?}",
         materialized_supply_chain.goods_for_sale_not_conflicting_with_construction.len(),
-        materialized_supply_chain.products_for_sale.len(),
+        materialized_supply_chain.goods_for_sale.len(),
         materialized_supply_chain.goods_for_sale_not_conflicting_with_construction,
         materialized_supply_chain.goods_for_sale_conflicting_with_construction,
     );

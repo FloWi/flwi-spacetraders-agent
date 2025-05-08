@@ -92,10 +92,11 @@ pub struct MaterializedSupplyChain {
     pub raw_delivery_routes: Vec<RawDeliveryRoute>,
     pub relevant_supply_chain: Vec<SupplyChainNode>,
     pub all_routes: Vec<DeliveryRoute>,
-    pub products_for_sale: HashSet<TradeGoodSymbol>,
+    pub goods_of_interest: Vec<TradeGoodSymbol>,
+    pub goods_for_sale: HashSet<TradeGoodSymbol>,
     pub goods_for_sale_not_conflicting_with_construction: HashSet<TradeGoodSymbol>,
     pub goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol>,
-    pub individual_materialized_routes: HashMap<TradeGoodSymbol, MaterializedIndividualSupplyChain>,
+    pub individual_routes_of_goods_for_sale: HashMap<TradeGoodSymbol, MaterializedIndividualSupplyChain>,
 }
 
 pub fn get_all_goods_involved(chain: &[SupplyChainNode]) -> HashSet<TradeGoodSymbol> {
@@ -241,7 +242,7 @@ pub fn materialize_supply_chain(
         TradeGoodSymbol::CLOTHING,
     ];
 
-    let products_for_sale: HashSet<TradeGoodSymbol> = market_data
+    let goods_for_sale: HashSet<TradeGoodSymbol> = market_data
         .iter()
         .flat_map(|(_, entries)| {
             entries
@@ -252,9 +253,9 @@ pub fn materialize_supply_chain(
 
     let raw_materials = get_raw_material_source();
 
-    let mut individual_materialized_routes = HashMap::new();
+    let mut individual_routes_of_goods_for_sale = HashMap::new();
 
-    for p in products_for_sale
+    for p in goods_for_sale
         .iter()
         .filter(|tg| raw_materials.contains_key(tg).not())
     {
@@ -274,7 +275,7 @@ pub fn materialize_supply_chain(
                 DeliveryRoute::Processed { route, .. } => route.distance,
             })
             .sum();
-        individual_materialized_routes.insert(
+        individual_routes_of_goods_for_sale.insert(
             p.clone(),
             MaterializedIndividualSupplyChain {
                 trade_good: p.clone(),
@@ -284,9 +285,9 @@ pub fn materialize_supply_chain(
         );
     }
 
-    println!("Total distances of all {} products for sale\n", products_for_sale.len());
+    println!("Total distances of all {} products for sale\n", goods_for_sale.len());
 
-    individual_materialized_routes
+    individual_routes_of_goods_for_sale
         .iter()
         .sorted_by_key(|(_, mat)| mat.total_distance)
         .for_each(|(_, mat)| {
@@ -328,7 +329,7 @@ pub fn materialize_supply_chain(
     let ConstructionRelatedTradeGoodsOverview {
         goods_for_sale_not_conflicting_with_construction,
         goods_for_sale_conflicting_with_construction,
-    } = calc_construction_related_trade_good_overview(supply_chain, missing_construction_material_map, &products_for_sale);
+    } = calc_construction_related_trade_good_overview(supply_chain, missing_construction_material_map, &goods_for_sale);
 
     MaterializedSupplyChain {
         explanation: format!(
@@ -341,10 +342,11 @@ pub fn materialize_supply_chain(
         trading_opportunities,
         raw_delivery_routes,
         all_routes,
-        products_for_sale,
+        goods_of_interest,
+        goods_for_sale,
         goods_for_sale_not_conflicting_with_construction,
         goods_for_sale_conflicting_with_construction,
-        individual_materialized_routes,
+        individual_routes_of_goods_for_sale,
     }
 }
 

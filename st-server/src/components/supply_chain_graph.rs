@@ -33,8 +33,8 @@ pub fn SupplyChainGraph(routes: Vec<DeliveryRoute>, label: String) -> impl IntoV
     let (layout_nodes, layout_edges) = build_supply_chain_layout(&nodes, &edges, orientation, x_scale, y_scale);
 
     view! {
-        <div class="tech-tree-layout">
-            <h2 class="text-xl font-bold">{format!("Supply Chain for {}", label)}</h2>
+        <div class="p-4 bg-white dark:bg-gray-900 odd:bg-gray-50 dark:odd:bg-gray-700">
+            <h2 class="text-xl font-bold">{format!("{}", label)}</h2>
             <h1>"Supply Chain (sugiyama layout)"</h1>
             <div class="visualization">
                 {
@@ -196,8 +196,8 @@ fn generate_multiline_text_svg(
 fn generate_node_svg(node: &TechNode) -> String {
     if let (Some(x), Some(y)) = (node.x, node.y) {
         // Colors
-        let bold_text_class = TextClass("font-bold fill-gray-200".to_string()); // in svg-land, text-[color] doesn't work, use fill-[color] instead
-        let normal_text_class = TextClass("fill-gray-200".to_string());
+        let bold_text_class = TextClass("fill-gray-700 dark:fill-gray-300".to_string()); // in svg-land, text-[color] doesn't work, use fill-[color] instead
+        let normal_text_class = TextClass("fill-gray-700 dark:fill-gray-300".to_string());
 
         // Get activity color for border
         let border_stroke = node
@@ -206,7 +206,7 @@ fn generate_node_svg(node: &TechNode) -> String {
             .map(|a| get_activity_stroke_color(&a))
             .unwrap_or_default();
 
-        let rect_class: String = format!("stroke-[4] fill-black {}", border_stroke); // stroke-4 doesn't work, either set stroke-width property on node directly, or use this syntax
+        let rect_class: String = format!("stroke-[4] fill-gray-50 dark:fill-gray-800 {}", border_stroke); // stroke-4 doesn't work, either set stroke-width property on node directly, or use this syntax
 
         // Layout parameters
         let node_x = x - node.width / 2.0;
@@ -316,7 +316,7 @@ fn generate_edge_label_svg(x: f64, y: f64, edge: &TechEdge, direction_x: f64, di
     // Text styling
     let font_size = 10;
     let font_family = "Arial";
-    let normal_text_class = TextClass("fill-gray-200".to_string());
+    let normal_text_class = TextClass("fill-gray-700 dark:fill-gray-300".to_string());
     let line_height = 18.0;
 
     // Background styling
@@ -565,8 +565,8 @@ fn build_supply_chain_layout(
     let config = Config {
         minimum_length: 1, // Increase this from 0
         vertex_spacing: 300,
-        dummy_vertices: false,                         // dummy vertices need to be DISABLED, otherwise the placement of some nodes is completely off.
-        dummy_size: 150.0,                             // Give them a size - doesn't matter, since we disabled them
+        dummy_vertices: true,                          // create dummy vertices for better edge routing etc..
+        dummy_size: 5.0, // Give them a size - needs to be quite small - if too big, some nodes are placed at the edge of the solar system
         ranking_type: RankingType::MinimizeEdgeLength, // Change from Original
         c_minimization: CrossingMinimization::Barycenter,
         transpose: true,
