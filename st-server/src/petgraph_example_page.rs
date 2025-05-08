@@ -144,7 +144,7 @@ impl Point {
 }
 
 #[server]
-async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec<TechNode>, Vec<TechEdge>, Vec<ScoredSupplyChainSupportRoute>), ServerFnError> {
+async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec<ScoredSupplyChainSupportRoute>), ServerFnError> {
     use st_core::fleet::fleet::collect_fleet_decision_facts;
     use st_core::fleet::fleet_runner::FleetRunner;
     use st_core::st_client::StClientTrait;
@@ -285,127 +285,7 @@ async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec
         "raw_delivery_routes should not be empty"
     );
 
-    let (nodes, edges) = to_nodes_and_edges(&materialized_supply_chain);
-
-    println!(
-        "nodes: {}\nedges: {}",
-        serde_json::to_string(&nodes).unwrap_or_default(),
-        serde_json::to_string(&edges).unwrap_or_default()
-    );
-
-    Ok((materialized_supply_chain, nodes, edges, scored_supply_routes))
-}
-
-fn to_nodes_and_edges(materialized_supply_chain: &MaterializedSupplyChain) -> (Vec<TechNode>, Vec<TechEdge>) {
-    let mut nodes: Vec<TechNode> = vec![];
-    let mut edges: Vec<TechEdge> = vec![];
-
-    for route in materialized_supply_chain.all_routes.iter() {
-        match route {
-            DeliveryRoute::Raw(raw_route) => {
-                let source_id = format!("{} at {}", raw_route.source.trade_good, raw_route.source.source_waypoint);
-                let source_node = TechNode {
-                    id: source_id.clone(),
-                    name: raw_route.source.trade_good.clone(),
-                    waypoint_symbol: raw_route.source.source_waypoint.clone(),
-                    source: TechNodeSource::Raw(raw_route.source.clone()),
-                    supply_level: None,
-                    activity_level: None,
-                    cost: 0,
-                    volume: 0,
-                    width: 200.0,
-                    height: 165.0,
-                    x: None,
-                    y: None,
-                };
-
-                let destination_id = format!("{} at {}", raw_route.export_entry.symbol, raw_route.delivery_location);
-                let destination_node = TechNode {
-                    id: destination_id.clone(),
-                    name: raw_route.export_entry.symbol.clone(),
-                    waypoint_symbol: raw_route.delivery_location.clone(),
-                    source: TechNodeSource::Market(raw_route.export_entry.clone()),
-                    supply_level: Some(raw_route.export_entry.supply.clone()),
-                    activity_level: raw_route.export_entry.activity.clone(),
-                    cost: raw_route.export_entry.purchase_price as u32,
-                    volume: raw_route.export_entry.trade_volume as u32,
-                    width: 200.0,
-                    height: 165.0,
-                    x: None,
-                    y: None,
-                };
-
-                nodes.push(source_node);
-                nodes.push(destination_node);
-
-                let edge = TechEdge {
-                    source: source_id,
-                    target: destination_id,
-                    cost: raw_route.delivery_market_entry.sell_price as u32,
-                    activity: raw_route.delivery_market_entry.activity.clone(),
-                    volume: raw_route.delivery_market_entry.trade_volume as u32,
-                    supply: raw_route.delivery_market_entry.supply.clone(),
-                    points: None,
-                    curve_factor: None,
-                    distance: Some(raw_route.distance),
-                    profit: None,
-                };
-
-                edges.push(edge);
-            }
-            DeliveryRoute::Processed {
-                route:
-                    HigherDeliveryRoute {
-                        trade_good,
-                        source_location,
-                        source_market_entry,
-                        delivery_location,
-                        distance,
-                        delivery_market_entry,
-                        producing_trade_good,
-                        producing_market_entry,
-                        ..
-                    },
-                rank,
-            } => {
-                let target_id = format!("{} at {}", producing_trade_good, delivery_location);
-                let node = TechNode {
-                    id: target_id.clone(),
-                    name: producing_trade_good.clone(),
-                    waypoint_symbol: delivery_location.clone(),
-                    source: TechNodeSource::Market(producing_market_entry.clone()),
-                    supply_level: Some(producing_market_entry.supply.clone()),
-                    activity_level: producing_market_entry.activity.clone(),
-                    cost: producing_market_entry.purchase_price as u32,
-                    volume: producing_market_entry.trade_volume as u32,
-                    width: 200.0,
-                    height: 165.0,
-                    x: None,
-                    y: None,
-                };
-
-                let source_id = format!("{} at {}", trade_good, source_location);
-
-                let edge = TechEdge {
-                    source: source_id,
-                    target: target_id,
-                    cost: delivery_market_entry.sell_price as u32,
-                    activity: delivery_market_entry.activity.clone(),
-                    volume: delivery_market_entry.trade_volume as u32,
-                    supply: delivery_market_entry.supply.clone(),
-                    points: None,
-                    curve_factor: None,
-                    distance: Some(*distance),
-                    profit: Some(delivery_market_entry.sell_price - source_market_entry.purchase_price),
-                };
-
-                nodes.push(node);
-                edges.push(edge);
-            }
-        }
-    }
-
-    (nodes.into_iter().unique_by(|n| n.id.clone()).collect_vec(), edges)
+    Ok((materialized_supply_chain, scored_supply_routes))
 }
 
 #[component]
@@ -427,12 +307,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                 .map(|result| {
                                     match result {
                                         Ok(
-                                            (
-                                                materialized_supply_chain,
-                                                nodes,
-                                                edges,
-                                                scored_supply_chain_routes,
-                                            ),
+                                            (materialized_supply_chain, scored_supply_chain_routes),
                                         ) => {
                                             let scored_supply_chains_table_data: Vec<
                                                 ScoredSupplyChainRouteRow,
@@ -446,7 +321,10 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                 <div class="flex flex-col gap-4">
                                                     <div>
                                                         <h2 class="text-2xl font-bold">
-                                                            {format!("Scored Supply Chain Routes for System {}", materialized_supply_chain.system_symbol)}
+                                                            {format!(
+                                                                "Scored Supply Chain Routes for System {}",
+                                                                materialized_supply_chain.system_symbol,
+                                                            )}
                                                         </h2>
                                                         <div class="rounded-md overflow-clip m-10 border dark:border-gray-700 float-left"
                                                             .to_string()>
@@ -460,9 +338,27 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                     </div>
                                                     <div>
                                                         <SupplyChainGraph
-                                                            node_data=nodes.clone()
-                                                            edge_data=edges.clone()
+                                                            routes=materialized_supply_chain.all_routes.clone()
+                                                            label="Combined Supply Chain".to_string()
                                                         />
+                                                    </div>
+                                                    <div>
+                                                        <h2 class="text-2xl font-bold">
+                                                            "Individual Supply Chains"
+                                                        </h2>
+
+                                                        {materialized_supply_chain
+                                                            .individual_materialized_routes
+                                                            .iter()
+                                                            .map(|(tg, materialized_individual_chain)| {
+                                                                view! {
+                                                                    <SupplyChainGraph
+                                                                        routes=materialized_individual_chain.all_routes.clone()
+                                                                        label=tg.to_string()
+                                                                    />
+                                                                }
+                                                            })
+                                                            .collect_view()}
                                                     </div>
 
                                                 </div>

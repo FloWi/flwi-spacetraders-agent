@@ -86,7 +86,9 @@ pub fn ProfitCellRenderer<F>(class: String, value: Signal<u64>, row: RwSignal<F>
 // PriceCellRenderer (for purchase_price and sell_price)
 #[component]
 pub fn PriceCellRenderer<F>(class: String, value: Signal<i32>, row: RwSignal<F>, index: usize) -> impl IntoView {
-    view! { <td class=class>{move || format!("{}c", value.get_untracked().separate_with_commas())}</td> }
+    view! {
+        <td class=class>{move || format!("{}c", value.get_untracked().separate_with_commas())}</td>
+    }
 }
 
 // TradeVolumeCellRenderer

@@ -1,4 +1,5 @@
 use crate::petgraph_example_page::{ColoredLabel, Point, TechEdge, TechNode, TechNodeSource};
+use itertools::Itertools;
 use leptos::html::Pre;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -7,7 +8,7 @@ use petgraph::graph::NodeIndex;
 use petgraph::prelude::StableDiGraph;
 use rust_sugiyama::configure::{CrossingMinimization, RankingType};
 use rust_sugiyama::{configure::Config, from_graph};
-use st_domain::{ActivityLevel, SupplyLevel};
+use st_domain::{ActivityLevel, DeliveryRoute, HigherDeliveryRoute, SupplyLevel};
 use std::collections::HashMap;
 use thousands::Separable;
 
@@ -17,24 +18,29 @@ enum Orientation {
 }
 
 #[component]
-pub fn SupplyChainGraph(node_data: Vec<TechNode>, edge_data: Vec<TechEdge>) -> impl IntoView {
+pub fn SupplyChainGraph(routes: Vec<DeliveryRoute>, label: String) -> impl IntoView {
     // Container reference for the output
     let container_ref: NodeRef<Pre> = NodeRef::new();
 
     let orientation = Orientation::LeftRight;
 
+    let (nodes, edges) = to_nodes_and_edges(&routes);
+
     let x_scale = 1.5;
     let y_scale = 0.75;
-    let (layout_nodes, layout_edges) = build_supply_chain_layout(&node_data, &edge_data, orientation, x_scale, y_scale);
+    log!("creating layout for {label}");
+
+    let (layout_nodes, layout_edges) = build_supply_chain_layout(&nodes, &edges, orientation, x_scale, y_scale);
 
     view! {
         <div class="tech-tree-layout">
+            <h2 class="text-xl font-bold">{format!("Supply Chain for {}", label)}</h2>
             <h1>"Supply Chain (sugiyama layout)"</h1>
-            <div class="visualization">{
-            view! {
-                <div inner_html={move || output_svg(&layout_nodes, &layout_edges) }/>
-            }
-        }</div>
+            <div class="visualization">
+                {
+                    view! { <div inner_html=move || output_svg(&layout_nodes, &layout_edges) /> }
+                }
+            </div>
 
         </div>
     }
@@ -548,16 +554,19 @@ fn build_supply_chain_layout(
     // Add all edges to the graph
     for edge in edges {
         if let (Some(source_idx), Some(target_idx)) = (node_indices.get(&edge.source), node_indices.get(&edge.target)) {
-            graph.add_edge(*source_idx, *target_idx, edge.cost);
+            graph.add_edge(*source_idx, *target_idx, 1);
         }
     }
+
+    // print dot-graph for debugging
+    // println!("{}", petgraph::dot::Dot::with_config(&graph, &[petgraph::dot::Config::EdgeNoLabel]));
 
     // Configure the layout algorithm
     let config = Config {
         minimum_length: 1, // Increase this from 0
         vertex_spacing: 300,
-        dummy_vertices: true,                          // Enable dummy vertices
-        dummy_size: 150.0,                             // Give them a size
+        dummy_vertices: false,                         // dummy vertices need to be DISABLED, otherwise the placement of some nodes is completely off.
+        dummy_size: 150.0,                             // Give them a size - doesn't matter, since we disabled them
         ranking_type: RankingType::MinimizeEdgeLength, // Change from Original
         c_minimization: CrossingMinimization::Barycenter,
         transpose: true,
@@ -643,4 +652,116 @@ fn build_supply_chain_layout(
     }
 
     (updated_nodes, updated_edges)
+}
+
+fn to_nodes_and_edges(routes: &[DeliveryRoute]) -> (Vec<TechNode>, Vec<TechEdge>) {
+    let mut nodes: Vec<TechNode> = vec![];
+    let mut edges: Vec<TechEdge> = vec![];
+
+    for route in routes.iter() {
+        match route {
+            DeliveryRoute::Raw(raw_route) => {
+                let source_id = format!("{} at {}", raw_route.source.trade_good, raw_route.source.source_waypoint);
+                let source_node = TechNode {
+                    id: source_id.clone(),
+                    name: raw_route.source.trade_good.clone(),
+                    waypoint_symbol: raw_route.source.source_waypoint.clone(),
+                    source: TechNodeSource::Raw(raw_route.source.clone()),
+                    supply_level: None,
+                    activity_level: None,
+                    cost: 0,
+                    volume: 0,
+                    width: 200.0,
+                    height: 165.0,
+                    x: None,
+                    y: None,
+                };
+
+                let destination_id = format!("{} at {}", raw_route.export_entry.symbol, raw_route.delivery_location);
+                let destination_node = TechNode {
+                    id: destination_id.clone(),
+                    name: raw_route.export_entry.symbol.clone(),
+                    waypoint_symbol: raw_route.delivery_location.clone(),
+                    source: TechNodeSource::Market(raw_route.export_entry.clone()),
+                    supply_level: Some(raw_route.export_entry.supply.clone()),
+                    activity_level: raw_route.export_entry.activity.clone(),
+                    cost: raw_route.export_entry.purchase_price as u32,
+                    volume: raw_route.export_entry.trade_volume as u32,
+                    width: 200.0,
+                    height: 165.0,
+                    x: None,
+                    y: None,
+                };
+
+                nodes.push(source_node);
+                nodes.push(destination_node);
+
+                let edge = TechEdge {
+                    source: source_id,
+                    target: destination_id,
+                    cost: raw_route.delivery_market_entry.sell_price as u32,
+                    activity: raw_route.delivery_market_entry.activity.clone(),
+                    volume: raw_route.delivery_market_entry.trade_volume as u32,
+                    supply: raw_route.delivery_market_entry.supply.clone(),
+                    points: None,
+                    curve_factor: None,
+                    distance: Some(raw_route.distance),
+                    profit: None,
+                };
+
+                edges.push(edge);
+            }
+            DeliveryRoute::Processed {
+                route:
+                    HigherDeliveryRoute {
+                        trade_good,
+                        source_location,
+                        source_market_entry,
+                        delivery_location,
+                        distance,
+                        delivery_market_entry,
+                        producing_trade_good,
+                        producing_market_entry,
+                        ..
+                    },
+                rank,
+            } => {
+                let target_id = format!("{} at {}", producing_trade_good, delivery_location);
+                let node = TechNode {
+                    id: target_id.clone(),
+                    name: producing_trade_good.clone(),
+                    waypoint_symbol: delivery_location.clone(),
+                    source: TechNodeSource::Market(producing_market_entry.clone()),
+                    supply_level: Some(producing_market_entry.supply.clone()),
+                    activity_level: producing_market_entry.activity.clone(),
+                    cost: producing_market_entry.purchase_price as u32,
+                    volume: producing_market_entry.trade_volume as u32,
+                    width: 200.0,
+                    height: 165.0,
+                    x: None,
+                    y: None,
+                };
+
+                let source_id = format!("{} at {}", trade_good, source_location);
+
+                let edge = TechEdge {
+                    source: source_id,
+                    target: target_id,
+                    cost: delivery_market_entry.sell_price as u32,
+                    activity: delivery_market_entry.activity.clone(),
+                    volume: delivery_market_entry.trade_volume as u32,
+                    supply: delivery_market_entry.supply.clone(),
+                    points: None,
+                    curve_factor: None,
+                    distance: Some(*distance),
+                    profit: Some(delivery_market_entry.sell_price - source_market_entry.purchase_price),
+                };
+
+                nodes.push(node);
+                edges.push(edge);
+            }
+        }
+    }
+
+    (nodes.into_iter().unique_by(|n| n.id.clone()).collect_vec(), edges)
 }
