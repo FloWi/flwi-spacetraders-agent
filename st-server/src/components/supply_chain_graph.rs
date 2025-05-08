@@ -9,6 +9,7 @@ use rust_sugiyama::configure::{CrossingMinimization, RankingType};
 use rust_sugiyama::{configure::Config, from_graph};
 use st_domain::{ActivityLevel, SupplyLevel};
 use std::collections::HashMap;
+use thousands::Separable;
 
 enum Orientation {
     TopDown,
@@ -199,7 +200,7 @@ fn generate_node_svg(node: &TechNode) -> String {
             .map(|a| get_activity_stroke_color(&a))
             .unwrap_or_default();
 
-        let rect_class: String = format!("stroke-4 fill-black {}", border_stroke);
+        let rect_class: String = format!("stroke-[4] fill-black {}", border_stroke); // stroke-4 doesn't work, either set stroke-width property on node directly, or use this syntax
 
         // Layout parameters
         let node_x = x - node.width / 2.0;
@@ -211,7 +212,6 @@ fn generate_node_svg(node: &TechNode) -> String {
         let font_family = "Arial";
         let normal_font_size = 10;
         let title_font_size_multiplier = 1.3; // Make first line 30% larger
-        let border_width = 4;
         let corner_radius = 5;
 
         let waypoint_type = match &node.source {
@@ -236,7 +236,7 @@ fn generate_node_svg(node: &TechNode) -> String {
             // Volume
             ColoredLabel::new(format!("v: {}", node.volume), normal_text_class.0.clone()),
             // Costs
-            ColoredLabel::new(format!("p: {}c", node.cost), normal_text_class.0.clone()),
+            ColoredLabel::new(format!("p: {}c", node.cost.separate_with_commas()), normal_text_class.0.clone()),
         ];
 
         format!(
@@ -323,8 +323,6 @@ fn generate_edge_label_svg(x: f64, y: f64, edge: &TechEdge, direction_x: f64, di
     // Content from edge
     let cost = edge.cost;
     let volume = edge.volume;
-    let activity = &edge.activity;
-    let supply = &edge.supply;
 
     // New fields
     let distance = edge.distance.unwrap_or(0);
@@ -343,7 +341,7 @@ fn generate_edge_label_svg(x: f64, y: f64, edge: &TechEdge, direction_x: f64, di
     let left_text_lines = vec![
         ColoredLabel::new(format!("d: {}", distance), normal_text_class.0.clone()),
         ColoredLabel::new(format!("v: {}", volume), normal_text_class.0.clone()),
-        ColoredLabel::new(format!("p: {}c", cost), normal_text_class.0.clone()),
+        ColoredLabel::new(format!("p: {}c", cost.separate_with_commas()), normal_text_class.0.clone()),
     ];
 
     let right_text_lines = vec![
