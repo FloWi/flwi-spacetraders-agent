@@ -16,7 +16,7 @@ use std::sync::Arc;
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
         <!DOCTYPE html>
-        <html lang="en" class="dark">
+        <html lang="en" class="dark bg-slate-900 text-slate-300">
             <head>
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -46,23 +46,23 @@ pub fn App() -> impl IntoView {
 
         <div class="min-w-full p-4 bg-slate-900 text-slate-300">
 
-        <Router>
-            <main>
-                <Routes fallback=|| "Page not found.".into_view()>
-                    <Route path=StaticSegment("") view=HomePage />
-                    <Route path=StaticSegment("supply-chain") view=SupplyChainPage />
-                    <Route path=StaticSegment("db-overview") view=DbOverviewPage />
-                    <Route path=StaticSegment("ship-overview") view=ShipOverviewPage />
-                    <Route path=StaticSegment("fleet-overview") view=FleetOverviewPage />
-                    <Route path=StaticSegment("behavior-overview") view=BehaviorTreePage />
-                    <Route path=StaticSegment("petgraph-example") view=TechTreePetgraph />
-                    <Route
-                        path=StaticSegment("treasurer-experiment")
-                        view=TreasurerExperimentPage
-                    />
-                </Routes>
-            </main>
-        </Router>
+            <Router>
+                <main>
+                    <Routes fallback=|| "Page not found.".into_view()>
+                        <Route path=StaticSegment("") view=HomePage />
+                        <Route path=StaticSegment("supply-chain") view=SupplyChainPage />
+                        <Route path=StaticSegment("db-overview") view=DbOverviewPage />
+                        <Route path=StaticSegment("ship-overview") view=ShipOverviewPage />
+                        <Route path=StaticSegment("fleet-overview") view=FleetOverviewPage />
+                        <Route path=StaticSegment("behavior-overview") view=BehaviorTreePage />
+                        <Route path=StaticSegment("petgraph-example") view=TechTreePetgraph />
+                        <Route
+                            path=StaticSegment("treasurer-experiment")
+                            view=TreasurerExperimentPage
+                        />
+                    </Routes>
+                </main>
+            </Router>
         </div>
     }
 }

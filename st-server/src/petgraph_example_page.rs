@@ -6,12 +6,13 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    ActivityLevel, DeliveryRoute, HigherDeliveryRoute, MarketTradeGood, MaterializedSupplyChain, RawMaterialSource, ScoredSupplyChainSupportRoute, SupplyLevel,
-    TradeGoodSymbol, TradeGoodType, WaypointSymbol, WaypointType,
+    ActivityLevel, DeliveryRoute, HigherDeliveryRoute, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource,
+    ScoredSupplyChainSupportRoute, SupplyLevel, TradeGoodSymbol, TradeGoodType, WaypointSymbol, WaypointType,
 };
 
 use crate::components::supply_chain_graph::{get_activity_fill_color, get_supply_fill_color, SupplyChainGraph};
 use crate::tables::scored_supply_chain_route_table::ScoredSupplyChainRouteRow;
+use crate::tables::trade_good_overview_table::TradeGoodsOverviewRow;
 use itertools::Itertools;
 use leptos_struct_table::TableContent;
 use std::collections::{HashMap, HashSet};
@@ -336,6 +337,10 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                             </table>
                                                         </div>
                                                     </div>
+
+                                                    <div>
+                                                        {render_overview_of_trade_goods(&materialized_supply_chain)}
+                                                    </div>
                                                     <div>
                                                         <SupplyChainGraph
                                                             routes=materialized_supply_chain.all_routes.clone()
@@ -344,22 +349,52 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                     </div>
                                                     <div>
                                                         <h2 class="text-2xl font-bold my-4">
-                                                            "Individual Supply Chains"
+                                                            "Individual Supply Chains for goods of interest"
                                                         </h2>
 
-                                                        {materialized_supply_chain
-                                                            .individual_routes_of_goods_for_sale
-                                                            .iter()
-                                                            .sorted_by_key(|(tg, _)| materialized_supply_chain.goods_of_interest.iter().position(|tg_of_interest| tg_of_interest == *tg).unwrap_or(usize::MAX))
-                                                            .map(|(tg, materialized_individual_chain)| {
-                                                                view! {
-                                                                    <SupplyChainGraph
-                                                                        routes=materialized_individual_chain.all_routes.clone()
-                                                                        label=format!("Individual Supply Chain for {tg}")
-                                                                    />
-                                                                }
-                                                            })
-                                                            .collect_view()}
+                                                        {render_multiple_supply_chains(
+                                                            materialized_supply_chain
+                                                                .individual_routes_of_goods_for_sale
+                                                                .iter()
+                                                                .filter(|(tg, _)| {
+                                                                    materialized_supply_chain.goods_of_interest.contains(*tg)
+                                                                })
+                                                                .sorted_by_key(|(tg, _)| {
+                                                                    materialized_supply_chain
+                                                                        .goods_of_interest
+                                                                        .iter()
+                                                                        .position(|tg_of_interest| tg_of_interest == *tg)
+                                                                        .unwrap_or(usize::MAX)
+                                                                })
+                                                                .collect_vec(),
+                                                        )}
+
+                                                    </div>
+                                                    <div>
+                                                        <h2 class="text-2xl font-bold my-4">
+                                                            "Individual Supply Chains for other goods (that are for sale in system)"
+                                                        </h2>
+
+                                                        {render_multiple_supply_chains(
+                                                            materialized_supply_chain
+                                                                .individual_routes_of_goods_for_sale
+                                                                .iter()
+                                                                .filter(|(tg, _)| {
+                                                                    materialized_supply_chain
+                                                                        .goods_of_interest
+                                                                        .contains(*tg)
+                                                                        .not()
+                                                                })
+                                                                .sorted_by_key(|(tg, _)| {
+                                                                    materialized_supply_chain
+                                                                        .goods_of_interest
+                                                                        .iter()
+                                                                        .position(|tg_of_interest| tg_of_interest == *tg)
+                                                                        .unwrap_or(usize::MAX)
+                                                                })
+                                                                .collect_vec(),
+                                                        )}
+
                                                     </div>
 
                                                 </div>
@@ -380,4 +415,44 @@ pub fn TechTreePetgraph() -> impl IntoView {
 
         </main>
     }
+}
+
+fn render_overview_of_trade_goods(materialized_supply_chain: &MaterializedSupplyChain) -> impl IntoView {
+    let description_rows = vec![
+        TradeGoodsOverviewRow::new("Goods Of Interest".to_string(), materialized_supply_chain.goods_of_interest.iter()),
+        TradeGoodsOverviewRow::new(
+            "Goods For Sale Not Conflicting With Construction".to_string(),
+            materialized_supply_chain
+                .goods_for_sale_not_conflicting_with_construction
+                .iter(),
+        ),
+        TradeGoodsOverviewRow::new(
+            "Goods For Sale Conflicting With Construction".to_string(),
+            materialized_supply_chain
+                .goods_for_sale_conflicting_with_construction
+                .iter(),
+        ),
+    ];
+
+    view! {
+        <div class="rounded-md overflow-clip border dark:border-gray-700 w-1/3 mt-4".to_string()>
+            <table class="text-sm text-left mb-[-1px]">
+                <TableContent rows=description_rows scroll_container="html" />
+            </table>
+        </div>
+    }
+}
+
+fn render_multiple_supply_chains(chains: Vec<(&TradeGoodSymbol, &MaterializedIndividualSupplyChain)>) -> impl IntoView {
+    chains
+        .iter()
+        .map(|(tg, materialized_individual_chain)| {
+            view! {
+                <SupplyChainGraph
+                    routes=materialized_individual_chain.all_routes.clone()
+                    label=format!("Individual Supply Chain for {tg}")
+                />
+            }
+        })
+        .collect_view()
 }

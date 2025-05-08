@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use leptos::prelude::*;
 use leptos::*;
 use st_domain::{ActivityLevel, SupplyLevel, TradeGoodSymbol, TradeGoodType, WaypointSymbol};
@@ -101,4 +102,19 @@ pub fn TradeVolumeCellRenderer<F>(class: String, value: Signal<i32>, row: RwSign
 #[component]
 pub fn TradeGoodSymbolCellRenderer<F>(class: String, value: Signal<TradeGoodSymbol>, row: RwSignal<F>, index: usize) -> impl IntoView {
     view! { <td class=class>{move || format!("{}", value.get_untracked().to_string())}</td> }
+}
+
+// TradeGoodSymbolListCellRenderer
+#[component]
+pub fn TradeGoodSymbolListCellRenderer<F>(class: String, value: Signal<Vec<TradeGoodSymbol>>, row: RwSignal<F>, index: usize) -> impl IntoView {
+    view! {
+        <td class=class>
+            {move || {
+                format!(
+                    "{}",
+                    value.get_untracked().iter().map(|tg| tg.to_string()).sorted().join(", "),
+                )
+            }}
+        </td>
+    }
 }
