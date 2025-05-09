@@ -6,19 +6,19 @@ use thousands::Separable;
 
 // WaypointSymbolCellRenderer (you already had this one)
 #[component]
-pub fn WaypointSymbolCellRenderer<F>(class: String, value: Signal<WaypointSymbol>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn WaypointSymbolCellRenderer<F: 'static>(class: String, value: Signal<WaypointSymbol>, row: RwSignal<F>, index: usize) -> impl IntoView {
     view! { <td class=class>{move || value.get_untracked().symbol_ex_system_symbol()}</td> }
 }
 
 // TradeGoodTypeCellRenderer
 #[component]
-pub fn TradeGoodTypeCellRenderer<F>(class: String, value: Signal<TradeGoodType>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn TradeGoodTypeCellRenderer<F: 'static>(class: String, value: Signal<TradeGoodType>, row: RwSignal<F>, index: usize) -> impl IntoView {
     view! { <td class=class>{move || format!("{:?}", value.get_untracked())}</td> }
 }
 
 // SupplyLevelCellRenderer
 #[component]
-pub fn SupplyLevelCellRenderer<F>(class: String, value: Signal<SupplyLevel>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn SupplyLevelCellRenderer<F: 'static>(class: String, value: Signal<SupplyLevel>, row: RwSignal<F>, index: usize) -> impl IntoView {
     let supply_class = move || match value.get_untracked() {
         SupplyLevel::Scarce => "text-red-600",       // Bright red for urgency/scarcity
         SupplyLevel::Limited => "text-amber-500",    // Amber/orange for caution
@@ -36,7 +36,7 @@ pub fn SupplyLevelCellRenderer<F>(class: String, value: Signal<SupplyLevel>, row
 
 // ActivityLevelCellRenderer
 #[component]
-pub fn ActivityLevelCellRenderer<F>(class: String, value: Signal<Option<ActivityLevel>>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn ActivityLevelCellRenderer<F: 'static>(class: String, value: Signal<Option<ActivityLevel>>, row: RwSignal<F>, index: usize) -> impl IntoView {
     let activity_text = move || match value.get_untracked() {
         Some(activity) => format!("{:?}", activity),
         None => "N/A".to_string(),
@@ -63,7 +63,7 @@ pub fn ActivityLevelCellRenderer<F>(class: String, value: Signal<Option<Activity
 
 // ProfitCellRenderer
 #[component]
-pub fn ProfitCellRenderer<F>(class: String, value: Signal<u64>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn ProfitCellRenderer<F: 'static>(class: String, value: Signal<u64>, row: RwSignal<F>, index: usize) -> impl IntoView {
     let profit_class = move || {
         let profit = value.get_untracked();
         if profit > 10000 {
@@ -86,7 +86,7 @@ pub fn ProfitCellRenderer<F>(class: String, value: Signal<u64>, row: RwSignal<F>
 
 // PriceCellRenderer (for purchase_price and sell_price)
 #[component]
-pub fn PriceCellRenderer<F>(class: String, value: Signal<i32>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn PriceCellRenderer<F: 'static>(class: String, value: Signal<i32>, row: RwSignal<F>, index: usize) -> impl IntoView {
     view! {
         <td class=class>{move || format!("{}c", value.get_untracked().separate_with_commas())}</td>
     }
@@ -94,19 +94,19 @@ pub fn PriceCellRenderer<F>(class: String, value: Signal<i32>, row: RwSignal<F>,
 
 // TradeVolumeCellRenderer
 #[component]
-pub fn TradeVolumeCellRenderer<F>(class: String, value: Signal<i32>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn TradeVolumeCellRenderer<F: 'static>(class: String, value: Signal<i32>, row: RwSignal<F>, index: usize) -> impl IntoView {
     view! { <td class=class>{move || format!("{}", value.get_untracked())}</td> }
 }
 
 // TradeGoodSymbolCellRenderer
 #[component]
-pub fn TradeGoodSymbolCellRenderer<F>(class: String, value: Signal<TradeGoodSymbol>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn TradeGoodSymbolCellRenderer<F: 'static>(class: String, value: Signal<TradeGoodSymbol>, row: RwSignal<F>, index: usize) -> impl IntoView {
     view! { <td class=class>{move || format!("{}", value.get_untracked().to_string())}</td> }
 }
 
 // TradeGoodSymbolListCellRenderer
 #[component]
-pub fn TradeGoodSymbolListCellRenderer<F>(class: String, value: Signal<Vec<TradeGoodSymbol>>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn TradeGoodSymbolListCellRenderer<F: 'static>(class: String, value: Signal<Vec<TradeGoodSymbol>>, row: RwSignal<F>, index: usize) -> impl IntoView {
     view! {
         <td class=class>
             {move || {
