@@ -21,7 +21,7 @@ impl ConstructJumpGateFleet {
         latest_market_data: &Vec<MarketEntry>,
         ship_prices: &ShipPriceInfo,
         waypoints: &Vec<Waypoint>,
-        ships: &[&Ship],
+        unassigned_ships_of_fleet: &[&Ship],
     ) -> Result<Vec<PotentialTradingTask>> {
         let fleet_ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
         let fleet_ship_symbols = fleet_ships.iter().map(|&s| s.symbol.clone()).collect_vec();

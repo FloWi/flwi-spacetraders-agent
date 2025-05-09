@@ -13,7 +13,7 @@ use itertools::Itertools;
 use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::budgeting::budgeting::{FinanceError, FleetBudget, FundingSource, TransactionTicket};
+use st_domain::budgeting::budgeting::{FinanceError, FleetBudget, FundingSource, TicketStatus, TicketType, TransactionGoal, TransactionTicket};
 use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
 use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{ConstructJumpGate, InitialExploration, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably};
@@ -408,6 +408,7 @@ impl FleetAdmiral {
         let treasurer = Self::initialize_treasurer(bmc.clone(), &fleet_phase, &ship_fleet_assignment, &ship_map, &fleet_map, &fleet_task_map).await?;
 
         let current_ship_demands = get_all_next_ship_purchases(&ship_map, &fleet_phase);
+
         let ship_prices = bmc
             .shipyard_bmc()
             .get_latest_ship_prices(&Ctx::Anonymous, &system_symbol)
@@ -461,10 +462,12 @@ impl FleetAdmiral {
 
             // assign ship tasks for ship purchases if necessary
             for ship in ships_of_fleet.iter() {
+                // ship has no task
                 if admiral.ship_tasks.contains_key(&ship.symbol).not() {
+                    // we have a ship purchase ticket with this ship assigned
                     if let Some(ship_purchase_ticket) = ship_purchase_tickets
                         .iter()
-                        .find(|t| t.executing_vessel == ship.symbol)
+                        .find(|t| t.executing_vessel == ship.symbol && t.status == TicketStatus::Funded)
                     {
                         // the spawning ship buys a probe at every shipyard as an action in the explorer behavior tree
                         let is_spawning_ship_on_initial_run = matches!(fleet.cfg, SystemSpawningCfg(_));
@@ -525,21 +528,25 @@ impl FleetAdmiral {
         Ok(new_ship_tasks)
     }
 
-    pub(crate) async fn compute_ship_tasks(admiral: &FleetAdmiral, facts: &FleetDecisionFacts, bmc: Arc<dyn Bmc>) -> Result<Vec<(ShipSymbol, ShipTask)>> {
+    pub(crate) async fn compute_ship_tasks(admiral: &mut FleetAdmiral, facts: &FleetDecisionFacts, bmc: Arc<dyn Bmc>) -> Result<Vec<(ShipSymbol, ShipTask)>> {
         let system_symbol = facts.agent_info.headquarters.system_symbol();
 
         let waypoints = bmc
             .system_bmc()
             .get_waypoints_of_system(&Ctx::Anonymous, &system_symbol)
             .await?;
+
         let ship_prices = bmc
             .shipyard_bmc()
             .get_latest_ship_prices(&Ctx::Anonymous, &system_symbol)
             .await?;
+
         let latest_market_data = bmc
             .market_bmc()
             .get_latest_market_data_for_system(&Ctx::Anonymous, &system_symbol)
             .await?;
+
+        admiral.try_create_ship_purchase_ticket(&ship_prices).await;
 
         let ship_purchase_tickets = admiral.treasurer.lock().await.get_ship_purchase_tickets();
 
@@ -678,8 +685,32 @@ impl FleetAdmiral {
             amount: ship_price,
         };
 
-        let funding_result = match treasurer.fund_fleet_for_next_purchase(funding_source.clone()) {
-            Ok(_) => {
+        let maybe_existing_ship_purchase_ticket = treasurer
+            .get_ship_purchase_tickets()
+            .iter()
+            .find_map(|t| match t.ticket_type {
+                TicketType::ShipPurchase => t.get_incomplete_goals().iter().find_map(|g| match g {
+                    TransactionGoal::PurchaseShip(p) => (p.ship_type == ship_type).then_some(t.clone()),
+                    _ => None,
+                }),
+                _ => None,
+            });
+
+        let funding_result: Result<TicketId, FinanceError> = match maybe_existing_ship_purchase_ticket {
+            Some(ticket) => {
+                if ticket.status == TicketStatus::Funded {
+                    event!(
+                        Level::INFO,
+                        message = "There's already a funded ship purchase for this ship_type. No Op",
+                        ship_type = ship_type.to_string(),
+                    );
+                    return Ok(());
+                } else {
+                    treasurer.try_fund_fleet_and_ticket(funding_source.clone(), ticket.id.clone())?;
+                    Ok(ticket.id.clone())
+                }
+            }
+            None => {
                 let ticket_id: TicketId = treasurer.create_ship_purchase_ticket(
                     &ship_type,
                     &purchasing_ship,
@@ -689,12 +720,9 @@ impl FleetAdmiral {
                     &shipyard_wps,
                 )?;
 
-                match treasurer.fund_ticket(ticket_id, funding_source) {
-                    Ok(_) => Ok(ticket_id),
-                    Err(err) => Err(err),
-                }
+                treasurer.try_fund_fleet_and_ticket(funding_source.clone(), ticket_id.clone())?;
+                Ok(ticket_id)
             }
-            Err(err) => Err(err),
         };
 
         match funding_result {
@@ -717,7 +745,7 @@ impl FleetAdmiral {
                     .push_front((ship_type, fleet_task));
                 event!(
                     Level::INFO,
-                    message = "Unable to fund ship purchase - removing ticket again",
+                    message = "Unable to fund ship purchase - removing ticket again.",
                     error = err.to_string(),
                     ship_type = ship_type.to_string(),
                     purchasing_ship = purchasing_ship.0,
@@ -1320,22 +1348,30 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         .map(|wp| (wp.symbol.clone(), wp))
         .collect::<HashMap<_, _>>();
 
-    let materialized_supply_chain = st_domain::supply_chain::materialize_supply_chain(
-        headquarters_waypoint.system_symbol(),
-        &supply_chain,
-        &market_data,
-        &waypoint_map,
-        &maybe_construction_site,
-    );
+    let marketplaces_with_up_to_date_infos = diff_waypoint_symbols(&marketplace_symbols_of_interest, &marketplaces_to_explore);
+
+    let materialized_supply_chain = if marketplaces_with_up_to_date_infos.is_empty() {
+        // Only create a materialized chain once we have all market-data
+        let materialized_chain = st_domain::supply_chain::materialize_supply_chain(
+            headquarters_waypoint.system_symbol(),
+            &supply_chain,
+            &market_data,
+            &waypoint_map,
+            &maybe_construction_site,
+        );
+        Some(materialized_chain)
+    } else {
+        None
+    };
 
     Ok(FleetDecisionFacts {
         marketplaces_of_interest: marketplace_symbols_of_interest.clone(),
-        marketplaces_with_up_to_date_infos: diff_waypoint_symbols(&marketplace_symbols_of_interest, &marketplaces_to_explore),
+        marketplaces_with_up_to_date_infos: marketplaces_with_up_to_date_infos,
         shipyards_of_interest: shipyard_symbols_of_interest.clone(),
         shipyards_with_up_to_date_infos: diff_waypoint_symbols(&shipyard_symbols_of_interest, &shipyards_to_explore),
         construction_site: maybe_construction_site.map(|resp| resp.data),
         ships,
-        materialized_supply_chain: Some(materialized_supply_chain),
+        materialized_supply_chain,
         agent_info,
     })
 }

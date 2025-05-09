@@ -457,7 +457,7 @@ impl FleetRunner {
             let ship_span = span!(
                 Level::INFO,
                 "fleet_runner::listen_to_ship_status_report_messages",
-                ship = format!("{}", msg.ship_symbol().0)
+                ship = format!("{}", msg.ship_symbol().0),
             );
             let _enter = ship_span.enter();
 

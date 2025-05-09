@@ -60,6 +60,8 @@ pub trait Treasurer {
 
     fn give_all_treasury_to_fleet(&mut self, fleet: &FleetId) -> Result<(), Self::Error>;
 
+    fn try_fund_fleet_and_ticket(&mut self, funding_source: FundingSource, ticket_id: TicketId) -> Result<(), Self::Error>;
+
     fn create_ship_purchase_ticket(
         &mut self,
         ship_type: &ShipType,
@@ -711,6 +713,19 @@ impl Treasurer for InMemoryTreasurer {
             Ok(())
         } else {
             Err(FinanceError::FleetNotFound)
+        }
+    }
+
+    fn try_fund_fleet_and_ticket(&mut self, funding_source: FundingSource, ticket_id: TicketId) -> Result<(), Self::Error> {
+        match self.fund_fleet_for_next_purchase(funding_source.clone()) {
+            Ok(_) => {
+                // Fleet has sufficient funds
+                match self.fund_ticket(ticket_id, funding_source) {
+                    Ok(_) => Ok(()),
+                    Err(err) => Err(err),
+                }
+            }
+            Err(err) => Err(err),
         }
     }
 
