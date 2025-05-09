@@ -285,7 +285,10 @@ pub fn materialize_supply_chain(
         );
     }
 
-    println!("Total distances of all {} products for sale\n", goods_for_sale.len());
+    println!(
+        "Total distances of all {} products for sale\ntotal_distance; trade_good; all_routes.len()",
+        goods_for_sale.len()
+    );
 
     individual_routes_of_goods_for_sale
         .iter()
@@ -467,17 +470,6 @@ fn compute_all_routes(
     // Then use it like this:
     let supply_markets = combine_maps(&export_markets, &exchange_markets);
     let consume_markets = combine_maps(&import_markets, &exchange_markets);
-
-    // println!("market_data: {}", serde_json::to_string(&market_data).unwrap());
-    // println!("relevant_market_data: {}", serde_json::to_string(&relevant_market_data).unwrap());
-    // println!("raw_delivery_routes: {}", serde_json::to_string(&raw_delivery_routes).unwrap());
-    // println!("raw_input_sources: {}", serde_json::to_string(&raw_input_sources).unwrap());
-    // println!("all_products_involved: {}", serde_json::to_string(&all_products_involved).unwrap());
-    // println!("export_markets: {}", serde_json::to_string(&export_markets).unwrap());
-    // println!("import_markets: {}", serde_json::to_string(&import_markets).unwrap());
-    // println!("exchange_markets: {}", serde_json::to_string(&exchange_markets).unwrap());
-    // println!("supply_markets: {}", serde_json::to_string(&supply_markets).unwrap());
-    // println!("consume_markets: {}", serde_json::to_string(&consume_markets).unwrap());
 
     // Note that we deliver some of the ores directly to the smelting location (e.g. COPPER_ORE --> COPPER), which means that we don't have provider-market of COPPER_ORE
     let mut input_sources: HashMap<TradeGoodSymbol, (WaypointSymbol, u32)> = raw_delivery_routes
@@ -844,54 +836,6 @@ pub fn compute_raw_delivery_routes(
         })
         .collect_vec();
 
-    // println!(
-    //     "SupplyChain::materialize:
-    // {} inputs: {}
-    //
-    // {} outputs: {}
-    //
-    // {} intermediates: {}
-    //
-    // {} raw_materials: {}
-    //
-    // {} end_products: {}
-    //
-    // trade_map: {:?}
-    //
-    // complete_supply_chain: {:?}
-    //
-    // source_type_map: {:?}
-    //
-    // raw_material_sources: {:?}
-    //
-    // exchange_markets_of_raw_materials: {:?}
-    //
-    // markets_requiring_raw_materials: {:?}
-    //
-    // raw_delivery_routes: {}
-    //
-    // ",
-    //     inputs.len(),
-    //     inputs.iter().sorted().join(", "),
-    //     outputs.len(),
-    //     outputs.iter().sorted().join(", "),
-    //     intermediates.len(),
-    //     intermediates.iter().sorted().join(", "),
-    //     raw_materials.len(),
-    //     raw_materials.iter().sorted().join(", "),
-    //     end_products.len(),
-    //     end_products.iter().sorted().join(", "),
-    //     &trade_map,
-    //     &complete_supply_chain,
-    //     source_type_map,
-    //     raw_material_sources,
-    //     exchange_markets_of_raw_materials,
-    //     markets_requiring_raw_materials,
-    //     serde_json::to_string_pretty(&raw_delivery_routes).unwrap()
-    // );
-
-    // println!("hello, breakpoint");
-
     raw_delivery_routes
 }
 
@@ -1042,6 +986,7 @@ pub struct ScoredSupplyChainSupportRoute {
     pub spread: i32,
     pub num_parallel_pickups: u32,
     pub score: i32,
+    pub rank: u32,
 }
 
 impl ScoredSupplyChainSupportRoute {
@@ -1139,6 +1084,7 @@ impl ScoredSupplyChainSupportRoute {
             spread,
             num_parallel_pickups,
             score,
+            rank: tgr.rank,
         }
     }
 }

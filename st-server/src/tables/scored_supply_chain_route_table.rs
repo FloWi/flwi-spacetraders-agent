@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use leptos::prelude::*;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
@@ -10,6 +9,9 @@ use crate::tailwind::TailwindClassesPreset;
 #[derive(Serialize, Deserialize, Clone, Debug, TableRow)]
 #[table(impl_vec_data_provider, sortable, classes_provider = "TailwindClassesPreset")]
 pub struct ScoredSupplyChainRouteRow {
+    #[table(class = "text-right")]
+    pub rank: u32,
+
     // Purchase location info
     #[table(renderer = "TradeGoodSymbolCellRenderer")]
     pub trade_good: TradeGoodSymbol,
@@ -121,6 +123,7 @@ impl From<ScoredSupplyChainSupportRoute> for ScoredSupplyChainRouteRow {
             num_parallel_pickups: route.num_parallel_pickups.clone(),
             score: route.score.clone(),
             source_trade_good_type: route.source_market.trade_good_type.clone(),
+            rank: route.rank,
         }
     }
 }
