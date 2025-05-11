@@ -10,15 +10,15 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 
-leptos = { version = "0.7.7" }
-leptos_router = { version = "0.7.7" }
-leptos_axum = { version = "0.7.7", optional = true }
-leptos_meta = { version = "0.7.7" }
-leptos-use = { version = "0.15.6", features = ["use_interval", "use_interval_fn"] }
+leptos = { version = "0.8.2" }
+leptos_router = { version = "0.8.2" }
+leptos_axum = { version = "0.8.2", optional = true }
+leptos_meta = { version = "0.8.2" }
+leptos-use = { version = "0.16.0-beta", features = ["use_interval", "use_interval_fn"] }
 #leptos-struct-table = { version = "0.14.0-beta2", features = ["chrono"] }
-leptos-struct-table = { git = "https://github.com/Synphonyte/leptos-struct-table", tag = "v0.14.0-beta3", features = ["chrono"] }
-phosphor-leptos = { version = "0.7.0", default-features = false, features = ["objects", "finance", "commerce", "system", "development"] }
-axum = { version = "0.7", optional = true }
+leptos-struct-table = { git = "https://github.com/FloWi/leptos-struct-table", branch = "leptos-0-8", features = ["chrono"] }
+phosphor-leptos = { version = "0.8.0", default-features = false, features = ["objects", "finance", "commerce", "system", "development"] }
+axum = { version = "0.8", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
 wasm-bindgen = { version = "=0.2.100", optional = true }
