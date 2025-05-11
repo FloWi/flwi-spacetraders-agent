@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+#[derive(Debug)]
 pub struct AppConfig {
     pub database_url: String,
     pub spacetraders_agent_faction: String,
@@ -12,9 +13,6 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub fn from_env() -> Result<Self, String> {
-        // Load from .env file if it exists
-        let _ = dotenv::dotenv();
-
         // Helper function to get a variable with a custom error message
         fn get_env_var(name: &str) -> Result<String, String> {
             std::env::var(name).map_err(|_| format!("Environment variable '{}' is not set", name))
