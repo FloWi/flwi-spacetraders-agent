@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use itertools::*;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
-use leptos_use::{use_interval, UseIntervalReturn};
+use leptos_use::{use_interval, use_interval_fn, UseIntervalReturn};
 use phosphor_leptos::{Icon, CLOCK, GAS_PUMP, PACKAGE, TRUCK};
 use serde::{Deserialize, Serialize};
 use st_domain::{NavStatus, Ship};
@@ -55,20 +55,9 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
     let fuel_str = format!("{} / {}", ship.fuel.current, ship.fuel.capacity,);
     let cargo_str = format!("{} / {}", ship.cargo.units, ship.cargo.capacity,);
 
-    let UseIntervalReturn {
-        counter,
-        reset,
-        is_active,
-        pause,
-        resume,
-    } = use_interval(1000);
-
     let arrival_time = ship.nav.route.arrival;
 
-    let maybe_travel_time_left = move || {
-        // make this closure depend on the counter signal
-        let _ = counter.get();
-        //log!("Counter changed to {counter_value}");
+    let calc_travel_time_left = move || {
         is_traveling
             .then(|| {
                 let now = Utc::now();
@@ -77,6 +66,10 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
             })
             .and_then(|delta| (delta.num_seconds() >= 0).then_some(delta)) // ship nav status might not have been fixed after we've arrived
     };
+
+    let (maybe_travel_time_left, set_maybe_travel_time_left) = signal(calc_travel_time_left());
+
+    let _handle = use_interval_fn(move || set_maybe_travel_time_left.set(calc_travel_time_left()), 1_000);
 
     view! {
         <div class="p-3 border-4 border-blue-900 text-slate-400">
@@ -92,7 +85,7 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
                     <Icon icon=TRUCK />
                     <p>{ship.nav.waypoint_symbol.0.to_string()}</p>
                     {move || {
-                        maybe_travel_time_left()
+                        maybe_travel_time_left.get()
                             .map(|duration| {
                                 view! {
                                     <>
@@ -123,15 +116,9 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
 
 #[component]
 pub fn ShipOverviewPage() -> impl IntoView {
-    let UseIntervalReturn {
-        counter,
-        reset,
-        is_active,
-        pause,
-        resume,
-    } = use_interval(5000);
+    let ships_resource = Resource::new(|| {}, |_| get_ships_overview(GetShipsMode::AllShips));
 
-    let ships_resource = Resource::new(move || counter.get(), |count| get_ships_overview(GetShipsMode::AllShips));
+    let _handle = use_interval_fn(move || ships_resource.refetch(), 5_000);
 
     view! {
         <div class="bg-blue-950 text-white flex flex-col min-h-screen">
