@@ -79,7 +79,6 @@ async fn main() {
         if skip_running_agent {
             println!("Skipped starting agent");
         } else {
-            panic!("should not happen - I thought we skipped the agent running");
             if let Err(e) = agent_manager.run().await {
                 eprintln!("Agent manager error: {}", e);
             }
