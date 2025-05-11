@@ -69,6 +69,7 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
 
     let (maybe_travel_time_left, set_maybe_travel_time_left) = signal(calc_travel_time_left());
 
+    #[cfg(not(feature = "ssr"))]
     let _handle = use_interval_fn(move || set_maybe_travel_time_left.set(calc_travel_time_left()), 1_000);
 
     view! {
@@ -118,6 +119,7 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
 pub fn ShipOverviewPage() -> impl IntoView {
     let ships_resource = Resource::new(|| {}, |_| get_ships_overview(GetShipsMode::AllShips));
 
+    #[cfg(not(feature = "ssr"))]
     let _handle = use_interval_fn(move || ships_resource.refetch(), 5_000);
 
     view! {
