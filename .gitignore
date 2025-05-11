@@ -5,3 +5,6 @@ server/prometheus-storage
 .hide
 st-server/node_modules
 /logs
+/server/postgres-staging-data
+.env.prod
+.env
