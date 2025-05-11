@@ -1350,7 +1350,9 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
 
     let marketplaces_with_up_to_date_infos = diff_waypoint_symbols(&marketplace_symbols_of_interest, &marketplaces_to_explore);
 
-    let materialized_supply_chain = if marketplaces_with_up_to_date_infos.is_empty() {
+    let all_market_data_available = marketplaces_with_up_to_date_infos.len() == marketplace_symbols_of_interest.len();
+
+    let materialized_supply_chain = if all_market_data_available {
         // Only create a materialized chain once we have all market-data
         let materialized_chain = st_domain::supply_chain::materialize_supply_chain(
             headquarters_waypoint.system_symbol(),
