@@ -58,6 +58,8 @@ pub trait Treasurer {
         all_next_ship_purchases: &[(ShipType, FleetTask)],
     ) -> Result<(), Self::Error>;
 
+    fn give_excess_capital_to_treasurer(&mut self, fleet_id: &FleetId, required_operating_capital_for_fleet: Credits) -> Result<(), Self::Error>;
+
     fn give_all_treasury_to_fleet(&mut self, fleet: &FleetId) -> Result<(), Self::Error>;
 
     fn try_fund_fleet_and_ticket(&mut self, funding_source: FundingSource, ticket_id: TicketId) -> Result<(), Self::Error>;
@@ -720,6 +722,23 @@ impl Treasurer for InMemoryTreasurer {
                 }
             }
             FleetPhaseName::TradeProfitably => {}
+        }
+        Ok(())
+    }
+
+    fn give_excess_capital_to_treasurer(&mut self, fleet_id: &FleetId, required_operating_capital_for_fleet: Credits) -> Result<(), Self::Error> {
+        // Check that the fleet exists and has enough funds
+        let fleet_budget = self
+            .fleet_budgets
+            .get_mut(&fleet_id)
+            .ok_or(FinanceError::FleetNotFound)?;
+
+        let excess = fleet_budget.available_capital - required_operating_capital_for_fleet;
+
+        if excess.is_positive() {
+            self.treasury += excess;
+            fleet_budget.available_capital -= excess;
+            fleet_budget.total_capital -= excess;
         }
         Ok(())
     }

@@ -17,6 +17,7 @@ use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::budgeting::budgeting::{FinanceError, FleetBudget, FundingSource, TicketStatus, TicketType, TransactionGoal, TransactionTicket};
+use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
 use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{ConstructJumpGate, InitialExploration, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably};
@@ -872,6 +873,24 @@ impl FleetAdmiral {
                 }
             })
             .collect_vec()
+    }
+
+    pub(crate) fn calc_required_operating_capital_for_fleet(&self, fleet: &Fleet, ships: &[&Ship]) -> Credits {
+        let num_fuel_consuming_ships = ships.iter().filter(|s| s.fuel.capacity > 0).count() as u32;
+        let num_trading_ships = ships.iter().filter(|s| s.cargo.capacity > 0).count() as u32;
+
+        let required_fuel_budget = Credits::new(1_000) * num_fuel_consuming_ships;
+        let required_trading_budget = Credits::new(75_000) * num_trading_ships;
+
+        let operating_capital = match fleet.cfg {
+            FleetConfig::TradingCfg(_) => required_fuel_budget + required_trading_budget,
+            FleetConfig::ConstructJumpGateCfg(_) => required_fuel_budget + required_trading_budget,
+            FleetConfig::MiningCfg(_) => required_fuel_budget,
+            FleetConfig::SiphoningCfg(_) => required_fuel_budget,
+            FleetConfig::MarketObservationCfg(_) => required_fuel_budget,
+            SystemSpawningCfg(_) => required_fuel_budget,
+        };
+        operating_capital
     }
 
     fn mark_fleet_tasks_as_complete(&mut self, fleet_id: &FleetId) {

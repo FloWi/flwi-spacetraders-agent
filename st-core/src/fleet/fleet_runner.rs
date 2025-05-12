@@ -16,6 +16,8 @@ use crate::bmc_blackboard::BmcBlackboard;
 use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
+use st_domain::budgeting::budgeting::TicketType;
+use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
 use st_domain::{
     Fleet, FleetId, FleetPhase, FleetTask, OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket, TransactionActionEvent,
@@ -518,8 +520,15 @@ impl FleetRunner {
                 match task {
                     ShipTask::Trade { ticket_id } => {
                         let mut treasurer_guard = treasurer.lock().await;
+                        let fleet = admiral_guard.get_fleet_of_ship(&ship.symbol).unwrap();
+                        let ships_of_fleet = admiral_guard.get_ships_of_fleet(fleet);
                         let ticket = treasurer_guard.get_ticket(ticket_id.clone())?;
+
                         treasurer_guard.complete_ticket(ticket_id.clone())?;
+                        if ticket.ticket_type == TicketType::Trading {
+                            let required_operating_capital_for_fleet: Credits = admiral_guard.calc_required_operating_capital_for_fleet(fleet, &ships_of_fleet);
+                            treasurer_guard.give_excess_capital_to_treasurer(&fleet.id, required_operating_capital_for_fleet)?;
+                        }
                         admiral_guard.active_trade_ids.remove(&ship.symbol);
                     }
                     _ => {}
