@@ -66,6 +66,7 @@ pub trait Treasurer {
         &mut self,
         ship_type: &ShipType,
         purchasing_ship: &ShipSymbol,
+        initiating_fleet: &FleetId,
         beneficiary_fleet: &FleetId,
         executing_fleet: &FleetId,
         estimated_cost: Credits,
@@ -77,9 +78,9 @@ pub trait Treasurer {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct InMemoryTreasurer {
-    tickets: HashMap<TicketId, TransactionTicket>,
+    pub tickets: HashMap<TicketId, TransactionTicket>,
     fleet_budgets: HashMap<FleetId, FleetBudget>,
-    treasury: Credits,
+    pub treasury: Credits,
     active_tickets_by_vessel: HashMap<ShipSymbol, TicketId>,
     completed_tickets: HashMap<TicketId, TransactionTicket>,
 }
@@ -99,6 +100,13 @@ impl InMemoryTreasurer {
         self.fleet_budgets.clone()
     }
 
+    pub fn get_fleet_trades_overview(&self) -> HashMap<FleetId, Vec<TransactionTicket>> {
+        self.tickets
+            .iter()
+            .map(|(_, ticket)| (ticket.executing_fleet.clone(), ticket.clone()))
+            .into_group_map()
+    }
+
     fn calculate_required_capital(&self, goals: &[TransactionGoal]) -> Credits {
         let mut required = Credits::new(0);
 
@@ -106,12 +114,16 @@ impl InMemoryTreasurer {
             match goal {
                 TransactionGoal::PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal {
                     target_quantity,
-                    estimated_price,
+                    estimated_price_per_unit: estimated_price,
                     ..
                 }) => {
                     required += Credits::new(i64::from(*target_quantity) * estimated_price.0);
                 }
-                _ => {}
+
+                TransactionGoal::SellTradeGoods(_) => {}
+                TransactionGoal::PurchaseShip(PurchaseShipTransactionGoal { estimated_cost, .. }) => {
+                    required += estimated_cost.clone();
+                }
             }
         }
 
@@ -126,14 +138,14 @@ impl InMemoryTreasurer {
             match goal {
                 TransactionGoal::PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal {
                     target_quantity,
-                    estimated_price,
+                    estimated_price_per_unit: estimated_price,
                     ..
                 }) => {
                     costs += Credits::new(i64::from(*target_quantity) * estimated_price.0);
                 }
                 TransactionGoal::SellTradeGoods(SellTradeGoodsTransactionGoal {
                     target_quantity,
-                    estimated_price,
+                    estimated_price_per_unit: estimated_price,
                     ..
                 }) => {
                     revenue += Credits::new(i64::from(*target_quantity) * estimated_price.0);
@@ -299,6 +311,10 @@ impl Treasurer for InMemoryTreasurer {
         let event = TransactionEvent::TicketFunded { timestamp: Utc::now(), source };
 
         ticket.update_from_event(&event);
+        if ticket.status != TicketStatus::Funded {
+            eprintln!("Ticket wasn't funded");
+            return Err(FinanceError::InsufficientFunds);
+        }
 
         Ok(())
     }
@@ -386,6 +402,10 @@ impl Treasurer for InMemoryTreasurer {
 
         // Calculate financial reconciliation
         let unspent_funds = ticket.financials.allocated_capital - ticket.financials.spent_capital;
+        if unspent_funds.is_negative() {
+            eprintln!("unspent_funds.is_negative");
+            return Err(FinanceError::InvalidState);
+        }
         let earned_revenue = ticket.financials.earned_revenue;
         let profit = ticket.financials.current_profit;
 
@@ -733,6 +753,7 @@ impl Treasurer for InMemoryTreasurer {
         &mut self,
         ship_type: &ShipType,
         purchasing_ship: &ShipSymbol,
+        initiating_fleet: &FleetId,
         beneficiary_fleet: &FleetId,
         executing_fleet: &FleetId,
         estimated_cost: Credits,
@@ -742,7 +763,7 @@ impl Treasurer for InMemoryTreasurer {
             TicketType::ShipPurchase,
             purchasing_ship.clone(),
             executing_fleet,
-            executing_fleet,
+            initiating_fleet,
             beneficiary_fleet,
             vec![TransactionGoal::PurchaseShip(PurchaseShipTransactionGoal {
                 id: TransactionTicketId::new(),

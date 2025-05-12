@@ -285,17 +285,17 @@ pub fn materialize_supply_chain(
         );
     }
 
-    println!(
-        "Total distances of all {} products for sale\ntotal_distance; trade_good; all_routes.len()",
-        goods_for_sale.len()
-    );
+    // println!(
+    //     "Total distances of all {} products for sale\ntotal_distance; trade_good; all_routes.len()",
+    //     goods_for_sale.len()
+    // );
 
-    individual_routes_of_goods_for_sale
-        .iter()
-        .sorted_by_key(|(_, mat)| mat.total_distance)
-        .for_each(|(_, mat)| {
-            println!("{}; {}; {}", mat.total_distance, mat.trade_good, mat.all_routes.len());
-        });
+    // individual_routes_of_goods_for_sale
+    //     .iter()
+    //     .sorted_by_key(|(_, mat)| mat.total_distance)
+    //     .for_each(|(_, mat)| {
+    //         println!("{}; {}; {}", mat.total_distance, mat.trade_good, mat.all_routes.len());
+    //     });
 
     let raw_delivery_routes = compute_raw_delivery_routes(market_data, waypoint_map, &goods_of_interest, supply_chain);
 

@@ -16,8 +16,8 @@ pub struct PurchaseTradeGoodsTransactionGoal {
     pub target_quantity: u32,
     pub available_quantity: Option<u32>,
     pub acquired_quantity: u32,
-    pub estimated_price: Credits,
-    pub max_acceptable_price: Option<Credits>,
+    pub estimated_price_per_unit: Credits,
+    pub max_acceptable_price_per_unit: Option<Credits>,
     pub source_waypoint: WaypointSymbol,
 }
 
@@ -27,8 +27,8 @@ pub struct SellTradeGoodsTransactionGoal {
     pub good: TradeGoodSymbol,
     pub target_quantity: u32,
     pub sold_quantity: u32,
-    pub estimated_price: Credits,
-    pub min_acceptable_price: Option<Credits>,
+    pub estimated_price_per_unit: Credits,
+    pub min_acceptable_price_per_unit: Option<Credits>,
     pub destination_waypoint: WaypointSymbol,
 }
 
@@ -57,7 +57,7 @@ pub enum TicketType {
     Exploration,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Display, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub enum TicketStatus {
     Planned,
     Funded,

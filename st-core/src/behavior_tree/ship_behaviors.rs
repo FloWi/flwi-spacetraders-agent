@@ -30,8 +30,9 @@ pub enum ShipAction {
     HasPermanentExploreLocationEntry,
     SetPermanentExploreLocationAsDestination,
     SetNextObservationTime,
-    SleepUntilNextObservationTime,
+    SleepUntilNextObservationTimeOrShipPurchaseTicketHasBeenAssigned,
     IsAtDestination,
+    IsAtObservationWaypoint,
     HasRouteToDestination,
     ComputePathToDestination,
     CollectWaypointInfos,
@@ -218,11 +219,13 @@ pub fn ship_behaviors() -> Behaviors {
             dock_if_necessary.clone(),
         ]),
         Behavior::new_while(
-            Behavior::new_action(ShipAction::IsAtDestination), //this should be true, because we navigated here ==> endless loop
+            Behavior::new_action(ShipAction::IsAtObservationWaypoint), //this should be true, because we navigated here ==> intentional endless loop
             Behavior::new_sequence(vec![
+                Behavior::new_action(ShipAction::PerformTradeActionAndMarkAsCompleted), //we might have gotten a ship_purchase ticket
                 Behavior::new_action(ShipAction::IsLateEnoughForWaypointObservation),
                 Behavior::new_action(ShipAction::CollectWaypointInfos),
-                Behavior::new_action(ShipAction::SleepUntilNextObservationTime),
+                Behavior::new_action(ShipAction::SetNextObservationTime),
+                Behavior::new_action(ShipAction::SleepUntilNextObservationTimeOrShipPurchaseTicketHasBeenAssigned),
             ]),
         ),
     ]);

@@ -689,58 +689,49 @@ impl StClientTrait for InMemoryUniverseClient {
                     Some(sy_ship) => {
                         let ship_price = sy_ship.purchase_price as i64;
 
-                        if ship_price > universe.agent.credits {
-                            anyhow::bail!(
-                                "This ship_type {} is too expensive. Price: {}, credits: {}",
-                                ship_type.to_string(),
-                                sy_ship.purchase_price,
-                                universe.agent.credits
-                            )
-                        } else {
-                            let waypoint = universe
-                                .waypoints
-                                .get(&symbol)
-                                .ok_or(anyhow!("Waypoint not found"))?;
-                            let new_ship: Ship = create_ship_from_shipyard_ship(
-                                &ship_type,
-                                sy_ship,
-                                &universe.agent.symbol,
-                                &universe.agent.starting_faction,
-                                waypoint,
-                                universe.ships.len(),
-                            );
-                            let shipyard_tx = ShipTransaction {
-                                waypoint_symbol: symbol.clone(),
-                                ship_type,
-                                price: ship_price as u32,
-                                agent_symbol: universe.agent.symbol.clone(),
-                                timestamp: Default::default(),
-                            };
+                        let waypoint = universe
+                            .waypoints
+                            .get(&symbol)
+                            .ok_or(anyhow!("Waypoint not found"))?;
+                        let new_ship: Ship = create_ship_from_shipyard_ship(
+                            &ship_type,
+                            sy_ship,
+                            &universe.agent.symbol,
+                            &universe.agent.starting_faction,
+                            waypoint,
+                            universe.ships.len(),
+                        );
+                        let shipyard_tx = ShipTransaction {
+                            waypoint_symbol: symbol.clone(),
+                            ship_type,
+                            price: ship_price as u32,
+                            agent_symbol: universe.agent.symbol.clone(),
+                            timestamp: Default::default(),
+                        };
 
-                            let tx = ShipPurchaseTransaction {
-                                ship_symbol: new_ship.symbol.clone(),
-                                waypoint_symbol: symbol.clone(),
-                                ship_type,
-                                price: ship_price as u64,
-                                agent_symbol: universe.agent.symbol.clone(),
-                                timestamp: Default::default(),
-                            };
+                        let tx = ShipPurchaseTransaction {
+                            ship_symbol: new_ship.symbol.clone(),
+                            waypoint_symbol: symbol.clone(),
+                            ship_type,
+                            price: ship_price as u64,
+                            agent_symbol: universe.agent.symbol.clone(),
+                            timestamp: Default::default(),
+                        };
 
-                            universe.agent.credits -= ship_price;
-                            universe
-                                .ships
-                                .insert(new_ship.symbol.clone(), new_ship.clone());
-                            universe.insert_shipyard_transaction(&symbol, shipyard_tx.clone());
+                        universe.agent.credits -= ship_price;
+                        universe
+                            .ships
+                            .insert(new_ship.symbol.clone(), new_ship.clone());
+                        universe.insert_shipyard_transaction(&symbol, shipyard_tx.clone());
 
-                            let response = PurchaseShipResponse {
-                                data: PurchaseShipResponseBody {
-                                    ship: new_ship,
-                                    transaction: tx,
-                                    agent: universe.agent.clone(),
-                                },
-                            };
-                            Ok(response)
-                        }
+                        let response = PurchaseShipResponse {
+                            data: PurchaseShipResponseBody {
+                                ship: new_ship,
+                                transaction: tx,
+                                agent: universe.agent.clone(),
+                            },
+                        };
+                        Ok(response)
                     }
                 },
             })

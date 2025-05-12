@@ -331,17 +331,18 @@ impl FleetRunner {
             ShipTask::MineMaterialsAtWaypoint { .. } => None,
             ShipTask::SurveyAsteroid { .. } => None,
             ShipTask::Trade { ticket_id } => {
-                println!("running trading behavior for ship, trying to get lock on treasurer");
+                // println!("running trading behavior for ship, trying to get lock on treasurer");
                 let mut guard = args.treasurer.lock().await;
-                println!("running trading behavior for ship, successfully got lock on treasurer");
+                // println!("running trading behavior for ship, successfully got lock on treasurer");
                 let ticket = guard.get_ticket(ticket_id)?;
-                println!("running trading behavior for ship, successfully got ticket");
+                // println!("running trading behavior for ship, successfully got ticket");
                 guard.start_ticket_execution(ticket_id)?;
-                println!("running trading behavior for ship, successfully started ticket execution");
+                // println!("running trading behavior for ship, successfully started ticket execution");
                 ship.set_trade_ticket(ticket.clone());
                 event!(
                     Level::INFO,
                     message = "Ship is executing trade",
+                    ship = ship.symbol.0.clone(),
                     id = ticket.id.0.to_string(),
                     r#type = ticket.ticket_type.to_string()
                 );

@@ -245,6 +245,15 @@ mod tests {
         let source_waypoint = facts.marketplaces_of_interest.first().unwrap().clone();
         let destination_waypoint = facts.marketplaces_of_interest.last().unwrap().clone();
 
+        let available_capital_before_transaction = finance
+            .get_fleet_budget(&construction_fleet_id)?
+            .available_capital
+            .clone();
+
+        let total_capital_before_transaction = finance
+            .get_fleet_budget(&construction_fleet_id)?
+            .total_capital
+            .clone();
         // Step 1: Execute a profitable trade with the construction fleet
         println!("Executing a profitable trade...");
         let profit = execute_profitable_trade(
@@ -261,6 +270,17 @@ mod tests {
         .await?;
 
         println!("Trade completed with profit: {}", profit);
+        let available_capital_after_transaction = finance
+            .get_fleet_budget(&construction_fleet_id)?
+            .available_capital
+            .clone();
+
+        let total_capital_after_transaction = finance
+            .get_fleet_budget(&construction_fleet_id)?
+            .total_capital
+            .clone();
+        assert_eq!(available_capital_before_transaction + profit, available_capital_after_transaction);
+        assert_eq!(total_capital_before_transaction + profit, total_capital_after_transaction);
 
         // Check the updated budget after trade
         let construction_budget_after_trade = finance.get_fleet_budget(construction_fleet_id)?;
@@ -341,8 +361,8 @@ mod tests {
                     target_quantity: quantity,
                     available_quantity: Some(quantity),
                     acquired_quantity: 0,
-                    estimated_price: buy_price,
-                    max_acceptable_price: Some(buy_price * 2),
+                    estimated_price_per_unit: buy_price,
+                    max_acceptable_price_per_unit: Some(buy_price * 2),
                     source_waypoint: source_waypoint.clone(),
                 }),
                 // Sell goal
@@ -351,8 +371,8 @@ mod tests {
                     good: good.clone(),
                     target_quantity: quantity,
                     sold_quantity: 0,
-                    estimated_price: sell_price,
-                    min_acceptable_price: Some(sell_price / 2),
+                    estimated_price_per_unit: sell_price,
+                    min_acceptable_price_per_unit: Some(sell_price / 2),
                     destination_waypoint: destination_waypoint.clone(),
                 }),
             ],

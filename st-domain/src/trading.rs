@@ -1,6 +1,6 @@
 use crate::{
-    EvaluatedTradingOpportunity, LabelledCoordinate, MarketEntry, MarketTradeGood, Ship, ShipSymbol, TradeGoodType, TradingOpportunity, Waypoint,
-    WaypointSymbol,
+    EvaluatedTradingOpportunity, LabelledCoordinate, MarketEntry, MarketTradeGood, Ship, ShipSymbol, TradeGoodSymbol, TradeGoodType, TradingOpportunity,
+    Waypoint, WaypointSymbol,
 };
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
@@ -175,18 +175,18 @@ pub fn evaluate_trading_opportunities(
 // This is computationally expensive for many ships/routes but will find the optimal solution
 pub fn find_optimal_trading_routes_exhaustive(
     options: &[EvaluatedTradingOpportunity],
-    active_trades: &[EvaluatedTradingOpportunity],
+    active_trades: &HashSet<(WaypointSymbol, WaypointSymbol, TradeGoodSymbol)>,
 ) -> Vec<EvaluatedTradingOpportunity> {
     // Create a unique identifier for each trading route
-    let route_key_fn = |option: &EvaluatedTradingOpportunity| -> String {
-        format!(
-            "{}_{}_{}",
-            option.trading_opportunity.purchase_waypoint_symbol.0,
-            option.trading_opportunity.sell_waypoint_symbol.0,
+    let route_key_fn = |option: &EvaluatedTradingOpportunity| -> (WaypointSymbol, WaypointSymbol, TradeGoodSymbol) {
+        (
+            option.trading_opportunity.purchase_waypoint_symbol.clone(),
+            option.trading_opportunity.sell_waypoint_symbol.clone(),
             option
                 .trading_opportunity
                 .purchase_market_trade_good_entry
                 .symbol
+                .clone(),
         )
     };
 
@@ -208,13 +208,11 @@ pub fn find_optimal_trading_routes_exhaustive(
     let mut best_assignments: Vec<EvaluatedTradingOpportunity> = Vec::new();
     let mut best_profit = 0;
 
-    let active_assigned_routes: HashSet<String> = active_trades.iter().map(route_key_fn).collect();
-
     // For each possible assignment of ships to positions
     for ship_perm in ships.iter().permutations(num_ships) {
         // Try to assign each ship to its best available route
         let mut current_assignments: Vec<EvaluatedTradingOpportunity> = Vec::new();
-        let mut assigned_routes: HashSet<String> = active_assigned_routes.clone();
+        let mut assigned_routes: HashSet<(WaypointSymbol, WaypointSymbol, TradeGoodSymbol)> = active_trades.clone();
         let mut valid_assignment = true;
 
         for ship in ship_perm {

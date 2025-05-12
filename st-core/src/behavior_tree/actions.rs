@@ -327,6 +327,18 @@ impl Actionable for ShipAction {
                     Err(anyhow!("No active navigation_destination"))
                 }
             }
+
+            ShipAction::IsAtObservationWaypoint => {
+                if let Some(current) = &state.permanent_observation_location {
+                    if &state.nav.waypoint_symbol == current {
+                        Ok(Success)
+                    } else {
+                        Err(anyhow!("Not at observation location"))
+                    }
+                } else {
+                    Err(anyhow!("No active permanent_observation_location"))
+                }
+            }
             ShipAction::HasRouteToDestination => {
                 if let Some((current_destination, last_travel_action)) = state
                     .current_navigation_destination
@@ -530,8 +542,8 @@ impl Actionable for ShipAction {
                                     good,
                                     target_quantity,
                                     sold_quantity,
-                                    estimated_price,
-                                    min_acceptable_price,
+                                    estimated_price_per_unit: estimated_price,
+                                    min_acceptable_price_per_unit: min_acceptable_price,
                                     destination_waypoint,
                                 } = &sell_transaction_goal;
 
@@ -607,14 +619,15 @@ impl Actionable for ShipAction {
                     }
                 }
             },
-            ShipAction::SleepUntilNextObservationTime => match state.maybe_next_observation_time {
+            ShipAction::SleepUntilNextObservationTimeOrShipPurchaseTicketHasBeenAssigned => match state.maybe_next_observation_time {
                 None => Ok(Success),
-                Some(next_time) => {
-                    let duration = next_time - Utc::now();
-                    event!(Level::DEBUG, "SleepUntilNextObservationTime: {duration:?}");
-                    tokio::time::sleep(Duration::from_millis(u64::try_from(duration.num_milliseconds()).unwrap_or(0))).await;
-                    Ok(Success)
-                }
+                Some(next_time) => loop {
+                    if state.maybe_trade.is_some() || Utc::now() > next_time {
+                        break Ok(Success);
+                    } else {
+                        tokio::time::sleep(sleep_duration).await;
+                    }
+                },
             },
             ShipAction::WaitForAllocatedBudgetToBeAvailable => {
                 let current_location = state.current_location();
