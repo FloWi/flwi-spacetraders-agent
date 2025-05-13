@@ -67,7 +67,7 @@ pub enum TicketStatus {
     Cancelled { reason: String },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct FundingSource {
     pub source_fleet: FleetId,
     pub amount: Credits,
@@ -85,7 +85,7 @@ pub struct TicketFinancials {
     pub operating_expenses: Credits,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Serialize, Deserialize, PartialEq)]
 pub enum TransactionEvent {
     TicketCreated {
         timestamp: DateTime<Utc>,
@@ -117,10 +117,11 @@ pub enum TransactionEvent {
         price_per_unit: Credits,
         total_revenue: Credits,
     },
+
     ShipRefueled {
         timestamp: DateTime<Utc>,
         waypoint: WaypointSymbol,
-        fuel_added: u32,
+        fuel_barrels_purchased: u32,
         cost_per_unit: Credits,
         total_cost: Credits,
         new_fuel_level: u32,
@@ -230,6 +231,43 @@ pub struct FleetBudget {
     pub funded_transactions: HashSet<TicketId>,
     pub beneficiary_transactions: HashSet<TicketId>,
     pub executing_transactions: HashSet<TicketId>,
+    pub non_ticket_transactions: Vec<TransactionEvent>,
+}
+
+impl FleetBudget {
+    pub(crate) fn update_budget_from_expense_event(&mut self, event: &TransactionEvent) -> Result<(), FinanceError> {
+        let result = match event {
+            TransactionEvent::ShipRefueled {
+                timestamp,
+                waypoint,
+                fuel_barrels_purchased,
+                cost_per_unit,
+                total_cost,
+                new_fuel_level,
+            } => {
+                if &self.available_capital >= total_cost {
+                    self.available_capital -= *total_cost;
+                    Ok(())
+                } else if self.available_capital + self.operating_reserve >= *total_cost {
+                    let from_available_capital = self.available_capital.min(*total_cost);
+                    let rest = *total_cost - from_available_capital;
+                    let from_operating_reserve = self.operating_reserve.min(rest);
+
+                    self.available_capital -= from_available_capital;
+                    self.operating_reserve -= from_operating_reserve;
+                    Ok(())
+                } else {
+                    Err(FinanceError::InsufficientFunds)
+                }
+            }
+            ev => {
+                eprintln!("update_ called for {ev}. This should not happen");
+                Ok(())
+            }
+        };
+
+        result
+    }
 }
 
 #[derive(Debug)]
@@ -389,7 +427,7 @@ impl TransactionTicket {
                 TransactionEvent::ShipRefueled {
                     timestamp,
                     waypoint,
-                    fuel_added,
+                    fuel_barrels_purchased: fuel_added,
                     total_cost,
                     ..
                 } => {

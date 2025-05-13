@@ -319,6 +319,117 @@ mod tests {
     }
 
     #[test(tokio::test)]
+    async fn refuel_expenses_with_enough_available_capital_should_be_handled_correctly() -> Result<(), anyhow::Error> {
+        let mut treasurer = InMemoryTreasurer::new(175_000.into());
+        let fleet_id = FleetId(1);
+        let ship = ShipSymbol("FOO-1".to_string());
+        let source_waypoint = WaypointSymbol("FROM".to_string());
+
+        treasurer.create_fleet_budget(fleet_id.clone(), 76_000.into(), 1_000.into())?;
+
+        assert_eq!(treasurer.agent_credits(), Credits::new(175_000));
+
+        let refuel_event = TransactionEvent::ShipRefueled {
+            timestamp: Default::default(),
+            waypoint: source_waypoint.clone(),
+            fuel_barrels_purchased: 1,
+            cost_per_unit: 75.into(),
+            total_cost: 75.into(),
+            new_fuel_level: 400,
+        };
+        treasurer.record_expense(&fleet_id, &ship, refuel_event.clone())?;
+
+        let budget_after_refuel = treasurer.get_fleet_budget(&fleet_id)?;
+        assert_eq!(budget_after_refuel.non_ticket_transactions, vec![refuel_event]);
+        assert_eq!(budget_after_refuel.available_capital, 74_925.into());
+        assert_eq!(budget_after_refuel.operating_reserve, 1_000.into());
+        assert_eq!(treasurer.agent_credits(), Credits::new(174_925));
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn refuel_expenses_without_enough_available_capital_should_take_from_operational_reserve() -> Result<(), anyhow::Error> {
+        let mut treasurer = InMemoryTreasurer::new(175_000.into());
+        let fleet_id = FleetId(1);
+        let ship = ShipSymbol("FOO-1".to_string());
+        let source_waypoint = WaypointSymbol("FROM".to_string());
+
+        treasurer.create_fleet_budget(fleet_id.clone(), 2_500.into(), 1_000.into())?;
+
+        assert_eq!(treasurer.agent_credits(), Credits::new(175_000));
+
+        let refuel_event = TransactionEvent::ShipRefueled {
+            timestamp: Default::default(),
+            waypoint: source_waypoint.clone(),
+            fuel_barrels_purchased: 1,
+            cost_per_unit: 2_000.into(),
+            total_cost: 2_000.into(),
+            new_fuel_level: 400,
+        };
+        treasurer.record_expense(&fleet_id, &ship, refuel_event.clone())?;
+
+        let budget_after_refuel = treasurer.get_fleet_budget(&fleet_id)?;
+        assert_eq!(budget_after_refuel.non_ticket_transactions, vec![refuel_event]);
+        assert_eq!(budget_after_refuel.available_capital, 0.into());
+        assert_eq!(budget_after_refuel.operating_reserve, 500.into());
+        assert_eq!(treasurer.agent_credits(), Credits::new(173_000));
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn refuel_expenses_with_active_ticket_should_book_to_ticket() -> Result<(), anyhow::Error> {
+        let mut treasurer = InMemoryTreasurer::new(175_000.into());
+        let fleet_id = FleetId(1);
+
+        treasurer.create_fleet_budget(fleet_id.clone(), 76_000.into(), 1_000.into())?;
+
+        let ship = ShipSymbol("FOO-1".to_string());
+        let source_waypoint = WaypointSymbol("FROM".to_string());
+        let destination_waypoint = WaypointSymbol("TO".to_string());
+        let good = TradeGoodSymbol::ADVANCED_CIRCUITRY;
+        let quantity = 35;
+        let buy_price = 1_000.into();
+        let sell_price = 2_000.into();
+
+        let ticket_id = create_trading_ticket(
+            &mut treasurer,
+            &ship,
+            &fleet_id,
+            &source_waypoint,
+            &destination_waypoint,
+            &good,
+            quantity,
+            buy_price,
+            sell_price,
+        )?;
+
+        fund_ticket(&mut treasurer, ticket_id, &fleet_id)?;
+        treasurer.start_ticket_execution(ticket_id.clone())?;
+        assert_eq!(treasurer.agent_credits(), Credits::new(175_000));
+
+        let refuel_event = TransactionEvent::ShipRefueled {
+            timestamp: Default::default(),
+            waypoint: source_waypoint.clone(),
+            fuel_barrels_purchased: 1,
+            cost_per_unit: 75.into(),
+            total_cost: 75.into(),
+            new_fuel_level: 400,
+        };
+        treasurer.record_expense(&fleet_id, &ship, refuel_event.clone())?;
+        let ticket = treasurer.get_ticket(ticket_id)?;
+
+        let budget_after_refuel = treasurer.get_fleet_budget(&fleet_id)?;
+
+        assert_eq!(treasurer.agent_credits(), Credits::new(174_925));
+        assert!(budget_after_refuel.non_ticket_transactions.is_empty());
+        assert!(ticket.event_history.contains(&refuel_event));
+        assert_eq!(ticket.financials.operating_expenses, 75.into());
+        assert_eq!(ticket.financials.current_profit, (-75).into());
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
     async fn distribute_budget_and_execute_trades_for_ship_purchase_in_construction_phase() -> Result<(), anyhow::Error> {
         let (bmc, client) = in_memory_test_universe::get_test_universe().await;
         let agent = client.get_agent().await?.data;

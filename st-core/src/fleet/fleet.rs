@@ -16,7 +16,9 @@ use itertools::Itertools;
 use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::budgeting::budgeting::{FinanceError, FleetBudget, FundingSource, TicketStatus, TicketType, TransactionGoal, TransactionTicket};
+use st_domain::budgeting::budgeting::{
+    FinanceError, FleetBudget, FundingSource, TicketStatus, TicketType, TransactionEvent, TransactionGoal, TransactionTicket,
+};
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
 use st_domain::FleetConfig::SystemSpawningCfg;
@@ -342,6 +344,11 @@ impl FleetAdmiral {
                 }
             }
             ShipStatusReport::Expense(ship, operation_expense_event) => {
+                let fleet_id = self.ship_fleet_assignment.get(&ship.symbol).unwrap();
+
+                self.report_expense_transaction_to_treasurer(fleet_id, operation_expense_event)
+                    .await;
+
                 let agent_credits_from_response = match operation_expense_event {
                     OperationExpenseEvent::RefueledShip { response } => response.data.agent.credits,
                 };
@@ -1105,6 +1112,27 @@ impl FleetAdmiral {
 
     async fn agent_info_credits(&self) -> Credits {
         self.treasurer.lock().await.agent_credits()
+    }
+
+    async fn report_expense_transaction_to_treasurer(&self, fleet_id: &FleetId, operation_expense_event: &OperationExpenseEvent) {
+        let mut guard = self.treasurer.lock().await;
+        match operation_expense_event {
+            OperationExpenseEvent::RefueledShip { response } => {
+                let event = TransactionEvent::ShipRefueled {
+                    timestamp: response.data.transaction.timestamp.clone(),
+                    waypoint: response.data.transaction.waypoint_symbol.clone(),
+                    fuel_barrels_purchased: response.data.transaction.units as u32,
+                    cost_per_unit: response.data.transaction.price_per_unit.into(),
+                    total_cost: response.data.transaction.total_price.into(),
+                    new_fuel_level: response.data.fuel.current as u32,
+                };
+
+                match guard.record_expense(fleet_id, &response.data.transaction.ship_symbol, event) {
+                    Ok(_) => {}
+                    Err(_) => {}
+                }
+            }
+        }
     }
 }
 

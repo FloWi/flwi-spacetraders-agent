@@ -40,6 +40,8 @@ pub trait Treasurer {
 
     fn record_event(&mut self, id: TicketId, event: TransactionEvent) -> Result<(), Self::Error>;
 
+    fn record_expense(&mut self, fleet_id: &FleetId, x: &ShipSymbol, event: TransactionEvent) -> Result<(), Self::Error>;
+
     fn update_goal(&mut self, id: TicketId, goal_index: usize, updated_goal: TransactionGoal) -> Result<(), Self::Error>;
 
     fn complete_ticket(&mut self, id: TicketId) -> Result<(), Self::Error>;
@@ -171,8 +173,8 @@ impl InMemoryTreasurer {
             .iter()
             .map(|(_, ticket)| match ticket.status {
                 TicketStatus::Funded => ticket.financials.required_capital,
+                TicketStatus::InProgress => ticket.financials.required_capital,
                 TicketStatus::Planned => Credits::new(0),
-                TicketStatus::InProgress => Credits::new(0),
                 TicketStatus::Completed => Credits::new(0),
                 TicketStatus::Failed { .. } => Credits::new(0),
                 TicketStatus::Cancelled { .. } => Credits::new(0),
@@ -191,10 +193,7 @@ impl Treasurer for InMemoryTreasurer {
             + self
                 .fleet_budgets
                 .iter()
-                .map(|(_, budget)| {
-                    let current_fleet_capital = budget.available_capital.0 + budget.operating_reserve.0;
-                    current_fleet_capital
-                })
+                .map(|(_, budget)| budget.available_capital.0 + budget.operating_reserve.0)
                 .sum::<i64>()
     }
 
@@ -394,6 +393,31 @@ impl Treasurer for InMemoryTreasurer {
         }
 
         Ok(())
+    }
+
+    fn record_expense(&mut self, fleet_id: &FleetId, ship_symbol: &ShipSymbol, event: TransactionEvent) -> Result<(), Self::Error> {
+        if let Some(fleet_budget) = self.fleet_budgets.get_mut(&fleet_id) {
+            fleet_budget.update_budget_from_expense_event(&event)?;
+
+            match self.active_tickets_by_vessel.get(ship_symbol) {
+                Some(ticket_id) => {
+                    let ticket = self
+                        .tickets
+                        .get_mut(ticket_id)
+                        .ok_or(FinanceError::TicketNotFound)?;
+
+                    ticket.update_from_event(&event);
+                    Ok(())
+                }
+                None => {
+                    // no ticket found - we reduce it from the fleet
+                    fleet_budget.non_ticket_transactions.push(event.clone());
+                    Ok(())
+                }
+            }
+        } else {
+            Err(FinanceError::FleetNotFound)
+        }
     }
 
     fn update_goal(&mut self, id: TicketId, goal_index: usize, updated_goal: TransactionGoal) -> Result<(), Self::Error> {
@@ -633,6 +657,7 @@ impl Treasurer for InMemoryTreasurer {
             funded_transactions: HashSet::new(),
             beneficiary_transactions: HashSet::new(),
             executing_transactions: HashSet::new(),
+            non_ticket_transactions: vec![],
         };
 
         // Deduct from treasury
