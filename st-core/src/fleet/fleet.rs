@@ -68,7 +68,6 @@ pub struct FleetAdmiral {
     pub ship_tasks: HashMap<ShipSymbol, ShipTask>,
     pub fleet_tasks: HashMap<FleetId, Vec<FleetTask>>,
     pub ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
-    pub agent_info: Agent,
     pub fleet_phase: FleetPhase,
     pub active_trade_ids: HashMap<ShipSymbol, TicketId>,
     pub stationary_probe_locations: Vec<StationaryProbeLocation>,
@@ -349,8 +348,7 @@ impl FleetAdmiral {
                 let total_price = match operation_expense_event {
                     OperationExpenseEvent::RefueledShip { response } => response.data.transaction.total_price,
                 };
-                let old_credits = self.agent_info.credits;
-                let new_credits = self.agent_info.credits - total_price as i64;
+                let new_credits = self.agent_info_credits().await.0;
 
                 if agent_credits_from_response != new_credits {
                     event!(
@@ -358,18 +356,13 @@ impl FleetAdmiral {
                             "Agent Credits differ from our expectation!\nExpected Agent Credits: {new_credits}\n Actual Agent Credits: {agent_credits_from_response}"
                               );
                 }
-                self.agent_info.credits = new_credits;
-                bmc.agent_bmc()
-                    .store_agent(&Ctx::Anonymous, &self.agent_info)
-                    .await?;
 
-                event!(
-                    Level::INFO,
-                    "Refueled ship. Total Price: {}; Old Agent Credits: {}; New Agent Credits: {}",
-                    &total_price,
-                    old_credits,
-                    self.agent_info.credits,
-                );
+                // fixme: store agent_credits
+                // bmc.agent_bmc()
+                //     .store_agent(&Ctx::Anonymous, &self.agent_info)
+                //     .await?;
+
+                event!(Level::INFO, "Refueled ship. Total Price: {}; New Agent Credits: {}", &total_price, new_credits,);
 
                 Ok(())
             }
@@ -519,7 +512,6 @@ impl FleetAdmiral {
                 ship_tasks: overview.ship_tasks,
                 fleet_tasks: fleet_task_map,
                 ship_fleet_assignment,
-                agent_info,
                 fleet_phase,
                 //FIXME
                 active_trade_ids: Default::default(),
@@ -619,7 +611,6 @@ impl FleetAdmiral {
             fleet_tasks: fleet_task_map,
             ship_tasks: Default::default(),
             ship_fleet_assignment,
-            agent_info,
             fleet_phase,
             active_trade_ids: Default::default(),
             stationary_probe_locations,
@@ -1110,6 +1101,10 @@ impl FleetAdmiral {
         self.fleet_tasks
             .iter()
             .find_map(|(id, tasks)| tasks.contains(fleet_task).then_some(id.clone()))
+    }
+
+    async fn agent_info_credits(&self) -> Credits {
+        self.treasurer.lock().await.agent_credits()
     }
 }
 
