@@ -173,6 +173,52 @@ mod tests {
     }
 
     #[test(tokio::test)]
+    async fn excess_capital_after_completed_trade_should_be_returned_to_treasury() -> Result<(), anyhow::Error> {
+        let mut treasury = InMemoryTreasurer::new(175_000.into());
+        let fleet_id = FleetId(1);
+        treasury.create_fleet_budget(fleet_id.clone(), 76_000.into(), 1_000.into())?;
+        let ship = ShipSymbol("FOO-1".to_string());
+
+        let budget_before_trade = treasury.get_fleet_budget(&fleet_id)?;
+        assert_eq!(budget_before_trade.available_capital, 75_000.into());
+        assert_eq!(budget_before_trade.total_capital, 75_000.into());
+        assert_eq!(budget_before_trade.operating_reserve, 1_000.into());
+
+        assert_eq!(treasury.treasury, 99_000.into());
+
+        let result = execute_profitable_trade(
+            &mut treasury,
+            &ship,
+            &fleet_id,
+            &WaypointSymbol("FROM".to_string()),
+            &WaypointSymbol("TO".to_string()),
+            TradeGoodSymbol::ADVANCED_CIRCUITRY,
+            37,
+            2_000.into(),
+            4_000.into(),
+        )
+        .await?;
+
+        let budget_after_trade = treasury.get_fleet_budget(&fleet_id)?;
+        let expected_profit = 74_000;
+        assert_eq!(result, expected_profit.into());
+        assert_eq!(budget_after_trade.available_capital, (75_000 + expected_profit).into());
+        assert_eq!(budget_after_trade.total_capital, 75_000.into());
+        assert_eq!(budget_after_trade.operating_reserve, 1_000.into());
+        assert_eq!(treasury.treasury, 99_000.into());
+
+        treasury.give_excess_capital_to_treasurer(&fleet_id)?;
+
+        let budget_after_rebalance = treasury.get_fleet_budget(&fleet_id)?;
+        assert_eq!(budget_after_rebalance.available_capital, 75_000.into());
+        assert_eq!(budget_after_rebalance.total_capital, 75_000.into());
+        assert_eq!(budget_after_rebalance.operating_reserve, 1_000.into());
+        assert_eq!(treasury.treasury, (99_000 + expected_profit).into());
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
     async fn distribute_budget_and_execute_trades_for_ship_purchase_in_construction_phase() -> Result<(), anyhow::Error> {
         let (bmc, client) = in_memory_test_universe::get_test_universe().await;
         let agent = client.get_agent().await?.data;
