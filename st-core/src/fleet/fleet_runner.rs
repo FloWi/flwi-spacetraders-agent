@@ -525,7 +525,7 @@ impl FleetRunner {
 
                         treasurer_guard.complete_ticket(ticket_id.clone())?;
                         if ticket.ticket_type == TicketType::Trading {
-                            treasurer_guard.give_excess_capital_to_treasurer(&fleet.id)?;
+                            treasurer_guard.return_excess_capital_to_treasurer(&fleet.id)?;
                         }
                         admiral_guard.active_trade_ids.remove(&ship.symbol);
                     }

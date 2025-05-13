@@ -43,6 +43,7 @@ pub trait Treasurer {
     fn complete_ticket(&mut self, id: TicketId) -> Result<(), Self::Error>;
 
     fn get_active_ticket_for_vessel(&self, vessel_id: &ShipSymbol) -> Result<Option<TransactionTicket>, Self::Error>;
+
     fn get_ship_purchase_tickets(&self) -> Vec<TransactionTicket>;
 
     fn create_fleet_budget(&mut self, fleet_id: FleetId, initial_capital: Credits, credits: Credits) -> Result<(), Self::Error>;
@@ -58,7 +59,9 @@ pub trait Treasurer {
         all_next_ship_purchases: &[(ShipType, FleetTask)],
     ) -> Result<(), Self::Error>;
 
-    fn give_excess_capital_to_treasurer(&mut self, fleet_id: &FleetId) -> Result<(), Self::Error>;
+    fn return_excess_capital_to_treasurer(&mut self, fleet_id: &FleetId) -> Result<(), Self::Error>;
+
+    fn top_up_available_capital(&mut self, fleet_id: &FleetId) -> Result<(), Self::Error>;
 
     fn give_all_treasury_to_fleet(&mut self, fleet: &FleetId) -> Result<(), Self::Error>;
 
@@ -723,8 +726,7 @@ impl Treasurer for InMemoryTreasurer {
         Ok(())
     }
 
-    fn give_excess_capital_to_treasurer(&mut self, fleet_id: &FleetId) -> Result<(), Self::Error> {
-        // Check that the fleet exists and has enough funds
+    fn return_excess_capital_to_treasurer(&mut self, fleet_id: &FleetId) -> Result<(), Self::Error> {
         let fleet_budget = self
             .fleet_budgets
             .get_mut(&fleet_id)
@@ -739,10 +741,26 @@ impl Treasurer for InMemoryTreasurer {
         Ok(())
     }
 
+    fn top_up_available_capital(&mut self, fleet_id: &FleetId) -> Result<(), Self::Error> {
+        let fleet_budget = self
+            .fleet_budgets
+            .get_mut(&fleet_id)
+            .ok_or(FinanceError::FleetNotFound)?;
+
+        let diff = fleet_budget.total_capital - fleet_budget.available_capital;
+
+        if diff.is_positive() {
+            let affordable_sum = self.treasury.min(diff);
+            self.treasury -= affordable_sum;
+            fleet_budget.available_capital += diff;
+        }
+
+        Ok(())
+    }
+
     fn give_all_treasury_to_fleet(&mut self, beneficiary_fleet: &FleetId) -> Result<(), Self::Error> {
         if let Some(beneficiary_fleet_budget) = self.fleet_budgets.get_mut(beneficiary_fleet) {
             beneficiary_fleet_budget.available_capital += self.treasury;
-            beneficiary_fleet_budget.total_capital += self.treasury;
 
             self.treasury = Credits::new(0);
             Ok(())

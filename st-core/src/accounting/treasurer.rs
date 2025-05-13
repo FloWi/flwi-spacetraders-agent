@@ -173,7 +173,7 @@ mod tests {
     }
 
     #[test(tokio::test)]
-    async fn excess_capital_after_completed_trade_should_be_returned_to_treasury() -> Result<(), anyhow::Error> {
+    async fn give_excess_capital_to_treasurer_should_work_after_successful_trade() -> Result<(), anyhow::Error> {
         let mut treasury = InMemoryTreasurer::new(175_000.into());
         let fleet_id = FleetId(1);
         treasury.create_fleet_budget(fleet_id.clone(), 76_000.into(), 1_000.into())?;
@@ -207,13 +207,69 @@ mod tests {
         assert_eq!(budget_after_trade.operating_reserve, 1_000.into());
         assert_eq!(treasury.treasury, 99_000.into());
 
-        treasury.give_excess_capital_to_treasurer(&fleet_id)?;
+        treasury.return_excess_capital_to_treasurer(&fleet_id)?;
 
         let budget_after_rebalance = treasury.get_fleet_budget(&fleet_id)?;
         assert_eq!(budget_after_rebalance.available_capital, 75_000.into());
         assert_eq!(budget_after_rebalance.total_capital, 75_000.into());
         assert_eq!(budget_after_rebalance.operating_reserve, 1_000.into());
         assert_eq!(treasury.treasury, (99_000 + expected_profit).into());
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn rebalance_after_unsuccessful_trade() -> Result<(), anyhow::Error> {
+        let mut treasury = InMemoryTreasurer::new(175_000.into());
+        let fleet_id = FleetId(1);
+        treasury.create_fleet_budget(fleet_id.clone(), 76_000.into(), 1_000.into())?;
+        let ship = ShipSymbol("FOO-1".to_string());
+
+        let budget_before_trade = treasury.get_fleet_budget(&fleet_id)?;
+        assert_eq!(budget_before_trade.available_capital, 75_000.into());
+        assert_eq!(budget_before_trade.total_capital, 75_000.into());
+        assert_eq!(budget_before_trade.operating_reserve, 1_000.into());
+
+        assert_eq!(treasury.treasury, 99_000.into());
+
+        let result = execute_profitable_trade(
+            &mut treasury,
+            &ship,
+            &fleet_id,
+            &WaypointSymbol("FROM".to_string()),
+            &WaypointSymbol("TO".to_string()),
+            TradeGoodSymbol::ADVANCED_CIRCUITRY,
+            37,
+            2_000.into(), //purchase price higher than sell price
+            1_000.into(),
+        )
+        .await?;
+
+        let budget_after_trade = treasury.get_fleet_budget(&fleet_id)?;
+        let expected_profit: i64 = -37_000;
+        assert_eq!(result, expected_profit.into());
+        assert_eq!(budget_after_trade.available_capital, (75_000 + expected_profit).into());
+        assert_eq!(budget_after_trade.total_capital, 75_000.into());
+        assert_eq!(budget_after_trade.operating_reserve, 1_000.into());
+        assert_eq!(treasury.treasury, 99_000.into());
+
+        treasury.return_excess_capital_to_treasurer(&fleet_id)?;
+
+        // everything is unchanged
+        let budget_after_rebalance = treasury.get_fleet_budget(&fleet_id)?;
+        assert_eq!(budget_after_rebalance.available_capital, budget_after_trade.available_capital);
+        assert_eq!(budget_after_rebalance.total_capital, budget_after_trade.total_capital);
+        assert_eq!(budget_after_rebalance.operating_reserve, budget_after_trade.operating_reserve);
+        assert_eq!(treasury.treasury, 99_000.into()); //unchanged balance
+
+        treasury.top_up_available_capital(&fleet_id)?;
+
+        // treasury got reduced and fleets' available capital should be topped up
+        let budget_after_top_up = treasury.get_fleet_budget(&fleet_id)?;
+        assert_eq!(budget_after_top_up.available_capital, 75_000.into());
+        assert_eq!(budget_after_top_up.total_capital, 75_000.into());
+        assert_eq!(budget_after_top_up.operating_reserve, 1_000.into());
+        assert_eq!(treasury.treasury, 62_000.into());
 
         Ok(())
     }
