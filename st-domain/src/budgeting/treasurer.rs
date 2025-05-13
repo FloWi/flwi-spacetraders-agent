@@ -16,6 +16,8 @@ use std::ops::Not;
 pub trait Treasurer {
     type Error;
 
+    fn agent_credits(&self) -> Credits;
+
     fn create_ticket(
         &mut self,
         ticket_type: TicketType,
@@ -167,6 +169,15 @@ impl InMemoryTreasurer {
 
 impl Treasurer for InMemoryTreasurer {
     type Error = FinanceError;
+
+    fn agent_credits(&self) -> Credits {
+        self.treasury
+            + self
+                .fleet_budgets
+                .iter()
+                .map(|(_, budget)| budget.available_capital.0 + budget.operating_reserve.0)
+                .sum::<i64>()
+    }
 
     fn create_ticket(
         &mut self,

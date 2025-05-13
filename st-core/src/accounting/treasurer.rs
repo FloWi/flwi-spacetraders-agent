@@ -14,7 +14,7 @@ mod tests {
     use st_domain::budgeting::budgeting::{FinanceError, FundingSource, TicketType, TransactionEvent, TransactionGoal};
     use st_domain::budgeting::credits::Credits;
     use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
-    use st_domain::{Fleet, FleetId, FleetTask, ShipSymbol, ShipType, TradeGoodSymbol, TransactionTicketId, WaypointSymbol};
+    use st_domain::{Fleet, FleetId, FleetTask, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, TransactionTicketId, WaypointSymbol};
     use st_store::bmc::Bmc;
     use st_store::Ctx;
     use std::collections::HashSet;
@@ -275,6 +275,47 @@ mod tests {
     }
 
     #[test(tokio::test)]
+    async fn treasury_should_keep_track_of_agent_credits() -> Result<(), anyhow::Error> {
+        let mut treasurer = InMemoryTreasurer::new(175_000.into());
+        let fleet_id = FleetId(1);
+        treasurer.create_fleet_budget(fleet_id.clone(), 76_000.into(), 1_000.into())?;
+        let ship = ShipSymbol("FOO-1".to_string());
+
+        assert_eq!(treasurer.agent_credits(), Credits::new(175_000));
+
+        let source_waypoint = WaypointSymbol("FROM".to_string());
+        let destination_waypoint = WaypointSymbol("TO".to_string());
+        let good = TradeGoodSymbol::ADVANCED_CIRCUITRY;
+
+        let quantity = 35;
+        let buy_price = 1_000.into();
+        let sell_price = 2_000.into();
+        let ticket_id = create_trading_ticket(
+            &mut treasurer,
+            &ship,
+            &fleet_id,
+            &source_waypoint,
+            &destination_waypoint,
+            &good,
+            quantity,
+            buy_price,
+            sell_price,
+        )?;
+
+        fund_start_and_perform_purchase(&mut treasurer, ticket_id, &fleet_id)?;
+        assert_eq!(treasurer.agent_credits(), Credits::new(140_000));
+
+        perform_sell(&mut treasurer, ticket_id)?;
+        assert_eq!(treasurer.agent_credits(), Credits::new(210_000));
+
+        //overall agent_credits shouldn't change after returning excess capital to treasurer
+        treasurer.return_excess_capital_to_treasurer(&fleet_id)?;
+        assert_eq!(treasurer.agent_credits(), Credits::new(210_000));
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
     async fn distribute_budget_and_execute_trades_for_ship_purchase_in_construction_phase() -> Result<(), anyhow::Error> {
         let (bmc, client) = in_memory_test_universe::get_test_universe().await;
         let agent = client.get_agent().await?.data;
@@ -453,6 +494,124 @@ mod tests {
         sell_price: Credits,
     ) -> Result<Credits, FinanceError> {
         // Create a ticket for trading
+        let ticket_id = create_trading_ticket(
+            treasurer,
+            executing_ship,
+            executing_fleet,
+            source_waypoint,
+            destination_waypoint,
+            &good,
+            quantity,
+            buy_price,
+            sell_price,
+        )?;
+
+        fund_start_and_perform_purchase(treasurer, ticket_id, executing_fleet)?;
+
+        perform_sell(treasurer, ticket_id)?;
+
+        // The ticket should be automatically completed after all goals are fulfilled
+        // Let's get the ticket to check the final profit
+        let ticket = treasurer.get_ticket(ticket_id)?;
+        Ok(ticket.financials.current_profit)
+    }
+
+    fn perform_sell(treasurer: &mut InMemoryTreasurer, ticket_id: TicketId) -> Result<(), FinanceError> {
+        // Record sell event
+
+        let ticket = treasurer.get_ticket(ticket_id)?;
+
+        let sell_goal: SellTradeGoodsTransactionGoal = ticket
+            .get_incomplete_goals()
+            .iter()
+            .find_map(|g| match g {
+                TransactionGoal::SellTradeGoods(s) => Some(s.clone()),
+                TransactionGoal::PurchaseTradeGoods(_) => None,
+                TransactionGoal::PurchaseShip(_) => None,
+            })
+            .unwrap();
+
+        let SellTradeGoodsTransactionGoal {
+            id,
+            good,
+            target_quantity,
+            sold_quantity,
+            estimated_price_per_unit,
+            min_acceptable_price_per_unit,
+            destination_waypoint,
+        } = sell_goal;
+
+        let sell_event = TransactionEvent::GoodsSold {
+            timestamp: Utc::now() + Duration::minutes(10),
+            waypoint: destination_waypoint.clone(),
+            good,
+            quantity: target_quantity,
+            price_per_unit: estimated_price_per_unit,
+            total_revenue: estimated_price_per_unit * target_quantity,
+        };
+        treasurer.record_event(ticket_id, sell_event)?;
+        Ok(())
+    }
+
+    fn fund_start_and_perform_purchase(treasurer: &mut InMemoryTreasurer, ticket_id: TicketId, executing_fleet: &FleetId) -> Result<(), FinanceError> {
+        let ticket = treasurer.get_ticket(ticket_id)?;
+
+        // Fund the ticket
+        let required_capital = ticket.financials.required_capital;
+
+        treasurer.fund_ticket(
+            ticket_id,
+            FundingSource {
+                source_fleet: executing_fleet.clone(),
+                amount: required_capital,
+            },
+        )?;
+
+        // Start execution
+        treasurer.start_ticket_execution(ticket_id)?;
+
+        let purchase_goal: PurchaseTradeGoodsTransactionGoal = ticket
+            .get_incomplete_goals()
+            .iter()
+            .find_map(|g| match g {
+                TransactionGoal::PurchaseTradeGoods(p) => Some(p.clone()),
+                TransactionGoal::SellTradeGoods(_) => None,
+                TransactionGoal::PurchaseShip(_) => None,
+            })
+            .unwrap();
+
+        let PurchaseTradeGoodsTransactionGoal {
+            good,
+            target_quantity,
+            estimated_price_per_unit,
+            source_waypoint,
+            ..
+        } = purchase_goal;
+
+        // Record purchase event
+        let purchase_event = TransactionEvent::GoodsPurchased {
+            timestamp: Utc::now(),
+            waypoint: source_waypoint.clone(),
+            good: good.clone(),
+            quantity: target_quantity,
+            price_per_unit: estimated_price_per_unit,
+            total_cost: estimated_price_per_unit * target_quantity,
+        };
+        treasurer.record_event(ticket_id, purchase_event)?;
+        Ok(())
+    }
+
+    fn create_trading_ticket(
+        treasurer: &mut InMemoryTreasurer,
+        executing_ship: &ShipSymbol,
+        executing_fleet: &FleetId,
+        source_waypoint: &WaypointSymbol,
+        destination_waypoint: &WaypointSymbol,
+        good: &TradeGoodSymbol,
+        quantity: u32,
+        buy_price: Credits,
+        sell_price: Credits,
+    ) -> Result<TicketId, FinanceError> {
         let ticket_id = treasurer.create_ticket(
             TicketType::Trading,
             executing_ship.clone(),
@@ -485,46 +644,7 @@ mod tests {
             Utc::now() + Duration::hours(1),
             10.0, // High priority
         )?;
-
-        // Fund the ticket
-        let required_capital = quantity as i64 * buy_price.0;
-        treasurer.fund_ticket(
-            ticket_id,
-            FundingSource {
-                source_fleet: executing_fleet.clone(),
-                amount: Credits::new(required_capital),
-            },
-        )?;
-
-        // Start execution
-        treasurer.start_ticket_execution(ticket_id)?;
-
-        // Record purchase event
-        let purchase_event = TransactionEvent::GoodsPurchased {
-            timestamp: Utc::now(),
-            waypoint: source_waypoint.clone(),
-            good: good.clone(),
-            quantity,
-            price_per_unit: buy_price,
-            total_cost: Credits::new(quantity as i64 * buy_price.0),
-        };
-        treasurer.record_event(ticket_id, purchase_event)?;
-
-        // Record sell event
-        let sell_event = TransactionEvent::GoodsSold {
-            timestamp: Utc::now() + Duration::minutes(10),
-            waypoint: destination_waypoint.clone(),
-            good,
-            quantity,
-            price_per_unit: sell_price,
-            total_revenue: Credits::new(quantity as i64 * sell_price.0),
-        };
-        treasurer.record_event(ticket_id, sell_event)?;
-
-        // The ticket should be automatically completed after all goals are fulfilled
-        // Let's get the ticket to check the final profit
-        let ticket = treasurer.get_ticket(ticket_id)?;
-        Ok(ticket.financials.current_profit)
+        Ok(ticket_id)
     }
 
     // Helper function to execute a ship purchase
