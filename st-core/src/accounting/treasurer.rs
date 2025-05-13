@@ -430,6 +430,117 @@ mod tests {
     }
 
     #[test(tokio::test)]
+    async fn agent_credits_should_be_correct_during_ship_purchase() -> Result<(), anyhow::Error> {
+        let mut treasurer = InMemoryTreasurer::new(200_000.into());
+        let beneficiary_fleet = FleetId(0);
+        let executing_fleet = FleetId(1);
+
+        treasurer.create_fleet_budget(beneficiary_fleet.clone(), 51_000.into(), 1_000.into())?;
+        treasurer.create_fleet_budget(executing_fleet.clone(), 51_000.into(), 1_000.into())?;
+
+        let ship = ShipSymbol("FOO-1".to_string());
+        let shipyard_waypoint = WaypointSymbol("SHIPYARD".to_string());
+        let refuel_waypoint = WaypointSymbol("SHIPYARD".to_string());
+
+        let estimated_cost = 25_000.into();
+        let ship_type = ShipType::SHIP_PROBE;
+        let ticket_id = treasurer.create_ship_purchase_ticket(
+            &ship_type,
+            &ship,
+            &beneficiary_fleet,
+            &beneficiary_fleet,
+            &executing_fleet,
+            estimated_cost,
+            &shipyard_waypoint,
+        )?;
+
+        let executing_fleet_budget_before_funding = treasurer.get_fleet_budget(&executing_fleet)?;
+        let beneficiary_fleet_budget_before_funding = treasurer.get_fleet_budget(&beneficiary_fleet)?;
+
+        fund_ticket(&mut treasurer, ticket_id, &beneficiary_fleet)?;
+        assert_eq!(treasurer.agent_credits(), Credits::new(200_000));
+
+        treasurer.start_ticket_execution(ticket_id.clone())?;
+
+        let executing_fleet_budget_before_purchase = treasurer.get_fleet_budget(&executing_fleet)?;
+        let beneficiary_fleet_budget_before_purchase = treasurer.get_fleet_budget(&beneficiary_fleet)?;
+
+        let refuel_event = TransactionEvent::ShipRefueled {
+            timestamp: Default::default(),
+            waypoint: refuel_waypoint.clone(),
+            fuel_barrels_purchased: 1,
+            cost_per_unit: 75.into(),
+            total_cost: 75.into(),
+            new_fuel_level: 400,
+        };
+
+        treasurer.record_expense(&executing_fleet, &ship, refuel_event.clone())?;
+        let executing_fleet_budget_after_refuel = treasurer.get_fleet_budget(&executing_fleet)?;
+        let beneficiary_fleet_budget_after_refuel = treasurer.get_fleet_budget(&beneficiary_fleet)?;
+
+        assert_eq!(executing_fleet_budget_before_purchase, executing_fleet_budget_after_refuel); //unchanged budget of executing fleet, since we are operating for a different fleet
+        assert_eq!(beneficiary_fleet_budget_after_refuel.available_capital, 24_925.into()); //unchanged budget of executing fleet, since we are operating for a different fleet
+
+        // Record ship purchase event
+        let purchase_event = TransactionEvent::ShipPurchased {
+            timestamp: Utc::now(),
+            waypoint: shipyard_waypoint.clone(),
+            ship_type,
+            ship_id: ShipSymbol("TEST".to_string()), // Generate a random ship ID
+            total_cost: 24_500.into(),               // less than planned
+            beneficiary_fleet: beneficiary_fleet.clone(),
+        };
+        treasurer.record_event(ticket_id, purchase_event)?;
+
+        let ticket = treasurer.get_ticket(ticket_id)?;
+
+        let executing_fleet_budget_after_purchase = treasurer.get_fleet_budget(&executing_fleet)?;
+        let beneficiary_fleet_budget_after_purchase = treasurer.get_fleet_budget(&beneficiary_fleet)?;
+
+        assert_eq!(beneficiary_fleet_budget_after_purchase.available_capital, (50_000 - 24_500 - 75).into()); //unchanged budget of executing fleet, since we are operating for a different fleet
+
+        let new_treasurer_agent_credits = treasurer.agent_credits();
+        assert_eq!(new_treasurer_agent_credits, Credits::new(200_000 - 24_500 - 75));
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn ship_purchase_ticket_with_multiple_refuel_stops_should_not_break_balance() -> Result<(), anyhow::Error> {
+        let mut treasurer = InMemoryTreasurer::new(200_000.into());
+        let beneficiary_fleet = FleetId(0);
+        let executing_fleet = FleetId(1);
+
+        treasurer.create_fleet_budget(beneficiary_fleet.clone(), 51_000.into(), 1_000.into())?;
+        treasurer.create_fleet_budget(executing_fleet.clone(), 51_000.into(), 1_000.into())?;
+
+        let ship = ShipSymbol("FOO-1".to_string());
+        let shipyard_waypoint = WaypointSymbol("SHIPYARD".to_string());
+
+        let estimated_cost = 25_000.into();
+        let ship_type = ShipType::SHIP_PROBE;
+        let ticket_id = treasurer.create_ship_purchase_ticket(
+            &ship_type,
+            &ship,
+            &beneficiary_fleet,
+            &beneficiary_fleet,
+            &executing_fleet,
+            estimated_cost,
+            &shipyard_waypoint,
+        )?;
+
+        let executing_fleet_budget_before_funding = treasurer.get_fleet_budget(&executing_fleet)?;
+        let beneficiary_fleet_budget_before_funding = treasurer.get_fleet_budget(&beneficiary_fleet)?;
+
+        fund_ticket(&mut treasurer, ticket_id, &beneficiary_fleet)?;
+        assert_eq!(treasurer.agent_credits(), Credits::new(200_000));
+
+        treasurer.start_ticket_execution(ticket_id.clone())?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
     async fn distribute_budget_and_execute_trades_for_ship_purchase_in_construction_phase() -> Result<(), anyhow::Error> {
         let (bmc, client) = in_memory_test_universe::get_test_universe().await;
         let agent = client.get_agent().await?.data;

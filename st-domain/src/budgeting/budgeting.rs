@@ -220,7 +220,7 @@ pub enum FundingPurpose {
     Contingency,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct FleetBudget {
     pub fleet_id: FleetId,
     pub total_capital: Credits,
@@ -338,8 +338,7 @@ impl TransactionTicket {
                 beneficiary_fleet,
             } => {
                 self.financials.spent_capital += *total_cost;
-                self.financials.operating_expenses += *total_cost;
-                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
+                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital - self.financials.operating_expenses;
             }
             TransactionEvent::ShipTransferred { .. } => {}
             TransactionEvent::AssetTransferred { .. } => {}

@@ -375,11 +375,12 @@ impl FleetAdmiral {
             }
 
             ShipStatusReport::TransactionCompleted(ship, transaction_event, updated_trade_ticket) => {
-                let ticket_id = updated_trade_ticket.id;
+                self.mark_transaction_completed_to_treasurer(transaction_event, &updated_trade_ticket, &ship.symbol)
+                    .await;
 
                 let is_complete = updated_trade_ticket.is_complete();
                 bmc.trade_bmc()
-                    .upsert_ticket(&Ctx::Anonymous, &ship.symbol, &ticket_id, updated_trade_ticket, is_complete)
+                    .upsert_ticket(&Ctx::Anonymous, &ship.symbol, &updated_trade_ticket.id, updated_trade_ticket, is_complete)
                     .await?;
 
                 //FIXME: agent-credits need to update
@@ -527,8 +528,8 @@ impl FleetAdmiral {
                 ship_purchase_demand: VecDeque::from(current_ship_demands),
             };
 
-            let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
-            Self::assign_ship_tasks(&mut admiral, new_ship_tasks);
+            // let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
+            // Self::assign_ship_tasks(&mut admiral, new_ship_tasks);
 
             upsert_fleets_data(
                 Arc::clone(&bmc),
@@ -624,11 +625,6 @@ impl FleetAdmiral {
             treasurer: Arc::new(Mutex::new(treasurer)),
             ship_purchase_demand: VecDeque::from(current_ship_demands),
         };
-
-        admiral.try_create_ship_purchase_ticket(&ship_prices).await;
-
-        let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
-        Self::assign_ship_tasks(&mut admiral, new_ship_tasks);
 
         upsert_fleets_data(
             Arc::clone(&bmc),
@@ -921,13 +917,14 @@ impl FleetAdmiral {
     }
 
     async fn try_create_ship_purchase_ticket(&mut self, ship_prices: &ShipPriceInfo) -> () {
-        println!("Overview before creation of ship purchase ticket:\n{}", self.generate_state_overview().await);
+        //println!("Overview before creation of ship purchase ticket:\n{}", self.generate_state_overview().await);
         match self.create_ship_purchase_ticket(ship_prices).await {
             Ok(_) => {}
             Err(_) => {}
         }
-        println!("Overview after creation of ship purchase ticket:\n{}", self.generate_state_overview().await);
+        //println!("Overview after creation of ship purchase ticket:\n{}", self.generate_state_overview().await);
     }
+
     async fn create_ship_purchase_ticket(&mut self, ship_prices: &ShipPriceInfo) -> Result<()> {
         let mut treasurer = self.treasurer.lock().await;
 
@@ -1001,7 +998,7 @@ impl FleetAdmiral {
                 &initiating_fleet,
                 &beneficiary_fleet,
                 &executing_fleet,
-                (price as i64).into(),
+                ship_price,
                 &shipyard_wps,
             )?;
 
@@ -1110,7 +1107,7 @@ impl FleetAdmiral {
             .find_map(|(id, tasks)| tasks.contains(fleet_task).then_some(id.clone()))
     }
 
-    async fn agent_info_credits(&self) -> Credits {
+    pub async fn agent_info_credits(&self) -> Credits {
         self.treasurer.lock().await.agent_credits()
     }
 
@@ -1132,6 +1129,41 @@ impl FleetAdmiral {
                     Err(_) => {}
                 }
             }
+        }
+    }
+
+    async fn mark_transaction_completed_to_treasurer(
+        &mut self,
+        transaction_event: &TransactionActionEvent,
+        ticket: &TransactionTicket,
+        ship_symbol: &ShipSymbol,
+    ) {
+        let mut guard = self.treasurer.lock().await;
+
+        let fleet_id: &FleetId = self.ship_fleet_assignment.get(ship_symbol).unwrap();
+
+        guard
+            .complete_ticket(ticket.id.clone())
+            .expect("complete_ticket");
+
+        if ticket.ticket_type == TicketType::Trading {
+            guard
+                .return_excess_capital_to_treasurer(fleet_id)
+                .expect("return_excess_capital_to_treasurer");
+        }
+        self.active_trade_ids.remove(ship_symbol);
+        let calculated_agent_credits = guard.agent_credits();
+        let agent_credits_from_response = transaction_event
+            .maybe_updated_agent_credits()
+            .unwrap_or_default();
+        if calculated_agent_credits != agent_credits_from_response.into() {
+            event!(
+                Level::WARN,
+                message = "agent credits differ after reporting transaction as completed",
+                calculated_agent_credits = calculated_agent_credits.0,
+                agent_credits_from_response
+            );
+            guard.agent_credits(); // Hello, breakpoint
         }
     }
 }

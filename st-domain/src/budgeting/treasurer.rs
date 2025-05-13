@@ -188,13 +188,14 @@ impl Treasurer for InMemoryTreasurer {
     type Error = FinanceError;
 
     fn agent_credits(&self) -> Credits {
-        self.treasury
-            + self.sum_of_funded_tickets()
-            + self
-                .fleet_budgets
-                .iter()
-                .map(|(_, budget)| budget.available_capital.0 + budget.operating_reserve.0)
-                .sum::<i64>()
+        let sum_of_funded_tickets = self.sum_of_funded_tickets();
+        let sum_of_budgets = self
+            .fleet_budgets
+            .iter()
+            .map(|(_, budget)| budget.available_capital.0 + budget.operating_reserve.0)
+            .sum::<i64>();
+
+        self.treasury + sum_of_funded_tickets + sum_of_budgets
     }
 
     fn create_ticket(
@@ -396,7 +397,14 @@ impl Treasurer for InMemoryTreasurer {
     }
 
     fn record_expense(&mut self, fleet_id: &FleetId, ship_symbol: &ShipSymbol, event: TransactionEvent) -> Result<(), Self::Error> {
-        if let Some(fleet_budget) = self.fleet_budgets.get_mut(&fleet_id) {
+        let maybe_ticket = self.get_active_ticket_for_vessel(ship_symbol)?;
+
+        // if the ship is executing a ticket for a different fleet, the expense gets handled by that fleet
+        let responsible_fleet_id = maybe_ticket
+            .map(|t| t.beneficiary_fleet)
+            .unwrap_or(fleet_id.clone());
+
+        if let Some(fleet_budget) = self.fleet_budgets.get_mut(&responsible_fleet_id) {
             fleet_budget.update_budget_from_expense_event(&event)?;
 
             match self.active_tickets_by_vessel.get(ship_symbol) {
@@ -460,7 +468,7 @@ impl Treasurer for InMemoryTreasurer {
         ticket.completed_at = Some(Utc::now());
 
         // Calculate financial reconciliation
-        let unspent_funds = ticket.financials.allocated_capital - ticket.financials.spent_capital;
+        let unspent_funds = ticket.financials.allocated_capital - ticket.financials.spent_capital - ticket.financials.operating_expenses;
         if unspent_funds.is_negative() {
             eprintln!("unspent_funds.is_negative");
             return Err(FinanceError::InvalidState);

@@ -78,9 +78,24 @@ impl FleetRunner {
         let ship_fibers: HashMap<ShipSymbol, JoinHandle<Result<()>>> = HashMap::new();
 
         let ship_ops: HashMap<ShipSymbol, Arc<Mutex<ShipOperations>>> = Default::default();
+        let all_ships_map = fleet_admiral.lock().await.all_ships.clone();
+
+        {
+            let mut admiral = fleet_admiral.lock().await;
+            let system_symbol = all_ships_map
+                .values()
+                .next()
+                .clone()
+                .unwrap()
+                .clone()
+                .nav
+                .system_symbol;
+            let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
+            let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
+            FleetAdmiral::assign_ship_tasks(&mut admiral, new_ship_tasks);
+        }
 
         // Clone fleet_admiral infos to avoid the lifetime issues
-        let all_ships_map = fleet_admiral.lock().await.all_ships.clone();
         let all_ship_tasks = fleet_admiral.lock().await.ship_tasks.clone();
 
         let fleet_runner = Self {
@@ -502,7 +517,7 @@ impl FleetRunner {
     ) -> Result<()> {
         let ship_span = span!(
             Level::INFO,
-            "fleet_runner::listen_to_ship_status_report_messages",
+            "fleet_runner::process_ship_status_report",
             ship = format!("{}", msg.ship_symbol().0)
         );
         let _enter = ship_span.enter();
@@ -512,25 +527,9 @@ impl FleetRunner {
             .report_ship_action_completed(&msg, Arc::clone(&bmc))
             .await?;
 
-        let treasurer = Arc::clone(&admiral_guard.treasurer);
-
         match msg {
             ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
                 admiral_guard.ship_tasks.remove(&ship.symbol);
-                match task {
-                    ShipTask::Trade { ticket_id } => {
-                        let mut treasurer_guard = treasurer.lock().await;
-                        let fleet = admiral_guard.get_fleet_of_ship(&ship.symbol).unwrap();
-                        let ticket = treasurer_guard.get_ticket(ticket_id.clone())?;
-
-                        treasurer_guard.complete_ticket(ticket_id.clone())?;
-                        if ticket.ticket_type == TicketType::Trading {
-                            treasurer_guard.return_excess_capital_to_treasurer(&fleet.id)?;
-                        }
-                        admiral_guard.active_trade_ids.remove(&ship.symbol);
-                    }
-                    _ => {}
-                }
                 let result = recompute_tasks_after_ship_finishing_behavior_tree(&mut admiral_guard, &ship, &task, Arc::clone(&bmc)).await?;
                 event!(
                     Level::INFO,
@@ -1106,6 +1105,7 @@ mod tests {
             .keys()
             .cloned()
             .collect::<HashSet<_>>();
+
         let marketplace_waypoints = in_memory_universe
             .marketplaces
             .keys()
@@ -1182,6 +1182,9 @@ mod tests {
             Some(FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. })
         ));
 
+        let actual_agent_credits = fleet_admiral.agent_info_credits().await;
+        let expected_agent_credits = client.get_agent().await.expect("agent").data.credits;
+        assert_eq!(expected_agent_credits, actual_agent_credits.0);
         let admiral_mutex = Arc::new(Mutex::new(fleet_admiral));
         let admiral_clone = Arc::clone(&admiral_mutex);
 
