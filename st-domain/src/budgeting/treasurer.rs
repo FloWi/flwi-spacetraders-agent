@@ -428,9 +428,6 @@ impl Treasurer for InMemoryTreasurer {
                 if let Some(budget) = self.fleet_budgets.get_mut(&beneficiary_fleet) {
                     // Return both unspent allocated funds and earned revenue
                     budget.available_capital += unspent_funds + earned_revenue;
-
-                    // Only add the net profit to the fleet's total capital
-                    budget.total_capital += profit;
                 }
 
                 // Record this financial reconciliation
@@ -578,13 +575,13 @@ impl Treasurer for InMemoryTreasurer {
             .collect_vec()
     }
 
-    fn create_fleet_budget(&mut self, fleet_id: FleetId, initial_capital: Credits, operating_reserve: Credits) -> Result<(), Self::Error> {
+    fn create_fleet_budget(&mut self, fleet_id: FleetId, funding_capital: Credits, operating_reserve: Credits) -> Result<(), Self::Error> {
         // Check if we have enough in treasury
-        if initial_capital < operating_reserve {
+        if funding_capital < operating_reserve {
             return Err(FinanceError::InvalidState);
         }
 
-        if self.treasury < (initial_capital) {
+        if self.treasury < (funding_capital) {
             return Err(FinanceError::InsufficientFunds);
         }
 
@@ -595,8 +592,8 @@ impl Treasurer for InMemoryTreasurer {
         // Create new fleet budget
         let budget = FleetBudget {
             fleet_id: fleet_id.clone(),
-            total_capital: initial_capital - operating_reserve,
-            available_capital: initial_capital,
+            total_capital: funding_capital - operating_reserve,
+            available_capital: funding_capital - operating_reserve,
             operating_reserve,
             earmarked_funds: HashMap::new(),
             asset_value: Credits::new(0),
@@ -606,7 +603,7 @@ impl Treasurer for InMemoryTreasurer {
         };
 
         // Deduct from treasury
-        self.treasury -= initial_capital;
+        self.treasury -= funding_capital;
 
         // Store budget
         self.fleet_budgets.insert(fleet_id, budget);
@@ -631,7 +628,7 @@ impl Treasurer for InMemoryTreasurer {
     ) -> Result<(), Self::Error> {
         for (_, budget) in self.fleet_budgets.iter_mut() {
             // TODO: clean up properly (cancel and clear tickets etc)
-            self.treasury += budget.total_capital
+            self.treasury += budget.available_capital
         }
         self.fleet_budgets.clear();
 
@@ -649,14 +646,14 @@ impl Treasurer for InMemoryTreasurer {
 
         match fleet_phase.name {
             FleetPhaseName::InitialExploration => {
-                // we start with one probe and want to keep 50k for trading. Let's try to reserve budget for purchasing one probe per shipyard
                 let command_ship_fleet_id = fleet_tasks
                     .iter()
                     .find_map(|(id, fleet_task)| matches!(fleet_task, FleetTask::InitialExploration { .. }).then_some(id))
                     .unwrap();
 
-                let command_fleet_budget = self.treasury.min(Credits::new(51_000));
-                let command_ship_reserve = Credits::new(1_000);
+                // plenty of budget for fuel on initial round
+                let command_fleet_budget = self.treasury.min(Credits::new(25_000));
+                let command_ship_reserve = Credits::new(25_000);
                 self.create_fleet_budget(command_ship_fleet_id.clone(), command_fleet_budget, command_ship_reserve)?;
 
                 let other_fleets = fleet_tasks

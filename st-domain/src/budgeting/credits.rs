@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::fmt::{Display, Formatter, Write};
 use std::ops::{Add, AddAssign, Deref, Neg, Sub, SubAssign};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Credits(pub i64);
 
 impl Deref for Credits {
@@ -114,6 +115,12 @@ impl From<Credits> for i64 {
 
 // Display implementation for nice formatting
 impl fmt::Display for Credits {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}c", self.0)
+    }
+}
+
+impl fmt::Debug for Credits {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}c", self.0)
     }

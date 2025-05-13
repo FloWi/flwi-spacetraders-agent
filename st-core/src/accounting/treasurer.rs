@@ -10,7 +10,7 @@ mod tests {
     use crate::st_client::StClientTrait;
     use anyhow::Result;
     use chrono::{Duration, Utc};
-    use itertools::Itertools;
+    use itertools::{assert_equal, Itertools};
     use st_domain::budgeting::budgeting::{FinanceError, FundingSource, TicketType, TransactionEvent, TransactionGoal};
     use st_domain::budgeting::credits::Credits;
     use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
@@ -78,9 +78,11 @@ mod tests {
         let command_fleet_budget = finance.get_fleet_budget(command_ship_fleet_id)?;
         let market_observation_fleet_budget = finance.get_fleet_budget(market_observation_fleet_id)?;
 
-        assert_eq!(Credits::new(50_000), command_fleet_budget.total_capital);
-        assert_eq!(Credits::new(1_000), command_fleet_budget.operating_reserve);
-        assert_eq!(Credits::new(124_000), market_observation_fleet_budget.total_capital);
+        assert_eq!(Credits::new(0), command_fleet_budget.total_capital);
+        assert_eq!(Credits::new(25_000), command_fleet_budget.operating_reserve);
+        assert_eq!(Credits::new(0), market_observation_fleet_budget.total_capital);
+
+        assert_eq!(Credits::new(150_000), finance.treasury);
 
         Ok(())
     }
@@ -156,7 +158,9 @@ mod tests {
         assert_eq!(Credits::new(75_000), construction_fleet_budget.total_capital);
         assert_eq!(Credits::new(1_000), construction_fleet_budget.operating_reserve);
 
-        assert_eq!(Credits::new(75_000), market_observation_fleet_budget.total_capital); // 3 probes à 25k each (estimated for now, since we don't have accurate marketdata yet)
+        assert_eq!(Credits::new(99_000), finance.treasury);
+
+        assert_eq!(Credits::new(0), market_observation_fleet_budget.total_capital); // 3 probes à 25k each (estimated for now, since we don't have accurate marketdata yet)
         assert_eq!(Credits::new(0), market_observation_fleet_budget.operating_reserve);
 
         assert_eq!(Credits::new(0), mining_fleet_budget.total_capital); // 3 probes à 25k each (estimated for now, since we don't have accurate marketdata yet)
@@ -280,7 +284,7 @@ mod tests {
             .total_capital
             .clone();
         assert_eq!(available_capital_before_transaction + profit, available_capital_after_transaction);
-        assert_eq!(total_capital_before_transaction + profit, total_capital_after_transaction);
+        assert_eq!(total_capital_before_transaction, total_capital_after_transaction); //total capital doesn't change
 
         // Check the updated budget after trade
         let construction_budget_after_trade = finance.get_fleet_budget(construction_fleet_id)?;
@@ -316,9 +320,9 @@ mod tests {
         );
 
         // Verify the results
-        assert!(
-            construction_budget_after_trade.total_capital > construction_budget_before.total_capital,
-            "Trading should increase the fleet's total capital"
+        assert_eq!(
+            construction_budget_after_trade.total_capital, construction_budget_before.total_capital,
+            "Trading should not increase the fleet's total capital"
         );
 
         assert!(
