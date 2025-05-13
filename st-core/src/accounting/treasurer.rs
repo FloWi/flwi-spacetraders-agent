@@ -209,10 +209,10 @@ mod tests {
 
         treasury.return_excess_capital_to_treasurer(&fleet_id)?;
 
-        let budget_after_rebalance = treasury.get_fleet_budget(&fleet_id)?;
-        assert_eq!(budget_after_rebalance.available_capital, 75_000.into());
-        assert_eq!(budget_after_rebalance.total_capital, 75_000.into());
-        assert_eq!(budget_after_rebalance.operating_reserve, 1_000.into());
+        let budget_after_return = treasury.get_fleet_budget(&fleet_id)?;
+        assert_eq!(budget_after_return.available_capital, 75_000.into());
+        assert_eq!(budget_after_return.total_capital, 75_000.into());
+        assert_eq!(budget_after_return.operating_reserve, 1_000.into());
         assert_eq!(treasury.treasury, (99_000 + expected_profit).into());
 
         Ok(())
@@ -302,7 +302,10 @@ mod tests {
             sell_price,
         )?;
 
-        fund_start_and_perform_purchase(&mut treasurer, ticket_id, &fleet_id)?;
+        fund_ticket(&mut treasurer, ticket_id, &fleet_id)?;
+        assert_eq!(treasurer.agent_credits(), Credits::new(175_000));
+
+        start_and_perform_purchase(&mut treasurer, ticket_id, &fleet_id)?;
         assert_eq!(treasurer.agent_credits(), Credits::new(140_000));
 
         perform_sell(&mut treasurer, ticket_id)?;
@@ -506,7 +509,9 @@ mod tests {
             sell_price,
         )?;
 
-        fund_start_and_perform_purchase(treasurer, ticket_id, executing_fleet)?;
+        fund_ticket(treasurer, ticket_id, executing_fleet)?;
+
+        start_and_perform_purchase(treasurer, ticket_id, executing_fleet)?;
 
         perform_sell(treasurer, ticket_id)?;
 
@@ -553,19 +558,8 @@ mod tests {
         Ok(())
     }
 
-    fn fund_start_and_perform_purchase(treasurer: &mut InMemoryTreasurer, ticket_id: TicketId, executing_fleet: &FleetId) -> Result<(), FinanceError> {
+    fn start_and_perform_purchase(treasurer: &mut InMemoryTreasurer, ticket_id: TicketId, executing_fleet: &FleetId) -> Result<(), FinanceError> {
         let ticket = treasurer.get_ticket(ticket_id)?;
-
-        // Fund the ticket
-        let required_capital = ticket.financials.required_capital;
-
-        treasurer.fund_ticket(
-            ticket_id,
-            FundingSource {
-                source_fleet: executing_fleet.clone(),
-                amount: required_capital,
-            },
-        )?;
 
         // Start execution
         treasurer.start_ticket_execution(ticket_id)?;
@@ -598,6 +592,22 @@ mod tests {
             total_cost: estimated_price_per_unit * target_quantity,
         };
         treasurer.record_event(ticket_id, purchase_event)?;
+        Ok(())
+    }
+
+    fn fund_ticket(treasurer: &mut InMemoryTreasurer, ticket_id: TicketId, executing_fleet: &FleetId) -> Result<(), FinanceError> {
+        let ticket = treasurer.get_ticket(ticket_id)?;
+
+        // Fund the ticket
+        let required_capital = ticket.financials.required_capital;
+
+        treasurer.fund_ticket(
+            ticket_id,
+            FundingSource {
+                source_fleet: executing_fleet.clone(),
+                amount: required_capital,
+            },
+        )?;
         Ok(())
     }
 

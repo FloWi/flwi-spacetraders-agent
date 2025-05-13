@@ -165,6 +165,21 @@ impl InMemoryTreasurer {
 
         revenue - costs
     }
+
+    pub(crate) fn sum_of_funded_tickets(&self) -> Credits {
+        self.tickets
+            .iter()
+            .map(|(_, ticket)| match ticket.status {
+                TicketStatus::Funded => ticket.financials.required_capital,
+                TicketStatus::Planned => Credits::new(0),
+                TicketStatus::InProgress => Credits::new(0),
+                TicketStatus::Completed => Credits::new(0),
+                TicketStatus::Failed { .. } => Credits::new(0),
+                TicketStatus::Cancelled { .. } => Credits::new(0),
+            }.0)
+            .sum::<i64>()
+            .into()
+    }
 }
 
 impl Treasurer for InMemoryTreasurer {
@@ -172,10 +187,14 @@ impl Treasurer for InMemoryTreasurer {
 
     fn agent_credits(&self) -> Credits {
         self.treasury
+            + self.sum_of_funded_tickets()
             + self
                 .fleet_budgets
                 .iter()
-                .map(|(_, budget)| budget.available_capital.0 + budget.operating_reserve.0)
+                .map(|(_, budget)| {
+                    let current_fleet_capital = budget.available_capital.0 + budget.operating_reserve.0;
+                    current_fleet_capital
+                })
                 .sum::<i64>()
     }
 
@@ -642,7 +661,7 @@ impl Treasurer for InMemoryTreasurer {
     ) -> Result<(), Self::Error> {
         for (_, budget) in self.fleet_budgets.iter_mut() {
             // TODO: clean up properly (cancel and clear tickets etc)
-            self.treasury += budget.available_capital
+            self.treasury += budget.available_capital + budget.operating_reserve;
         }
         self.fleet_budgets.clear();
 
