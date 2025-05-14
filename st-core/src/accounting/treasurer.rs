@@ -303,9 +303,19 @@ mod tests {
         )?;
 
         fund_ticket(&mut treasurer, ticket_id, &fleet_id)?;
+        let budget_after_funding = treasurer.get_fleet_budget(&fleet_id)?;
+        let ticket_before_purchase = treasurer.get_ticket(ticket_id)?;
+
+        assert_eq!(budget_after_funding.available_capital, 40_000.into()); // money is not available in the fleet anymore, it's bound in the ticket
         assert_eq!(treasurer.agent_credits(), Credits::new(175_000));
 
-        start_and_perform_purchase(&mut treasurer, ticket_id, &fleet_id)?;
+        start_and_perform_purchase(&mut treasurer, ticket_id.clone(), &fleet_id)?;
+        let budget_after_purchase = treasurer.get_fleet_budget(&fleet_id)?;
+        let ticket_after_purchase = treasurer.get_ticket(ticket_id)?;
+
+        assert_eq!(budget_after_purchase, budget_after_funding); //fleet-budget is unchanged after the purchase, all is financed by the ticket
+        assert_eq!(ticket_after_purchase.financials.spent_capital, 35_000.into());
+        assert_eq!(ticket_after_purchase.financials.operating_expenses, 0.into());
         assert_eq!(treasurer.agent_credits(), Credits::new(140_000));
 
         perform_sell(&mut treasurer, ticket_id)?;
@@ -424,7 +434,7 @@ mod tests {
         assert!(budget_after_refuel.non_ticket_transactions.is_empty());
         assert!(ticket.event_history.contains(&refuel_event));
         assert_eq!(ticket.financials.operating_expenses, 75.into());
-        assert_eq!(ticket.financials.current_profit, (-75).into());
+        assert_eq!(ticket.financials.current_profit(), (-75).into());
 
         Ok(())
     }
@@ -462,6 +472,11 @@ mod tests {
 
         treasurer.start_ticket_execution(ticket_id.clone())?;
 
+        // Scenario
+        // create ship ticket for 25k
+        // fund and start the ticket
+        // refuel once for 75
+
         let executing_fleet_budget_before_purchase = treasurer.get_fleet_budget(&executing_fleet)?;
         let beneficiary_fleet_budget_before_purchase = treasurer.get_fleet_budget(&beneficiary_fleet)?;
 
@@ -478,8 +493,10 @@ mod tests {
         let executing_fleet_budget_after_refuel = treasurer.get_fleet_budget(&executing_fleet)?;
         let beneficiary_fleet_budget_after_refuel = treasurer.get_fleet_budget(&beneficiary_fleet)?;
 
-        assert_eq!(executing_fleet_budget_before_purchase, executing_fleet_budget_after_refuel); //unchanged budget of executing fleet, since we are operating for a different fleet
-        assert_eq!(beneficiary_fleet_budget_after_refuel.available_capital, 24_925.into()); //unchanged budget of executing fleet, since we are operating for a different fleet
+        assert_eq!(treasurer.agent_credits(), Credits::new(199_925));
+
+        assert_eq!(executing_fleet_budget_after_refuel, executing_fleet_budget_before_purchase); //unchanged budget of executing fleet, since we are operating for a different fleet
+        assert_eq!(beneficiary_fleet_budget_after_refuel.available_capital, 25_000.into()); //unchanged budget of executing fleet, since we are operating for a different fleet
 
         // Record ship purchase event
         let purchase_event = TransactionEvent::ShipPurchased {
@@ -494,11 +511,16 @@ mod tests {
 
         let ticket = treasurer.get_ticket(ticket_id)?;
 
+        assert_eq!(ticket.financials.current_profit(), Credits::new(-24_500 - 75));
+
         let executing_fleet_budget_after_purchase = treasurer.get_fleet_budget(&executing_fleet)?;
         let beneficiary_fleet_budget_after_purchase = treasurer.get_fleet_budget(&beneficiary_fleet)?;
 
-        assert_eq!(beneficiary_fleet_budget_after_purchase.available_capital, (50_000 - 24_500 - 75).into()); //unchanged budget of executing fleet, since we are operating for a different fleet
-
+        assert_eq!(executing_fleet_budget_after_purchase, executing_fleet_budget_before_purchase); //unchanged budget of executing fleet, since we are operating for a different fleet
+        assert_eq!(
+            beneficiary_fleet_budget_after_purchase.available_capital,
+            (50_000 - 25_000 + (25_000 - 24_500) - 75).into()
+        ); // initial_budget - funding_budget + (price_difference) - fuel
         let new_treasurer_agent_credits = treasurer.agent_credits();
         assert_eq!(new_treasurer_agent_credits, Credits::new(200_000 - 24_500 - 75));
 
@@ -740,7 +762,7 @@ mod tests {
         // The ticket should be automatically completed after all goals are fulfilled
         // Let's get the ticket to check the final profit
         let ticket = treasurer.get_ticket(ticket_id)?;
-        Ok(ticket.financials.current_profit)
+        Ok(ticket.financials.current_profit())
     }
 
     fn perform_sell(treasurer: &mut InMemoryTreasurer, ticket_id: TicketId) -> Result<(), FinanceError> {

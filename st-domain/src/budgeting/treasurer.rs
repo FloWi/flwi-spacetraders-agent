@@ -172,8 +172,8 @@ impl InMemoryTreasurer {
         self.tickets
             .iter()
             .map(|(_, ticket)| match ticket.status {
-                TicketStatus::Funded => ticket.financials.required_capital,
-                TicketStatus::InProgress => ticket.financials.required_capital,
+                TicketStatus::Funded => ticket.financials.allocated_capital - ticket.financials.spent_capital - ticket.financials.operating_expenses,
+                TicketStatus::InProgress => ticket.financials.allocated_capital - ticket.financials.spent_capital - ticket.financials.operating_expenses,
                 TicketStatus::Planned => Credits::new(0),
                 TicketStatus::Completed => Credits::new(0),
                 TicketStatus::Failed { .. } => Credits::new(0),
@@ -218,7 +218,6 @@ impl Treasurer for InMemoryTreasurer {
         }
 
         let required_capital = self.calculate_required_capital(&goals);
-        let projected_profit = self.calculate_projected_profit(&goals);
 
         let ticket_id = TicketId::new();
         let now = Utc::now();
@@ -238,8 +237,6 @@ impl Treasurer for InMemoryTreasurer {
                 funding_sources: Vec::new(),
                 spent_capital: Credits::new(0),
                 earned_revenue: Credits::new(0),
-                current_profit: Credits::new(0),
-                projected_profit,
                 operating_expenses: Credits::new(0),
             },
             created_at: now,
@@ -385,7 +382,13 @@ impl Treasurer for InMemoryTreasurer {
             .get_mut(&id)
             .ok_or(FinanceError::TicketNotFound)?;
 
+        let fleet_budget = self
+            .fleet_budgets
+            .get_mut(&ticket.beneficiary_fleet)
+            .ok_or(FinanceError::FleetNotFound)?;
+
         // Process the event
+        fleet_budget.update_budget_from_expense_event_without_ticket(&event)?;
         ticket.update_from_event(&event);
 
         // Check if all required goals are complete after this event
@@ -405,8 +408,6 @@ impl Treasurer for InMemoryTreasurer {
             .unwrap_or(fleet_id.clone());
 
         if let Some(fleet_budget) = self.fleet_budgets.get_mut(&responsible_fleet_id) {
-            fleet_budget.update_budget_from_expense_event(&event)?;
-
             match self.active_tickets_by_vessel.get(ship_symbol) {
                 Some(ticket_id) => {
                     let ticket = self
@@ -420,6 +421,7 @@ impl Treasurer for InMemoryTreasurer {
                 None => {
                     // no ticket found - we reduce it from the fleet
                     fleet_budget.non_ticket_transactions.push(event.clone());
+                    fleet_budget.update_budget_from_expense_event_without_ticket(&event)?;
                     Ok(())
                 }
             }
@@ -468,13 +470,14 @@ impl Treasurer for InMemoryTreasurer {
         ticket.completed_at = Some(Utc::now());
 
         // Calculate financial reconciliation
-        let unspent_funds = ticket.financials.allocated_capital - ticket.financials.spent_capital - ticket.financials.operating_expenses;
+        let unspent_funds = ticket.financials.allocated_capital - ticket.financials.spent_capital; // - ticket.financials.operating_expenses;
         if unspent_funds.is_negative() {
             eprintln!("unspent_funds.is_negative");
             return Err(FinanceError::InvalidState);
         }
         let earned_revenue = ticket.financials.earned_revenue;
-        let profit = ticket.financials.current_profit;
+        let operating_expenses = ticket.financials.operating_expenses;
+        let profit = ticket.financials.current_profit();
 
         // Record completion event
         let event = TransactionEvent::TicketCompleted {
@@ -492,7 +495,7 @@ impl Treasurer for InMemoryTreasurer {
 
                 if let Some(budget) = self.fleet_budgets.get_mut(&beneficiary_fleet) {
                     // Return both unspent allocated funds and earned revenue
-                    budget.available_capital += unspent_funds + earned_revenue;
+                    budget.available_capital += unspent_funds + earned_revenue - operating_expenses;
                 }
 
                 // Record this financial reconciliation
@@ -530,7 +533,7 @@ impl Treasurer for InMemoryTreasurer {
                 // Return unspent funds to the funding fleet
                 for source in funding_sources {
                     if let Some(funding_budget) = self.fleet_budgets.get_mut(&source.source_fleet) {
-                        funding_budget.available_capital += unspent_funds;
+                        funding_budget.available_capital += unspent_funds - operating_expenses;
 
                         println!(
                             "Finance reconciliation: Returned {} unspent funds to funding fleet {:?}.",

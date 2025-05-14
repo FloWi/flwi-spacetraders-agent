@@ -80,9 +80,13 @@ pub struct TicketFinancials {
     pub funding_sources: Vec<FundingSource>,
     pub spent_capital: Credits,
     pub earned_revenue: Credits,
-    pub current_profit: Credits,
-    pub projected_profit: Credits,
     pub operating_expenses: Credits,
+}
+
+impl TicketFinancials {
+    pub fn current_profit(&self) -> Credits {
+        self.earned_revenue - self.spent_capital - self.operating_expenses
+    }
 }
 
 #[derive(Clone, Debug, Display, Serialize, Deserialize, PartialEq)]
@@ -235,7 +239,7 @@ pub struct FleetBudget {
 }
 
 impl FleetBudget {
-    pub(crate) fn update_budget_from_expense_event(&mut self, event: &TransactionEvent) -> Result<(), FinanceError> {
+    pub(crate) fn update_budget_from_expense_event_without_ticket(&mut self, event: &TransactionEvent) -> Result<(), FinanceError> {
         let result = match event {
             TransactionEvent::ShipRefueled {
                 timestamp,
@@ -261,7 +265,7 @@ impl FleetBudget {
                 }
             }
             ev => {
-                eprintln!("update_ called for {ev}. This should not happen");
+                eprintln!("update_budget_from_expense_event called for {ev}. This should not happen");
                 Ok(())
             }
         };
@@ -310,16 +314,12 @@ impl TransactionTicket {
         match event {
             TransactionEvent::GoodsPurchased { total_cost, .. } => {
                 self.financials.spent_capital += *total_cost;
-                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
             }
             TransactionEvent::GoodsSold { total_revenue, .. } => {
                 self.financials.earned_revenue += *total_revenue;
-                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
             }
             TransactionEvent::ShipRefueled { total_cost, .. } => {
-                self.financials.spent_capital += *total_cost;
                 self.financials.operating_expenses += *total_cost;
-                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital;
             }
 
             TransactionEvent::TicketCreated { .. } => {}
@@ -338,7 +338,6 @@ impl TransactionTicket {
                 beneficiary_fleet,
             } => {
                 self.financials.spent_capital += *total_cost;
-                self.financials.current_profit = self.financials.earned_revenue - self.financials.spent_capital - self.financials.operating_expenses;
             }
             TransactionEvent::ShipTransferred { .. } => {}
             TransactionEvent::AssetTransferred { .. } => {}
