@@ -18,6 +18,8 @@ pub trait Treasurer {
 
     fn agent_credits(&self) -> Credits;
 
+    fn set_fleet_total_capital(&mut self, fleet_id: &FleetId, new_total_capital: Credits) -> Result<(), Self::Error>;
+
     fn create_ticket(
         &mut self,
         ticket_type: TicketType,
@@ -64,6 +66,8 @@ pub trait Treasurer {
     ) -> Result<(), Self::Error>;
 
     fn return_excess_capital_to_treasurer(&mut self, fleet_id: &FleetId) -> Result<(), Self::Error>;
+
+    fn top_up_operating_reserve(&mut self, fleet_id: &FleetId, new_operating_reserve: Credits) -> Result<(), Self::Error>;
 
     fn top_up_available_capital(&mut self, fleet_id: &FleetId) -> Result<(), Self::Error>;
 
@@ -196,6 +200,15 @@ impl Treasurer for InMemoryTreasurer {
             .sum::<i64>();
 
         self.treasury + sum_of_funded_tickets + sum_of_budgets
+    }
+
+    fn set_fleet_total_capital(&mut self, fleet_id: &FleetId, new_total_capital: Credits) -> Result<(), Self::Error> {
+        if let Some(budget) = self.fleet_budgets.get_mut(fleet_id) {
+            budget.total_capital = new_total_capital;
+            Ok(())
+        } else {
+            Err(FinanceError::FleetNotFound)
+        }
     }
 
     fn create_ticket(
@@ -802,18 +815,33 @@ impl Treasurer for InMemoryTreasurer {
         Ok(())
     }
 
+    fn top_up_operating_reserve(&mut self, fleet_id: &FleetId, new_operating_reserve: Credits) -> Result<(), Self::Error> {
+        let fleet_budget = self
+            .fleet_budgets
+            .get_mut(&fleet_id)
+            .ok_or(FinanceError::FleetNotFound)?;
+
+        let operating_reserve_diff = fleet_budget.operating_reserve - new_operating_reserve;
+        if operating_reserve_diff.is_positive() {
+            let affordable_sum = self.treasury.min(operating_reserve_diff);
+            self.treasury -= affordable_sum;
+            fleet_budget.operating_reserve += operating_reserve_diff;
+        }
+        Ok(())
+    }
+
     fn top_up_available_capital(&mut self, fleet_id: &FleetId) -> Result<(), Self::Error> {
         let fleet_budget = self
             .fleet_budgets
             .get_mut(&fleet_id)
             .ok_or(FinanceError::FleetNotFound)?;
 
-        let diff = fleet_budget.total_capital - fleet_budget.available_capital;
+        let total_capital_diff = fleet_budget.total_capital - fleet_budget.available_capital;
 
-        if diff.is_positive() {
-            let affordable_sum = self.treasury.min(diff);
+        if total_capital_diff.is_positive() {
+            let affordable_sum = self.treasury.min(total_capital_diff);
             self.treasury -= affordable_sum;
-            fleet_budget.available_capital += diff;
+            fleet_budget.available_capital += total_capital_diff;
         }
 
         Ok(())

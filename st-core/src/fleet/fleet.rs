@@ -42,6 +42,7 @@ use std::time::Duration;
 use strum::Display;
 use tokio::sync::{Mutex, MutexGuard};
 use tracing::{debug, event, warn, Level};
+use FleetConfig::{ConstructJumpGateCfg, MarketObservationCfg, MiningCfg, SiphoningCfg, TradingCfg};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum ShipStatusReport {
@@ -78,6 +79,72 @@ pub struct FleetAdmiral {
 }
 
 impl FleetAdmiral {
+    pub(crate) async fn adjust_fleet_budget_after_ship_purchase(admiral: &FleetAdmiral, new_ship: &Ship, fleet_id: &FleetId) -> Result<()> {
+        let mut guard = admiral.treasurer.lock().await;
+
+        let fleet = admiral
+            .fleets
+            .get(fleet_id)
+            .ok_or(anyhow!("Fleet id not found"))?;
+        let budget = guard.get_fleet_budget(fleet_id)?;
+        let all_ships_purchased = admiral.ship_purchase_demand.is_empty();
+        let ships_of_fleet = admiral.get_ships_of_fleet(&fleet);
+
+        let (new_total_capital, new_operating_reserve) = Self::calc_required_operating_capital_for_fleet(fleet, &ships_of_fleet);
+        let construction_budget = Credits::new(1_000_000);
+
+        let new_total_capital = match fleet.cfg {
+            SystemSpawningCfg(_) => 0.into(),
+            MarketObservationCfg(_) => 0.into(),
+            SiphoningCfg(_) => 0.into(),
+            MiningCfg(_) => 0.into(),
+            TradingCfg(_) => new_total_capital,
+            ConstructJumpGateCfg(_) => {
+                if all_ships_purchased {
+                    new_total_capital + construction_budget
+                } else {
+                    new_total_capital
+                }
+            }
+        };
+
+        if new_total_capital > budget.total_capital || new_operating_reserve > budget.operating_reserve {
+            event!(
+                Level::INFO,
+                message = "Increasing fleet budget after ship purchase and trying to top up available capital",
+                new_ship = new_ship.symbol.0,
+                new_ship_type = new_ship.frame.symbol.to_string(),
+                fleet_id = fleet_id.0,
+                fleet = fleet.cfg.to_string(),
+                old_total_capital = budget.total_capital.0,
+                new_total_capital = new_total_capital.0
+            );
+            guard.set_fleet_total_capital(fleet_id, new_total_capital)?;
+            guard.top_up_operating_reserve(fleet_id, new_operating_reserve)?;
+            guard.top_up_available_capital(fleet_id)?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn calc_required_operating_capital_for_fleet(fleet: &Fleet, ships: &[&Ship]) -> (Credits, Credits) {
+        let num_fuel_consuming_ships = ships.iter().filter(|s| s.fuel.capacity > 0).count() as u32;
+        let num_trading_ships = ships.iter().filter(|s| s.cargo.capacity > 0).count() as u32;
+
+        let required_fuel_budget = Credits::new(1_000) * num_fuel_consuming_ships;
+        let required_trading_budget = Credits::new(75_000) * num_trading_ships;
+
+        let (total_capital, operating_reserve) = match fleet.cfg {
+            TradingCfg(_) => (required_trading_budget, required_fuel_budget),
+            ConstructJumpGateCfg(_) => (required_trading_budget, required_fuel_budget),
+            MiningCfg(_) => (Credits::new(0), required_fuel_budget),
+            SiphoningCfg(_) => (Credits::new(0), required_fuel_budget),
+            MarketObservationCfg(_) => (Credits::new(0), required_fuel_budget),
+            SystemSpawningCfg(_) => (Credits::new(0), required_fuel_budget),
+        };
+        (total_capital, operating_reserve)
+    }
+
     async fn generate_state_overview(&self) -> String {
         format!(
             r#"
@@ -332,11 +399,11 @@ impl FleetAdmiral {
                                     .await?;
                             };
                         }
-                        FleetConfig::MarketObservationCfg(_) => {}
-                        FleetConfig::TradingCfg(_) => {}
-                        FleetConfig::ConstructJumpGateCfg(_) => {}
-                        FleetConfig::MiningCfg(_) => {}
-                        FleetConfig::SiphoningCfg(_) => {}
+                        MarketObservationCfg(_) => {}
+                        TradingCfg(_) => {}
+                        ConstructJumpGateCfg(_) => {}
+                        MiningCfg(_) => {}
+                        SiphoningCfg(_) => {}
                     }
                     Ok(())
                 } else {
@@ -733,19 +800,19 @@ impl FleetAdmiral {
                 .collect_vec();
 
             match &fleet.cfg {
-                FleetConfig::SystemSpawningCfg(cfg) => {
+                SystemSpawningCfg(cfg) => {
                     let ship_tasks = SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet)?;
                     for (ss, task) in ship_tasks {
                         new_ship_tasks.insert(ss, task);
                     }
                 }
-                FleetConfig::MarketObservationCfg(cfg) => {
+                MarketObservationCfg(cfg) => {
                     let ship_tasks = MarketObservationFleet::compute_ship_tasks(admiral, cfg, &unassigned_ships_of_fleet)?;
                     for (ss, task) in ship_tasks {
                         new_ship_tasks.insert(ss, task);
                     }
                 }
-                FleetConfig::ConstructJumpGateCfg(cfg) => {
+                ConstructJumpGateCfg(cfg) => {
                     let potential_trading_tasks = ConstructJumpGateFleet::compute_ship_tasks(
                         admiral,
                         cfg,
@@ -785,9 +852,9 @@ impl FleetAdmiral {
                         new_ship_tasks.insert(potential_trading_task.ship_symbol.clone(), ShipTask::Trade { ticket_id });
                     }
                 }
-                FleetConfig::TradingCfg(cfg) => (),
-                FleetConfig::MiningCfg(cfg) => (),
-                FleetConfig::SiphoningCfg(cfg) => (),
+                TradingCfg(cfg) => (),
+                MiningCfg(cfg) => (),
+                SiphoningCfg(cfg) => (),
             }
         }
 
@@ -910,24 +977,6 @@ impl FleetAdmiral {
                 }
             })
             .collect_vec()
-    }
-
-    pub(crate) fn calc_required_operating_capital_for_fleet(&self, fleet: &Fleet, ships: &[&Ship]) -> Credits {
-        let num_fuel_consuming_ships = ships.iter().filter(|s| s.fuel.capacity > 0).count() as u32;
-        let num_trading_ships = ships.iter().filter(|s| s.cargo.capacity > 0).count() as u32;
-
-        let required_fuel_budget = Credits::new(1_000) * num_fuel_consuming_ships;
-        let required_trading_budget = Credits::new(75_000) * num_trading_ships;
-
-        let operating_capital = match fleet.cfg {
-            FleetConfig::TradingCfg(_) => required_fuel_budget + required_trading_budget,
-            FleetConfig::ConstructJumpGateCfg(_) => required_fuel_budget + required_trading_budget,
-            FleetConfig::MiningCfg(_) => required_fuel_budget,
-            FleetConfig::SiphoningCfg(_) => required_fuel_budget,
-            FleetConfig::MarketObservationCfg(_) => required_fuel_budget,
-            SystemSpawningCfg(_) => required_fuel_budget,
-        };
-        operating_capital
     }
 
     fn mark_fleet_tasks_as_complete(&mut self, fleet_id: &FleetId) {
@@ -1315,21 +1364,19 @@ pub fn compute_fleet_configs(
                 .cloned()
                 .collect_vec();
             let maybe_cfg = match t {
-                FleetTask::InitialExploration { system_symbol } => Some(FleetConfig::SystemSpawningCfg(SystemSpawningFleetConfig {
+                FleetTask::InitialExploration { system_symbol } => Some(SystemSpawningCfg(SystemSpawningFleetConfig {
                     system_symbol: system_symbol.clone(),
                     marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
                     shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
                     desired_fleet_config,
                 })),
-                FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { system_symbol } => {
-                    Some(FleetConfig::MarketObservationCfg(MarketObservationFleetConfig {
-                        system_symbol: system_symbol.clone(),
-                        marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
-                        shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
-                        desired_fleet_config,
-                    }))
-                }
-                FleetTask::ConstructJumpGate { system_symbol } => Some(FleetConfig::ConstructJumpGateCfg(ConstructJumpGateFleetConfig {
+                FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { system_symbol } => Some(MarketObservationCfg(MarketObservationFleetConfig {
+                    system_symbol: system_symbol.clone(),
+                    marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
+                    shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
+                    desired_fleet_config,
+                })),
+                FleetTask::ConstructJumpGate { system_symbol } => Some(ConstructJumpGateCfg(ConstructJumpGateFleetConfig {
                     system_symbol: system_symbol.clone(),
                     jump_gate_waypoint: fleet_decision_facts
                         .construction_site
@@ -1339,12 +1386,12 @@ pub fn compute_fleet_configs(
                     materialized_supply_chain: None,
                     desired_fleet_config,
                 })),
-                FleetTask::TradeProfitably { system_symbol } => Some(FleetConfig::TradingCfg(TradingFleetConfig {
+                FleetTask::TradeProfitably { system_symbol } => Some(TradingCfg(TradingFleetConfig {
                     system_symbol: system_symbol.clone(),
                     materialized_supply_chain: None,
                     desired_fleet_config,
                 })),
-                FleetTask::MineOres { system_symbol } => Some(FleetConfig::MiningCfg(MiningFleetConfig {
+                FleetTask::MineOres { system_symbol } => Some(MiningCfg(MiningFleetConfig {
                     system_symbol: system_symbol.clone(),
                     mining_waypoint: WaypointSymbol("TODO add engineered asteroid".to_string()),
                     materials: vec![],
@@ -1353,7 +1400,7 @@ pub fn compute_fleet_configs(
 
                     desired_fleet_config,
                 })),
-                FleetTask::SiphonGases { system_symbol } => Some(FleetConfig::SiphoningCfg(SiphoningFleetConfig {
+                FleetTask::SiphonGases { system_symbol } => Some(SiphoningCfg(SiphoningFleetConfig {
                     system_symbol: system_symbol.clone(),
                     siphoning_waypoint: WaypointSymbol("TODO add gas giant".to_string()),
                     materials: vec![],

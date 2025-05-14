@@ -751,12 +751,16 @@ impl FleetRunner {
                     bmc.ship_bmc()
                         .upsert_ships(&Ctx::Anonymous, &vec![new_ship.clone()], Utc::now())
                         .await?;
+
                     admiral_guard
                         .all_ships
                         .insert(new_ship.symbol.clone(), new_ship.clone());
+
                     admiral_guard
                         .ship_fleet_assignment
                         .insert(new_ship.symbol.clone(), ticket_details.beneficiary_fleet.clone());
+
+                    FleetAdmiral::adjust_fleet_budget_after_ship_purchase(&admiral_guard, &new_ship, &ticket_details.beneficiary_fleet).await?;
 
                     let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &new_ship.nav.system_symbol).await?;
                     let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
