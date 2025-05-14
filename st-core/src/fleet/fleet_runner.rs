@@ -472,6 +472,8 @@ impl FleetRunner {
         sleep_duration: Duration,
     ) -> Result<()> {
         while let Some(msg) = ship_status_report_rx.recv().await {
+            let messages_in_queue = ship_status_report_rx.len();
+
             let ship_span = span!(
                 Level::INFO,
                 "fleet_runner::listen_to_ship_status_report_messages",
@@ -480,7 +482,16 @@ impl FleetRunner {
             let _enter = ship_span.enter();
 
             // Process the message with error handling that doesn't return from the function
-            if let Err(e) = Self::process_ship_status_report(&msg, Arc::clone(&fleet_admiral), Arc::clone(&bmc), Arc::clone(&runner), sleep_duration).await {
+            if let Err(e) = Self::process_ship_status_report(
+                &msg,
+                Arc::clone(&fleet_admiral),
+                Arc::clone(&bmc),
+                Arc::clone(&runner),
+                sleep_duration,
+                messages_in_queue,
+            )
+            .await
+            {
                 // Log the error but continue the loop
                 let maybe_fleet = {
                     let guard = fleet_admiral.lock().await;
@@ -514,6 +525,7 @@ impl FleetRunner {
         bmc: Arc<dyn Bmc>,
         runner: Arc<Mutex<FleetRunner>>,
         sleep_duration: Duration,
+        messages_in_queue: usize,
     ) -> Result<()> {
         let ship_span = span!(
             Level::INFO,
@@ -524,8 +536,10 @@ impl FleetRunner {
 
         let mut admiral_guard = fleet_admiral.lock().await;
         admiral_guard
-            .report_ship_action_completed(&msg, Arc::clone(&bmc))
+            .report_ship_action_completed(&msg, Arc::clone(&bmc), messages_in_queue)
             .await?;
+
+        let agent_credits = admiral_guard.agent_info_credits().await.0;
 
         match msg {
             ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
@@ -684,6 +698,7 @@ impl FleetRunner {
                         price_per_unit = response.data.transaction.price_per_unit,
                         total_price = response.data.transaction.total_price,
                         waypoint_symbol = response.data.transaction.waypoint_symbol.0,
+                        agent_credits
                     );
                 }
             },
@@ -698,6 +713,7 @@ impl FleetRunner {
                         price_per_unit = response.data.transaction.price_per_unit,
                         total_price = response.data.transaction.total_price,
                         waypoint_symbol = response.data.transaction.waypoint_symbol.0,
+                        agent_credits
                     );
                 }
                 TransactionActionEvent::SoldTradeGoods { ticket_details, response } => {
@@ -710,6 +726,7 @@ impl FleetRunner {
                         price_per_unit = response.data.transaction.price_per_unit,
                         total_price = response.data.transaction.total_price,
                         waypoint_symbol = response.data.transaction.waypoint_symbol.0,
+                        agent_credits
                     );
                 }
                 TransactionActionEvent::SuppliedConstructionSite { .. } => {
@@ -726,7 +743,8 @@ impl FleetRunner {
                         report_type = "TransactionActionEvent::ShipPurchased",
                         new_ship = response.data.ship.symbol.0,
                         new_ship_type = response.data.ship.frame.symbol.to_string(),
-                        assigned_fleet_id = ticket_details.beneficiary_fleet.0
+                        assigned_fleet_id = ticket_details.beneficiary_fleet.0,
+                        agent_credits
                     );
 
                     let new_ship = response.data.ship.clone();
@@ -827,6 +845,7 @@ impl FleetRunner {
                         message = "TransactionCompleted",
                         ship = ship.symbol.0,
                         transaction = %transaction.to_string(),
+
                     );
                     ship_status_report_tx
                         .send(ShipStatusReport::TransactionCompleted(ship.ship, transaction, ticket))

@@ -41,7 +41,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use strum::Display;
 use tokio::sync::{Mutex, MutexGuard};
-use tracing::{event, Level};
+use tracing::{debug, event, warn, Level};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum ShipStatusReport {
@@ -297,7 +297,7 @@ impl FleetAdmiral {
         Ok(())
     }
 
-    pub async fn report_ship_action_completed(&mut self, ship_status_report: &ShipStatusReport, bmc: Arc<dyn Bmc>) -> Result<()> {
+    pub async fn report_ship_action_completed(&mut self, ship_status_report: &ShipStatusReport, bmc: Arc<dyn Bmc>, messages_in_queue: usize) -> Result<()> {
         match ship_status_report {
             ShipStatusReport::ShipActionCompleted(ship, ship_action) => {
                 let maybe_fleet = self.get_fleet_of_ship(&ship.symbol);
@@ -355,30 +355,73 @@ impl FleetAdmiral {
                 let total_price = match operation_expense_event {
                     OperationExpenseEvent::RefueledShip { response } => response.data.transaction.total_price,
                 };
-                let new_credits = self.agent_info_credits().await.0;
+                let internal_agent_credits = self.agent_info_credits().await.0;
 
-                if agent_credits_from_response != new_credits {
-                    event!(
-                        Level::WARN,
-                            "Agent Credits differ from our expectation!\nExpected Agent Credits: {new_credits}\n Actual Agent Credits: {agent_credits_from_response}"
-                              );
+                if agent_credits_from_response != internal_agent_credits {
+                    if messages_in_queue == 0 {
+                        warn!(
+                            message = "Agent Credits differ from our expectation and no other message in queue",
+                            operation_expense_event = operation_expense_event.to_string(),
+                            agent_credits_from_response,
+                            internal_agent_credits
+                        );
+                    } else {
+                        debug!(
+                            message = "Agent Credits differ from our expectation, but  there are no other message in queue",
+                            operation_expense_event = operation_expense_event.to_string(),
+                            agent_credits_from_response,
+                            internal_agent_credits,
+                            messages_in_queue,
+                        );
+                    };
                 }
 
-                // fixme: store agent_credits
-                // bmc.agent_bmc()
-                //     .store_agent(&Ctx::Anonymous, &self.agent_info)
-                //     .await?;
-
-                event!(Level::INFO, "Refueled ship. Total Price: {}; New Agent Credits: {}", &total_price, new_credits,);
+                event!(
+                    Level::INFO,
+                    "Refueled ship. Total Price: {}; New Agent Credits: {}",
+                    &total_price,
+                    internal_agent_credits,
+                );
 
                 Ok(())
             }
 
             ShipStatusReport::TransactionCompleted(ship, transaction_event, updated_trade_ticket) => {
-                self.mark_transaction_completed_to_treasurer(transaction_event, &updated_trade_ticket, &ship.symbol)
-                    .await;
-
                 let is_complete = updated_trade_ticket.is_complete();
+                if is_complete {
+                    self.mark_transaction_completed_to_treasurer(transaction_event, &updated_trade_ticket, &ship.symbol)
+                        .await;
+                }
+
+                let maybe_agent_credits_from_response = match transaction_event {
+                    TransactionActionEvent::PurchasedTradeGoods { response, .. } => Some(response.data.agent.credits),
+                    TransactionActionEvent::SoldTradeGoods { response, .. } => Some(response.data.agent.credits),
+                    TransactionActionEvent::SuppliedConstructionSite { response, .. } => None,
+                    TransactionActionEvent::PurchasedShip { response, .. } => Some(response.data.agent.credits),
+                };
+
+                if let Some(agent_credits_from_response) = maybe_agent_credits_from_response {
+                    let internal_agent_credits = self.agent_info_credits().await.0;
+                    if internal_agent_credits != agent_credits_from_response {
+                        if messages_in_queue == 0 {
+                            warn!(
+                                message = "Agent Credits differ from our expectation and no other message in queue",
+                                transaction_event = transaction_event.to_string(),
+                                agent_credits_from_response,
+                                internal_agent_credits
+                            );
+                        } else {
+                            debug!(
+                                message = "Agent Credits differ from our expectation, but  there are no other message in queue",
+                                transaction_event = transaction_event.to_string(),
+                                agent_credits_from_response,
+                                internal_agent_credits,
+                                messages_in_queue,
+                            );
+                        };
+                    }
+                }
+
                 bmc.trade_bmc()
                     .upsert_ticket(&Ctx::Anonymous, &ship.symbol, &updated_trade_ticket.id, updated_trade_ticket, is_complete)
                     .await?;

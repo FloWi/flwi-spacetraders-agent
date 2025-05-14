@@ -508,7 +508,7 @@ impl Actionable for ShipAction {
                         .into_iter()
                         .filter(|g| g.get_waypoint() == current_location)
                     {
-                        println!("processing incomplete goal {g:?}");
+                        // println!("processing incomplete goal {g:?}");
 
                         match g {
                             TransactionGoal::PurchaseTradeGoods(purchase_transaction_goal) => {

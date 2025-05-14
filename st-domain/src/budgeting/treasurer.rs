@@ -293,9 +293,10 @@ impl Treasurer for InMemoryTreasurer {
             .get_mut(&source.source_fleet)
             .ok_or(FinanceError::FleetNotFound)?;
 
-        let diff = source.amount - fleet_budget.available_capital;
+        // we need to make sure we keep the total_capital, which is necessary for operating
+        let diff = source.amount - fleet_budget.total_capital;
 
-        if diff.0 > 0 {
+        if diff > 0.into() {
             if self.treasury >= diff {
                 fleet_budget.available_capital += diff;
                 self.treasury -= diff;
