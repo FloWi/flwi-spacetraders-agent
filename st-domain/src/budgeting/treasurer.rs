@@ -382,13 +382,7 @@ impl Treasurer for InMemoryTreasurer {
             .get_mut(&id)
             .ok_or(FinanceError::TicketNotFound)?;
 
-        let fleet_budget = self
-            .fleet_budgets
-            .get_mut(&ticket.beneficiary_fleet)
-            .ok_or(FinanceError::FleetNotFound)?;
-
         // Process the event
-        fleet_budget.update_budget_from_expense_event_without_ticket(&event)?;
         ticket.update_from_event(&event);
 
         // Check if all required goals are complete after this event
