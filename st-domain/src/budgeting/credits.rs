@@ -142,6 +142,14 @@ impl std::ops::Mul<i32> for Credits {
     }
 }
 
+impl std::ops::Mul<i64> for Credits {
+    type Output = Credits;
+
+    fn mul(self, quantity: i64) -> Credits {
+        Credits(self.0 * quantity)
+    }
+}
+
 impl std::ops::Div<i32> for Credits {
     type Output = Credits;
 
