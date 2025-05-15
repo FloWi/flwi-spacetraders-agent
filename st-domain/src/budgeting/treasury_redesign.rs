@@ -1,9 +1,6 @@
-use crate::accounting::treasury_redesign::LedgerEntry::*;
 use anyhow::anyhow;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use st_domain::budgeting::credits::Credits;
-use st_domain::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -54,7 +51,7 @@ impl FinanceTicketDetails {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-enum LedgerEntry {
+pub enum LedgerEntry {
     TreasuryCreated {
         credits: Credits,
     },
@@ -85,24 +82,31 @@ enum LedgerEntry {
         fleet_id: FleetId,
         credits: Credits,
     },
+    SetNewTotalCapitalForFleet {
+        fleet_id: FleetId,
+        new_total_capital: Credits,
+    },
 }
 
 #[derive(PartialEq, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct FleetBudget2 {
     /// the cash we have at hand - "real money (single source of truth)"
-    current_capital: Credits,
+    pub current_capital: Credits,
     /// funds reserved for tickets (not spent yet) - "virtual money"
-    reserved_capital: Credits,
+    pub reserved_capital: Credits,
     /// this is the amount of money we need for operating. If we have more at one point, it will be transferred back to the treasury.
     /// "virtual money"
-    total_budget: Credits,
+    pub total_capital: Credits,
     /// the amount of money we'd like to keep - "virtual money"
-    expense_reserve: Credits,
+    pub expense_reserve: Credits,
 }
 
-use clap::parser::ValueSource::DefaultValue;
+use crate::budgeting::credits::Credits;
+use crate::budgeting::treasury_redesign::LedgerEntry::*;
+use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
 use std::sync::{Arc, Mutex};
 
+#[derive(Clone, Debug)]
 pub struct ThreadSafeTreasurer {
     inner: Arc<Mutex<ImprovedTreasurer>>,
 }
@@ -127,12 +131,21 @@ impl ThreadSafeTreasurer {
         self.with_treasurer(|t| Ok(t.clone()))
     }
 
-    pub fn get_fleet_budget(&self, fleet_id: &FleetId) -> Result<Option<FleetBudget2>> {
-        self.with_treasurer(|t| Ok(t.fleet_budgets.get(fleet_id).cloned()))
+    pub fn get_fleet_budget(&self, fleet_id: &FleetId) -> Result<FleetBudget2> {
+        self.with_treasurer(|t| {
+            t.fleet_budgets
+                .get(fleet_id)
+                .cloned()
+                .ok_or(anyhow!("Fleet id not found"))
+        })
     }
 
     pub fn current_agent_credits(&self) -> Result<Credits> {
         self.with_treasurer(|t| Ok(t.current_agent_credits()))
+    }
+
+    pub fn current_treasury_fund(&self) -> Result<Credits> {
+        self.with_treasurer(|t| Ok(t.current_treasury_fund()))
     }
 
     pub fn create_fleet(&self, fleet_id: &FleetId, total_capital: Credits) -> Result<()> {
@@ -185,7 +198,11 @@ impl ThreadSafeTreasurer {
     }
 
     pub fn transfer_excess_funds_from_fleet_to_treasury(&self, fleet_id: &FleetId) -> Result<()> {
-        self.with_treasurer(|t| t.transfer_excess_funds_from_fleet_to_treasury(fleet_id))
+        self.with_treasurer(|t| t.transfer_excess_funds_from_fleet_to_treasury_if_necessary(fleet_id))
+    }
+
+    pub(crate) fn set_fleet_total_capital(&self, fleet_id: &FleetId, new_total_capital: Credits) -> Result<()> {
+        self.with_treasurer(|t| t.set_fleet_total_capital(fleet_id, new_total_capital))
     }
 
     pub fn ledger_entries(&self) -> Result<VecDeque<LedgerEntry>> {
@@ -238,6 +255,10 @@ impl ImprovedTreasurer {
                 .sum::<i64>()
     }
 
+    pub fn current_treasury_fund(&self) -> Credits {
+        self.treasury_fund
+    }
+
     fn create_fleet(&mut self, fleet_id: &FleetId, total_capital: Credits) -> Result<()> {
         self.process_ledger_entry(FleetCreated {
             fleet_id: fleet_id.clone(),
@@ -249,7 +270,7 @@ impl ImprovedTreasurer {
 
     fn transfer_funds_to_fleet_to_top_up_available_capital(&mut self, fleet_id: &FleetId) -> Result<()> {
         if let Some(fleet_budget) = self.fleet_budgets.get(fleet_id) {
-            let diff = fleet_budget.total_budget - fleet_budget.current_capital;
+            let diff = fleet_budget.total_capital - fleet_budget.current_capital;
             if diff.is_positive() {
                 let transfer_sum = self.treasury_fund.min(diff);
                 self.process_ledger_entry(TransferFundsTreasuryToFleet {
@@ -372,14 +393,14 @@ impl ImprovedTreasurer {
             total: actual_price_per_unit * quantity * finance_ticket.details.signum(),
         })?;
 
-        self.transfer_excess_funds_from_fleet_to_treasury(&fleet_id)?;
+        self.transfer_excess_funds_from_fleet_to_treasury_if_necessary(&fleet_id)?;
 
         Ok(())
     }
 
-    fn transfer_excess_funds_from_fleet_to_treasury(&mut self, fleet_id: &FleetId) -> Result<()> {
+    fn transfer_excess_funds_from_fleet_to_treasury_if_necessary(&mut self, fleet_id: &FleetId) -> Result<()> {
         if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
-            let excess = budget.current_capital - budget.total_budget;
+            let excess = budget.current_capital - budget.total_capital;
             if excess.is_positive() {
                 self.process_ledger_entry(TransferFundsFromFleetToTreasury {
                     fleet_id: fleet_id.clone(),
@@ -392,9 +413,27 @@ impl ImprovedTreasurer {
         }
     }
 
-    /// don't do recursive calls here - we want ot keep replayability
+    fn set_fleet_total_capital(&mut self, fleet_id: &FleetId, new_total_credits: Credits) -> Result<()> {
+        if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
+            self.process_ledger_entry(SetNewTotalCapitalForFleet {
+                fleet_id: fleet_id.clone(),
+                new_total_capital: new_total_credits,
+            })?;
+            self.transfer_excess_funds_from_fleet_to_treasury_if_necessary(&fleet_id)?;
+
+            Ok(())
+        } else {
+            Err(anyhow!("Fleet {} doesn't exist", fleet_id))
+        }
+    }
+
+    /// This is a "stupid" function that just processes the ledger entry.
+    /// e.g. no transfer of excess funds after selling trade goods with a profit to keep available capital below total capital.
+    /// This will be done by subsequent calls with new ledger entries.
+    /// So don't do recursive calls here - we want ot keep replayability    
     fn process_ledger_entry(&mut self, ledger_entry: LedgerEntry) -> Result<()> {
-        match ledger_entry.clone() {
+        let entry = ledger_entry.clone();
+        match entry {
             TreasuryCreated { credits } => {
                 self.treasury_fund = credits;
                 self.ledger_entries.push_back(ledger_entry);
@@ -409,7 +448,7 @@ impl ImprovedTreasurer {
                     FleetBudget2 {
                         current_capital: 0.into(),
                         reserved_capital: 0.into(),
-                        total_budget: total_capital,
+                        total_capital: total_capital,
                         ..Default::default()
                     },
                 );
@@ -478,6 +517,14 @@ impl ImprovedTreasurer {
                     return Err(anyhow!("Fleet {} doesn't exist", fleet_id));
                 }
             }
+            SetNewTotalCapitalForFleet { fleet_id, new_total_capital } => {
+                if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
+                    budget.total_capital = new_total_capital;
+                    self.ledger_entries.push_back(ledger_entry);
+                } else {
+                    return Err(anyhow!("Fleet {} doesn't exist", fleet_id));
+                }
+            }
             ExpenseLogged { .. } => {}
         }
 
@@ -487,12 +534,12 @@ impl ImprovedTreasurer {
 
 #[cfg(test)]
 mod tests {
-    use crate::accounting::treasury_redesign::LedgerEntry::TransferFundsFromFleetToTreasury;
-    use crate::accounting::treasury_redesign::{FleetBudget2, ImprovedTreasurer, LedgerEntry, ThreadSafeTreasurer};
+    use crate::budgeting::credits::Credits;
+    use crate::budgeting::treasury_redesign::LedgerEntry::TransferFundsFromFleetToTreasury;
+    use crate::budgeting::treasury_redesign::{FleetBudget2, ImprovedTreasurer, LedgerEntry, ThreadSafeTreasurer};
+    use crate::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
     use anyhow::Result;
     use itertools::Itertools;
-    use st_domain::budgeting::credits::Credits;
-    use st_domain::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
 
     #[test]
     fn test_fleet_budget_in_trade_cycle() -> Result<()> {
@@ -524,13 +571,7 @@ mod tests {
         );
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
 
-        assert_eq!(
-            treasurer
-                .get_fleet_budget(fleet_id)?
-                .unwrap()
-                .current_capital,
-            Credits::new(0)
-        );
+        assert_eq!(treasurer.get_fleet_budget(fleet_id)?.current_capital, Credits::new(0));
 
         // transfer 75k from treasurer to fleet budget
 
@@ -545,13 +586,7 @@ mod tests {
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
-        assert_eq!(
-            treasurer
-                .get_fleet_budget(fleet_id)?
-                .unwrap()
-                .current_capital,
-            Credits::new(75_000)
-        );
+        assert_eq!(treasurer.get_fleet_budget(fleet_id)?.current_capital, Credits::new(75_000));
 
         // create purchase ticket (reduces available capital of fleet)
 
@@ -572,11 +607,11 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
+            treasurer.get_fleet_budget(fleet_id)?,
             FleetBudget2 {
                 current_capital: 75_000.into(),
                 reserved_capital: 40_000.into(),
-                total_budget: 75_000.into(),
+                total_capital: 75_000.into(),
                 ..Default::default()
             }
         );
@@ -605,11 +640,11 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
+            treasurer.get_fleet_budget(fleet_id)?,
             FleetBudget2 {
                 current_capital: 75_000.into(),
                 reserved_capital: 40_000.into(),
-                total_budget: 75_000.into(),
+                total_capital: 75_000.into(),
                 ..Default::default()
             }
         );
@@ -640,11 +675,11 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
+            treasurer.get_fleet_budget(fleet_id)?,
             FleetBudget2 {
                 current_capital: 39_000.into(), //75 - 36
                 reserved_capital: 0.into(),     // we clear the reservation
-                total_budget: 75_000.into(),
+                total_capital: 75_000.into(),
                 ..Default::default()
             }
         );
@@ -678,11 +713,11 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
+            treasurer.get_fleet_budget(fleet_id)?,
             FleetBudget2 {
                 current_capital: 75_000.into(),
                 reserved_capital: 0.into(),
-                total_budget: 75_000.into(),
+                total_capital: 75_000.into(),
                 ..Default::default()
             }
         );
@@ -730,11 +765,11 @@ mod tests {
         assert_eq!(ship_purchase_ticket.allocated_credits, 25_000.into());
 
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
+            treasurer.get_fleet_budget(fleet_id)?,
             FleetBudget2 {
                 current_capital: 75_000.into(),
                 reserved_capital: 25_000.into(),
-                total_budget: 75_000.into(),
+                total_capital: 75_000.into(),
                 ..Default::default()
             }
         );
@@ -761,14 +796,95 @@ mod tests {
 
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(152_500));
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
+            treasurer.get_fleet_budget(fleet_id)?,
             FleetBudget2 {
                 current_capital: 52_500.into(),
                 reserved_capital: 0.into(),
-                total_budget: 75_000.into(),
+                total_capital: 75_000.into(),
                 ..Default::default()
             }
         );
+
+        assert_eq!(
+            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&expected_ledger_entries)?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_set_fleet_total_capital() -> Result<()> {
+        let treasurer = ThreadSafeTreasurer::new(175_000.into());
+
+        let fleet_id = &FleetId(1);
+
+        treasurer.create_fleet(fleet_id, Credits::new(75_000))?;
+        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))?;
+
+        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(
+            treasurer.get_fleet_budget(fleet_id)?,
+            FleetBudget2 {
+                current_capital: 75_000.into(),
+                reserved_capital: 0.into(),
+                total_capital: 75_000.into(),
+                ..Default::default()
+            }
+        );
+
+        // we tested the ledger entries up to this point in a different test, so we assume they're correct
+        let mut expected_ledger_entries = treasurer.ledger_entries()?.into_iter().collect_vec();
+
+        treasurer.set_fleet_total_capital(fleet_id, 150_000.into())?;
+
+        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(
+            treasurer.get_fleet_budget(fleet_id)?,
+            FleetBudget2 {
+                current_capital: 75_000.into(),
+                reserved_capital: 0.into(),
+                total_capital: 150_000.into(),
+                ..Default::default()
+            }
+        );
+
+        expected_ledger_entries.push(LedgerEntry::SetNewTotalCapitalForFleet {
+            fleet_id: fleet_id.clone(),
+            new_total_capital: 150_000.into(),
+        });
+
+        assert_eq!(
+            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&expected_ledger_entries)?
+        );
+        //setting total capital below current_capital
+        treasurer.set_fleet_total_capital(fleet_id, 50_000.into())?;
+
+        // this will produce two entries in the ledger - one for the set-action and another one for the transfer of funds
+        expected_ledger_entries.push(LedgerEntry::SetNewTotalCapitalForFleet {
+            fleet_id: fleet_id.clone(),
+            new_total_capital: 50_000.into(),
+        });
+
+        expected_ledger_entries.push(TransferFundsFromFleetToTreasury {
+            fleet_id: fleet_id.clone(),
+            credits: 25_000.into(),
+        });
+
+        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(
+            treasurer.get_fleet_budget(fleet_id)?,
+            FleetBudget2 {
+                current_capital: 50_000.into(),
+                reserved_capital: 0.into(),
+                total_capital: 50_000.into(),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(treasurer.current_treasury_fund()?, Credits::new(125_000));
 
         assert_eq!(
             serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
