@@ -6,46 +6,59 @@ use std::collections::{HashMap, VecDeque};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FinanceTicket {
     ticket_id: TicketId,
+    fleet_id: FleetId,
     ship_symbol: ShipSymbol,
     details: FinanceTicketDetails,
     allocated_credits: Credits,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-enum FinanceTicketDetails {
-    PurchaseTradeGoods {
-        waypoint_symbol: WaypointSymbol,
-        trade_good: TradeGoodSymbol,
-        expected_price_per_unit: Credits,
-        quantity: u32,
-        expected_total_purchase_price: Credits,
-    },
-    SellTradeGoods {
-        waypoint_symbol: WaypointSymbol,
-        trade_good: TradeGoodSymbol,
-        expected_price_per_unit: Credits,
-        quantity: u32,
-        expected_total_sell_price: Credits,
-    },
-    PurchaseShip {
-        ship_type: ShipType,
-        expected_purchase_price: Credits,
-        shipyard_waypoint_symbol: WaypointSymbol,
-    },
-    RefuelShip {
-        expected_price_per_unit: Credits,
-        num_fuel_barrels: u32,
-        expected_total_purchase_price: Credits,
-    },
+pub struct PurchaseTradeGoodsTicketDetails {
+    pub waypoint_symbol: WaypointSymbol,
+    pub trade_good: TradeGoodSymbol,
+    pub expected_price_per_unit: Credits,
+    pub quantity: u32,
+    pub expected_total_purchase_price: Credits,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SellTradeGoodsTicketDetails {
+    pub waypoint_symbol: WaypointSymbol,
+    pub trade_good: TradeGoodSymbol,
+    pub expected_price_per_unit: Credits,
+    pub quantity: u32,
+    pub expected_total_sell_price: Credits,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PurchaseShipTicketDetails {
+    pub ship_type: ShipType,
+    pub expected_purchase_price: Credits,
+    pub shipyard_waypoint_symbol: WaypointSymbol,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RefuelShipTicketDetails {
+    pub expected_price_per_unit: Credits,
+    pub num_fuel_barrels: u32,
+    pub expected_total_purchase_price: Credits,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum FinanceTicketDetails {
+    PurchaseTradeGoods(PurchaseTradeGoodsTicketDetails),
+    SellTradeGoods(SellTradeGoodsTicketDetails),
+    PurchaseShip(PurchaseShipTicketDetails),
+    RefuelShip(RefuelShipTicketDetails),
 }
 
 impl FinanceTicketDetails {
     pub fn signum(&self) -> i64 {
         match self {
-            FinanceTicketDetails::PurchaseTradeGoods { .. } => -1,
-            FinanceTicketDetails::SellTradeGoods { .. } => 1,
-            FinanceTicketDetails::PurchaseShip { .. } => -1,
-            FinanceTicketDetails::RefuelShip { .. } => -1,
+            FinanceTicketDetails::PurchaseTradeGoods(PurchaseTradeGoodsTicketDetails { .. }) => -1,
+            FinanceTicketDetails::SellTradeGoods(SellTradeGoodsTicketDetails { .. }) => 1,
+            FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails { .. }) => -1,
+            FinanceTicketDetails::RefuelShip(RefuelShipTicketDetails { .. }) => -1,
         }
     }
 }
@@ -86,10 +99,14 @@ pub enum LedgerEntry {
         fleet_id: FleetId,
         new_total_capital: Credits,
     },
+    SetNewOperatingReserveForFleet {
+        fleet_id: FleetId,
+        new_operating_reserve: Credits,
+    },
 }
 
 #[derive(PartialEq, Debug, Default, Clone, Serialize, Deserialize)]
-pub struct FleetBudget2 {
+pub struct FleetBudget {
     /// the cash we have at hand - "real money (single source of truth)"
     pub current_capital: Credits,
     /// funds reserved for tickets (not spent yet) - "virtual money"
@@ -98,7 +115,7 @@ pub struct FleetBudget2 {
     /// "virtual money"
     pub total_capital: Credits,
     /// the amount of money we'd like to keep - "virtual money"
-    pub expense_reserve: Credits,
+    pub operating_reserve: Credits,
 }
 
 use crate::budgeting::credits::Credits;
@@ -131,7 +148,7 @@ impl ThreadSafeTreasurer {
         self.with_treasurer(|t| Ok(t.clone()))
     }
 
-    pub fn get_fleet_budget(&self, fleet_id: &FleetId) -> Result<FleetBudget2> {
+    pub fn get_fleet_budget(&self, fleet_id: &FleetId) -> Result<FleetBudget> {
         self.with_treasurer(|t| {
             t.fleet_budgets
                 .get(fleet_id)
@@ -193,6 +210,10 @@ impl ThreadSafeTreasurer {
         self.with_treasurer(|t| t.create_ship_purchase_ticket(fleet_id, ship_type, expected_purchase_price, shipyard_waypoint_symbol, ship_symbol))
     }
 
+    pub fn get_ticket(&self, ticket_id: &TicketId) -> Result<FinanceTicket> {
+        self.with_treasurer(|t| t.get_ticket(ticket_id))
+    }
+
     pub fn complete_ticket(&self, fleet_id: &FleetId, finance_ticket: &FinanceTicket, actual_price_per_unit: Credits) -> Result<()> {
         self.with_treasurer(|t| t.complete_ticket(fleet_id, finance_ticket, actual_price_per_unit))
     }
@@ -201,8 +222,12 @@ impl ThreadSafeTreasurer {
         self.with_treasurer(|t| t.transfer_excess_funds_from_fleet_to_treasury_if_necessary(fleet_id))
     }
 
-    pub(crate) fn set_fleet_total_capital(&self, fleet_id: &FleetId, new_total_capital: Credits) -> Result<()> {
+    pub fn set_fleet_total_capital(&self, fleet_id: &FleetId, new_total_capital: Credits) -> Result<()> {
         self.with_treasurer(|t| t.set_fleet_total_capital(fleet_id, new_total_capital))
+    }
+
+    pub fn set_new_operating_reserve(&self, fleet_id: &FleetId, new_operating_reserve: Credits) -> Result<()> {
+        self.with_treasurer(|t| t.set_new_operating_reserve(fleet_id, new_operating_reserve))
     }
 
     pub fn ledger_entries(&self) -> Result<VecDeque<LedgerEntry>> {
@@ -214,7 +239,8 @@ impl ThreadSafeTreasurer {
 pub struct ImprovedTreasurer {
     treasury_fund: Credits,
     ledger_entries: VecDeque<LedgerEntry>,
-    fleet_budgets: HashMap<FleetId, FleetBudget2>,
+    fleet_budgets: HashMap<FleetId, FleetBudget>,
+    tickets: Vec<FinanceTicket>,
 }
 
 impl ImprovedTreasurer {
@@ -223,6 +249,7 @@ impl ImprovedTreasurer {
             treasury_fund: Default::default(),
             ledger_entries: Default::default(),
             fleet_budgets: Default::default(),
+            tickets: vec![],
         };
 
         treasurer
@@ -237,6 +264,7 @@ impl ImprovedTreasurer {
             treasury_fund: Default::default(),
             ledger_entries: Default::default(),
             fleet_budgets: Default::default(),
+            tickets: vec![],
         };
 
         for entry in ledger {
@@ -301,14 +329,15 @@ impl ImprovedTreasurer {
             let total = (expected_price_per_unit.0 * quantity as i64).into();
             let ticket = FinanceTicket {
                 ticket_id: Default::default(),
+                fleet_id: fleet_id.clone(),
                 ship_symbol,
-                details: FinanceTicketDetails::PurchaseTradeGoods {
+                details: FinanceTicketDetails::PurchaseTradeGoods(PurchaseTradeGoodsTicketDetails {
                     waypoint_symbol,
                     trade_good: trade_good_symbol,
                     expected_total_purchase_price: total,
                     quantity,
                     expected_price_per_unit,
-                },
+                }),
                 allocated_credits: total,
             };
             self.process_ledger_entry(TicketCreated {
@@ -332,14 +361,15 @@ impl ImprovedTreasurer {
     ) -> Result<FinanceTicket> {
         let ticket = FinanceTicket {
             ticket_id: Default::default(),
+            fleet_id: fleet_id.clone(),
             ship_symbol,
-            details: FinanceTicketDetails::SellTradeGoods {
+            details: FinanceTicketDetails::SellTradeGoods(SellTradeGoodsTicketDetails {
                 waypoint_symbol,
                 trade_good: trade_good_symbol,
                 expected_total_sell_price: expected_price_per_unit * quantity,
                 quantity,
                 expected_price_per_unit,
-            },
+            }),
             allocated_credits: 0.into(),
         };
 
@@ -360,12 +390,13 @@ impl ImprovedTreasurer {
     ) -> Result<FinanceTicket> {
         let ticket = FinanceTicket {
             ticket_id: Default::default(),
+            fleet_id: fleet_id.clone(),
             ship_symbol,
-            details: FinanceTicketDetails::PurchaseShip {
+            details: FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails {
                 ship_type,
                 expected_purchase_price,
                 shipyard_waypoint_symbol,
-            },
+            }),
             allocated_credits: expected_purchase_price,
         };
 
@@ -377,12 +408,20 @@ impl ImprovedTreasurer {
         Ok(ticket)
     }
 
+    pub fn get_ticket(&self, ticket_id: &TicketId) -> Result<FinanceTicket> {
+        self.tickets
+            .iter()
+            .find(|t| &t.ticket_id == ticket_id)
+            .cloned()
+            .ok_or(anyhow!("Ticket not found"))
+    }
+
     pub fn complete_ticket(&mut self, fleet_id: &FleetId, finance_ticket: &FinanceTicket, actual_price_per_unit: Credits) -> Result<()> {
         let quantity: u32 = match finance_ticket.details {
-            FinanceTicketDetails::PurchaseTradeGoods { quantity, .. } => quantity,
-            FinanceTicketDetails::SellTradeGoods { quantity, .. } => quantity,
-            FinanceTicketDetails::PurchaseShip { .. } => 1,
-            FinanceTicketDetails::RefuelShip { num_fuel_barrels, .. } => num_fuel_barrels,
+            FinanceTicketDetails::PurchaseTradeGoods(PurchaseTradeGoodsTicketDetails { quantity, .. }) => quantity,
+            FinanceTicketDetails::SellTradeGoods(SellTradeGoodsTicketDetails { quantity, .. }) => quantity,
+            FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails { .. }) => 1,
+            FinanceTicketDetails::RefuelShip(RefuelShipTicketDetails { num_fuel_barrels, .. }) => num_fuel_barrels,
         };
 
         self.process_ledger_entry(TicketCompleted {
@@ -427,6 +466,19 @@ impl ImprovedTreasurer {
         }
     }
 
+    fn set_new_operating_reserve(&mut self, fleet_id: &FleetId, new_operating_reserve: Credits) -> Result<()> {
+        if let Some(_) = self.fleet_budgets.get_mut(&fleet_id) {
+            self.process_ledger_entry(SetNewOperatingReserveForFleet {
+                fleet_id: fleet_id.clone(),
+                new_operating_reserve,
+            })?;
+
+            Ok(())
+        } else {
+            Err(anyhow!("Fleet {} doesn't exist", fleet_id))
+        }
+    }
+
     /// This is a "stupid" function that just processes the ledger entry.
     /// e.g. no transfer of excess funds after selling trade goods with a profit to keep available capital below total capital.
     /// This will be done by subsequent calls with new ledger entries.
@@ -445,7 +497,7 @@ impl ImprovedTreasurer {
 
                 self.fleet_budgets.insert(
                     fleet_id.clone(),
-                    FleetBudget2 {
+                    FleetBudget {
                         current_capital: 0.into(),
                         reserved_capital: 0.into(),
                         total_capital: total_capital,
@@ -470,6 +522,7 @@ impl ImprovedTreasurer {
                 if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
                     if budget.current_capital >= allocated_credits {
                         budget.reserved_capital += allocated_credits;
+                        self.tickets.push(ticket_details);
 
                         self.ledger_entries.push_back(ledger_entry);
                     } else {
@@ -495,6 +548,8 @@ impl ImprovedTreasurer {
                     }
 
                     budget.current_capital += total;
+                    self.tickets
+                        .retain(|t| t.ticket_id != finance_ticket.ticket_id);
 
                     self.ledger_entries.push_back(ledger_entry);
                 } else {
@@ -525,6 +580,17 @@ impl ImprovedTreasurer {
                     return Err(anyhow!("Fleet {} doesn't exist", fleet_id));
                 }
             }
+            SetNewOperatingReserveForFleet {
+                fleet_id,
+                new_operating_reserve,
+            } => {
+                if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
+                    budget.operating_reserve = new_operating_reserve;
+                    self.ledger_entries.push_back(ledger_entry);
+                } else {
+                    return Err(anyhow!("Fleet {} doesn't exist", fleet_id));
+                }
+            }
             ExpenseLogged { .. } => {}
         }
 
@@ -536,7 +602,7 @@ impl ImprovedTreasurer {
 mod tests {
     use crate::budgeting::credits::Credits;
     use crate::budgeting::treasury_redesign::LedgerEntry::TransferFundsFromFleetToTreasury;
-    use crate::budgeting::treasury_redesign::{FleetBudget2, ImprovedTreasurer, LedgerEntry, ThreadSafeTreasurer};
+    use crate::budgeting::treasury_redesign::{FleetBudget, ImprovedTreasurer, LedgerEntry, ThreadSafeTreasurer};
     use crate::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
     use anyhow::Result;
     use itertools::Itertools;
@@ -600,7 +666,7 @@ mod tests {
         )?;
 
         assert_eq!(purchase_ticket.allocated_credits, 40_000.into());
-
+        assert_eq!(treasurer.get_ticket(&purchase_ticket.ticket_id)?, purchase_ticket);
         expected_ledger_entries.push(LedgerEntry::TicketCreated {
             fleet_id: FleetId(1),
             ticket_details: purchase_ticket.clone(),
@@ -608,7 +674,7 @@ mod tests {
 
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id)?,
-            FleetBudget2 {
+            FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 40_000.into(),
                 total_capital: 75_000.into(),
@@ -632,6 +698,8 @@ mod tests {
             Credits(2_000.into()),
         )?;
 
+        assert_eq!(treasurer.get_ticket(&sell_ticket.ticket_id)?, sell_ticket);
+
         assert_eq!(sell_ticket.allocated_credits, 0.into());
 
         expected_ledger_entries.push(LedgerEntry::TicketCreated {
@@ -641,7 +709,7 @@ mod tests {
 
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id)?,
-            FleetBudget2 {
+            FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 40_000.into(),
                 total_capital: 75_000.into(),
@@ -658,6 +726,8 @@ mod tests {
         // perform purchase (we spent less than expected)
         let purchase_price_per_unit = 900.into(); // a little less than expected
         treasurer.complete_ticket(fleet_id, &purchase_ticket, purchase_price_per_unit)?;
+
+        assert!(treasurer.get_ticket(&purchase_ticket.ticket_id).is_err());
 
         // state before purchase
         // available_capital: 75_000
@@ -676,7 +746,7 @@ mod tests {
 
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id)?,
-            FleetBudget2 {
+            FleetBudget {
                 current_capital: 39_000.into(), //75 - 36
                 reserved_capital: 0.into(),     // we clear the reservation
                 total_capital: 75_000.into(),
@@ -693,6 +763,7 @@ mod tests {
 
         let sell_price_per_unit = 2_100.into(); // a little more than expected
         treasurer.complete_ticket(fleet_id, &sell_ticket, sell_price_per_unit)?;
+        assert!(treasurer.get_ticket(&sell_ticket.ticket_id).is_err());
 
         expected_ledger_entries.push(LedgerEntry::TicketCompleted {
             fleet_id: FleetId(1),
@@ -714,7 +785,7 @@ mod tests {
 
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id)?,
-            FleetBudget2 {
+            FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 0.into(),
                 total_capital: 75_000.into(),
@@ -766,7 +837,7 @@ mod tests {
 
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id)?,
-            FleetBudget2 {
+            FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 25_000.into(),
                 total_capital: 75_000.into(),
@@ -797,7 +868,7 @@ mod tests {
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(152_500));
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id)?,
-            FleetBudget2 {
+            FleetBudget {
                 current_capital: 52_500.into(),
                 reserved_capital: 0.into(),
                 total_capital: 75_000.into(),
@@ -825,7 +896,7 @@ mod tests {
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id)?,
-            FleetBudget2 {
+            FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 0.into(),
                 total_capital: 75_000.into(),
@@ -841,7 +912,7 @@ mod tests {
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id)?,
-            FleetBudget2 {
+            FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 0.into(),
                 total_capital: 150_000.into(),
@@ -875,7 +946,7 @@ mod tests {
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id)?,
-            FleetBudget2 {
+            FleetBudget {
                 current_capital: 50_000.into(),
                 reserved_capital: 0.into(),
                 total_capital: 50_000.into(),
