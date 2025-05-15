@@ -197,7 +197,22 @@ impl ImprovedTreasurer {
         treasurer
     }
 
-    pub(crate) fn current_agent_credits(&self) -> Credits {
+    pub fn from_ledger(ledger: Vec<LedgerEntry>) -> Result<Self> {
+        // don't call Self::new(), because it creates a ledger_entry
+        let mut treasurer: Self = Self {
+            treasury_fund: Default::default(),
+            ledger_entries: Default::default(),
+            fleet_budgets: Default::default(),
+        };
+
+        for entry in ledger {
+            treasurer.process_ledger_entry(entry)?
+        }
+
+        Ok(treasurer)
+    }
+
+    pub fn current_agent_credits(&self) -> Credits {
         self.treasury_fund
             + self
                 .fleet_budgets
@@ -622,6 +637,15 @@ mod tests {
         assert_eq!(
             serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
+        );
+
+        let current_treasurer = treasurer.get_instance()?;
+
+        let actual_replayed_treasurer = ImprovedTreasurer::from_ledger(expected_ledger_entries)?;
+
+        assert_eq!(
+            serde_json::to_string_pretty(&actual_replayed_treasurer)?,
+            serde_json::to_string_pretty(&current_treasurer)?
         );
 
         Ok(())
