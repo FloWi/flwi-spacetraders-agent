@@ -1,4 +1,4 @@
-use crate::budgeting::budgeting::{PurchaseShipTransactionGoal, PurchaseTradeGoodsTransactionGoal, SellTradeGoodsTransactionGoal, TransactionTicket};
+use crate::budgeting::treasury_redesign::{FinanceTicket, PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails};
 use crate::{
     Agent, Construction, EvaluatedTradingOpportunity, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse,
     PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse,
@@ -421,7 +421,7 @@ pub struct FleetsOverview {
     pub fleet_task_assignments: HashMap<FleetId, Vec<FleetTask>>,
     pub ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
     pub ship_tasks: HashMap<ShipSymbol, ShipTask>,
-    pub open_trade_tickets: HashMap<ShipSymbol, TransactionTicket>,
+    pub open_trade_tickets: HashMap<ShipSymbol, FinanceTicket>,
     pub stationary_probe_locations: Vec<StationaryProbeLocation>,
 }
 
@@ -551,19 +551,23 @@ impl ShipPriceInfo {
 #[derive(Deserialize, Serialize, Debug, Clone, Display)]
 pub enum TransactionActionEvent {
     PurchasedTradeGoods {
-        ticket_details: PurchaseTradeGoodsTransactionGoal,
+        ticket_id: TicketId,
+        ticket_details: PurchaseTradeGoodsTicketDetails,
         response: PurchaseTradeGoodResponse,
     },
     SoldTradeGoods {
-        ticket_details: SellTradeGoodsTransactionGoal,
+        ticket_id: TicketId,
+        ticket_details: SellTradeGoodsTicketDetails,
         response: SellTradeGoodResponse,
     },
     SuppliedConstructionSite {
+        ticket_id: TicketId,
         ticket_details: DeliverConstructionMaterialTicketDetails,
         response: SupplyConstructionSiteResponse,
     },
     PurchasedShip {
-        ticket_details: PurchaseShipTransactionGoal,
+        ticket_id: TicketId,
+        ticket_details: PurchaseShipTicketDetails,
         response: PurchaseShipResponse,
     },
 }
@@ -573,34 +577,11 @@ pub enum OperationExpenseEvent {
     RefueledShip { response: RefuelShipResponse },
 }
 
-impl TransactionActionEvent {
-    pub fn maybe_updated_agent_credits(&self) -> Option<i64> {
-        match self {
-            TransactionActionEvent::PurchasedTradeGoods {
-                ticket_details: _,
-                response: resp,
-            } => Some(resp.data.agent.credits),
-            TransactionActionEvent::SoldTradeGoods {
-                ticket_details: _,
-                response: resp,
-            } => Some(resp.data.agent.credits),
-            TransactionActionEvent::SuppliedConstructionSite {
-                ticket_details: _,
-                response: resp,
-            } => None,
-            TransactionActionEvent::PurchasedShip {
-                ticket_details: _,
-                response: resp,
-            } => Some(resp.data.agent.credits),
-        }
-    }
-}
-
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct TransactionSummary {
     pub ship_symbol: ShipSymbol,
     pub transaction_action_event: TransactionActionEvent,
-    pub trade_ticket: TransactionTicket,
+    pub trade_ticket: FinanceTicket,
     pub total_price: i64,
     pub transaction_ticket_id: TransactionTicketId,
 }

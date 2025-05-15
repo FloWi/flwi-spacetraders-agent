@@ -5,11 +5,11 @@ use std::collections::{HashMap, VecDeque};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FinanceTicket {
-    ticket_id: TicketId,
-    fleet_id: FleetId,
-    ship_symbol: ShipSymbol,
-    details: FinanceTicketDetails,
-    allocated_credits: Credits,
+    pub ticket_id: TicketId,
+    pub fleet_id: FleetId,
+    pub ship_symbol: ShipSymbol,
+    pub details: FinanceTicketDetails,
+    pub allocated_credits: Credits,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -121,6 +121,7 @@ pub struct FleetBudget {
 use crate::budgeting::credits::Credits;
 use crate::budgeting::treasury_redesign::LedgerEntry::*;
 use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
+use itertools::Itertools;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug)]
@@ -155,6 +156,16 @@ impl ThreadSafeTreasurer {
                 .cloned()
                 .ok_or(anyhow!("Fleet id not found"))
         })
+    }
+
+    pub fn get_fleet_tickets(&self) -> Result<HashMap<FleetId, Vec<FinanceTicket>>> {
+        self.with_treasurer(|t| t.get_fleet_tickets())
+    }
+    pub fn get_fleet_budgets(&self) -> Result<HashMap<FleetId, FleetBudget>> {
+        self.with_treasurer(|t| t.get_fleet_budgets())
+    }
+    pub fn get_tickets(&self) -> Result<HashMap<TicketId, FinanceTicket>> {
+        self.with_treasurer(|t| t.get_tickets())
     }
 
     pub fn current_agent_credits(&self) -> Result<Credits> {
@@ -272,6 +283,25 @@ impl ImprovedTreasurer {
         }
 
         Ok(treasurer)
+    }
+
+    pub fn get_fleet_tickets(&self) -> Result<HashMap<FleetId, Vec<FinanceTicket>>> {
+        Ok(self
+            .tickets
+            .iter()
+            .cloned()
+            .into_group_map_by(|t| t.fleet_id.clone()))
+    }
+    pub fn get_fleet_budgets(&self) -> Result<HashMap<FleetId, FleetBudget>> {
+        Ok(self.fleet_budgets.clone())
+    }
+
+    pub fn get_tickets(&self) -> Result<HashMap<TicketId, FinanceTicket>> {
+        Ok(self
+            .tickets
+            .iter()
+            .map(|t| (t.ticket_id.clone(), t.clone()))
+            .collect())
     }
 
     pub fn current_agent_credits(&self) -> Credits {

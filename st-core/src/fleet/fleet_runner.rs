@@ -18,7 +18,7 @@ use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::budgeting::budgeting::TicketType;
 use st_domain::budgeting::credits::Credits;
-use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
+use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
 use st_domain::{
     Fleet, FleetId, FleetPhase, FleetTask, OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket, TransactionActionEvent,
     WaypointTraitSymbol, WaypointType,
@@ -48,7 +48,7 @@ pub struct FleetRunner {
     args: BehaviorArgs,
     fleet_admiral: Arc<Mutex<FleetAdmiral>>,
     bmc: Arc<dyn Bmc>,
-    pub treasurer: Arc<Mutex<InMemoryTreasurer>>,
+    pub treasurer: ThreadSafeTreasurer,
 }
 
 impl FleetRunner {
@@ -607,21 +607,7 @@ impl FleetRunner {
                             .map(|t| (t.0.clone(), t.1.first().cloned().unwrap()))
                             .collect_vec();
 
-                        admiral_guard
-                            .treasurer
-                            .lock()
-                            .await
-                            .redistribute_distribute_fleet_budgets(
-                                &admiral_guard.fleet_phase,
-                                &fleet_tasks,
-                                &admiral_guard.ship_fleet_assignment,
-                                &ship_price_info,
-                                &admiral_guard
-                                    .ship_purchase_demand
-                                    .iter()
-                                    .cloned()
-                                    .collect_vec(),
-                            )?;
+                        admiral_guard.redistribute_distribute_fleet_budgets(&ship_price_info)?;
 
                         let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
                         FleetAdmiral::assign_ship_tasks(&mut admiral_guard, new_ship_tasks);

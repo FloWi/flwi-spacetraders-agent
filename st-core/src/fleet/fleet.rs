@@ -16,11 +16,8 @@ use itertools::Itertools;
 use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::budgeting::budgeting::{
-    FinanceError, FleetBudget, FundingSource, TicketStatus, TicketType, TransactionEvent, TransactionGoal, TransactionTicket,
-};
 use st_domain::budgeting::credits::Credits;
-use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
+use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails, FleetBudget, ThreadSafeTreasurer};
 use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{ConstructJumpGate, InitialExploration, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably};
 use st_domain::ShipRegistrationRole::{Command, Explorer, Interceptor, Refinery, Satellite, Surveyor};
@@ -47,7 +44,7 @@ use FleetConfig::{ConstructJumpGateCfg, MarketObservationCfg, MiningCfg, Siphoni
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum ShipStatusReport {
     ShipActionCompleted(Ship, ShipAction),
-    TransactionCompleted(Ship, TransactionActionEvent, TransactionTicket),
+    TransactionCompleted(Ship, TransactionActionEvent, FinanceTicket),
     ShipFinishedBehaviorTree(Ship, ShipTask),
     Expense(Ship, OperationExpenseEvent),
 }
@@ -74,19 +71,20 @@ pub struct FleetAdmiral {
     pub fleet_phase: FleetPhase,
     pub active_trade_ids: HashMap<ShipSymbol, TicketId>,
     pub stationary_probe_locations: Vec<StationaryProbeLocation>,
-    pub treasurer: Arc<Mutex<InMemoryTreasurer>>,
+    pub treasurer: ThreadSafeTreasurer,
     pub ship_purchase_demand: VecDeque<(ShipType, FleetTask)>,
 }
 
 impl FleetAdmiral {
+    pub fn redistribute_distribute_fleet_budgets(&self, ship_price_info: &ShipPriceInfo) -> Result<()> {
+        todo!("implement here instead of inside the treasurer")
+    }
     pub(crate) async fn adjust_fleet_budget_after_ship_purchase(admiral: &FleetAdmiral, new_ship: &Ship, fleet_id: &FleetId) -> Result<()> {
-        let mut guard = admiral.treasurer.lock().await;
-
         let fleet = admiral
             .fleets
             .get(fleet_id)
             .ok_or(anyhow!("Fleet id not found"))?;
-        let budget = guard.get_fleet_budget(fleet_id)?;
+        let budget = admiral.treasurer.get_fleet_budget(fleet_id)?;
         let all_ships_purchased = admiral.ship_purchase_demand.is_empty();
         let ships_of_fleet = admiral.get_ships_of_fleet(&fleet);
 
@@ -119,9 +117,17 @@ impl FleetAdmiral {
                 old_total_capital = budget.total_capital.0,
                 new_total_capital = new_total_capital.0
             );
-            guard.set_fleet_total_capital(fleet_id, new_total_capital)?;
-            guard.top_up_operating_reserve(fleet_id, new_operating_reserve)?;
-            guard.top_up_available_capital(fleet_id)?;
+            admiral
+                .treasurer
+                .set_fleet_total_capital(fleet_id, new_total_capital)?;
+
+            admiral
+                .treasurer
+                .set_new_operating_reserve(fleet_id, new_operating_reserve)?;
+
+            admiral
+                .treasurer
+                .transfer_funds_to_fleet_to_top_up_available_capital(fleet_id)?;
         }
 
         Ok(())
@@ -203,7 +209,6 @@ impl FleetAdmiral {
                 "Available Capital",
                 "Total Capital",
                 "Operating Reserve",
-                "Asset Value",
             ]);
 
         for (fleet_id, budget) in self
@@ -217,18 +222,16 @@ impl FleetAdmiral {
             budget_table.add_row(vec![
                 fleet_id.0.to_string().as_str(),
                 fleet.cfg.to_string().as_str(),
-                format_number(budget.available_capital.0 as f64).as_str(),
+                format_number(budget.current_capital.0 as f64).as_str(),
                 format_number(budget.total_capital.0 as f64).as_str(),
                 format_number(budget.operating_reserve.0 as f64).as_str(),
-                format_number(budget.asset_value.0 as f64).as_str(),
             ]);
         }
 
         budget_table.add_row(vec![
             "---",
             "Treasury",
-            format_number(self.treasurer.lock().await.treasury.0 as f64).as_str(),
-            "---",
+            format_number(self.treasurer.current_treasury_fund().unwrap().0 as f64).as_str(),
             "---",
             "---",
         ]);
@@ -254,14 +257,14 @@ impl FleetAdmiral {
 
         for (_, ticket) in self.get_treasurer_tickets().await.iter() {
             tickets_table.add_row(vec![
-                ticket.id.0.to_string().as_str(),
-                ticket.status.to_string().as_str(),
-                ticket.initiating_fleet.0.to_string().as_str(),
-                ticket.executing_fleet.0.to_string().as_str(),
-                ticket.beneficiary_fleet.0.to_string().as_str(),
-                ticket.executing_vessel.0.to_string().as_str(),
-                format_number(ticket.financials.required_capital.0 as f64).as_str(),
-                format_number(ticket.financials.allocated_capital.0 as f64).as_str(),
+                // ticket.id.0.to_string().as_str(),
+                // ticket.status.to_string().as_str(),
+                // ticket.initiating_fleet.0.to_string().as_str(),
+                // ticket.executing_fleet.0.to_string().as_str(),
+                // ticket.beneficiary_fleet.0.to_string().as_str(),
+                // ticket.executing_vessel.0.to_string().as_str(),
+                // format_number(ticket.financials.required_capital.0 as f64).as_str(),
+                // format_number(ticket.financials.allocated_capital.0 as f64).as_str(),
             ]);
         }
 
@@ -308,35 +311,16 @@ impl FleetAdmiral {
         table.to_string()
     }
 
-    pub(crate) async fn get_trades_of_fleet(&self, fleet: &Fleet) -> Vec<TransactionTicket> {
-        let treasurer = self.treasurer.lock().await;
-        self.ship_fleet_assignment
-            .iter()
-            .filter_map(|(ship_symbol, fleet_id)| {
-                if fleet_id == &fleet.id {
-                    self.active_trade_ids
-                        .get(ship_symbol)
-                        .and_then(|ticket_id| treasurer.get_ticket(ticket_id.clone()).ok())
-                } else {
-                    None
-                }
-            })
-            .collect_vec()
-    }
-
-    pub(crate) async fn get_fleet_trades_overview(&self) -> HashMap<FleetId, Vec<TransactionTicket>> {
-        let treasurer = self.treasurer.lock().await;
-        treasurer.get_fleet_trades_overview()
+    pub(crate) async fn get_fleet_tickets(&self) -> HashMap<FleetId, Vec<FinanceTicket>> {
+        self.treasurer.get_fleet_tickets().unwrap_or_default()
     }
 
     pub(crate) async fn get_fleet_budgets(&self) -> HashMap<FleetId, FleetBudget> {
-        let treasurer = self.treasurer.lock().await;
-        treasurer.get_fleet_budgets()
+        self.treasurer.get_fleet_budgets().unwrap_or_default()
     }
 
-    pub(crate) async fn get_treasurer_tickets(&self) -> HashMap<TicketId, TransactionTicket> {
-        let treasurer = self.treasurer.lock().await;
-        treasurer.tickets.clone()
+    pub(crate) async fn get_treasurer_tickets(&self) -> HashMap<TicketId, FinanceTicket> {
+        self.treasurer.get_tickets().clone().unwrap_or_default()
     }
 
     pub fn get_next_ship_purchase(&self) -> Option<(ShipType, FleetTask)> {
@@ -454,47 +438,7 @@ impl FleetAdmiral {
             }
 
             ShipStatusReport::TransactionCompleted(ship, transaction_event, updated_trade_ticket) => {
-                let is_complete = updated_trade_ticket.is_complete();
-                if is_complete {
-                    self.mark_transaction_completed_to_treasurer(transaction_event, &updated_trade_ticket, &ship.symbol)
-                        .await;
-                }
-
-                let maybe_agent_credits_from_response = match transaction_event {
-                    TransactionActionEvent::PurchasedTradeGoods { response, .. } => Some(response.data.agent.credits),
-                    TransactionActionEvent::SoldTradeGoods { response, .. } => Some(response.data.agent.credits),
-                    TransactionActionEvent::SuppliedConstructionSite { response, .. } => None,
-                    TransactionActionEvent::PurchasedShip { response, .. } => Some(response.data.agent.credits),
-                };
-
-                if let Some(agent_credits_from_response) = maybe_agent_credits_from_response {
-                    let internal_agent_credits = self.agent_info_credits().await.0;
-                    if internal_agent_credits != agent_credits_from_response {
-                        if messages_in_queue == 0 {
-                            warn!(
-                                message = "Agent Credits differ from our expectation and no other message in queue",
-                                transaction_event = transaction_event.to_string(),
-                                agent_credits_from_response,
-                                internal_agent_credits
-                            );
-                        } else {
-                            debug!(
-                                message = "Agent Credits differ from our expectation, but  there are no other message in queue",
-                                transaction_event = transaction_event.to_string(),
-                                agent_credits_from_response,
-                                internal_agent_credits,
-                                messages_in_queue,
-                            );
-                        };
-                    }
-                }
-
-                bmc.trade_bmc()
-                    .upsert_ticket(&Ctx::Anonymous, &ship.symbol, &updated_trade_ticket.id, updated_trade_ticket, is_complete)
-                    .await?;
-
-                //FIXME: agent-credits need to update
-
+                // should be obsolete and be handled directly by ship
                 Ok(())
             }
             ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
@@ -549,34 +493,10 @@ impl FleetAdmiral {
         }
     }
 
-    pub async fn initialize_treasurer(
-        bmc: Arc<dyn Bmc>,
-        fleet_phase: &FleetPhase,
-        ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>,
-        all_ships: &HashMap<ShipSymbol, Ship>,
-        fleets: &HashMap<FleetId, Fleet>,
-        fleet_tasks: &HashMap<FleetId, Vec<FleetTask>>,
-    ) -> Result<InMemoryTreasurer> {
+    pub async fn initialize_treasurer(bmc: Arc<dyn Bmc>) -> Result<ThreadSafeTreasurer> {
         let agent_info = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?;
-        let system_symbol = agent_info.headquarters.system_symbol();
-        let facts = collect_fleet_decision_facts(bmc.clone(), &system_symbol).await?;
 
-        let ship_price_info = bmc
-            .shipyard_bmc()
-            .get_latest_ship_prices(&Ctx::Anonymous, &system_symbol)
-            .await?;
-        let all_next_ship_purchases = get_all_next_ship_purchases(&all_ships, &fleet_phase);
-
-        let fleets = fleets.values().cloned().collect_vec();
-        let fleet_tasks = fleet_tasks
-            .iter()
-            .map(|(fleet_id, tasks)| (fleet_id.clone(), tasks.first().cloned().unwrap()))
-            .collect_vec();
-
-        let mut treasurer = InMemoryTreasurer::new(agent_info.credits.into());
-        treasurer.redistribute_distribute_fleet_budgets(&fleet_phase, &fleet_tasks, &ship_fleet_assignment, &ship_price_info, &all_next_ship_purchases)?;
-
-        Ok(treasurer)
+        Ok(ThreadSafeTreasurer::new(agent_info.credits.into()))
     }
 
     async fn load_admiral(bmc: Arc<dyn Bmc>) -> Result<Option<Self>> {
@@ -620,7 +540,7 @@ impl FleetAdmiral {
                 })
                 .collect();
 
-            let treasurer = Self::initialize_treasurer(bmc.clone(), &fleet_phase, &ship_fleet_assignment, &ships, &fleet_map, &fleet_task_map).await?;
+            let treasurer = Self::initialize_treasurer(bmc.clone()).await?;
             let current_ship_demands = get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
             let mut admiral = Self {
@@ -634,9 +554,16 @@ impl FleetAdmiral {
                 //FIXME
                 active_trade_ids: Default::default(),
                 stationary_probe_locations: overview.stationary_probe_locations,
-                treasurer: Arc::new(Mutex::new(treasurer)),
+                treasurer,
                 ship_purchase_demand: VecDeque::from(current_ship_demands),
             };
+
+            let ship_prices = bmc
+                .shipyard_bmc()
+                .get_latest_ship_prices(&Ctx::Anonymous, &system_symbol)
+                .await?;
+
+            admiral.redistribute_distribute_fleet_budgets(&ship_prices)?;
 
             // let new_ship_tasks = Self::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
             // Self::assign_ship_tasks(&mut admiral, new_ship_tasks);
@@ -713,7 +640,7 @@ impl FleetAdmiral {
             .store_agent(&Ctx::Anonymous, &agent_info)
             .await?;
 
-        let treasurer = Self::initialize_treasurer(bmc.clone(), &fleet_phase, &ship_fleet_assignment, &ship_map, &fleet_map, &fleet_task_map).await?;
+        let treasurer = Self::initialize_treasurer(bmc.clone()).await?;
 
         let current_ship_demands = get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
@@ -732,9 +659,11 @@ impl FleetAdmiral {
             fleet_phase,
             active_trade_ids: Default::default(),
             stationary_probe_locations,
-            treasurer: Arc::new(Mutex::new(treasurer)),
+            treasurer,
             ship_purchase_demand: VecDeque::from(current_ship_demands),
         };
+
+        admiral.redistribute_distribute_fleet_budgets(&ship_prices)?;
 
         upsert_fleets_data(
             Arc::clone(&bmc),
@@ -755,12 +684,21 @@ impl FleetAdmiral {
         latest_market_data: Vec<MarketEntry>,
         ship_prices: ShipPriceInfo,
         waypoints: Vec<Waypoint>,
-        ship_purchase_tickets: &[TransactionTicket],
-        fleet_trades: &HashMap<FleetId, Vec<TransactionTicket>>,
+        active_tickets: &[FinanceTicket],
+        fleet_trades: &HashMap<FleetId, Vec<FinanceTicket>>,
         fleet_budgets: &HashMap<FleetId, FleetBudget>,
-        treasurer: &mut InMemoryTreasurer,
     ) -> Result<Vec<(ShipSymbol, ShipTask)>> {
         let mut new_ship_tasks: HashMap<ShipSymbol, ShipTask> = HashMap::new();
+
+        let active_ship_purchase_ticket_by_ship: HashMap<ShipSymbol, TicketId> = active_tickets
+            .iter()
+            .filter_map(|t| match t.details {
+                FinanceTicketDetails::PurchaseShip(_) => Some(t.ticket_id.clone()),
+                FinanceTicketDetails::PurchaseTradeGoods(_) => None,
+                FinanceTicketDetails::SellTradeGoods(_) => None,
+                FinanceTicketDetails::RefuelShip(_) => None,
+            })
+            .collect();
 
         for (fleet_id, fleet) in admiral.fleets.clone().iter() {
             let ships_of_fleet: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
@@ -775,14 +713,11 @@ impl FleetAdmiral {
 
                 if ship_has_no_active_task {
                     // we have a ship purchase ticket with this ship assigned
-                    if let Some(ship_purchase_ticket) = ship_purchase_tickets
-                        .iter()
-                        .find(|t| t.executing_vessel == ship.symbol && t.status == TicketStatus::Funded)
-                    {
+                    if let Some(ship_purchase_ticket_id) = active_ship_purchase_ticket_by_ship.get(&ship.symbol) {
                         new_ship_tasks.insert(
                             ship.symbol.clone(),
                             ShipTask::Trade {
-                                ticket_id: ship_purchase_ticket.id.clone(),
+                                ticket_id: ship_purchase_ticket_id.clone(),
                             },
                         );
                     }
@@ -885,7 +820,7 @@ impl FleetAdmiral {
 
         admiral.try_create_ship_purchase_ticket(&ship_prices).await;
 
-        let fleet_trades = admiral.get_fleet_trades_overview().await;
+        let fleet_trades = admiral.get_fleet_tickets().await;
         let fleet_budgets = admiral.get_fleet_budgets().await;
 
         let new_tasks = {
@@ -1200,63 +1135,11 @@ impl FleetAdmiral {
     }
 
     pub async fn agent_info_credits(&self) -> Credits {
-        self.treasurer.lock().await.agent_credits()
+        self.treasurer.current_agent_credits().unwrap()
     }
 
-    async fn report_expense_transaction_to_treasurer(&self, fleet_id: &FleetId, operation_expense_event: &OperationExpenseEvent) {
-        let mut guard = self.treasurer.lock().await;
-        match operation_expense_event {
-            OperationExpenseEvent::RefueledShip { response } => {
-                let event = TransactionEvent::ShipRefueled {
-                    timestamp: response.data.transaction.timestamp.clone(),
-                    waypoint: response.data.transaction.waypoint_symbol.clone(),
-                    fuel_barrels_purchased: response.data.transaction.units as u32,
-                    cost_per_unit: response.data.transaction.price_per_unit.into(),
-                    total_cost: response.data.transaction.total_price.into(),
-                    new_fuel_level: response.data.fuel.current as u32,
-                };
-
-                match guard.record_expense(fleet_id, &response.data.transaction.ship_symbol, event) {
-                    Ok(_) => {}
-                    Err(_) => {}
-                }
-            }
-        }
-    }
-
-    async fn mark_transaction_completed_to_treasurer(
-        &mut self,
-        transaction_event: &TransactionActionEvent,
-        ticket: &TransactionTicket,
-        ship_symbol: &ShipSymbol,
-    ) {
-        let mut guard = self.treasurer.lock().await;
-
-        let fleet_id: &FleetId = self.ship_fleet_assignment.get(ship_symbol).unwrap();
-
-        guard
-            .complete_ticket(ticket.id.clone())
-            .expect("complete_ticket");
-
-        if ticket.ticket_type == TicketType::Trading {
-            guard
-                .return_excess_capital_to_treasurer(fleet_id)
-                .expect("return_excess_capital_to_treasurer");
-        }
+    async fn mark_transaction_completed_to_treasurer(&mut self, ship_symbol: &ShipSymbol) {
         self.active_trade_ids.remove(ship_symbol);
-        let calculated_agent_credits = guard.agent_credits();
-        let agent_credits_from_response = transaction_event
-            .maybe_updated_agent_credits()
-            .unwrap_or_default();
-        if calculated_agent_credits != agent_credits_from_response.into() {
-            event!(
-                Level::WARN,
-                message = "agent credits differ after reporting transaction as completed",
-                calculated_agent_credits = calculated_agent_credits.0,
-                agent_credits_from_response
-            );
-            guard.agent_credits(); // Hello, breakpoint
-        }
     }
 }
 

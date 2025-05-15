@@ -1,4 +1,4 @@
-use crate::budgeting::budgeting::TransactionTicket;
+use crate::budgeting::treasury_redesign::FinanceTicket;
 use crate::{get_exploration_tasks_for_waypoint, ExplorationTask, JumpGate, MarketData, Shipyard, TicketId, TravelAction, Waypoint, WaypointSymbol};
 use async_trait::async_trait;
 use mockall::automock;
@@ -20,7 +20,7 @@ pub trait BlackboardOps: Send + Sync {
     async fn insert_shipyard(&self, shipyard: Shipyard) -> anyhow::Result<()>;
     async fn get_closest_waypoint(&self, current_waypoint: &WaypointSymbol, candidates: &[WaypointSymbol]) -> anyhow::Result<Option<WaypointSymbol>>;
     async fn get_waypoint(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<Waypoint>;
-    async fn get_ticket_by_id(&self, ticket_id: TicketId) -> anyhow::Result<TransactionTicket>;
+    async fn get_ticket_by_id(&self, ticket_id: TicketId) -> anyhow::Result<FinanceTicket>;
     async fn get_available_agent_credits(&self) -> anyhow::Result<i64>;
 
     // async fn report_purchase(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &PurchaseTradeGoodResponse) -> Result<()>;
