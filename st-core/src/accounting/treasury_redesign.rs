@@ -3,12 +3,13 @@ use anyhow::anyhow;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::credits::Credits;
-use st_domain::{FleetId, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
+use st_domain::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FinanceTicket {
     ticket_id: TicketId,
+    ship_symbol: ShipSymbol,
     details: FinanceTicketDetails,
     allocated_credits: Credits,
 }
@@ -147,10 +148,13 @@ impl ThreadSafeTreasurer {
         fleet_id: &FleetId,
         trade_good_symbol: TradeGoodSymbol,
         waypoint_symbol: WaypointSymbol,
+        ship_symbol: ShipSymbol,
         quantity: u32,
         expected_price_per_unit: Credits,
     ) -> Result<FinanceTicket> {
-        self.with_treasurer(|t| t.create_purchase_trade_goods_ticket(fleet_id, trade_good_symbol, waypoint_symbol, quantity, expected_price_per_unit))
+        self.with_treasurer(|t| {
+            t.create_purchase_trade_goods_ticket(fleet_id, trade_good_symbol, waypoint_symbol, ship_symbol, quantity, expected_price_per_unit)
+        })
     }
 
     pub fn create_sell_trade_goods_ticket(
@@ -158,10 +162,11 @@ impl ThreadSafeTreasurer {
         fleet_id: &FleetId,
         trade_good_symbol: TradeGoodSymbol,
         waypoint_symbol: WaypointSymbol,
+        ship_symbol: ShipSymbol,
         quantity: u32,
         expected_price_per_unit: Credits,
     ) -> Result<FinanceTicket> {
-        self.with_treasurer(|t| t.create_sell_trade_goods_ticket(fleet_id, trade_good_symbol, waypoint_symbol, quantity, expected_price_per_unit))
+        self.with_treasurer(|t| t.create_sell_trade_goods_ticket(fleet_id, trade_good_symbol, waypoint_symbol, ship_symbol, quantity, expected_price_per_unit))
     }
 
     pub fn create_ship_purchase_ticket(
@@ -170,8 +175,9 @@ impl ThreadSafeTreasurer {
         ship_type: ShipType,
         expected_purchase_price: Credits,
         shipyard_waypoint_symbol: WaypointSymbol,
+        ship_symbol: ShipSymbol,
     ) -> Result<FinanceTicket> {
-        self.with_treasurer(|t| t.create_ship_purchase_ticket(fleet_id, ship_type, expected_purchase_price, shipyard_waypoint_symbol))
+        self.with_treasurer(|t| t.create_ship_purchase_ticket(fleet_id, ship_type, expected_purchase_price, shipyard_waypoint_symbol, ship_symbol))
     }
 
     pub fn complete_ticket(&self, fleet_id: &FleetId, finance_ticket: &FinanceTicket, actual_price_per_unit: Credits) -> Result<()> {
@@ -263,6 +269,7 @@ impl ImprovedTreasurer {
         fleet_id: &FleetId,
         trade_good_symbol: TradeGoodSymbol,
         waypoint_symbol: WaypointSymbol,
+        ship_symbol: ShipSymbol,
         quantity: u32,
         expected_price_per_unit: Credits,
     ) -> Result<FinanceTicket> {
@@ -273,11 +280,12 @@ impl ImprovedTreasurer {
             let total = (expected_price_per_unit.0 * quantity as i64).into();
             let ticket = FinanceTicket {
                 ticket_id: Default::default(),
+                ship_symbol,
                 details: FinanceTicketDetails::PurchaseTradeGoods {
                     waypoint_symbol,
                     trade_good: trade_good_symbol,
                     expected_total_purchase_price: total,
-                    quantity: quantity as u32,
+                    quantity,
                     expected_price_per_unit,
                 },
                 allocated_credits: total,
@@ -297,11 +305,13 @@ impl ImprovedTreasurer {
         fleet_id: &FleetId,
         trade_good_symbol: TradeGoodSymbol,
         waypoint_symbol: WaypointSymbol,
+        ship_symbol: ShipSymbol,
         quantity: u32,
         expected_price_per_unit: Credits,
     ) -> Result<FinanceTicket> {
         let ticket = FinanceTicket {
             ticket_id: Default::default(),
+            ship_symbol,
             details: FinanceTicketDetails::SellTradeGoods {
                 waypoint_symbol,
                 trade_good: trade_good_symbol,
@@ -325,9 +335,11 @@ impl ImprovedTreasurer {
         ship_type: ShipType,
         expected_purchase_price: Credits,
         shipyard_waypoint_symbol: WaypointSymbol,
+        ship_symbol: ShipSymbol,
     ) -> Result<FinanceTicket> {
         let ticket = FinanceTicket {
             ticket_id: Default::default(),
+            ship_symbol,
             details: FinanceTicketDetails::PurchaseShip {
                 ship_type,
                 expected_purchase_price,
@@ -480,7 +492,7 @@ mod tests {
     use anyhow::Result;
     use itertools::Itertools;
     use st_domain::budgeting::credits::Credits;
-    use st_domain::{FleetId, ShipType, TradeGoodSymbol, WaypointSymbol};
+    use st_domain::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
 
     #[test]
     fn test_fleet_budget_in_trade_cycle() -> Result<()> {
@@ -497,7 +509,10 @@ mod tests {
 
         // Create fleet with 75k total budget
 
-        treasurer.create_fleet(&FleetId(1), Credits::new(75_000))?;
+        let fleet_id = &FleetId(1);
+        let ship_symbol = &ShipSymbol("FLWI-1".to_string());
+
+        treasurer.create_fleet(fleet_id, Credits::new(75_000))?;
         expected_ledger_entries.push(LedgerEntry::FleetCreated {
             fleet_id: FleetId(1),
             total_capital: 75_000.into(),
@@ -511,7 +526,7 @@ mod tests {
 
         assert_eq!(
             treasurer
-                .get_fleet_budget(&FleetId(1))?
+                .get_fleet_budget(fleet_id)?
                 .unwrap()
                 .current_capital,
             Credits::new(0)
@@ -519,7 +534,7 @@ mod tests {
 
         // transfer 75k from treasurer to fleet budget
 
-        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))?;
+        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(fleet_id)?;
         expected_ledger_entries.push(LedgerEntry::TransferFundsTreasuryToFleet {
             fleet_id: FleetId(1),
             credits: 75_000.into(),
@@ -532,7 +547,7 @@ mod tests {
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
         assert_eq!(
             treasurer
-                .get_fleet_budget(&FleetId(1))?
+                .get_fleet_budget(fleet_id)?
                 .unwrap()
                 .current_capital,
             Credits::new(75_000)
@@ -541,9 +556,10 @@ mod tests {
         // create purchase ticket (reduces available capital of fleet)
 
         let purchase_ticket = treasurer.create_purchase_trade_goods_ticket(
-            &FleetId(1),
+            fleet_id,
             TradeGoodSymbol::ADVANCED_CIRCUITRY,
             WaypointSymbol("FROM".to_string()),
+            ship_symbol.clone(),
             40,
             Credits(1_000.into()),
         )?;
@@ -556,7 +572,7 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(&FleetId(1))?.unwrap(),
+            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
             FleetBudget2 {
                 current_capital: 75_000.into(),
                 reserved_capital: 40_000.into(),
@@ -573,9 +589,10 @@ mod tests {
         // create sell ticket
 
         let sell_ticket = treasurer.create_sell_trade_goods_ticket(
-            &FleetId(1),
+            fleet_id,
             TradeGoodSymbol::ADVANCED_CIRCUITRY,
             WaypointSymbol("TO".to_string()),
+            ship_symbol.clone(),
             40,
             Credits(2_000.into()),
         )?;
@@ -588,7 +605,7 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(&FleetId(1))?.unwrap(),
+            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
             FleetBudget2 {
                 current_capital: 75_000.into(),
                 reserved_capital: 40_000.into(),
@@ -605,7 +622,7 @@ mod tests {
 
         // perform purchase (we spent less than expected)
         let purchase_price_per_unit = 900.into(); // a little less than expected
-        treasurer.complete_ticket(&FleetId(1), &purchase_ticket, purchase_price_per_unit)?;
+        treasurer.complete_ticket(fleet_id, &purchase_ticket, purchase_price_per_unit)?;
 
         // state before purchase
         // available_capital: 75_000
@@ -623,7 +640,7 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(&FleetId(1))?.unwrap(),
+            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
             FleetBudget2 {
                 current_capital: 39_000.into(), //75 - 36
                 reserved_capital: 0.into(),     // we clear the reservation
@@ -640,7 +657,7 @@ mod tests {
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(139_000));
 
         let sell_price_per_unit = 2_100.into(); // a little more than expected
-        treasurer.complete_ticket(&FleetId(1), &sell_ticket, sell_price_per_unit)?;
+        treasurer.complete_ticket(fleet_id, &sell_ticket, sell_price_per_unit)?;
 
         expected_ledger_entries.push(LedgerEntry::TicketCompleted {
             fleet_id: FleetId(1),
@@ -661,7 +678,7 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(&FleetId(1))?.unwrap(),
+            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
             FleetBudget2 {
                 current_capital: 75_000.into(),
                 reserved_capital: 0.into(),
@@ -694,13 +711,21 @@ mod tests {
         let treasurer = ThreadSafeTreasurer::new(175_000.into());
 
         let fleet_id = &FleetId(1);
+        let ship_symbol = &ShipSymbol("FLWI-1".to_string());
+
         treasurer.create_fleet(fleet_id, Credits::new(75_000))?;
         treasurer.transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
         let mut expected_ledger_entries = treasurer.ledger_entries()?.into_iter().collect_vec();
 
-        let ship_purchase_ticket = treasurer.create_ship_purchase_ticket(fleet_id, ShipType::SHIP_PROBE, 25_000.into(), WaypointSymbol("FROM".to_string()))?;
+        let ship_purchase_ticket = treasurer.create_ship_purchase_ticket(
+            fleet_id,
+            ShipType::SHIP_PROBE,
+            25_000.into(),
+            WaypointSymbol("FROM".to_string()),
+            ship_symbol.clone(),
+        )?;
 
         assert_eq!(ship_purchase_ticket.allocated_credits, 25_000.into());
 
