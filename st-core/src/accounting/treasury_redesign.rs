@@ -32,6 +32,7 @@ enum FinanceTicketDetails {
     PurchaseShip {
         ship_type: ShipType,
         expected_purchase_price: Credits,
+        shipyard_waypoint_symbol: WaypointSymbol,
     },
     RefuelShip {
         expected_price_per_unit: Credits,
@@ -161,6 +162,16 @@ impl ThreadSafeTreasurer {
         expected_price_per_unit: Credits,
     ) -> Result<FinanceTicket> {
         self.with_treasurer(|t| t.create_sell_trade_goods_ticket(fleet_id, trade_good_symbol, waypoint_symbol, quantity, expected_price_per_unit))
+    }
+
+    pub fn create_ship_purchase_ticket(
+        &self,
+        fleet_id: &FleetId,
+        ship_type: ShipType,
+        expected_purchase_price: Credits,
+        shipyard_waypoint_symbol: WaypointSymbol,
+    ) -> Result<FinanceTicket> {
+        self.with_treasurer(|t| t.create_ship_purchase_ticket(fleet_id, ship_type, expected_purchase_price, shipyard_waypoint_symbol))
     }
 
     pub fn complete_ticket(&self, fleet_id: &FleetId, finance_ticket: &FinanceTicket, actual_price_per_unit: Credits) -> Result<()> {
@@ -308,6 +319,31 @@ impl ImprovedTreasurer {
         Ok(ticket)
     }
 
+    pub fn create_ship_purchase_ticket(
+        &mut self,
+        fleet_id: &FleetId,
+        ship_type: ShipType,
+        expected_purchase_price: Credits,
+        shipyard_waypoint_symbol: WaypointSymbol,
+    ) -> Result<FinanceTicket> {
+        let ticket = FinanceTicket {
+            ticket_id: Default::default(),
+            details: FinanceTicketDetails::PurchaseShip {
+                ship_type,
+                expected_purchase_price,
+                shipyard_waypoint_symbol,
+            },
+            allocated_credits: expected_purchase_price,
+        };
+
+        self.process_ledger_entry(TicketCreated {
+            fleet_id: fleet_id.clone(),
+            ticket_details: ticket.clone(),
+        })?;
+
+        Ok(ticket)
+    }
+
     pub fn complete_ticket(&mut self, fleet_id: &FleetId, finance_ticket: &FinanceTicket, actual_price_per_unit: Credits) -> Result<()> {
         let quantity: u32 = match finance_ticket.details {
             FinanceTicketDetails::PurchaseTradeGoods { quantity, .. } => quantity,
@@ -442,15 +478,15 @@ mod tests {
     use crate::accounting::treasury_redesign::LedgerEntry::TransferFundsFromFleetToTreasury;
     use crate::accounting::treasury_redesign::{FleetBudget2, ImprovedTreasurer, LedgerEntry, ThreadSafeTreasurer};
     use anyhow::Result;
+    use itertools::Itertools;
     use st_domain::budgeting::credits::Credits;
-    use st_domain::{FleetId, TradeGoodSymbol, WaypointSymbol};
+    use st_domain::{FleetId, ShipType, TradeGoodSymbol, WaypointSymbol};
 
     #[test]
-    //#[tokio::test] // for accessing runtime-infos with tokio-conso&le
     fn test_fleet_budget_in_trade_cycle() -> Result<()> {
         //Start Fresh with 175k
 
-        let mut treasurer = ThreadSafeTreasurer::new(175_000.into());
+        let treasurer = ThreadSafeTreasurer::new(175_000.into());
         let mut expected_ledger_entries = vec![LedgerEntry::TreasuryCreated { credits: 175_000.into() }];
 
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
@@ -646,6 +682,72 @@ mod tests {
         assert_eq!(
             serde_json::to_string_pretty(&actual_replayed_treasurer)?,
             serde_json::to_string_pretty(&current_treasurer)?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_fleet_budget_for_ship_purchases() -> Result<()> {
+        //Start Fresh with 175k
+
+        let treasurer = ThreadSafeTreasurer::new(175_000.into());
+
+        let fleet_id = &FleetId(1);
+        treasurer.create_fleet(fleet_id, Credits::new(75_000))?;
+        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))?;
+
+        // we tested the ledger entries up to this point in a different test, so we assume they're correct
+        let mut expected_ledger_entries = treasurer.ledger_entries()?.into_iter().collect_vec();
+
+        let ship_purchase_ticket = treasurer.create_ship_purchase_ticket(fleet_id, ShipType::SHIP_PROBE, 25_000.into(), WaypointSymbol("FROM".to_string()))?;
+
+        assert_eq!(ship_purchase_ticket.allocated_credits, 25_000.into());
+
+        assert_eq!(
+            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
+            FleetBudget2 {
+                current_capital: 75_000.into(),
+                reserved_capital: 25_000.into(),
+                total_budget: 75_000.into(),
+                ..Default::default()
+            }
+        );
+        expected_ledger_entries.push(LedgerEntry::TicketCreated {
+            fleet_id: FleetId(1),
+            ticket_details: ship_purchase_ticket.clone(),
+        });
+
+        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+
+        assert_eq!(
+            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&expected_ledger_entries)?
+        );
+
+        treasurer.complete_ticket(fleet_id, &ship_purchase_ticket, 22_500.into())?; // cheaper than expected
+        expected_ledger_entries.push(LedgerEntry::TicketCompleted {
+            fleet_id: FleetId(1),
+            finance_ticket: ship_purchase_ticket.clone(),
+            actual_units: 1,
+            actual_price_per_unit: 22_500.into(),
+            total: (-22_500).into(),
+        });
+
+        assert_eq!(treasurer.current_agent_credits()?, Credits::new(152_500));
+        assert_eq!(
+            treasurer.get_fleet_budget(fleet_id)?.unwrap(),
+            FleetBudget2 {
+                current_capital: 52_500.into(),
+                reserved_capital: 0.into(),
+                total_budget: 75_000.into(),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         Ok(())
