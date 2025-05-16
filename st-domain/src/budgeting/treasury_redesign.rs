@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FinanceTicket {
@@ -28,13 +28,14 @@ pub struct SellTradeGoodsTicketDetails {
     pub expected_price_per_unit: Credits,
     pub quantity: u32,
     pub expected_total_sell_price: Credits,
+    pub maybe_matching_purchase_ticket: Option<TicketId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PurchaseShipTicketDetails {
     pub ship_type: ShipType,
     pub expected_purchase_price: Credits,
-    pub shipyard_waypoint_symbol: WaypointSymbol,
+    pub waypoint_symbol: WaypointSymbol,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -42,6 +43,15 @@ pub struct RefuelShipTicketDetails {
     pub expected_price_per_unit: Credits,
     pub num_fuel_barrels: u32,
     pub expected_total_purchase_price: Credits,
+    pub waypoint_symbol: WaypointSymbol,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub struct ActiveTradeRoute {
+    from: WaypointSymbol,
+    to: WaypointSymbol,
+    trade_good: TradeGoodSymbol,
+    number_ongoing_trades: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -59,6 +69,15 @@ impl FinanceTicketDetails {
             FinanceTicketDetails::SellTradeGoods(SellTradeGoodsTicketDetails { .. }) => 1,
             FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails { .. }) => -1,
             FinanceTicketDetails::RefuelShip(RefuelShipTicketDetails { .. }) => -1,
+        }
+    }
+
+    pub fn get_waypoint(&self) -> WaypointSymbol {
+        match self {
+            FinanceTicketDetails::PurchaseTradeGoods(d) => d.waypoint_symbol.clone(),
+            FinanceTicketDetails::SellTradeGoods(d) => d.waypoint_symbol.clone(),
+            FinanceTicketDetails::PurchaseShip(d) => d.waypoint_symbol.clone(),
+            FinanceTicketDetails::RefuelShip(d) => d.waypoint_symbol.clone(),
         }
     }
 }
@@ -120,7 +139,7 @@ pub struct FleetBudget {
 
 use crate::budgeting::credits::Credits;
 use crate::budgeting::treasury_redesign::LedgerEntry::*;
-use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
+use crate::{FleetId, Route, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
 use itertools::Itertools;
 use std::sync::{Arc, Mutex};
 
@@ -206,8 +225,23 @@ impl ThreadSafeTreasurer {
         ship_symbol: ShipSymbol,
         quantity: u32,
         expected_price_per_unit: Credits,
+        maybe_matching_purchase_ticket: Option<TicketId>,
     ) -> Result<FinanceTicket> {
-        self.with_treasurer(|t| t.create_sell_trade_goods_ticket(fleet_id, trade_good_symbol, waypoint_symbol, ship_symbol, quantity, expected_price_per_unit))
+        self.with_treasurer(|t| {
+            t.create_sell_trade_goods_ticket(
+                fleet_id,
+                trade_good_symbol,
+                waypoint_symbol,
+                ship_symbol,
+                quantity,
+                expected_price_per_unit,
+                maybe_matching_purchase_ticket,
+            )
+        })
+    }
+
+    pub fn get_active_trade_routes(&self) -> Result<Vec<ActiveTradeRoute>> {
+        self.with_treasurer(|t| t.get_active_trade_routes())
     }
 
     pub fn create_ship_purchase_ticket(
@@ -251,7 +285,8 @@ pub struct ImprovedTreasurer {
     treasury_fund: Credits,
     ledger_entries: VecDeque<LedgerEntry>,
     fleet_budgets: HashMap<FleetId, FleetBudget>,
-    tickets: Vec<FinanceTicket>,
+    active_tickets: Vec<FinanceTicket>,
+    completed_tickets: Vec<FinanceTicket>,
 }
 
 impl ImprovedTreasurer {
@@ -260,7 +295,8 @@ impl ImprovedTreasurer {
             treasury_fund: Default::default(),
             ledger_entries: Default::default(),
             fleet_budgets: Default::default(),
-            tickets: vec![],
+            active_tickets: vec![],
+            completed_tickets: vec![],
         };
 
         treasurer
@@ -275,7 +311,8 @@ impl ImprovedTreasurer {
             treasury_fund: Default::default(),
             ledger_entries: Default::default(),
             fleet_budgets: Default::default(),
-            tickets: vec![],
+            active_tickets: vec![],
+            completed_tickets: vec![],
         };
 
         for entry in ledger {
@@ -287,18 +324,19 @@ impl ImprovedTreasurer {
 
     pub fn get_fleet_tickets(&self) -> Result<HashMap<FleetId, Vec<FinanceTicket>>> {
         Ok(self
-            .tickets
+            .active_tickets
             .iter()
             .cloned()
             .into_group_map_by(|t| t.fleet_id.clone()))
     }
+
     pub fn get_fleet_budgets(&self) -> Result<HashMap<FleetId, FleetBudget>> {
         Ok(self.fleet_budgets.clone())
     }
 
     pub fn get_tickets(&self) -> Result<HashMap<TicketId, FinanceTicket>> {
         Ok(self
-            .tickets
+            .active_tickets
             .iter()
             .map(|t| (t.ticket_id.clone(), t.clone()))
             .collect())
@@ -341,6 +379,48 @@ impl ImprovedTreasurer {
         } else {
             Err(anyhow!("Fleet not found {}", fleet_id))
         }
+    }
+
+    fn get_active_trade_routes(&self) -> Result<Vec<ActiveTradeRoute>> {
+        let mut active_routes = HashMap::new();
+
+        for ticket in self.active_tickets.iter() {
+            match &ticket.details {
+                FinanceTicketDetails::SellTradeGoods(sell_ticket_details) => {
+                    if let Some(purchase_ticket_id) = sell_ticket_details.maybe_matching_purchase_ticket {
+                        let maybe_purchase_ticket = self
+                            .active_tickets
+                            .iter()
+                            .find(|purchase_ticket| purchase_ticket.ticket_id == purchase_ticket_id)
+                            .or_else(|| {
+                                self.completed_tickets
+                                    .iter()
+                                    .find(|purchase_ticket| purchase_ticket.ticket_id == purchase_ticket_id)
+                            });
+
+                        if let Some(purchase_ticket) = maybe_purchase_ticket {
+                            let from_wp = purchase_ticket.details.get_waypoint();
+                            let to_wp = sell_ticket_details.waypoint_symbol.clone();
+                            active_routes
+                                .entry((from_wp, to_wp, sell_ticket_details.trade_good.clone()))
+                                .and_modify(|counter| *counter += 1)
+                                .or_insert(1);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(active_routes
+            .into_iter()
+            .map(|((from, to, trade_good), number_ongoing_trades)| ActiveTradeRoute {
+                from,
+                to,
+                trade_good,
+                number_ongoing_trades,
+            })
+            .collect_vec())
     }
 
     pub fn create_purchase_trade_goods_ticket(
@@ -388,6 +468,7 @@ impl ImprovedTreasurer {
         ship_symbol: ShipSymbol,
         quantity: u32,
         expected_price_per_unit: Credits,
+        maybe_matching_purchase_ticket: Option<TicketId>,
     ) -> Result<FinanceTicket> {
         let ticket = FinanceTicket {
             ticket_id: Default::default(),
@@ -399,6 +480,7 @@ impl ImprovedTreasurer {
                 expected_total_sell_price: expected_price_per_unit * quantity,
                 quantity,
                 expected_price_per_unit,
+                maybe_matching_purchase_ticket,
             }),
             allocated_credits: 0.into(),
         };
@@ -425,7 +507,7 @@ impl ImprovedTreasurer {
             details: FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails {
                 ship_type,
                 expected_purchase_price,
-                shipyard_waypoint_symbol,
+                waypoint_symbol: shipyard_waypoint_symbol,
             }),
             allocated_credits: expected_purchase_price,
         };
@@ -439,7 +521,7 @@ impl ImprovedTreasurer {
     }
 
     pub fn get_ticket(&self, ticket_id: &TicketId) -> Result<FinanceTicket> {
-        self.tickets
+        self.active_tickets
             .iter()
             .find(|t| &t.ticket_id == ticket_id)
             .cloned()
@@ -552,7 +634,7 @@ impl ImprovedTreasurer {
                 if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
                     if budget.current_capital >= allocated_credits {
                         budget.reserved_capital += allocated_credits;
-                        self.tickets.push(ticket_details);
+                        self.active_tickets.push(ticket_details);
 
                         self.ledger_entries.push_back(ledger_entry);
                     } else {
@@ -578,8 +660,10 @@ impl ImprovedTreasurer {
                     }
 
                     budget.current_capital += total;
-                    self.tickets
+                    self.active_tickets
                         .retain(|t| t.ticket_id != finance_ticket.ticket_id);
+
+                    self.completed_tickets.push(finance_ticket);
 
                     self.ledger_entries.push_back(ledger_entry);
                 } else {
@@ -632,10 +716,11 @@ impl ImprovedTreasurer {
 mod tests {
     use crate::budgeting::credits::Credits;
     use crate::budgeting::treasury_redesign::LedgerEntry::TransferFundsFromFleetToTreasury;
-    use crate::budgeting::treasury_redesign::{FleetBudget, ImprovedTreasurer, LedgerEntry, ThreadSafeTreasurer};
+    use crate::budgeting::treasury_redesign::{ActiveTradeRoute, FleetBudget, ImprovedTreasurer, LedgerEntry, ThreadSafeTreasurer};
     use crate::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
     use anyhow::Result;
     use itertools::Itertools;
+    use std::collections::HashSet;
 
     #[test]
     fn test_fleet_budget_in_trade_cycle() -> Result<()> {
@@ -726,6 +811,7 @@ mod tests {
             ship_symbol.clone(),
             40,
             Credits(2_000.into()),
+            Some(purchase_ticket.ticket_id.clone()),
         )?;
 
         assert_eq!(treasurer.get_ticket(&sell_ticket.ticket_id)?, sell_ticket);
@@ -990,6 +1076,72 @@ mod tests {
         assert_eq!(
             serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_getting_active_trade_routes() -> Result<()> {
+        let treasurer = ThreadSafeTreasurer::new(175_000.into());
+
+        let fleet_id = &FleetId(1);
+        let ship_symbol = &ShipSymbol("FLWI-1".to_string());
+
+        treasurer.create_fleet(fleet_id, Credits::new(75_000))?;
+
+        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(fleet_id)?;
+
+        let trade_good = TradeGoodSymbol::ADVANCED_CIRCUITRY;
+        let from_wps = WaypointSymbol("FROM".to_string());
+        let to_wps = WaypointSymbol("TO".to_string());
+        let completed_purchase_ticket_1 =
+            treasurer.create_purchase_trade_goods_ticket(fleet_id, trade_good.clone(), from_wps.clone(), ship_symbol.clone(), 40, Credits(1_000.into()))?;
+
+        treasurer.complete_ticket(fleet_id, &completed_purchase_ticket_1, 1_000.into())?;
+
+        let purchase_ticket_2 =
+            treasurer.create_purchase_trade_goods_ticket(fleet_id, trade_good.clone(), from_wps.clone(), ship_symbol.clone(), 40, Credits(1_000.into()))?;
+
+        let _sell_ticket_1 = treasurer.create_sell_trade_goods_ticket(
+            fleet_id,
+            trade_good.clone(),
+            to_wps.clone(),
+            ship_symbol.clone(),
+            40,
+            Credits(2_000.into()),
+            Some(completed_purchase_ticket_1.ticket_id.clone()),
+        )?;
+
+        let _sell_ticket_2 = treasurer.create_sell_trade_goods_ticket(
+            fleet_id,
+            trade_good.clone(),
+            to_wps.clone(),
+            ship_symbol.clone(),
+            40,
+            Credits(2_000.into()),
+            Some(purchase_ticket_2.ticket_id.clone()),
+        )?;
+
+        let _unrelated_sell_ticket = treasurer.create_sell_trade_goods_ticket(
+            fleet_id,
+            trade_good.clone(),
+            to_wps.clone(),
+            ship_symbol.clone(),
+            20,
+            Credits(1_234.into()),
+            None,
+        )?;
+
+        //FIXME: use function on threadsafe treasurer after done designing the api
+        assert_eq!(
+            treasurer.get_active_trade_routes()?,
+            vec![ActiveTradeRoute {
+                from: from_wps,
+                to: to_wps,
+                trade_good: trade_good.clone(),
+                number_ongoing_trades: 2,
+            }]
         );
 
         Ok(())
