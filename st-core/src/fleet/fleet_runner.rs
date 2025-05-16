@@ -16,11 +16,10 @@ use crate::bmc_blackboard::BmcBlackboard;
 use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::budgeting::budgeting::TicketType;
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
 use st_domain::{
-    Fleet, FleetId, FleetPhase, FleetTask, OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TradeTicket, TransactionActionEvent,
+    Fleet, FleetId, FleetPhase, FleetTask, OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TransactionActionEvent,
     WaypointTraitSymbol, WaypointType,
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
@@ -68,11 +67,11 @@ impl FleetRunner {
 
         let blackboard: Arc<dyn BlackboardOps> = Arc::new(blackboard) as Arc<dyn BlackboardOps>;
 
-        let treasurer = fleet_admiral.lock().await.treasurer.clone();
+        let thread_safe_treasurer = fleet_admiral.lock().await.treasurer.clone();
 
         let args: BehaviorArgs = BehaviorArgs {
             blackboard: Arc::clone(&blackboard),
-            treasurer: Arc::clone(&treasurer),
+            treasurer: thread_safe_treasurer.clone(),
         };
 
         let ship_fibers: HashMap<ShipSymbol, JoinHandle<Result<()>>> = HashMap::new();
@@ -108,7 +107,7 @@ impl FleetRunner {
             args,
             fleet_admiral,
             bmc,
-            treasurer: Arc::clone(&treasurer),
+            treasurer: thread_safe_treasurer.clone(),
         };
 
         let fleet_runner_mutex = Arc::new(Mutex::new(fleet_runner));
@@ -347,21 +346,15 @@ impl FleetRunner {
             }
             ShipTask::MineMaterialsAtWaypoint { .. } => None,
             ShipTask::SurveyAsteroid { .. } => None,
-            ShipTask::Trade { ticket_id } => {
-                // println!("running trading behavior for ship, trying to get lock on treasurer");
-                let mut guard = args.treasurer.lock().await;
-                // println!("running trading behavior for ship, successfully got lock on treasurer");
-                let ticket = guard.get_ticket(ticket_id)?;
-                // println!("running trading behavior for ship, successfully got ticket");
-                guard.start_ticket_execution(ticket_id)?;
+            ShipTask::Trade { tickets } => {
                 // println!("running trading behavior for ship, successfully started ticket execution");
-                ship.set_trade_ticket(ticket.clone());
+                ship.set_trade_ticket(tickets.clone());
                 event!(
                     Level::INFO,
-                    message = "Ship is executing trade",
+                    message = "Ship is executing trades",
                     ship = ship.symbol.0.clone(),
-                    id = ticket.id.0.to_string(),
-                    r#type = ticket.ticket_type.to_string()
+                    ids = tickets.iter().map(|t| t.ticket_id.to_string()).join(", "),
+                    r#types = tickets.iter().map(|t| t.details.to_string()).join(", "),
                 );
                 //println!("ship_loop: Ship {:?} is running trading_behavior", ship.symbol);
                 Some((behaviors.trading_behavior, "trading_behavior"))
@@ -689,7 +682,11 @@ impl FleetRunner {
                 }
             },
             ShipStatusReport::TransactionCompleted(_, transaction_event, trade_ticket) => match &transaction_event {
-                TransactionActionEvent::PurchasedTradeGoods { ticket_details, response } => {
+                TransactionActionEvent::PurchasedTradeGoods {
+                    ticket_id,
+                    ticket_details,
+                    response,
+                } => {
                     event!(
                         Level::INFO,
                         message = "ShipStatusReport",
@@ -702,7 +699,11 @@ impl FleetRunner {
                         agent_credits
                     );
                 }
-                TransactionActionEvent::SoldTradeGoods { ticket_details, response } => {
+                TransactionActionEvent::SoldTradeGoods {
+                    ticket_id,
+                    ticket_details,
+                    response,
+                } => {
                     event!(
                         Level::INFO,
                         message = "ShipStatusReport",
@@ -715,21 +716,18 @@ impl FleetRunner {
                         agent_credits
                     );
                 }
-                TransactionActionEvent::SuppliedConstructionSite { .. } => {
-                    event!(
-                        Level::INFO,
-                        message = "ShipStatusReport",
-                        report_type = "TransactionActionEvent::SuppliedConstructionSite"
-                    );
-                }
-                TransactionActionEvent::PurchasedShip { ticket_details, response } => {
+                TransactionActionEvent::PurchasedShip {
+                    ticket_id,
+                    ticket_details,
+                    response,
+                } => {
                     event!(
                         Level::INFO,
                         message = "ShipStatusReport",
                         report_type = "TransactionActionEvent::ShipPurchased",
                         new_ship = response.data.ship.symbol.0,
                         new_ship_type = response.data.ship.frame.symbol.to_string(),
-                        assigned_fleet_id = ticket_details.beneficiary_fleet.0,
+                        assigned_fleet_id = ticket_details.assigned_fleet_id.0,
                         agent_credits
                     );
 
@@ -744,9 +742,9 @@ impl FleetRunner {
 
                     admiral_guard
                         .ship_fleet_assignment
-                        .insert(new_ship.symbol.clone(), ticket_details.beneficiary_fleet.clone());
+                        .insert(new_ship.symbol.clone(), ticket_details.assigned_fleet_id.clone());
 
-                    FleetAdmiral::adjust_fleet_budget_after_ship_purchase(&admiral_guard, &new_ship, &ticket_details.beneficiary_fleet).await?;
+                    FleetAdmiral::adjust_fleet_budget_after_ship_purchase(&admiral_guard, &new_ship, &ticket_details.assigned_fleet_id).await?;
 
                     let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &new_ship.nav.system_symbol).await?;
                     let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
@@ -1220,7 +1218,7 @@ mod tests {
                         .iter()
                         .any(|t| matches!(t.task, FleetTask::InitialExploration { .. }));
 
-                    let fleet_budgets = admiral.treasurer.lock().await.get_fleet_budgets();
+                    let fleet_budgets = admiral.treasurer.get_fleet_budgets().unwrap();
                     let has_all_fleets_registered_in_treasurer = admiral
                         .fleets
                         .keys()

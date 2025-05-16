@@ -1,11 +1,10 @@
 use crate::st_client::StClientTrait;
 use anyhow::*;
 use chrono::{DateTime, Utc};
-use st_domain::budgeting::budgeting::TransactionTicket;
+use st_domain::budgeting::treasury_redesign::FinanceTicket;
 use st_domain::{
-    CreateChartBody, DeliverConstructionMaterialTicketDetails, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseGoodTicketDetails,
-    PurchaseShipResponse, PurchaseShipTicketDetails, PurchaseTradeGoodResponse, RefuelShipResponse, SellGoodTicketDetails, SellTradeGoodResponse, Ship,
-    ShipType, Shipyard, SupplyConstructionSiteResponse, TradeGoodSymbol, TradeTicket, TransactionTicketId, TravelAction, WaypointSymbol,
+    CreateChartBody, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse,
+    SellTradeGoodResponse, Ship, ShipType, Shipyard, SupplyConstructionSiteResponse, TradeGoodSymbol, TravelAction, WaypointSymbol,
 };
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
@@ -20,7 +19,7 @@ pub struct ShipOperations {
     pub explore_location_queue: VecDeque<WaypointSymbol>,
     pub permanent_observation_location: Option<WaypointSymbol>,
     pub maybe_next_observation_time: Option<DateTime<Utc>>,
-    pub maybe_trade: Option<TransactionTicket>,
+    pub maybe_trades: Option<Vec<FinanceTicket>>,
 }
 
 impl PartialEq for ShipOperations {
@@ -47,7 +46,7 @@ maybe_trade: {:?},
             &self.explore_location_queue,
             &self.permanent_observation_location,
             &self.maybe_next_observation_time,
-            &self.maybe_trade,
+            &self.maybe_trades,
         )
         .trim()
         .to_string()
@@ -55,14 +54,6 @@ maybe_trade: {:?},
 
     pub(crate) fn current_location(&self) -> WaypointSymbol {
         self.ship.nav.waypoint_symbol.clone()
-    }
-
-    pub(crate) fn remove_trade_ticket_if_complete(&mut self) {
-        if let Some(trade) = self.maybe_trade.clone() {
-            if trade.completed_at.is_some() {
-                self.maybe_trade = None;
-            }
-        }
     }
 
     pub(crate) fn current_travel_action(&self) -> Option<&TravelAction> {
@@ -94,7 +85,7 @@ maybe_trade: {:?},
             explore_location_queue: VecDeque::new(),
             permanent_observation_location: None,
             maybe_next_observation_time: None,
-            maybe_trade: None,
+            maybe_trades: None,
         }
     }
 
@@ -123,8 +114,8 @@ maybe_trade: {:?},
         self.permanent_observation_location = Some(waypoint_symbol);
     }
 
-    pub fn set_trade_ticket(&mut self, trade_ticket: TransactionTicket) {
-        self.maybe_trade = Some(trade_ticket);
+    pub fn set_trade_ticket(&mut self, trade_tickets: Vec<FinanceTicket>) {
+        self.maybe_trades = Some(trade_tickets);
     }
 
     pub async fn dock(&mut self) -> Result<Nav> {
@@ -221,15 +212,15 @@ maybe_trade: {:?},
         Ok(response)
     }
 
-    pub async fn supply_construction_site(&mut self, ticket: &DeliverConstructionMaterialTicketDetails) -> Result<SupplyConstructionSiteResponse> {
+    pub async fn supply_construction_site(
+        &mut self,
+        quantity: u32,
+        trade_good: &TradeGoodSymbol,
+        construction_site_waypoint_symbol: &WaypointSymbol,
+    ) -> Result<SupplyConstructionSiteResponse> {
         let response = self
             .client
-            .supply_construction_site(
-                self.symbol.clone(),
-                ticket.quantity,
-                ticket.trade_good.clone(),
-                ticket.construction_site_waypoint_symbol.clone(),
-            )
+            .supply_construction_site(self.symbol.clone(), quantity, trade_good.clone(), construction_site_waypoint_symbol.clone())
             .await?;
         self.cargo = response.data.cargo.clone();
         //println!("{:?}", response);

@@ -1,3 +1,4 @@
+use crate::budgeting::treasury_redesign::ActiveTradeRoute;
 use crate::{
     EvaluatedTradingOpportunity, LabelledCoordinate, MarketEntry, MarketTradeGood, Ship, ShipSymbol, TradeGoodSymbol, TradeGoodType, TradingOpportunity,
     Waypoint, WaypointSymbol,
@@ -175,7 +176,7 @@ pub fn evaluate_trading_opportunities(
 // This is computationally expensive for many ships/routes but will find the optimal solution
 pub fn find_optimal_trading_routes_exhaustive(
     options: &[EvaluatedTradingOpportunity],
-    active_trades: &HashSet<(WaypointSymbol, WaypointSymbol, TradeGoodSymbol)>,
+    active_trade_routes: &HashSet<ActiveTradeRoute>,
 ) -> Vec<EvaluatedTradingOpportunity> {
     // Create a unique identifier for each trading route
     let route_key_fn = |option: &EvaluatedTradingOpportunity| -> (WaypointSymbol, WaypointSymbol, TradeGoodSymbol) {
@@ -212,7 +213,10 @@ pub fn find_optimal_trading_routes_exhaustive(
     for ship_perm in ships.iter().permutations(num_ships) {
         // Try to assign each ship to its best available route
         let mut current_assignments: Vec<EvaluatedTradingOpportunity> = Vec::new();
-        let mut assigned_routes: HashSet<(WaypointSymbol, WaypointSymbol, TradeGoodSymbol)> = active_trades.clone();
+        let mut assigned_routes: HashSet<(WaypointSymbol, WaypointSymbol, TradeGoodSymbol)> = active_trade_routes
+            .iter()
+            .map(|r| (r.from.clone(), r.to.clone(), r.trade_good.clone()))
+            .collect();
         let mut valid_assignment = true;
 
         for ship in ship_perm {

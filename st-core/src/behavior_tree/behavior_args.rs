@@ -5,13 +5,11 @@ use chrono::Local;
 use itertools::Itertools;
 use sqlx::{Pool, Postgres};
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::budgeting::budgeting::{
-    PurchaseShipTransactionGoal, PurchaseTradeGoodsTransactionGoal, SellTradeGoodsTransactionGoal, TransactionEvent, TransactionTicket,
-};
-use st_domain::budgeting::treasurer::{InMemoryTreasurer, Treasurer};
+
+use st_domain::budgeting::treasury_redesign::{FinanceTicket, ThreadSafeTreasurer};
 use st_domain::{
-    JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard, TicketId, TradeTicket,
-    TravelAction, Waypoint, WaypointSymbol,
+    JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard, TicketId, TravelAction,
+    Waypoint, WaypointSymbol,
 };
 use st_store::bmc::{Bmc, DbBmc};
 use st_store::{
@@ -19,84 +17,33 @@ use st_store::{
     DbModelManager,
 };
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct BehaviorArgs {
     pub blackboard: Arc<dyn BlackboardOps>,
-    pub treasurer: Arc<Mutex<InMemoryTreasurer>>,
+    pub treasurer: ThreadSafeTreasurer,
 }
 
 impl BehaviorArgs {
-    pub(crate) async fn mark_purchase_as_completed(
-        &self,
-        ticket_id: TicketId,
-        goal: &PurchaseTradeGoodsTransactionGoal,
-        response: &PurchaseTradeGoodResponse,
-    ) -> Result<TransactionTicket> {
-        let mut guard = self.treasurer.lock().await;
+    pub(crate) fn mark_purchase_as_completed(&self, ticket: FinanceTicket, response: &PurchaseTradeGoodResponse) -> Result<()> {
+        self.treasurer
+            .complete_ticket(&ticket.fleet_id, &ticket, response.data.transaction.price_per_unit.into())?;
 
-        guard.record_event(
-            ticket_id,
-            TransactionEvent::GoodsPurchased {
-                timestamp: Default::default(),
-                waypoint: goal.source_waypoint.clone(),
-                good: goal.good.clone(),
-                quantity: goal.target_quantity,
-                price_per_unit: response.data.transaction.price_per_unit.into(),
-                total_cost: response.data.transaction.total_price.into(),
-            },
-        )?;
-
-        Ok(guard.get_ticket(ticket_id)?)
+        Ok(())
     }
 
-    pub(crate) async fn mark_sell_as_completed(
-        &self,
-        ticket_id: TicketId,
-        goal: &SellTradeGoodsTransactionGoal,
-        response: &SellTradeGoodResponse,
-    ) -> Result<TransactionTicket> {
-        let mut guard = self.treasurer.lock().await;
+    pub(crate) fn mark_sell_as_completed(&self, ticket: FinanceTicket, response: &SellTradeGoodResponse) -> Result<()> {
+        self.treasurer
+            .complete_ticket(&ticket.fleet_id, &ticket, response.data.transaction.price_per_unit.into())?;
 
-        guard.record_event(
-            ticket_id,
-            TransactionEvent::GoodsSold {
-                timestamp: Default::default(),
-                waypoint: goal.destination_waypoint.clone(),
-                good: goal.good.clone(),
-                quantity: goal.target_quantity,
-                price_per_unit: response.data.transaction.price_per_unit.into(),
-                total_revenue: response.data.transaction.total_price.into(),
-            },
-        )?;
-
-        Ok(guard.get_ticket(ticket_id)?)
+        Ok(())
     }
 
-    pub(crate) async fn mark_ship_purchase_as_completed(
-        &self,
-        ticket_id: TicketId,
-        goal: &PurchaseShipTransactionGoal,
-        response: &PurchaseShipResponse,
-    ) -> Result<TransactionTicket> {
-        let mut guard = self.treasurer.lock().await;
+    pub(crate) fn mark_ship_purchase_as_completed(&self, ticket: FinanceTicket, response: &PurchaseShipResponse) -> Result<()> {
+        self.treasurer
+            .complete_ticket(&ticket.fleet_id, &ticket, (response.data.transaction.price as i64).into())?;
 
-        guard.record_event(
-            ticket_id,
-            TransactionEvent::ShipPurchased {
-                timestamp: Default::default(),
-                waypoint: goal.shipyard_waypoint.clone(),
-                ship_type: goal.ship_type.clone(),
-                ship_id: response.data.ship.symbol.clone(),
-                total_cost: (response.data.transaction.price as i64).into(),
-                beneficiary_fleet: goal.beneficiary_fleet.clone(),
-            },
-        )?;
-
-        let ticket = guard.get_ticket(ticket_id)?;
-
-        Ok(ticket)
+        Ok(())
     }
 }
 
@@ -206,13 +153,6 @@ impl BlackboardOps for DbBlackboard {
             .expect("waypoint");
 
         Ok(waypoint)
-    }
-
-    async fn get_ticket_by_id(&self, ticket_id: TicketId) -> Result<TransactionTicket> {
-        self.bmc
-            .trade_bmc()
-            .get_ticket_by_id(&Ctx::Anonymous, ticket_id)
-            .await
     }
 
     async fn get_available_agent_credits(&self) -> anyhow::Result<i64> {

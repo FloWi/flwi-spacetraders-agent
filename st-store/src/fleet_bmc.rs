@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use mockall::automock;
 use sqlx::types::Json;
-use st_domain::{Fleet, FleetConfig, FleetId, FleetTask, FleetTaskCompletion, FleetsOverview, ShipSymbol, ShipTask, TradeTicket};
+use st_domain::{Fleet, FleetConfig, FleetId, FleetTask, FleetTaskCompletion, FleetsOverview, ShipSymbol, ShipTask};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;

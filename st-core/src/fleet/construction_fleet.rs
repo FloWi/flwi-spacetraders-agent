@@ -1,16 +1,13 @@
 use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
-use st_domain::budgeting::budgeting::{FleetBudget, PurchaseTradeGoodsTransactionGoal, SellTradeGoodsTransactionGoal, TransactionGoal, TransactionTicket};
 use st_domain::budgeting::credits::Credits;
+use st_domain::budgeting::treasury_redesign::{ActiveTradeRoute, FleetBudget};
 use st_domain::{
-    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, LabelledCoordinate, MarketEntry, MarketTradeGood,
-    PurchaseGoodTicketDetails, PurchaseShipTicketDetails, SellGoodTicketDetails, Ship, ShipPriceInfo, ShipSymbol, ShipTask, TicketId, TradeGoodSymbol,
-    TradeTicket, TransactionTicketId, Waypoint, WaypointSymbol,
+    trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, MarketEntry, MarketTradeGood, Ship, ShipPriceInfo,
+    ShipSymbol, Waypoint, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet};
-use std::ops::Not;
-use uuid::Uuid;
 
 pub struct ConstructJumpGateFleet;
 
@@ -24,7 +21,7 @@ impl ConstructJumpGateFleet {
         ship_prices: &ShipPriceInfo,
         waypoints: &Vec<Waypoint>,
         unassigned_ships_of_fleet: &[&Ship],
-        active_trades_of_fleet: &Vec<TransactionTicket>,
+        active_trade_routes: &HashSet<ActiveTradeRoute>,
         fleet_budget: &FleetBudget,
     ) -> Result<Vec<PotentialTradingTask>> {
         let fleet_ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
@@ -49,34 +46,13 @@ impl ConstructJumpGateFleet {
             unassigned_ships_of_fleet,
             &waypoint_map,
             &trading_opportunities,
-            fleet_budget.available_capital.0,
+            fleet_budget.available_capital().0,
         );
-
-        let active_trade_routes: HashSet<(WaypointSymbol, WaypointSymbol, TradeGoodSymbol)> = active_trades_of_fleet
-            .iter()
-            .filter_map(|t| {
-                let maybe_purchase = t.goals.iter().find_map(|goal| match goal {
-                    TransactionGoal::PurchaseTradeGoods(p) => Some((p.good.clone(), p.source_waypoint.clone())),
-                    TransactionGoal::SellTradeGoods(_) => None,
-                    TransactionGoal::PurchaseShip(_) => None,
-                });
-
-                let maybe_sell_wp = t.goals.iter().find_map(|goal| match goal {
-                    TransactionGoal::PurchaseTradeGoods(_) => None,
-                    TransactionGoal::SellTradeGoods(s) => Some(s.destination_waypoint.clone()),
-                    TransactionGoal::PurchaseShip(_) => None,
-                });
-
-                maybe_purchase
-                    .zip(maybe_sell_wp)
-                    .map(|((good, purchase_wp), sell_wp)| (purchase_wp, sell_wp, good))
-            })
-            .collect::<HashSet<_>>();
 
         // FIXME: only allow one trade per route
 
         let best_new_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
-            trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trade_routes);
+            trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, active_trade_routes);
 
         let new_tasks = create_trading_tickets(&best_new_trading_opportunities);
 
@@ -112,32 +88,5 @@ impl PotentialTradingTask {
         let opp = &ev.trading_opportunity;
         let total_purchase_price = (opp.purchase_market_trade_good_entry.purchase_price * ev.units as i32) as i64;
         total_purchase_price.into()
-    }
-
-    pub(crate) fn to_trading_goals(&self) -> Vec<TransactionGoal> {
-        let ev = &self.evaluation_result;
-        let opp = &ev.trading_opportunity;
-        let trade_good = opp.purchase_market_trade_good_entry.symbol.clone();
-        vec![
-            TransactionGoal::PurchaseTradeGoods(PurchaseTradeGoodsTransactionGoal {
-                id: TransactionTicketId::new(),
-                good: trade_good.clone(),
-                target_quantity: ev.units,
-                available_quantity: Some(ev.units),
-                acquired_quantity: 0,
-                estimated_price_per_unit: Credits(opp.purchase_market_trade_good_entry.purchase_price as i64),
-                max_acceptable_price_per_unit: Some(Credits(opp.purchase_market_trade_good_entry.purchase_price as i64)),
-                source_waypoint: opp.purchase_waypoint_symbol.clone(),
-            }),
-            TransactionGoal::SellTradeGoods(SellTradeGoodsTransactionGoal {
-                id: TransactionTicketId::new(),
-                good: trade_good,
-                target_quantity: ev.units,
-                sold_quantity: 0,
-                estimated_price_per_unit: Credits(opp.sell_market_trade_good_entry.sell_price as i64),
-                min_acceptable_price_per_unit: None,
-                destination_waypoint: opp.sell_waypoint_symbol.clone(),
-            }),
-        ]
     }
 }

@@ -17,7 +17,9 @@ use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::budgeting::credits::Credits;
-use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails, FleetBudget, ThreadSafeTreasurer};
+use st_domain::budgeting::treasury_redesign::{
+    ActiveTradeRoute, FinanceResult, FinanceTicket, FinanceTicketDetails, FleetBudget, LedgerEntry, ThreadSafeTreasurer,
+};
 use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{ConstructJumpGate, InitialExploration, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably};
 use st_domain::ShipRegistrationRole::{Command, Explorer, Interceptor, Refinery, Satellite, Surveyor};
@@ -25,9 +27,9 @@ use st_domain::TradeGoodSymbol::{MOUNT_GAS_SIPHON_I, MOUNT_MINING_LASER_I, MOUNT
 use st_domain::{
     get_exploration_tasks_for_waypoint, trading, Agent, ConstructJumpGateFleetConfig, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId,
     FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MarketTradeGood,
-    MiningFleetConfig, OperationExpenseEvent, PurchaseShipTicketDetails, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask,
-    ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradeTicket,
-    TradingFleetConfig, TransactionActionEvent, Waypoint, WaypointSymbol,
+    MiningFleetConfig, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
+    StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradingFleetConfig, TransactionActionEvent, Waypoint,
+    WaypointSymbol,
 };
 use st_store::bmc::Bmc;
 use st_store::{load_fleet_overview, upsert_fleets_data, Ctx};
@@ -106,7 +108,7 @@ impl FleetAdmiral {
             }
         };
 
-        if new_total_capital > budget.total_capital || new_operating_reserve > budget.operating_reserve {
+        if new_total_capital > budget.budget || new_operating_reserve > budget.operating_reserve {
             event!(
                 Level::INFO,
                 message = "Increasing fleet budget after ship purchase and trying to top up available capital",
@@ -114,7 +116,7 @@ impl FleetAdmiral {
                 new_ship_type = new_ship.frame.symbol.to_string(),
                 fleet_id = fleet_id.0,
                 fleet = fleet.cfg.to_string(),
-                old_total_capital = budget.total_capital.0,
+                old_total_capital = budget.budget.0,
                 new_total_capital = new_total_capital.0
             );
             admiral
@@ -223,7 +225,7 @@ impl FleetAdmiral {
                 fleet_id.0.to_string().as_str(),
                 fleet.cfg.to_string().as_str(),
                 format_number(budget.current_capital.0 as f64).as_str(),
-                format_number(budget.total_capital.0 as f64).as_str(),
+                format_number(budget.budget.0 as f64).as_str(),
                 format_number(budget.operating_reserve.0 as f64).as_str(),
             ]);
         }
@@ -257,7 +259,7 @@ impl FleetAdmiral {
 
         for (_, ticket) in self.get_treasurer_tickets().await.iter() {
             tickets_table.add_row(vec![
-                // ticket.id.0.to_string().as_str(),
+                ticket.ticket_id.0.to_string().as_str(),
                 // ticket.status.to_string().as_str(),
                 // ticket.initiating_fleet.0.to_string().as_str(),
                 // ticket.executing_fleet.0.to_string().as_str(),
@@ -320,7 +322,7 @@ impl FleetAdmiral {
     }
 
     pub(crate) async fn get_treasurer_tickets(&self) -> HashMap<TicketId, FinanceTicket> {
-        self.treasurer.get_tickets().clone().unwrap_or_default()
+        self.treasurer.get_tickets().unwrap_or_default()
     }
 
     pub fn get_next_ship_purchase(&self) -> Option<(ShipType, FleetTask)> {
@@ -395,45 +397,7 @@ impl FleetAdmiral {
                 }
             }
             ShipStatusReport::Expense(ship, operation_expense_event) => {
-                let fleet_id = self.ship_fleet_assignment.get(&ship.symbol).unwrap();
-
-                self.report_expense_transaction_to_treasurer(fleet_id, operation_expense_event)
-                    .await;
-
-                let agent_credits_from_response = match operation_expense_event {
-                    OperationExpenseEvent::RefueledShip { response } => response.data.agent.credits,
-                };
-                let total_price = match operation_expense_event {
-                    OperationExpenseEvent::RefueledShip { response } => response.data.transaction.total_price,
-                };
-                let internal_agent_credits = self.agent_info_credits().await.0;
-
-                if agent_credits_from_response != internal_agent_credits {
-                    if messages_in_queue == 0 {
-                        warn!(
-                            message = "Agent Credits differ from our expectation and no other message in queue",
-                            operation_expense_event = operation_expense_event.to_string(),
-                            agent_credits_from_response,
-                            internal_agent_credits
-                        );
-                    } else {
-                        debug!(
-                            message = "Agent Credits differ from our expectation, but  there are no other message in queue",
-                            operation_expense_event = operation_expense_event.to_string(),
-                            agent_credits_from_response,
-                            internal_agent_credits,
-                            messages_in_queue,
-                        );
-                    };
-                }
-
-                event!(
-                    Level::INFO,
-                    "Refueled ship. Total Price: {}; New Agent Credits: {}",
-                    &total_price,
-                    internal_agent_credits,
-                );
-
+                //FIXME: implement expense report to treasurer
                 Ok(())
             }
 
@@ -685,15 +649,15 @@ impl FleetAdmiral {
         ship_prices: ShipPriceInfo,
         waypoints: Vec<Waypoint>,
         active_tickets: &[FinanceTicket],
-        fleet_trades: &HashMap<FleetId, Vec<FinanceTicket>>,
         fleet_budgets: &HashMap<FleetId, FleetBudget>,
+        active_trade_routes: &HashSet<ActiveTradeRoute>,
     ) -> Result<Vec<(ShipSymbol, ShipTask)>> {
         let mut new_ship_tasks: HashMap<ShipSymbol, ShipTask> = HashMap::new();
 
         let active_ship_purchase_ticket_by_ship: HashMap<ShipSymbol, TicketId> = active_tickets
             .iter()
             .filter_map(|t| match t.details {
-                FinanceTicketDetails::PurchaseShip(_) => Some(t.ticket_id.clone()),
+                FinanceTicketDetails::PurchaseShip(_) => Some((t.ship_symbol.clone(), t.ticket_id.clone())),
                 FinanceTicketDetails::PurchaseTradeGoods(_) => None,
                 FinanceTicketDetails::SellTradeGoods(_) => None,
                 FinanceTicketDetails::RefuelShip(_) => None,
@@ -703,7 +667,6 @@ impl FleetAdmiral {
         for (fleet_id, fleet) in admiral.fleets.clone().iter() {
             let ships_of_fleet: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
 
-            let trades_of_fleet = fleet_trades.get(&fleet_id).cloned().unwrap_or_default();
             let fleet_budget = fleet_budgets.get(&fleet_id).cloned().expect("fleet budget");
 
             // assign ship tasks for ship purchases if necessary
@@ -713,11 +676,14 @@ impl FleetAdmiral {
 
                 if ship_has_no_active_task {
                     // we have a ship purchase ticket with this ship assigned
-                    if let Some(ship_purchase_ticket_id) = active_ship_purchase_ticket_by_ship.get(&ship.symbol) {
+                    if let Some(ship_purchase_ticket) = active_ship_purchase_ticket_by_ship
+                        .get(&ship.symbol)
+                        .and_then(|ticket_id| admiral.treasurer.get_ticket(ticket_id).ok())
+                    {
                         new_ship_tasks.insert(
                             ship.symbol.clone(),
                             ShipTask::Trade {
-                                ticket_id: ship_purchase_ticket_id.clone(),
+                                tickets: vec![ship_purchase_ticket.clone()],
                             },
                         );
                     }
@@ -757,34 +723,64 @@ impl FleetAdmiral {
                         &ship_prices,
                         &waypoints,
                         &unassigned_ships_of_fleet,
-                        &trades_of_fleet,
+                        active_trade_routes,
                         &fleet_budget,
                     )?;
 
-                    for (potential_trading_task) in potential_trading_tasks {
-                        let ticket_id = treasurer.create_ticket(
-                            TicketType::Trading,
+                    for potential_trading_task in potential_trading_tasks {
+                        let purchase_ticket = admiral.treasurer.create_purchase_trade_goods_ticket(
+                            &fleet_id,
+                            potential_trading_task
+                                .evaluation_result
+                                .trading_opportunity
+                                .purchase_market_trade_good_entry
+                                .symbol
+                                .clone(),
+                            potential_trading_task
+                                .evaluation_result
+                                .trading_opportunity
+                                .purchase_waypoint_symbol
+                                .clone(),
                             potential_trading_task.ship_symbol.clone(),
-                            &fleet_id,
-                            &fleet_id,
-                            &fleet_id,
-                            potential_trading_task.to_trading_goals(),
-                            Utc::now(),
-                            1.0,
+                            potential_trading_task.evaluation_result.units,
+                            potential_trading_task
+                                .evaluation_result
+                                .trading_opportunity
+                                .purchase_market_trade_good_entry
+                                .purchase_price
+                                .into(),
                         )?;
 
-                        if let Err(e) = treasurer.fund_ticket(
-                            ticket_id.clone(),
-                            FundingSource {
-                                source_fleet: fleet_id.clone(),
-                                amount: potential_trading_task.total_purchase_price(),
-                            },
-                        ) {
-                            eprintln!("Unable to fund new trading ticket. Reason: {e:?}")
-                            // FIXME - remove ticket
-                        }
+                        let sell_ticket = admiral.treasurer.create_sell_trade_goods_ticket(
+                            &fleet_id,
+                            potential_trading_task
+                                .evaluation_result
+                                .trading_opportunity
+                                .sell_market_trade_good_entry
+                                .symbol
+                                .clone(),
+                            potential_trading_task
+                                .evaluation_result
+                                .trading_opportunity
+                                .sell_waypoint_symbol
+                                .clone(),
+                            potential_trading_task.ship_symbol.clone(),
+                            potential_trading_task.evaluation_result.units,
+                            potential_trading_task
+                                .evaluation_result
+                                .trading_opportunity
+                                .sell_market_trade_good_entry
+                                .sell_price
+                                .into(),
+                            Some(purchase_ticket.ticket_id),
+                        )?;
 
-                        new_ship_tasks.insert(potential_trading_task.ship_symbol.clone(), ShipTask::Trade { ticket_id });
+                        new_ship_tasks.insert(
+                            potential_trading_task.ship_symbol.clone(),
+                            ShipTask::Trade {
+                                tickets: vec![purchase_ticket, sell_ticket],
+                            },
+                        );
                     }
                 }
                 TradingCfg(cfg) => (),
@@ -824,20 +820,24 @@ impl FleetAdmiral {
         let fleet_budgets = admiral.get_fleet_budgets().await;
 
         let new_tasks = {
-            let mut treasurer_guard = admiral.treasurer.lock().await;
-
-            let ship_purchase_tickets = treasurer_guard.get_ship_purchase_tickets();
-
+            let active_tickets = admiral
+                .treasurer
+                .get_tickets()?
+                .values()
+                .cloned()
+                .into_iter()
+                .collect_vec();
+            let fleet_budgets = admiral.treasurer.get_fleet_budgets()?;
+            let active_trade_routes = admiral.treasurer.get_active_trade_routes()?;
             Self::pure_compute_ship_tasks(
                 admiral,
                 facts,
                 latest_market_data,
                 ship_prices,
                 waypoints,
-                &ship_purchase_tickets,
-                &fleet_trades,
+                &active_tickets,
                 &fleet_budgets,
-                &mut treasurer_guard,
+                &HashSet::from_iter(active_trade_routes.iter().cloned()),
             )?
         };
 
@@ -953,7 +953,7 @@ impl FleetAdmiral {
     }
 
     async fn create_ship_purchase_ticket(&mut self, ship_prices: &ShipPriceInfo) -> Result<()> {
-        let mut treasurer = self.treasurer.lock().await;
+        let treasurer = self.treasurer.clone();
 
         let (ship_type, fleet_task) = self
             .ship_purchase_demand
@@ -961,99 +961,109 @@ impl FleetAdmiral {
             .ok_or(anyhow!("No ship purchase demands available"))?;
 
         let maybe_existing_ship_purchase_ticket = treasurer
-            .get_ship_purchase_tickets()
-            .iter()
-            .find_map(|t| match t.ticket_type {
-                TicketType::ShipPurchase => t.get_incomplete_goals().iter().find_map(|g| match g {
-                    TransactionGoal::PurchaseShip(p) => (p.ship_type == ship_type).then_some(t.clone()),
-                    _ => None,
-                }),
+            .get_tickets()?
+            .values()
+            .find_map(|t| match &t.details {
+                FinanceTicketDetails::PurchaseShip(p) => (p.ship_type == ship_type).then_some(t.clone()),
                 _ => None,
             });
 
-        if let Some(ticket) = maybe_existing_ship_purchase_ticket {
-            // put ticket back - we are already purchasing a ticket (might not have completed funding yet)
+        if let Some(_) = maybe_existing_ship_purchase_ticket {
+            // put ticket back - we are already purchasing a ship
             self.ship_purchase_demand
                 .push_front((ship_type.clone(), fleet_task));
 
-            if ticket.status == TicketStatus::Funded {
-                event!(
-                    Level::INFO,
-                    message = "There's already a funded ship purchase for this ship_type. No Op",
-                    ship_type = ship_type.to_string(),
-                );
-            } else {
-                let funding_source = FundingSource {
-                    source_fleet: ticket.initiating_fleet.clone(),
-                    amount: ticket.financials.required_capital - ticket.financials.allocated_capital,
-                };
-                treasurer.try_fund_fleet_and_ticket(funding_source.clone(), ticket.id.clone())?;
-            }
+            event!(
+                Level::INFO,
+                message = "There's already an ongoing ship purchase for this ship_type. No Op",
+                ship_type = ship_type.to_string(),
+            );
 
+            //Early return - no op
             return Ok(());
         }
-
-        let purchasing_ship = self
-            .get_ship_purchaser(&ship_type, &fleet_task, ship_prices)
-            .ok_or(anyhow!("No suitable purchasing ship found for {ship_type}"))?;
-
-        let beneficiary_fleet = self
-            .get_fleet_executing_fleet_task(&fleet_task)
-            .ok_or(anyhow!("No fleet found executing task {fleet_task:?}"))?;
-
-        let initiating_fleet = beneficiary_fleet.clone();
-
-        let executing_fleet = self
-            .get_fleet_of_ship(&purchasing_ship)
-            .map(|f| f.id.clone())
-            .ok_or(anyhow!("Ship {} not assigned to any fleet", purchasing_ship))?;
 
         let (_, (shipyard_wps, price)) = ship_prices
             .get_best_purchase_location(&ship_type)
             .ok_or(anyhow!("No shipyard found selling {ship_type}"))?;
 
         let ship_price = ((price as f64 * 1.02) as i64).into();
-        let funding_source = FundingSource {
-            source_fleet: beneficiary_fleet.clone(),
-            amount: ship_price,
+
+        let beneficiary_fleet = self
+            .get_fleet_executing_fleet_task(&fleet_task)
+            .ok_or(anyhow!("No fleet found executing task {fleet_task:?}"))?;
+
+        if treasurer
+            .get_fleet_budget(&beneficiary_fleet)?
+            .available_capital()
+            < ship_price
+        {
+            let finance_result: FinanceResult = treasurer.try_finance_purchase_for_fleet(&beneficiary_fleet, ship_price)?;
+
+            match finance_result {
+                FinanceResult::FleetAlreadyHadSufficientFunds => {
+                    event!(
+                        Level::INFO,
+                        message = "No need to transfer funds to fleet to finance purchase of ship. Already enough funds available"
+                    );
+                    Ok(())
+                }
+                FinanceResult::TransferSuccessful { transfer_sum } => {
+                    event!(
+                        Level::INFO,
+                        message = "Transferred funds to fleet to finance purchase of ship",
+                        transfer_sum = transfer_sum.to_string()
+                    );
+                    Ok(())
+                }
+                FinanceResult::TransferFailed { missing } => {
+                    let message = format!("Fleet has insufficient funds and we're unable to finance ship purchase. Missing: {}", missing);
+                    event!(Level::DEBUG, message);
+                    Err(anyhow!(message))
+                }
+            }
+        } else {
+            Ok(())
+        }?;
+
+        let purchasing_ship = self
+            .get_ship_purchaser(&ship_type, &fleet_task, ship_prices)
+            .ok_or(anyhow!("No suitable purchasing ship found for {ship_type}"))?;
+
+        let executing_fleet = self
+            .get_fleet_of_ship(&purchasing_ship)
+            .map(|f| f.id.clone())
+            .ok_or(anyhow!("Ship {} not assigned to any fleet", purchasing_ship))?;
+
+        let create_ticket_result: Result<FinanceTicket> = {
+            let ticket: FinanceTicket =
+                treasurer.create_ship_purchase_ticket(&beneficiary_fleet, ship_type, ship_price, shipyard_wps.clone(), purchasing_ship.clone())?;
+
+            Ok(ticket)
         };
 
-        let funding_result: Result<TicketId, FinanceError> = {
-            let ticket_id: TicketId = treasurer.create_ship_purchase_ticket(
-                &ship_type,
-                &purchasing_ship,
-                &initiating_fleet,
-                &beneficiary_fleet,
-                &executing_fleet,
-                ship_price,
-                &shipyard_wps,
-            )?;
-
-            treasurer.try_fund_fleet_and_ticket(funding_source.clone(), ticket_id.clone())?;
-            Ok(ticket_id)
-        };
-
-        match funding_result {
-            Ok(ticket_id) => {
+        match create_ticket_result {
+            Ok(ticket) => {
                 event!(
                     Level::INFO,
-                    message = "Funded ship purchase",
+                    message = "Created ship purchase ticket",
                     ship_type = ship_type.to_string(),
                     purchasing_ship = purchasing_ship.0,
                     beneficiary_fleet = beneficiary_fleet.0,
                     executing_fleet = executing_fleet.0,
                     shipyard_wps = shipyard_wps.0,
                     price = ship_price.0,
-                    ticket_id = ticket_id.0.to_string(),
+                    ticket_id = ticket.ticket_id.to_string(),
                 );
                 Ok(())
             }
+
             Err(err) => {
                 self.ship_purchase_demand
                     .push_front((ship_type, fleet_task));
                 event!(
                     Level::INFO,
-                    message = "Unable to fund ship purchase - removing ticket again.",
+                    message = "Unable to create ship purchase ticket - this can be switched to DEBUG once everything's working",
                     error = err.to_string(),
                     ship_type = ship_type.to_string(),
                     purchasing_ship = purchasing_ship.0,
@@ -1819,13 +1829,4 @@ pub fn get_all_next_ship_purchases(ship_map: &HashMap<ShipSymbol, Ship>, fleet_p
     }
 
     purchases
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Display)]
-pub enum ShipTaskRequirement {
-    TradeTicket {
-        trade_ticket: TradeTicket,
-        first_purchase_location: WaypointSymbol,
-    },
-    None,
 }

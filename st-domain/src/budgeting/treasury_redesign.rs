@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub struct FinanceTicket {
     pub ticket_id: TicketId,
     pub fleet_id: FleetId,
@@ -14,7 +14,7 @@ pub struct FinanceTicket {
     pub allocated_credits: Credits,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub struct PurchaseTradeGoodsTicketDetails {
     pub waypoint_symbol: WaypointSymbol,
     pub trade_good: TradeGoodSymbol,
@@ -23,7 +23,7 @@ pub struct PurchaseTradeGoodsTicketDetails {
     pub expected_total_purchase_price: Credits,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub struct SellTradeGoodsTicketDetails {
     pub waypoint_symbol: WaypointSymbol,
     pub trade_good: TradeGoodSymbol,
@@ -33,14 +33,15 @@ pub struct SellTradeGoodsTicketDetails {
     pub maybe_matching_purchase_ticket: Option<TicketId>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub struct PurchaseShipTicketDetails {
     pub ship_type: ShipType,
+    pub assigned_fleet_id: FleetId,
     pub expected_purchase_price: Credits,
     pub waypoint_symbol: WaypointSymbol,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub struct RefuelShipTicketDetails {
     pub expected_price_per_unit: Credits,
     pub num_fuel_barrels: u32,
@@ -63,7 +64,7 @@ pub enum FinanceResult {
     TransferFailed { missing: Credits },
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub enum FinanceTicketDetails {
     PurchaseTradeGoods(PurchaseTradeGoodsTicketDetails),
     SellTradeGoods(SellTradeGoodsTicketDetails),
@@ -157,6 +158,7 @@ use crate::budgeting::treasury_redesign::LedgerEntry::*;
 use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
 use itertools::Itertools;
 use std::sync::{Arc, Mutex};
+use strum::Display;
 
 #[derive(Clone, Debug)]
 pub struct ThreadSafeTreasurer {
@@ -522,6 +524,7 @@ impl ImprovedTreasurer {
             ship_symbol,
             details: FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails {
                 ship_type,
+                assigned_fleet_id: fleet_id.clone(),
                 expected_purchase_price,
                 waypoint_symbol: shipyard_waypoint_symbol,
             }),

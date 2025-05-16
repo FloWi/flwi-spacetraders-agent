@@ -12,7 +12,6 @@ use std::borrow::Borrow;
 use std::fmt::Display;
 use std::ops::Deref;
 
-pub mod accounting;
 pub mod agent;
 pub mod agent_manager;
 pub mod app_state;

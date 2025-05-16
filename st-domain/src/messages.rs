@@ -1,4 +1,4 @@
-use crate::budgeting::treasury_redesign::{FinanceTicket, PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails};
+use crate::budgeting::treasury_redesign::{FinanceTicket, PurchaseShipTicketDetails, PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails};
 use crate::{
     Agent, Construction, EvaluatedTradingOpportunity, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse,
     PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse,
@@ -84,217 +84,16 @@ impl Default for TicketId {
     }
 }
 
+impl Display for TicketId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl TicketId {
     pub fn new() -> TicketId {
         Self(Uuid::new_v4())
     }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum TradeTicket {
-    TradeCargo {
-        ticket_id: TicketId,
-        purchase_completion_status: Vec<(PurchaseGoodTicketDetails, bool)>,
-        sale_completion_status: Vec<(SellGoodTicketDetails, bool)>,
-        evaluation_result: Vec<EvaluatedTradingOpportunity>,
-    },
-    DeliverConstructionMaterials {
-        ticket_id: TicketId,
-        purchase_completion_status: Vec<(PurchaseGoodTicketDetails, bool)>,
-        delivery_status: Vec<(DeliverConstructionMaterialTicketDetails, bool)>,
-    },
-    PurchaseShipTicket {
-        ticket_id: TicketId,
-        details: PurchaseShipTicketDetails,
-    },
-    // RefuelShip {
-    //     details: PurchaseGoodTicketDetails,
-    //     refueling_type: RefuelingType,
-    // },
-}
-
-impl TradeTicket {
-    pub fn total_costs(&self) -> u64 {
-        todo!()
-    }
-}
-
-impl TradeTicket {
-    pub fn ticket_id(&self) -> TicketId {
-        match self {
-            TradeTicket::TradeCargo { ticket_id, .. } => ticket_id.clone(),
-            TradeTicket::DeliverConstructionMaterials { ticket_id, .. } => ticket_id.clone(),
-            TradeTicket::PurchaseShipTicket { ticket_id, .. } => ticket_id.clone(),
-        }
-    }
-    pub fn is_complete(&self) -> bool {
-        match self {
-            TradeTicket::TradeCargo {
-                ticket_id,
-                purchase_completion_status,
-                sale_completion_status,
-                evaluation_result: _evaluation_result,
-            } => {
-                purchase_completion_status
-                    .iter()
-                    .all(|(_, is_complete)| *is_complete)
-                    && sale_completion_status
-                        .iter()
-                        .all(|(_, is_complete)| *is_complete)
-            }
-            TradeTicket::DeliverConstructionMaterials {
-                ticket_id,
-                purchase_completion_status,
-                delivery_status,
-            } => {
-                purchase_completion_status
-                    .iter()
-                    .all(|(_, is_complete)| *is_complete)
-                    && delivery_status.iter().all(|(_, is_complete)| *is_complete)
-            }
-            TradeTicket::PurchaseShipTicket { ticket_id, details } => details.is_complete,
-        }
-    }
-}
-
-impl TradeTicket {
-    pub fn mark_transaction_as_complete(&mut self, transaction_ticket_id: &TransactionTicketId) {
-        match self {
-            TradeTicket::TradeCargo {
-                purchase_completion_status,
-                sale_completion_status,
-                ..
-            } => {
-                // Try to find and mark a purchase as complete
-                for (purchase_details, completed) in purchase_completion_status.iter_mut() {
-                    if &purchase_details.id == transaction_ticket_id {
-                        *completed = true;
-                        return;
-                    }
-                }
-
-                // If not found in purchases, try to find in sales
-                for (sale_details, completed) in sale_completion_status.iter_mut() {
-                    if &sale_details.id == transaction_ticket_id {
-                        *completed = true;
-                        return;
-                    }
-                }
-            }
-            TradeTicket::DeliverConstructionMaterials {
-                purchase_completion_status,
-                delivery_status,
-                ..
-            } => {
-                // Try to find and mark a purchase as complete
-                for (purchase_details, completed) in purchase_completion_status.iter_mut() {
-                    if &purchase_details.id == transaction_ticket_id {
-                        *completed = true;
-                        return;
-                    }
-                }
-
-                // Try to find and mark a delivery as complete
-                for (delivery_details, completed) in delivery_status.iter_mut() {
-                    if &delivery_details.id == transaction_ticket_id {
-                        *completed = true;
-                        return;
-                    }
-                }
-            }
-            TradeTicket::PurchaseShipTicket { details, .. } => {
-                // Assuming PurchaseShipTicketDetails has a transaction_id field
-                if &details.id == transaction_ticket_id {
-                    // You might need to add a field to track completion status
-                    // details.completed = true;
-                    details.is_complete = true
-                }
-            }
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct TransactionTicketId(pub Uuid);
-
-impl TransactionTicketId {
-    pub fn new() -> Self {
-        Self(Uuid::new_v4())
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct PurchaseGoodTicketDetails {
-    pub id: TransactionTicketId,
-    pub ship_symbol: ShipSymbol,
-    pub waypoint_symbol: WaypointSymbol,
-    pub trade_good: TradeGoodSymbol,
-    pub quantity: u32,
-    pub price_per_unit: u64,
-    pub allocated_credits: u64,
-    pub purchase_reason: PurchaseReason,
-}
-
-impl PurchaseGoodTicketDetails {
-    pub fn from_trading_opportunity(opp: &EvaluatedTradingOpportunity) -> PurchaseGoodTicketDetails {
-        let purchase_mtg = &opp.trading_opportunity.purchase_market_trade_good_entry;
-        PurchaseGoodTicketDetails {
-            id: TransactionTicketId(Uuid::new_v4()),
-            ship_symbol: opp.ship_symbol.clone(),
-            waypoint_symbol: opp.trading_opportunity.purchase_waypoint_symbol.clone(),
-            trade_good: purchase_mtg.symbol.clone(),
-            quantity: opp.units,
-            price_per_unit: purchase_mtg.purchase_price as u64,
-            allocated_credits: purchase_mtg.purchase_price as u64 * opp.units as u64,
-            purchase_reason: PurchaseReason::Trading,
-        }
-    }
-}
-
-impl SellGoodTicketDetails {
-    pub fn from_trading_opportunity(opp: &EvaluatedTradingOpportunity) -> SellGoodTicketDetails {
-        let sell_mtg = &opp.trading_opportunity.sell_market_trade_good_entry;
-
-        SellGoodTicketDetails {
-            id: TransactionTicketId(Uuid::new_v4()),
-            ship_symbol: opp.ship_symbol.clone(),
-            waypoint_symbol: opp.trading_opportunity.sell_waypoint_symbol.clone(),
-            trade_good: sell_mtg.symbol.clone(),
-            quantity: opp.units,
-            price_per_unit: sell_mtg.sell_price as u64,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SellGoodTicketDetails {
-    pub id: TransactionTicketId,
-    pub ship_symbol: ShipSymbol,
-    pub waypoint_symbol: WaypointSymbol,
-    pub trade_good: TradeGoodSymbol,
-    pub quantity: u32,
-    pub price_per_unit: u64,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct DeliverConstructionMaterialTicketDetails {
-    pub id: TransactionTicketId,
-    pub ship_symbol: ShipSymbol,
-    pub construction_site_waypoint_symbol: WaypointSymbol,
-    pub trade_good: TradeGoodSymbol,
-    pub quantity: u32,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct PurchaseShipTicketDetails {
-    pub id: TransactionTicketId,
-    pub ship_symbol: ShipSymbol,
-    pub waypoint_symbol: WaypointSymbol,
-    pub ship_type: ShipType,
-    pub price: u64,
-    pub allocated_credits: u64,
-    pub assigned_fleet_id: FleetId,
-    pub is_complete: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -315,7 +114,7 @@ pub enum ShipTask {
 
     SurveyAsteroid { waypoint_symbol: WaypointSymbol },
 
-    Trade { ticket_id: TicketId },
+    Trade { tickets: Vec<FinanceTicket> },
 
     PrepositionShipForTrade { first_purchase_location: WaypointSymbol },
 }
@@ -560,11 +359,6 @@ pub enum TransactionActionEvent {
         ticket_details: SellTradeGoodsTicketDetails,
         response: SellTradeGoodResponse,
     },
-    SuppliedConstructionSite {
-        ticket_id: TicketId,
-        ticket_details: DeliverConstructionMaterialTicketDetails,
-        response: SupplyConstructionSiteResponse,
-    },
     PurchasedShip {
         ticket_id: TicketId,
         ticket_details: PurchaseShipTicketDetails,
@@ -575,15 +369,6 @@ pub enum TransactionActionEvent {
 #[derive(Deserialize, Serialize, Debug, Clone, Display)]
 pub enum OperationExpenseEvent {
     RefueledShip { response: RefuelShipResponse },
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct TransactionSummary {
-    pub ship_symbol: ShipSymbol,
-    pub transaction_action_event: TransactionActionEvent,
-    pub trade_ticket: FinanceTicket,
-    pub total_price: i64,
-    pub transaction_ticket_id: TransactionTicketId,
 }
 
 /// What observation to do once a ship is present at this waypoint

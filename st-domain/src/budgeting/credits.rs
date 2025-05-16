@@ -3,7 +3,7 @@ use std::fmt;
 use std::fmt::{Display, Formatter, Write};
 use std::ops::{Add, AddAssign, Deref, Neg, Sub, SubAssign};
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub struct Credits(pub i64);
 
 impl Deref for Credits {

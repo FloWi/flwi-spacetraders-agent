@@ -3,8 +3,8 @@ use crate::ship::ShipOperations;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use st_domain::budgeting::budgeting::TransactionTicket;
-use st_domain::{OperationExpenseEvent, ShipSymbol, TradeTicket, TransactionActionEvent};
+use st_domain::budgeting::treasury_redesign::FinanceTicket;
+use st_domain::{OperationExpenseEvent, ShipSymbol, TransactionActionEvent};
 use std::collections::HashMap;
 use std::fmt::{Debug, Write};
 use std::fmt::{Display, Formatter};
@@ -234,7 +234,7 @@ pub enum Response {
 pub enum ActionEvent {
     ShipActionCompleted(ShipOperations, ShipAction, Result<(), Arc<anyhow::Error>>),
     BehaviorCompleted(ShipOperations, Behavior<ShipAction>, Result<(), String>),
-    TransactionCompleted(ShipOperations, TransactionActionEvent, TransactionTicket),
+    TransactionCompleted(ShipOperations, TransactionActionEvent, FinanceTicket),
     Expense(ShipOperations, OperationExpenseEvent),
 }
 
