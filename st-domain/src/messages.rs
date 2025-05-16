@@ -75,7 +75,7 @@ pub enum RefuelingType {
     StoreFuelBarrelsInCargo,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, Copy)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, Copy, Ord, PartialOrd)]
 pub struct TicketId(pub Uuid);
 
 impl Default for TicketId {

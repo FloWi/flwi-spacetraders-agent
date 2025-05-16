@@ -1,7 +1,9 @@
+use crate::serialize_as_sorted_map;
 use anyhow::anyhow;
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use serde::{Deserialize, Serialize, Serializer};
+use std::collections::{HashMap, VecDeque};
+use std::hash::Hash;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FinanceTicket {
@@ -139,7 +141,7 @@ pub struct FleetBudget {
 
 use crate::budgeting::credits::Credits;
 use crate::budgeting::treasury_redesign::LedgerEntry::*;
-use crate::{FleetId, Route, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
+use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
 use itertools::Itertools;
 use std::sync::{Arc, Mutex};
 
@@ -284,9 +286,15 @@ impl ThreadSafeTreasurer {
 pub struct ImprovedTreasurer {
     treasury_fund: Credits,
     ledger_entries: VecDeque<LedgerEntry>,
+
+    #[serde(serialize_with = "serialize_as_sorted_map")]
     fleet_budgets: HashMap<FleetId, FleetBudget>,
-    active_tickets: Vec<FinanceTicket>,
-    completed_tickets: Vec<FinanceTicket>,
+
+    #[serde(serialize_with = "serialize_as_sorted_map")]
+    active_tickets: HashMap<TicketId, FinanceTicket>,
+
+    #[serde(serialize_with = "serialize_as_sorted_map")]
+    completed_tickets: HashMap<TicketId, FinanceTicket>,
 }
 
 impl ImprovedTreasurer {
@@ -295,8 +303,8 @@ impl ImprovedTreasurer {
             treasury_fund: Default::default(),
             ledger_entries: Default::default(),
             fleet_budgets: Default::default(),
-            active_tickets: vec![],
-            completed_tickets: vec![],
+            active_tickets: Default::default(),
+            completed_tickets: Default::default(),
         };
 
         treasurer
@@ -311,8 +319,8 @@ impl ImprovedTreasurer {
             treasury_fund: Default::default(),
             ledger_entries: Default::default(),
             fleet_budgets: Default::default(),
-            active_tickets: vec![],
-            completed_tickets: vec![],
+            active_tickets: Default::default(),
+            completed_tickets: Default::default(),
         };
 
         for entry in ledger {
@@ -325,7 +333,7 @@ impl ImprovedTreasurer {
     pub fn get_fleet_tickets(&self) -> Result<HashMap<FleetId, Vec<FinanceTicket>>> {
         Ok(self
             .active_tickets
-            .iter()
+            .values()
             .cloned()
             .into_group_map_by(|t| t.fleet_id.clone()))
     }
@@ -335,11 +343,7 @@ impl ImprovedTreasurer {
     }
 
     pub fn get_tickets(&self) -> Result<HashMap<TicketId, FinanceTicket>> {
-        Ok(self
-            .active_tickets
-            .iter()
-            .map(|t| (t.ticket_id.clone(), t.clone()))
-            .collect())
+        Ok(self.active_tickets.clone())
     }
 
     pub fn current_agent_credits(&self) -> Credits {
@@ -384,19 +388,14 @@ impl ImprovedTreasurer {
     fn get_active_trade_routes(&self) -> Result<Vec<ActiveTradeRoute>> {
         let mut active_routes = HashMap::new();
 
-        for ticket in self.active_tickets.iter() {
+        for ticket in self.active_tickets.values() {
             match &ticket.details {
                 FinanceTicketDetails::SellTradeGoods(sell_ticket_details) => {
                     if let Some(purchase_ticket_id) = sell_ticket_details.maybe_matching_purchase_ticket {
                         let maybe_purchase_ticket = self
                             .active_tickets
-                            .iter()
-                            .find(|purchase_ticket| purchase_ticket.ticket_id == purchase_ticket_id)
-                            .or_else(|| {
-                                self.completed_tickets
-                                    .iter()
-                                    .find(|purchase_ticket| purchase_ticket.ticket_id == purchase_ticket_id)
-                            });
+                            .get(&purchase_ticket_id)
+                            .or_else(|| self.completed_tickets.get(&purchase_ticket_id));
 
                         if let Some(purchase_ticket) = maybe_purchase_ticket {
                             let from_wp = purchase_ticket.details.get_waypoint();
@@ -522,8 +521,7 @@ impl ImprovedTreasurer {
 
     pub fn get_ticket(&self, ticket_id: &TicketId) -> Result<FinanceTicket> {
         self.active_tickets
-            .iter()
-            .find(|t| &t.ticket_id == ticket_id)
+            .get(&ticket_id)
             .cloned()
             .ok_or(anyhow!("Ticket not found"))
     }
@@ -634,7 +632,8 @@ impl ImprovedTreasurer {
                 if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
                     if budget.current_capital >= allocated_credits {
                         budget.reserved_capital += allocated_credits;
-                        self.active_tickets.push(ticket_details);
+                        self.active_tickets
+                            .insert(ticket_details.ticket_id.clone(), ticket_details);
 
                         self.ledger_entries.push_back(ledger_entry);
                     } else {
@@ -660,10 +659,10 @@ impl ImprovedTreasurer {
                     }
 
                     budget.current_capital += total;
-                    self.active_tickets
-                        .retain(|t| t.ticket_id != finance_ticket.ticket_id);
+                    self.active_tickets.remove(&finance_ticket.ticket_id);
 
-                    self.completed_tickets.push(finance_ticket);
+                    self.completed_tickets
+                        .insert(finance_ticket.ticket_id.clone(), finance_ticket);
 
                     self.ledger_entries.push_back(ledger_entry);
                 } else {
@@ -720,7 +719,6 @@ mod tests {
     use crate::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
     use anyhow::Result;
     use itertools::Itertools;
-    use std::collections::HashSet;
 
     #[test]
     fn test_fleet_budget_in_trade_cycle() -> Result<()> {
