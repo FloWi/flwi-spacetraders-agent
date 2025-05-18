@@ -2,13 +2,25 @@ use crate::agent::run_agent;
 use crate::configuration::AgentConfiguration;
 use crate::reqwest_helpers::{create_client, ResetSignal};
 use crate::st_client::{StClient, StClientTrait};
+use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
 use anyhow::Result;
 use futures::StreamExt;
 use sqlx::{Pool, Postgres};
 use st_domain::{FactionSymbol, RegistrationRequest};
-use st_store::db;
+use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
+use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
+use st_store::bmc::{Bmc, DbBmc, InMemoryBmc};
+use st_store::shipyard_bmc::InMemoryShipyardBmc;
+use st_store::trade_bmc::InMemoryTradeBmc;
+use st_store::{
+    db, DbModelManager, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc,
+    InMemorySystemsBmc,
+};
+use std::collections::HashSet;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::watch::Receiver;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tracing::{event, Level};
@@ -18,7 +30,7 @@ pub struct AgentManager {
     reset_rx: mpsc::Receiver<ResetSignal>,
     cfg: AgentConfiguration,
     current_agent_handle: Option<JoinHandle<()>>,
-    pool: Option<Pool<Postgres>>,
+    bmc: Option<Arc<dyn Bmc>>,
 }
 
 impl AgentManager {
@@ -30,7 +42,7 @@ impl AgentManager {
                 reset_rx,
                 cfg,
                 current_agent_handle: None,
-                pool: None,
+                bmc: None,
             },
             reset_tx,
         )
@@ -41,8 +53,15 @@ impl AgentManager {
             // Create a shutdown channel for this agent instance
             let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
+            let either_handle = if self.cfg.use_in_memory_agent {
+                self.initialize_and_start_in_memory_agent(shutdown_rx.clone())
+                    .await
+            } else {
+                self.initialize_and_start_db_agent(shutdown_rx.clone())
+                    .await
+            };
             // Initialize the environment and start a new agent
-            match self.initialize_and_start_agent(shutdown_rx.clone()).await {
+            match either_handle {
                 Ok(agent_handle) => {
                     self.current_agent_handle = Some(agent_handle);
                     event!(Level::INFO, "Agent started successfully");
@@ -82,34 +101,69 @@ impl AgentManager {
         Ok(())
     }
 
-    async fn initialize_and_start_agent(&mut self, shutdown_rx: watch::Receiver<bool>) -> Result<JoinHandle<()>> {
-        // Create a reset channel for this specific agent instance
-        let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
+    async fn initialize_and_start_in_memory_agent(&mut self, shutdown_rx: watch::Receiver<bool>) -> Result<JoinHandle<()>> {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-        // Create the initial client (without token) with reset detection
-        let client_with_account_token = create_client(Some(self.cfg.spacetraders_account_token.clone()), Some(agent_reset_tx.clone()));
-        let client_with_account_token = StClient::try_with_base_url(client_with_account_token, &self.cfg.spacetraders_base_url)?;
+        let json_path = std::path::Path::new(manifest_dir)
+            .parent()
+            .unwrap()
+            .join("resources")
+            .join("universe_snapshot.json");
 
-        // Get the status (this will verify the API is responding)
-        let status = client_with_account_token.get_status().await?;
+        let in_memory_universe = InMemoryUniverse::from_snapshot(json_path).expect("InMemoryUniverse::from_snapshot");
+        let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
 
-        // Initialize or get database pool
-        if self.pool.is_none() {
-            self.pool = Some(db::prepare_database_schema(&status, self.cfg.pg_connection_string()).await?);
-        }
-        let pool = self.pool.clone().unwrap();
+        let client = Arc::new(in_memory_client) as Arc<dyn StClientTrait>;
 
-        // Get the authenticated client
-        let authenticated_client = get_authenticated_client(&self.cfg, pool.clone(), client_with_account_token).await?;
+        let agent = client.get_agent().await?.data;
 
-        // Clone configuration for the new agent
-        let cfg = self.cfg.clone();
+        let ship_bmc = InMemoryShipsBmc::new(InMemoryShips::new());
+        let agent_bmc = InMemoryAgentBmc::new(agent);
+        let trade_bmc = InMemoryTradeBmc::new();
+        let fleet_bmc = InMemoryFleetBmc::new();
+        let system_bmc = InMemorySystemsBmc::new();
+        let construction_bmc = InMemoryConstructionBmc::new();
+
+        //insert some data
+        //construction_bmc.save_construction_site(&Ctx::Anonymous, in_memory_client.get_construction_site().unwrap())
+
+        let market_bmc = InMemoryMarketBmc::new();
+        let shipyard_bmc = InMemoryShipyardBmc::new();
+        let jump_gate_bmc = InMemoryJumpGateBmc::new();
+        let supply_chain_bmc = InMemorySupplyChainBmc::new();
+        let status_bmc = InMemoryStatusBmc::new();
+
+        let trade_bmc = Arc::new(trade_bmc);
+        let market_bmc = Arc::new(market_bmc);
+        let bmc = InMemoryBmc {
+            in_mem_ship_bmc: Arc::new(ship_bmc),
+            in_mem_fleet_bmc: Arc::new(fleet_bmc),
+            in_mem_trade_bmc: Arc::clone(&trade_bmc),
+            in_mem_system_bmc: Arc::new(system_bmc),
+            in_mem_agent_bmc: Arc::new(agent_bmc),
+            in_mem_construction_bmc: Arc::new(construction_bmc),
+            in_mem_market_bmc: Arc::clone(&market_bmc),
+            in_mem_jump_gate_bmc: Arc::new(jump_gate_bmc),
+            in_mem_shipyard_bmc: Arc::new(shipyard_bmc),
+            in_mem_supply_chain_bmc: Arc::new(supply_chain_bmc),
+            in_mem_status_bmc: Arc::new(status_bmc),
+        };
+
+        let bmc = Arc::new(bmc) as Arc<dyn Bmc>;
+
+        self.bmc = Some(bmc.clone());
 
         // Spawn the agent task
+        let handle = Self::spawn_and_get_handle(shutdown_rx, client, bmc);
+
+        Ok(handle)
+    }
+
+    fn spawn_and_get_handle(shutdown_rx: Receiver<bool>, client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> JoinHandle<()> {
         let handle = tokio::spawn(async move {
             // Run agent with the authenticated client
             let agent_task = async {
-                match run_agent(cfg, status, authenticated_client, pool).await {
+                match run_agent(client, bmc).await {
                     Ok(()) => event!(Level::INFO, "Agent completed successfully"),
                     Err(e) => event!(Level::ERROR, "Agent error: {}", e),
                 }
@@ -140,6 +194,34 @@ impl AgentManager {
                 }
             }
         });
+        handle
+    }
+
+    async fn initialize_and_start_db_agent(&mut self, shutdown_rx: watch::Receiver<bool>) -> Result<JoinHandle<()>> {
+        // Create a reset channel for this specific agent instance
+        let (agent_reset_tx, _) = mpsc::channel::<ResetSignal>(8);
+
+        // Create the initial client (without token) with reset detection
+        let client_with_account_token = create_client(Some(self.cfg.spacetraders_account_token.clone()), Some(agent_reset_tx.clone()));
+        let client_with_account_token = StClient::try_with_base_url(client_with_account_token, &self.cfg.spacetraders_base_url)?;
+
+        // Get the status (this will verify the API is responding)
+        let status = client_with_account_token.get_status().await?;
+
+        // Initialize database pool
+        let pool = db::prepare_database_schema(&status, self.cfg.pg_connection_string()).await?;
+
+        // Get the authenticated client
+        let authenticated_client = get_authenticated_client(&self.cfg, pool.clone(), client_with_account_token).await?;
+        let client = Arc::new(authenticated_client) as Arc<dyn StClientTrait>;
+
+        let db_mm = DbModelManager::new(pool.clone());
+        let db_bmc = DbBmc::new(db_mm);
+        let bmc = Arc::new(db_bmc) as Arc<dyn Bmc>;
+
+        self.bmc = Some(bmc.clone());
+
+        let handle = Self::spawn_and_get_handle(shutdown_rx, client, bmc);
 
         Ok(handle)
     }

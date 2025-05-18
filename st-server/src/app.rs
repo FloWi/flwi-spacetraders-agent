@@ -98,5 +98,5 @@ fn HomePage() -> impl IntoView {
 #[cfg(feature = "ssr")]
 #[derive(Clone)]
 pub struct AppState {
-    pub bmc: Arc<dyn st_store::bmc::Bmc>,
+    pub bmc: std::sync::Arc<dyn st_store::bmc::Bmc>,
 }

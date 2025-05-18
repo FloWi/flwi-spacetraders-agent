@@ -8,7 +8,7 @@ pub struct AppConfig {
     pub spacetraders_registration_email: String,
     pub spacetraders_account_token: String,
     pub spacetraders_base_url: String,
-    pub skip_running_agent: bool,
+    pub use_in_memory_agent: bool,
 }
 
 impl AppConfig {
@@ -25,8 +25,8 @@ impl AppConfig {
             spacetraders_registration_email: get_env_var("SPACETRADERS_REGISTRATION_EMAIL")?,
             spacetraders_account_token: get_env_var("SPACETRADERS_ACCOUNT_TOKEN")?,
             spacetraders_base_url: get_env_var("SPACETRADERS_BASE_URL")?,
-            skip_running_agent: bool::from_str(
-                get_env_var("SPACETRADERS_SKIP_RUNNING_AGENT")
+            use_in_memory_agent: bool::from_str(
+                get_env_var("SPACETRADERS_USE_IN_MEMORY_AGENT")
                     .unwrap_or("false".to_string())
                     .as_str(),
             )

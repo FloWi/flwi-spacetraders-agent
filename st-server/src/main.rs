@@ -1,4 +1,3 @@
-
 #[cfg(feature = "ssr")]
 #[tokio::main]
 async fn main() {
@@ -11,8 +10,17 @@ async fn main() {
     use st_core::configuration::AgentConfiguration;
     use st_server::app::{shell, App};
     use st_server::cli_args::AppConfig;
+    use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
+    use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
+    use st_store::bmc::InMemoryBmc;
     use st_store::bmc::{Bmc, DbBmc};
+    use st_store::shipyard_bmc::InMemoryShipyardBmc;
+    use st_store::trade_bmc::InMemoryTradeBmc;
     use st_store::{db, DbModelManager};
+    use st_store::{
+        InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc,
+    };
+    use std::sync::Arc;
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     let conf = get_configuration(None).unwrap();
@@ -26,7 +34,7 @@ async fn main() {
         spacetraders_registration_email,
         spacetraders_account_token,
         spacetraders_base_url,
-        skip_running_agent,
+        use_in_memory_agent,
     } = AppConfig::from_env().expect("cfg");
 
     tracing_subscriber::registry()
@@ -41,7 +49,12 @@ async fn main() {
         spacetraders_registration_email,
         spacetraders_account_token,
         spacetraders_base_url,
+        use_in_memory_agent,
     };
+
+    if !cfg.use_in_memory_agent {
+        panic!("use_in_memory_agent should be set to true");
+    }
 
     // Create the agent manager and get the reset channel
     let (mut agent_manager, _reset_tx) = AgentManager::new(cfg.clone());
@@ -75,12 +88,8 @@ async fn main() {
 
     // Run the agent manager in the background
     let agent_runner_handle = tokio::spawn(async move {
-        if skip_running_agent {
-            println!("Skipped starting agent");
-        } else {
-            if let Err(e) = agent_manager.run().await {
-                eprintln!("Agent manager error: {}", e);
-            }
+        if let Err(e) = agent_manager.run().await {
+            eprintln!("Agent manager error: {}", e);
         }
     });
 

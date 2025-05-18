@@ -8,6 +8,7 @@ pub struct AgentConfiguration {
     pub spacetraders_registration_email: String,
     pub spacetraders_account_token: String,
     pub spacetraders_base_url: String,
+    pub use_in_memory_agent: bool,
 }
 
 impl AgentConfiguration {

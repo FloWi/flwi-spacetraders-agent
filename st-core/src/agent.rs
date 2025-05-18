@@ -22,89 +22,17 @@ use crate::marketplaces::marketplaces::{find_marketplaces_to_collect_remotely, f
 use crate::pagination::{fetch_all_pages_into_queue, PaginationInput};
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
+use crate::universe_server::universe_server::InMemoryUniverseClient;
 use st_domain::{LabelledCoordinate, StStatusResponse, SupplyChain, SystemSymbol, WaypointSymbol, WaypointType};
-use st_store::bmc::{Bmc, DbBmc};
+use st_store::bmc::{Bmc, DbBmc, InMemoryBmc};
 
-pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authenticated_client: StClient, pool: Pool<Postgres>) -> Result<()> {
-    let my_agent = authenticated_client.get_agent().await?;
-    dbg!(my_agent.clone());
-
-    let model_manager = DbModelManager::new(pool.clone());
-
-    let db_bmc = DbBmc::new(model_manager);
-    let db_blackboard = DbBlackboard { bmc: db_bmc.clone() };
-
-    let bmc = Arc::new(db_bmc) as Arc<dyn Bmc>;
-
-    let headquarters_waypoint_symbol = my_agent.data.headquarters.clone();
-    let headquarters_system_symbol = headquarters_waypoint_symbol.system_symbol();
-
-    let now = Local::now().to_utc();
-
-    //let _ = db::upsert_ships(&pool, &ships, now).await?;
-
-    load_home_system_and_waypoints_if_necessary(&authenticated_client, &pool, &headquarters_system_symbol).await?;
-
-    // let marketplaces_of_system = db::select_waypoints_of_system_with_trait(
-    //     &pool,
-    //     headquarters_system_symbol.clone(),
-    //     WaypointTraitSymbol("MARKETPLACE".to_string()),
-    // )
-    // .await?;
-
-    //TODO: only check far-away marketplaces once
-
-    // let market_data: Vec<_> =
-    //     collect_results(marketplaces_of_system.clone(), |waypoint_symbol| {
-    //         authenticated_client.get_marketplace(waypoint_symbol)
-    //     })
-    //     .await?
-    //     .iter()
-    //     .map(|md| md.data.clone())
-    //     .collect();
-    //
-    // let _ = insert_market_data(&pool, market_data.clone(), now).await;
-
-    let marketplace_entries = select_latest_marketplace_entry_of_system(&pool, &headquarters_system_symbol).await?;
-
-    let shipyard_entries = select_latest_shipyard_entry_of_system(&pool, &headquarters_system_symbol).await?;
-
-    let waypoint_entries_of_home_system = select_waypoints_of_system(&pool, &headquarters_system_symbol).await?;
-
-    let marketplaces_to_collect_remotely = find_marketplaces_to_collect_remotely(marketplace_entries.clone(), &waypoint_entries_of_home_system);
-
-    let shipyards_to_collect_remotely = find_shipyards_to_collect_remotely(shipyard_entries.clone(), &waypoint_entries_of_home_system);
-
-    collect_marketplaces(&authenticated_client, &marketplaces_to_collect_remotely, &pool).await?;
-
-    collect_shipyards(&authenticated_client, &shipyards_to_collect_remotely, &pool).await?;
-
-    let client: Arc<dyn StClientTrait> = Arc::new(authenticated_client);
-
-    let jump_gate_wp_of_home_system = waypoint_entries_of_home_system
-        .iter()
-        .find(|wp| wp.r#type == WaypointType::JUMP_GATE)
-        .expect("home system should have a jump-gate");
-
-    let construction_site = client
-        .get_construction_site(&jump_gate_wp_of_home_system.symbol)
-        .await?;
-
-    db::upsert_construction_site(&pool, construction_site, now).await?;
-
-    if let None = db::load_supply_chain(&pool).await? {
-        let supply_chain: SupplyChain = client.get_supply_chain().await?.into();
-        db::insert_supply_chain(&pool, supply_chain, Utc::now()).await?;
-    };
-
-    let (ship_updated_tx, ship_updated_rx): (Sender<ShipOperations>, Receiver<ShipOperations>) = mpsc::channel::<ShipOperations>(32);
+pub async fn run_agent(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> Result<()> {
+    let headquarters_system_symbol = client.get_agent().await?.data.headquarters.system_symbol();
 
     // everything has to be cloned to give ownership to the spawned task
     let _running = tokio::spawn({
         let client_clone = client.clone();
         let hq_system_clone = headquarters_system_symbol.clone();
-        let waypoint_entries_of_home_system_clone = waypoint_entries_of_home_system.clone();
-        let ship_updated_tx_clone = ship_updated_tx.clone();
         let admiral = Arc::new(Mutex::new(
             FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_clone, Arc::clone(&client_clone)).await?,
         ));
@@ -115,25 +43,6 @@ pub async fn run_agent(cfg: AgentConfiguration, status: StStatusResponse, authen
             }
         }
     });
-
-    // everything has to be cloned to give ownership to the spawned task
-    let _bg_collect = tokio::spawn({
-        let client_clone = client.clone();
-        let pool_clone = pool.clone();
-        let hq_system_clone = headquarters_system_symbol.clone();
-        let status_clone = status.clone();
-
-        async move {
-            if let Err(e) = load_systems_and_waypoints_if_necessary(status_clone, &*client_clone, &pool_clone, &hq_system_clone).await {
-                eprintln!("Error loading systems: {}", e);
-            }
-        }
-    });
-
-    // let _ = tokio::spawn(listen_to_ship_changes_and_persist(ship_updated_rx, pool.clone()));
-
-    //let my_ships: Vec<_> = my_ships.iter().map(|so| so.get_ship()).collect();
-    //dbg!(my_ships);
     Ok(())
 }
 
