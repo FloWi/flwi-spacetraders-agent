@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::{JumpGate, LabelledCoordinate, MarketData, Shipyard, TicketId, TravelAction, Waypoint, WaypointSymbol};
+use st_domain::{JumpGate, LabelledCoordinate, MarketData, Shipyard, TravelAction, Waypoint, WaypointSymbol};
 use st_store::bmc::Bmc;
 use st_store::Ctx;
 use std::sync::Arc;

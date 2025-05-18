@@ -1,7 +1,7 @@
 use crate::serialize_as_sorted_map;
 use anyhow::anyhow;
 use anyhow::Result;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
@@ -450,25 +450,22 @@ impl ImprovedTreasurer {
         let mut active_routes = HashMap::new();
 
         for ticket in self.active_tickets.values() {
-            match &ticket.details {
-                FinanceTicketDetails::SellTradeGoods(sell_ticket_details) => {
-                    if let Some(purchase_ticket_id) = sell_ticket_details.maybe_matching_purchase_ticket {
-                        let maybe_purchase_ticket = self
-                            .active_tickets
-                            .get(&purchase_ticket_id)
-                            .or_else(|| self.completed_tickets.get(&purchase_ticket_id));
+            if let FinanceTicketDetails::SellTradeGoods(sell_ticket_details) = &ticket.details {
+                if let Some(purchase_ticket_id) = sell_ticket_details.maybe_matching_purchase_ticket {
+                    let maybe_purchase_ticket = self
+                        .active_tickets
+                        .get(&purchase_ticket_id)
+                        .or_else(|| self.completed_tickets.get(&purchase_ticket_id));
 
-                        if let Some(purchase_ticket) = maybe_purchase_ticket {
-                            let from_wp = purchase_ticket.details.get_waypoint();
-                            let to_wp = sell_ticket_details.waypoint_symbol.clone();
-                            active_routes
-                                .entry((from_wp, to_wp, sell_ticket_details.trade_good.clone()))
-                                .and_modify(|counter| *counter += 1)
-                                .or_insert(1);
-                        }
+                    if let Some(purchase_ticket) = maybe_purchase_ticket {
+                        let from_wp = purchase_ticket.details.get_waypoint();
+                        let to_wp = sell_ticket_details.waypoint_symbol.clone();
+                        active_routes
+                            .entry((from_wp, to_wp, sell_ticket_details.trade_good.clone()))
+                            .and_modify(|counter| *counter += 1)
+                            .or_insert(1);
                     }
                 }
-                _ => {}
             }
         }
 
@@ -583,7 +580,7 @@ impl ImprovedTreasurer {
 
     pub fn get_ticket(&self, ticket_id: &TicketId) -> Result<FinanceTicket> {
         self.active_tickets
-            .get(&ticket_id)
+            .get(ticket_id)
             .cloned()
             .ok_or(anyhow!("Ticket not found"))
     }
@@ -604,13 +601,13 @@ impl ImprovedTreasurer {
             total: actual_price_per_unit * quantity * finance_ticket.details.signum(),
         })?;
 
-        self.transfer_excess_funds_from_fleet_to_treasury_if_necessary(&fleet_id)?;
+        self.transfer_excess_funds_from_fleet_to_treasury_if_necessary(fleet_id)?;
 
         Ok(())
     }
 
     fn transfer_excess_funds_from_fleet_to_treasury_if_necessary(&mut self, fleet_id: &FleetId) -> Result<()> {
-        if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
+        if let Some(budget) = self.fleet_budgets.get_mut(fleet_id) {
             let excess = budget.current_capital - budget.budget;
             if excess.is_positive() {
                 self.process_ledger_entry(TransferredFundsFromFleetToTreasury {
@@ -625,7 +622,7 @@ impl ImprovedTreasurer {
     }
 
     fn try_finance_purchase_for_fleet(&mut self, fleet_id: &FleetId, required_credits: Credits) -> Result<FinanceResult> {
-        if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
+        if let Some(budget) = self.fleet_budgets.get_mut(fleet_id) {
             let diff_from_fleet = required_credits - budget.available_capital();
 
             // i have 25k - ship costs 20k ==> missing = -5k
@@ -638,7 +635,7 @@ impl ImprovedTreasurer {
                 if diff_from_treasury.is_positive() {
                     self.process_ledger_entry(TransferredFundsFromTreasuryToFleet {
                         fleet_id: fleet_id.clone(),
-                        credits: diff_from_fleet.clone(),
+                        credits: diff_from_fleet,
                     })?;
                     Ok(FinanceResult::TransferSuccessful { transfer_sum: diff_from_fleet })
                 } else {
@@ -651,12 +648,12 @@ impl ImprovedTreasurer {
     }
 
     fn set_fleet_total_capital(&mut self, fleet_id: &FleetId, new_total_credits: Credits) -> Result<()> {
-        if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
+        if let Some(budget) = self.fleet_budgets.get_mut(fleet_id) {
             self.process_ledger_entry(SetNewTotalCapitalForFleet {
                 fleet_id: fleet_id.clone(),
                 new_total_capital: new_total_credits,
             })?;
-            self.transfer_excess_funds_from_fleet_to_treasury_if_necessary(&fleet_id)?;
+            self.transfer_excess_funds_from_fleet_to_treasury_if_necessary(fleet_id)?;
 
             Ok(())
         } else {
@@ -665,7 +662,7 @@ impl ImprovedTreasurer {
     }
 
     fn set_new_operating_reserve(&mut self, fleet_id: &FleetId, new_operating_reserve: Credits) -> Result<()> {
-        if let Some(_) = self.fleet_budgets.get_mut(&fleet_id) {
+        if self.fleet_budgets.get_mut(fleet_id).is_some() {
             self.process_ledger_entry(SetNewOperatingReserveForFleet {
                 fleet_id: fleet_id.clone(),
                 new_operating_reserve,
@@ -704,7 +701,7 @@ impl ImprovedTreasurer {
             .iter()
             .sorted_by_key(|(id, _)| id.0)
         {
-            self.remove_fleet(&fleet_id)?
+            self.remove_fleet(fleet_id)?
         }
 
         Ok(())
@@ -766,7 +763,7 @@ impl ImprovedTreasurer {
                     if budget.current_capital >= allocated_credits {
                         budget.reserved_capital += allocated_credits;
                         self.active_tickets
-                            .insert(ticket_details.ticket_id.clone(), ticket_details);
+                            .insert(ticket_details.ticket_id, ticket_details);
 
                         self.ledger_entries.push_back(ledger_entry);
                     } else {
@@ -795,7 +792,7 @@ impl ImprovedTreasurer {
                     self.active_tickets.remove(&finance_ticket.ticket_id);
 
                     self.completed_tickets
-                        .insert(finance_ticket.ticket_id.clone(), finance_ticket);
+                        .insert(finance_ticket.ticket_id, finance_ticket);
 
                     self.ledger_entries.push_back(ledger_entry);
                 } else {
@@ -839,7 +836,7 @@ impl ImprovedTreasurer {
             }
             ExpenseLogged { .. } => {}
             ArchivedFleetBudget { fleet_id, .. } => {
-                if let Some(_) = self.fleet_budgets.remove(&fleet_id) {
+                if self.fleet_budgets.remove(&fleet_id).is_some() {
                     self.ledger_entries.push_back(ledger_entry);
                 } else {
                     return Err(anyhow!("Fleet {} doesn't exist", fleet_id));
@@ -949,7 +946,7 @@ mod tests {
             ship_symbol.clone(),
             40,
             Credits(2_000.into()),
-            Some(purchase_ticket.ticket_id.clone()),
+            Some(purchase_ticket.ticket_id),
         )?;
 
         assert_eq!(treasurer.get_ticket(&sell_ticket.ticket_id)?, sell_ticket);
@@ -1248,7 +1245,7 @@ mod tests {
             ship_symbol.clone(),
             40,
             Credits(2_000.into()),
-            Some(completed_purchase_ticket_1.ticket_id.clone()),
+            Some(completed_purchase_ticket_1.ticket_id),
         )?;
 
         let _sell_ticket_2 = treasurer.create_sell_trade_goods_ticket(
@@ -1258,7 +1255,7 @@ mod tests {
             ship_symbol.clone(),
             40,
             Credits(2_000.into()),
-            Some(purchase_ticket_2.ticket_id.clone()),
+            Some(purchase_ticket_2.ticket_id),
         )?;
 
         let _unrelated_sell_ticket = treasurer.create_sell_trade_goods_ticket(

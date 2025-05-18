@@ -1,5 +1,4 @@
-use crate::budgeting::treasury_redesign::FinanceTicket;
-use crate::{get_exploration_tasks_for_waypoint, ExplorationTask, JumpGate, MarketData, Shipyard, TicketId, TravelAction, Waypoint, WaypointSymbol};
+use crate::{get_exploration_tasks_for_waypoint, ExplorationTask, JumpGate, MarketData, Shipyard, TravelAction, Waypoint, WaypointSymbol};
 use async_trait::async_trait;
 use mockall::automock;
 

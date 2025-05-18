@@ -4,7 +4,6 @@ use crate::reqwest_helpers::{create_client, ResetSignal};
 use crate::st_client::{StClient, StClientTrait};
 use anyhow::Result;
 use futures::StreamExt;
-use reqwest::Url;
 use sqlx::{Pool, Postgres};
 use st_domain::{FactionSymbol, RegistrationRequest};
 use st_store::db;

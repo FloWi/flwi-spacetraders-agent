@@ -150,9 +150,7 @@ impl SystemBmcTrait for InMemorySystemsBmc {
             .in_memory_systems
             .read()
             .await
-            .waypoints_per_system
-            .iter()
-            .map(|(_ss, waypoints)| waypoints.len() as i64)
+            .waypoints_per_system.values().map(|waypoints| waypoints.len() as i64)
             .sum();
         Ok(result)
     }

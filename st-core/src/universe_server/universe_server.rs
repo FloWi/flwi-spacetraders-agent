@@ -14,7 +14,7 @@ use st_domain::{
     NavigateShipResponse, NotEnoughFuelInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody, PurchaseTradeGoodResponse,
     PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest, RegistrationResponse, Route,
     SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction, ShipRegistrationRole, ShipSymbol, ShipTransaction,
-    ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyChain, SupplyChainMap, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData,
+    ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData,
     TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, Waypoint, WaypointSymbol,
 };
 use std::collections::HashMap;
@@ -440,8 +440,8 @@ impl StClientTrait for InMemoryUniverseClient {
 
     async fn get_supply_chain(&self) -> Result<GetSupplyChainResponse> {
         let supply_chain = self.universe.read().await.supply_chain.clone();
-        let result = Ok(supply_chain.into());
-        result
+        
+        Ok(supply_chain)
     }
 
     async fn dock_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<DockShipResponse> {

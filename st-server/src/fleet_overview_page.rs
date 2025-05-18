@@ -5,9 +5,7 @@ use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use leptos_use::{use_interval, UseIntervalReturn};
 use serde::{Deserialize, Serialize};
-use st_domain::{Agent, Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetTask, FleetsOverview, Ship, WaypointSymbol};
-use std::collections::HashSet;
-use std::sync::Arc;
+use st_domain::{FleetDecisionFacts, FleetPhase, FleetsOverview, Ship};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {

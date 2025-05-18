@@ -2,7 +2,7 @@ use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
 use petgraph::visit::Walker;
-use st_domain::{Fleet, FleetDecisionFacts, MarketObservationFleetConfig, Ship, ShipSymbol, ShipTask, WaypointSymbol};
+use st_domain::{MarketObservationFleetConfig, Ship, ShipSymbol, ShipTask, WaypointSymbol};
 use std::collections::{HashMap, HashSet};
 
 pub struct MarketObservationFleet;

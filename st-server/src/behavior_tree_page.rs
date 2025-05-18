@@ -3,7 +3,6 @@ use leptos::prelude::*;
 use leptos_meta::Title;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 use crate::components;
 

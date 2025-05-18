@@ -1,6 +1,6 @@
 use crate::universe_server::universe_server::InMemoryUniverse;
 use serde::{Deserialize, Serialize};
-use st_domain::{Agent, Construction, GetSupplyChainResponse, JumpGate, MarketData, Ship, Shipyard, SupplyChain, SystemsPageData, Waypoint};
+use st_domain::{Agent, Construction, GetSupplyChainResponse, JumpGate, MarketData, Ship, Shipyard, SystemsPageData, Waypoint};
 
 use std::fs::File;
 use std::io::BufReader;
@@ -103,7 +103,7 @@ impl UniverseSnapshot {
             transactions: vec![],
             jump_gates,
 
-            supply_chain: self.supply_chain.clone().into(),
+            supply_chain: self.supply_chain.clone(),
         }
     }
 }

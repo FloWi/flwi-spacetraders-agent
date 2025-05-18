@@ -1,7 +1,7 @@
 use crate::budgeting::treasury_redesign::{FinanceTicket, PurchaseShipTicketDetails, PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails};
 use crate::{
-    Agent, Construction, EvaluatedTradingOpportunity, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse,
-    PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse,
+    Agent, Construction, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse,
+    PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip,
     SystemSymbol, TradeGoodSymbol, WaypointSymbol,
 };
 use chrono::{DateTime, Utc};
@@ -9,7 +9,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use strum::{Display, EnumIter};
+use strum::Display;
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -314,7 +314,7 @@ impl ShipPriceInfo {
         let purchase_price_map: HashMap<ShipType, Vec<(WaypointSymbol, u32)>> = self.compute_ship_type_purchase_price_map();
         let purchase_location_map: HashMap<ShipType, Vec<WaypointSymbol>> = self.compute_ship_type_purchase_location_map();
         Self::get_price_and_location(ship_type, &purchase_price_map, &purchase_location_map)
-            .map(|(wps, p)| (ship_type.clone(), wps, p))
+            .map(|(wps, p)| (*ship_type, wps, p))
             .map(|(st, wps, p)| (st, (wps, p)))
     }
 
@@ -327,7 +327,7 @@ impl ShipPriceInfo {
             .unique()
             .filter_map(|ship_type| {
                 Self::get_price_and_location(ship_type, &purchase_price_map, &purchase_location_map)
-                    .map(|(wps, p)| (ship_type.clone(), wps, p))
+                    .map(|(wps, p)| (*ship_type, wps, p))
                     .map(|(st, wps, p)| (st, (wps, p)))
             })
             .collect();

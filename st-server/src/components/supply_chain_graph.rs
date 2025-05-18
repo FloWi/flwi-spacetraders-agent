@@ -34,7 +34,7 @@ pub fn SupplyChainGraph(routes: Vec<DeliveryRoute>, label: String) -> impl IntoV
 
     view! {
         <div class="p-4 bg-white odd:bg-gray-50 dark:bg-gray-900 dark:odd:bg-gray-800">
-            <h2 class="text-xl font-bold">{format!("{}", label)}</h2>
+            <h2 class="text-xl font-bold">{label.to_string()}</h2>
             <h1>"Supply Chain (sugiyama layout)"</h1>
             <div class="visualization">
                 {
@@ -222,7 +222,7 @@ fn generate_node_svg(node: &TechNode) -> String {
 
         let waypoint_type = match &node.source {
             TechNodeSource::Raw(raw_material_source) => raw_material_source.source_type.to_string(),
-            TechNodeSource::Market(m) => format!("{}", m.trade_good_type.to_string()),
+            TechNodeSource::Market(m) => format!("{}", m.trade_good_type),
         };
 
         // Prepare text lines with their colors
@@ -459,28 +459,28 @@ fn calculate_node_border_intersection(
     // Find valid intersections (0 <= t <= 1)
     let mut valid_intersections = Vec::new();
 
-    if t_left >= 0.0 && t_left <= 1.0 {
+    if (0.0..=1.0).contains(&t_left) {
         let y = line_y1 + t_left * dy;
         if y >= top && y <= bottom {
             valid_intersections.push((t_left, left, y));
         }
     }
 
-    if t_right >= 0.0 && t_right <= 1.0 {
+    if (0.0..=1.0).contains(&t_right) {
         let y = line_y1 + t_right * dy;
         if y >= top && y <= bottom {
             valid_intersections.push((t_right, right, y));
         }
     }
 
-    if t_top >= 0.0 && t_top <= 1.0 {
+    if (0.0..=1.0).contains(&t_top) {
         let x = line_x1 + t_top * dx;
         if x >= left && x <= right {
             valid_intersections.push((t_top, x, top));
         }
     }
 
-    if t_bottom >= 0.0 && t_bottom <= 1.0 {
+    if (0.0..=1.0).contains(&t_bottom) {
         let x = line_x1 + t_bottom * dx;
         if x >= left && x <= right {
             valid_intersections.push((t_bottom, x, bottom));
@@ -609,7 +609,7 @@ fn build_supply_chain_layout(
     // Use the best layout instead of just the first
     if let Some((layout, width, height)) = built_layouts.get(best_layout_index) {
         for (node_idx, (x, y)) in layout.iter() {
-            let node_id = &graph[NodeIndex::from(*node_idx)];
+            let node_id = &graph[*node_idx];
             if let Some(&pos) = node_positions.get(node_id) {
                 match orientation {
                     Orientation::LeftRight => {

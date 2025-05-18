@@ -7,10 +7,8 @@ pub mod st_client;
 
 use chrono::TimeDelta;
 use itertools::Itertools;
-use st_domain::{FlightMode, ShipSymbol, SystemSymbol, WaypointSymbol};
-use std::borrow::Borrow;
+use st_domain::FlightMode;
 use std::fmt::Display;
-use std::ops::Deref;
 
 pub mod agent;
 pub mod agent_manager;

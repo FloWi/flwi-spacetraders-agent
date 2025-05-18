@@ -167,7 +167,7 @@ pub fn ship_behaviors() -> Behaviors {
         Behavior::new_action(ShipAction::RemoveDestination),
     ]);
 
-    let mut purchase_ship_if_has_ticket = Behavior::new_select(vec![
+    let purchase_ship_if_has_ticket = Behavior::new_select(vec![
         Behavior::new_invert(Behavior::new_action(ShipAction::HasShipPurchaseTicketForWaypoint)),
         Behavior::new_sequence(vec![
             dock_if_necessary.clone(),

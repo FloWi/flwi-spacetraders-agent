@@ -16,10 +16,9 @@ use crate::bmc_blackboard::BmcBlackboard;
 use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
 use st_domain::{
-    Fleet, FleetId, FleetPhase, FleetTask, OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TransactionActionEvent,
+    OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TransactionActionEvent,
     WaypointTraitSymbol, WaypointType,
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
@@ -84,7 +83,6 @@ impl FleetRunner {
             let system_symbol = all_ships_map
                 .values()
                 .next()
-                .clone()
                 .unwrap()
                 .clone()
                 .nav
@@ -529,7 +527,7 @@ impl FleetRunner {
 
         let mut admiral_guard = fleet_admiral.lock().await;
         admiral_guard
-            .report_ship_action_completed(&msg, Arc::clone(&bmc), messages_in_queue)
+            .report_ship_action_completed(msg, Arc::clone(&bmc), messages_in_queue)
             .await?;
 
         let agent_credits = admiral_guard.agent_info_credits().await.0;
@@ -537,7 +535,7 @@ impl FleetRunner {
         match msg {
             ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
                 admiral_guard.ship_tasks.remove(&ship.symbol);
-                let result = recompute_tasks_after_ship_finishing_behavior_tree(&mut admiral_guard, &ship, &task, Arc::clone(&bmc)).await?;
+                let result = recompute_tasks_after_ship_finishing_behavior_tree(&mut admiral_guard, ship, task, Arc::clone(&bmc)).await?;
                 event!(
                     Level::INFO,
                     message = "ShipFinishedBehaviorTree",

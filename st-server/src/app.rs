@@ -10,7 +10,6 @@ use leptos_router::{
     components::{Route, Router, Routes},
     StaticSegment,
 };
-use std::sync::Arc;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {

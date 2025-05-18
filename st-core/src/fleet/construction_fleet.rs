@@ -39,7 +39,7 @@ impl ConstructJumpGateFleet {
             .map(|wp| (wp.symbol.clone(), wp))
             .collect::<HashMap<_, _>>();
 
-        let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&latest_market_entries);
+        let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(latest_market_entries);
         let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map);
 
         let evaluated_trading_opportunities = trading::evaluate_trading_opportunities(

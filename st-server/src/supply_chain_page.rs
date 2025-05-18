@@ -7,9 +7,8 @@ use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
     find_complete_supply_chain, EvaluatedTradingOpportunity, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain,
-    SupplyChainNodeVecExt, TradeGoodSymbol, Waypoint, WaypointSymbol,
+    SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol,
 };
-use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RelevantMarketData {

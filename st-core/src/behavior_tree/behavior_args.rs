@@ -8,7 +8,7 @@ use st_domain::blackboard_ops::BlackboardOps;
 
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, ThreadSafeTreasurer};
 use st_domain::{
-    JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard, TicketId, TravelAction,
+    JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard, TravelAction,
     Waypoint, WaypointSymbol,
 };
 use st_store::bmc::{Bmc, DbBmc};

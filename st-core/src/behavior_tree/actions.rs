@@ -13,8 +13,7 @@ use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::{PurchaseTrad
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails};
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TicketId,
-    TradeGoodSymbol, TravelAction, WaypointSymbol,
+    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TravelAction,
 };
 use std::collections::HashSet;
 use std::ops::{Add, Not};
@@ -457,10 +456,8 @@ impl Actionable for ShipAction {
                         .filter(|t| match t.details.clone() {
                             SellTradeGoods(sell_details) => match sell_details.maybe_matching_purchase_ticket {
                                 None => true,
-                                Some(related_purchase_ticket) => trades
-                                    .iter()
-                                    .find(|t| t.ticket_id == related_purchase_ticket)
-                                    .is_none(),
+                                Some(related_purchase_ticket) => !trades
+                                    .iter().any(|t| t.ticket_id == related_purchase_ticket),
                             },
                             PurchaseTradeGoods(_) => true,
                             FinanceTicketDetails::PurchaseShip(_) => true,
@@ -491,7 +488,7 @@ impl Actionable for ShipAction {
 
                     let current_location = &state.nav.waypoint_symbol.clone();
                     for finance_ticket in finance_tickets
-                        .into_iter()
+                        .iter()
                         .filter(|t| &t.details.get_waypoint() == current_location)
                     {
                         match &finance_ticket.details {
@@ -506,7 +503,7 @@ impl Actionable for ShipAction {
                                     .send(ActionEvent::TransactionCompleted(
                                         state.clone(),
                                         PurchasedTradeGoods {
-                                            ticket_id: finance_ticket.ticket_id.clone(),
+                                            ticket_id: finance_ticket.ticket_id,
                                             ticket_details: details.clone(),
                                             response,
                                         },
@@ -525,7 +522,7 @@ impl Actionable for ShipAction {
                                     .send(ActionEvent::TransactionCompleted(
                                         state.clone(),
                                         SoldTradeGoods {
-                                            ticket_id: finance_ticket.ticket_id.clone(),
+                                            ticket_id: finance_ticket.ticket_id,
                                             ticket_details: details.clone(),
                                             response,
                                         },
@@ -544,7 +541,7 @@ impl Actionable for ShipAction {
                                     .send(ActionEvent::TransactionCompleted(
                                         state.clone(),
                                         PurchasedShip {
-                                            ticket_id: finance_ticket.ticket_id.clone(),
+                                            ticket_id: finance_ticket.ticket_id,
                                             ticket_details: details.clone(),
                                             response,
                                         },
@@ -594,11 +591,7 @@ impl Actionable for ShipAction {
                         RefuelShip(_) => false,
                         FinanceTicketDetails::PurchaseShip(details) => {
                             let shipyard_wp = details.waypoint_symbol.clone();
-                            if shipyard_wp == current_location {
-                                true
-                            } else {
-                                false
-                            }
+                            shipyard_wp == current_location
                         }
                     });
                     if has_ship_ticket_at_current_waypoint {
@@ -663,7 +656,7 @@ mod tests {
     use st_domain::blackboard_ops::MockBlackboardOps;
     use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
     use test_log::test;
-    use tokio::sync::Mutex;
+    
 
     async fn test_run_ship_behavior(
         ship_ops: &mut ShipOperations,

@@ -3,8 +3,7 @@ use itertools::Itertools;
 
 use st_domain::{
     Agent, AgentSymbol, Cargo, Construction, ConstructionMaterial, Cooldown, Crew, Engine, FactionSymbol, FlightMode, Frame, Fuel, FuelConsumed, MarketData,
-    Nav, NavOnlyResponse, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol,
-    ShipPriceInfo, ShipRegistrationRole, ShipSymbol, SystemSymbol, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointTrait,
+    Nav, NavOnlyResponse, NavRouteWaypoint, NavStatus, Reactor, RefuelShipResponseBody, Registration, Requirements, Route, Ship, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, SystemSymbol, TradeGoodSymbol, Transaction, TransactionType, Waypoint, WaypointSymbol, WaypointTrait,
     WaypointTraitSymbol, WaypointType,
 };
 

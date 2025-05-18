@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use itertools::*;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
-use leptos_use::{use_interval, use_interval_fn, UseIntervalReturn};
+use leptos_use::use_interval_fn;
 use phosphor_leptos::{Icon, CLOCK, GAS_PUMP, PACKAGE, TRUCK};
 use serde::{Deserialize, Serialize};
 use st_domain::{NavStatus, Ship};

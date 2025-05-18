@@ -38,6 +38,12 @@ pub struct InMemoryStatusBmc {
     in_memory_status: Arc<RwLock<crate::InMemoryStatus>>,
 }
 
+impl Default for InMemoryStatusBmc {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryStatusBmc {
     pub fn new() -> Self {
         Self {

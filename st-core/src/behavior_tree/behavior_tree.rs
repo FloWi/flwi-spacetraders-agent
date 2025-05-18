@@ -363,10 +363,7 @@ where
         };
         match &result {
             Ok(o) => {
-                match state_changed_tx.send(state.clone()).await {
-                    Err(err) => return Err(Self::ActionError::from(anyhow!("sending to state_changed_tx failed. Error: {err}"))),
-                    Ok(_) => {}
-                }
+                if let Err(err) = state_changed_tx.send(state.clone()).await { return Err(Self::ActionError::from(anyhow!("sending to state_changed_tx failed. Error: {err}"))) }
 
                 let capacity = state_changed_tx.capacity();
                 event!(

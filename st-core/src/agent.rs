@@ -22,7 +22,6 @@ use crate::marketplaces::marketplaces::{find_marketplaces_to_collect_remotely, f
 use crate::pagination::{fetch_all_pages_into_queue, PaginationInput};
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
-use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{LabelledCoordinate, StStatusResponse, SupplyChain, SystemSymbol, WaypointSymbol, WaypointType};
 use st_store::bmc::{Bmc, DbBmc};
 

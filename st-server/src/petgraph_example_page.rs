@@ -1,13 +1,9 @@
 use leptos::html::*;
-use leptos::logging::log;
 use leptos::prelude::*;
-use petgraph::algo::toposort;
-use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::Direction;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    ActivityLevel, DeliveryRoute, HigherDeliveryRoute, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource,
-    ScoredSupplyChainSupportRoute, SupplyLevel, TradeGoodSymbol, TradeGoodType, WaypointSymbol, WaypointType,
+    ActivityLevel, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource,
+    ScoredSupplyChainSupportRoute, SupplyLevel, TradeGoodSymbol, WaypointSymbol,
 };
 
 use crate::components::supply_chain_graph::{get_activity_fill_color, get_supply_fill_color, SupplyChainGraph};
@@ -15,9 +11,7 @@ use crate::tables::scored_supply_chain_route_table::ScoredSupplyChainRouteRow;
 use crate::tables::trade_good_overview_table::TradeGoodsOverviewRow;
 use itertools::Itertools;
 use leptos_struct_table::TableContent;
-use std::collections::{HashMap, HashSet};
 use std::ops::Not;
-use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TechNodeSource {
