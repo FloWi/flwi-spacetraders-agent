@@ -115,7 +115,11 @@ maybe_trade: {:?},
     }
 
     pub fn set_trade_ticket(&mut self, trade_tickets: Vec<FinanceTicket>) {
-        self.maybe_trades = Some(trade_tickets);
+        if trade_tickets.is_empty() {
+            self.maybe_trades = None;
+        } else {
+            self.maybe_trades = Some(trade_tickets);
+        }
     }
 
     pub async fn dock(&mut self) -> Result<Nav> {

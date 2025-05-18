@@ -13,8 +13,8 @@ use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::{PurchaseTrad
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails};
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TradeGoodSymbol,
-    TravelAction, WaypointSymbol,
+    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TicketId,
+    TradeGoodSymbol, TravelAction, WaypointSymbol,
 };
 use std::collections::HashSet;
 use std::ops::{Add, Not};
@@ -448,30 +448,40 @@ impl Actionable for ShipAction {
             },
             ShipAction::SetNextTradeStopAsDestination => match state.maybe_trades.clone() {
                 None => Err(anyhow!("No next trade waypoint found - state.maybe_trade is None")),
-                Some(_trade) => {
-                    Ok(Success)
+                Some(trades) if trades.is_empty() => Err(anyhow!("No next trade waypoint found - state.maybe_trade has empty Vec<FinanceTicket>")),
+                Some(trades) => {
+                    // we can't execute all trades immediately. (e.g. can't sell _before_ you purchased the goods)
 
-                    // FIXME: allow multiple trading tickets
-                    // let maybe_best_wps: Option<WaypointSymbol> = args
-                    //     .get_closest_waypoint(&state.nav.waypoint_symbol, &candidate_waypoints)
-                    //     .await?;
-                    //
-                    // match maybe_best_wps {
-                    //     None => Err(anyhow!("No next trade waypoint found - maybe_best_waypoint is None")),
-                    //     Some(best_wps) => {
-                    //         event!(
-                    //             Level::DEBUG,
-                    //             r#"ShipAction::SetNextTradeStopAsDestination:
-                    //             trade: {}
-                    //             best_wps: {}
-                    //             "#,
-                    //             serde_json::to_string(&trade)?,
-                    //             best_wps.0,
-                    //         );
-                    //         state.set_destination(best_wps);
-                    //         Ok(Success)
-                    //     }
-                    // }
+                    let executable_trades = trades
+                        .iter()
+                        .filter(|t| match t.details.clone() {
+                            SellTradeGoods(sell_details) => match sell_details.maybe_matching_purchase_ticket {
+                                None => true,
+                                Some(related_purchase_ticket) => trades
+                                    .iter()
+                                    .find(|t| t.ticket_id == related_purchase_ticket)
+                                    .is_none(),
+                            },
+                            PurchaseTradeGoods(_) => true,
+                            FinanceTicketDetails::PurchaseShip(_) => true,
+                            RefuelShip(_) => true,
+                        })
+                        .collect_vec();
+
+                    let waypoints = executable_trades
+                        .into_iter()
+                        .map(|t| t.details.get_waypoint())
+                        .collect_vec();
+
+                    let maybe_closest_waypoint = args
+                        .get_closest_waypoint(&state.nav.waypoint_symbol, &waypoints)
+                        .await?;
+                    if let Some(closest_waypoint) = maybe_closest_waypoint {
+                        state.current_navigation_destination = Some(closest_waypoint);
+                        Ok(Success)
+                    } else {
+                        Err(anyhow!("Unable to set navigation destination. maybe_closest_waypoint is None"))
+                    }
                 }
             },
 
