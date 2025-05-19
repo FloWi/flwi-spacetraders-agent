@@ -622,24 +622,24 @@ impl ImprovedTreasurer {
     }
 
     fn try_finance_purchase_for_fleet(&mut self, fleet_id: &FleetId, required_credits: Credits) -> Result<FinanceResult> {
-        if let Some(budget) = self.fleet_budgets.get_mut(fleet_id) {
-            let diff_from_fleet = required_credits - budget.available_capital();
-
-            // i have 25k - ship costs 20k ==> missing = -5k
-
-            if diff_from_fleet.is_negative() || diff_from_fleet.is_zero() {
+        if let Some(_) = self.fleet_budgets.get_mut(fleet_id) {
+            if required_credits.is_negative() || required_credits.is_zero() {
                 // no need to transfer - fleet has enough budget
                 Ok(FinanceResult::FleetAlreadyHadSufficientFunds)
             } else {
-                let diff_from_treasury = self.current_treasury_fund() - diff_from_fleet;
+                let diff_from_treasury = self.current_treasury_fund() - required_credits;
                 if diff_from_treasury.is_positive() {
                     self.process_ledger_entry(TransferredFundsFromTreasuryToFleet {
                         fleet_id: fleet_id.clone(),
-                        credits: diff_from_fleet,
+                        credits: required_credits,
                     })?;
-                    Ok(FinanceResult::TransferSuccessful { transfer_sum: diff_from_fleet })
+                    Ok(FinanceResult::TransferSuccessful {
+                        transfer_sum: required_credits,
+                    })
                 } else {
-                    Ok(FinanceResult::TransferFailed { missing: diff_from_fleet })
+                    Ok(FinanceResult::TransferFailed {
+                        missing: diff_from_treasury.abs(),
+                    })
                 }
             }
         } else {

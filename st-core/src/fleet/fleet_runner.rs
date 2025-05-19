@@ -18,7 +18,7 @@ use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
 use st_domain::{
-    OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TransactionActionEvent,
+    get_exploration_tasks_for_waypoint, OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TransactionActionEvent,
     WaypointTraitSymbol, WaypointType,
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
@@ -659,7 +659,27 @@ impl FleetRunner {
                 }
             }
 
-            ShipStatusReport::ShipActionCompleted(_, _) => {}
+            ShipStatusReport::ShipActionCompleted(ship, ship_action) => {
+                if ship_action == &ShipAction::RegisterProbeForPermanentObservation {
+                    let current_waypoint_symbol = ship.nav.waypoint_symbol.clone();
+                    let exploration_tasks = bmc
+                        .system_bmc()
+                        .get_waypoints_of_system(&Ctx::Anonymous, &ship.nav.system_symbol)
+                        .await?
+                        .into_iter()
+                        .find(|wp| wp.symbol == current_waypoint_symbol)
+                        .map(|wp| get_exploration_tasks_for_waypoint(&wp))
+                        .unwrap_or_default();
+
+                    admiral_guard
+                        .stationary_probe_locations
+                        .push(StationaryProbeLocation {
+                            waypoint_symbol: ship.nav.waypoint_symbol.clone(),
+                            probe_ship_symbol: ship.symbol.clone(),
+                            exploration_tasks,
+                        })
+                }
+            }
             ShipStatusReport::Expense(_, operation_expense) => match operation_expense {
                 OperationExpenseEvent::RefueledShip { response } => {
                     event!(
@@ -794,7 +814,7 @@ impl FleetRunner {
                             ship = ship_op.symbol.0,
                             action = %ship_action,
                         );
-                        if ship_action == ShipAction::CollectWaypointInfos {
+                        if ship_action == ShipAction::CollectWaypointInfos || ship_action == ShipAction::RegisterProbeForPermanentObservation {
                             ship_status_report_tx
                                 .send(ShipStatusReport::ShipActionCompleted(ship_op.ship.clone(), ship_action))
                                 .await?;
@@ -1074,7 +1094,7 @@ mod tests {
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
     use itertools::Itertools;
-    use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipFrameSymbol, ShipRegistrationRole, WaypointSymbol};
+    use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipFrameSymbol, ShipRegistrationRole, TradeGoodSymbol, WaypointSymbol};
     use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
     use st_store::bmc::{Bmc, InMemoryBmc};
@@ -1272,7 +1292,12 @@ mod tests {
                         .expect("construction_site");
 
                     let has_started_construction = maybe_construction_site
-                        .map(|cs| cs.data.materials.iter().any(|cm| cm.fulfilled > 0))
+                        .map(|cs| {
+                            cs.data
+                                .materials
+                                .iter()
+                                .any(|cm| &cm.trade_symbol != &TradeGoodSymbol::QUANTUM_STABILIZERS && cm.fulfilled > 0)
+                        })
                         .unwrap_or(false);
 
                     let evaluation_result = has_finished_initial_observation
@@ -1322,7 +1347,7 @@ evaluation_result: {evaluation_result}
         // Use select to race between the fleet task and your condition checker
         // Add a timeout as a fallback
         tokio::select! {
-            _ = tokio::time::timeout(Duration::from_secs(300), fleet_future) => {
+            _ = tokio::time::timeout(Duration::from_secs(120), fleet_future) => {
                 println!("Fleet task completed or timed out");
             }
             _ = condition_checker => {

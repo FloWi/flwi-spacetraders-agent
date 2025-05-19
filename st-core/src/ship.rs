@@ -7,7 +7,7 @@ use st_domain::{
     SellTradeGoodResponse, Ship, ShipType, Shipyard, SupplyConstructionSiteResponse, TradeGoodSymbol, TravelAction, WaypointSymbol,
 };
 use std::collections::VecDeque;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Not};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -70,6 +70,14 @@ maybe_trade: {:?},
 
     pub(crate) fn set_fuel(&mut self, new_fuel: Fuel) {
         self.fuel = new_fuel;
+    }
+
+    pub(crate) fn has_trade(&self) -> bool {
+        if let Some(trades) = &self.maybe_trades {
+            trades.is_empty().not()
+        } else {
+            false
+        }
     }
 
     pub fn set_route(&mut self, new_route: Vec<TravelAction>) {

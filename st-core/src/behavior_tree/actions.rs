@@ -457,7 +457,8 @@ impl Actionable for ShipAction {
                             SellTradeGoods(sell_details) => match sell_details.maybe_matching_purchase_ticket {
                                 None => true,
                                 Some(related_purchase_ticket) => !trades
-                                    .iter().any(|t| t.ticket_id == related_purchase_ticket),
+                                    .iter()
+                                    .any(|t| t.ticket_id == related_purchase_ticket),
                             },
                             PurchaseTradeGoods(_) => true,
                             FinanceTicketDetails::PurchaseShip(_) => true,
@@ -603,6 +604,25 @@ impl Actionable for ShipAction {
                     Err(anyhow!("No trading ticket"))
                 }
             }
+            ShipAction::RegisterProbeForPermanentObservation => {
+                // we don't need to send a specialized message
+                Ok(Success)
+            }
+            ShipAction::CheckForShipPurchaseTicket => {
+                if state.has_trade().not() {
+                    let tickets = args.treasurer.get_active_tickets()?;
+                    if let Some((_, ship_purchase_ticket)) = tickets.into_iter().find(|(_, t)| match t.details {
+                        PurchaseTradeGoods(_) => false,
+                        SellTradeGoods(_) => false,
+                        FinanceTicketDetails::PurchaseShip(_) => t.ship_symbol == state.symbol,
+                        RefuelShip(_) => false,
+                    }) {
+                        state.set_trade_ticket(vec![ship_purchase_ticket]);
+                    }
+                }
+
+                Ok(Success)
+            }
         };
 
         let capacity = action_completed_tx.capacity();
@@ -618,9 +638,7 @@ impl Actionable for ShipAction {
                     .await?;
             }
             Err(err) => {
-                action_completed_tx
-                    .send(anyhow::bail!("Action failed {}", err))
-                    .await?;
+                anyhow::bail!("Action failed {}", err)
             }
         };
 
@@ -656,7 +674,6 @@ mod tests {
     use st_domain::blackboard_ops::MockBlackboardOps;
     use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
     use test_log::test;
-    
 
     async fn test_run_ship_behavior(
         ship_ops: &mut ShipOperations,
