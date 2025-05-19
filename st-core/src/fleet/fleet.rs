@@ -11,7 +11,7 @@ use anyhow::{anyhow, Result};
 use chrono::Utc;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{ContentArrangement, Table};
-use itertools::Itertools;
+use itertools::{all, Itertools};
 use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::credits::Credits;
@@ -918,8 +918,31 @@ impl FleetAdmiral {
             }
         }
 
-        if new_ship_tasks.is_empty() {
-            event!(Level::WARN, message = "no new tasks for ships computed - this should not happen");
+        let all_ship_symbols = admiral.all_ships.keys().cloned().collect::<HashSet<_>>();
+        let already_assigned_ship_symbols = admiral.ship_tasks.keys().cloned().collect::<HashSet<_>>();
+        let newly_assigned_ship_symbols = new_ship_tasks.keys().cloned().collect::<HashSet<_>>();
+        let ships_with_tasks = already_assigned_ship_symbols
+            .union(&newly_assigned_ship_symbols)
+            .cloned()
+            .collect::<HashSet<_>>();
+
+        let ships_without_task = all_ship_symbols
+            .difference(&ships_with_tasks)
+            .collect::<HashSet<_>>();
+
+        if ships_without_task.is_empty().not() {
+            event!(
+                Level::WARN,
+                message = "Some ships are missing tasks after pure_compute_ship_tasks",
+                num_ships_without_task = ships_without_task.len(),
+                num_already_assigned_ship_symbols = already_assigned_ship_symbols.len(),
+                num_newly_assigned_ship_symbols = newly_assigned_ship_symbols.len(),
+                num_ships_with_tasks = ships_with_tasks.len(),
+                ships_without_task = ships_without_task
+                    .into_iter()
+                    .map(|ss| ss.0.clone())
+                    .join(", "),
+            );
         }
 
         if new_ship_tasks
