@@ -56,8 +56,6 @@ impl ConstructJumpGateFleet {
             fleet_budget.available_capital().0,
         );
 
-        // FIXME: only allow one trade per route
-
         let best_new_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
             trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, active_trade_routes);
 
@@ -288,13 +286,17 @@ fn find_best_combination(
     let actions = ConstructionFleetAction::select_actions_within_budget(actions, fleet_budget.available_capital());
 
     // If there are no actions, return an empty hashmap
-    if actions.is_empty() {
+    if actions.is_empty() || ships.is_empty() {
         return HashMap::new();
     }
 
     // We'll track the best score and the corresponding assignment
     let mut best_total_distance = 0u32;
     let mut best_assignment: HashMap<ShipSymbol, ConstructionFleetAction> = HashMap::new();
+
+    if ships.len() == 1 {
+        return HashMap::from([(ships[0].symbol.clone(), actions[0].clone())]);
+    }
 
     // Generate all possible ways to select actions.len() ships from the ships vector
     for ship_combination in ships.iter().combinations(actions.len()) {
