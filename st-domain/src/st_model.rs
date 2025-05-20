@@ -323,7 +323,7 @@ impl Construction {
             .collect()
     }
 
-    pub(crate) fn missing_construction_materials(&self) -> HashMap<TradeGoodSymbol, u32> {
+    pub fn missing_construction_materials(&self) -> HashMap<TradeGoodSymbol, u32> {
         if self.is_complete {
             Default::default()
         } else {

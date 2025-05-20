@@ -454,7 +454,13 @@ impl Actionable for ShipAction {
                     let executable_trades = trades
                         .iter()
                         .filter(|t| match t.details.clone() {
-                            SellTradeGoods(sell_details) => match sell_details.maybe_matching_purchase_ticket {
+                            SellTradeGoods(details) => match details.maybe_matching_purchase_ticket {
+                                None => true,
+                                Some(related_purchase_ticket) => !trades
+                                    .iter()
+                                    .any(|t| t.ticket_id == related_purchase_ticket),
+                            },
+                            FinanceTicketDetails::DeliverConstructionMaterials(details) => match details.maybe_matching_purchase_ticket {
                                 None => true,
                                 Some(related_purchase_ticket) => !trades
                                     .iter()
@@ -551,6 +557,9 @@ impl Actionable for ShipAction {
                                     .await?;
                             }
                             RefuelShip(_details) => {}
+                            FinanceTicketDetails::DeliverConstructionMaterials(_details) => {
+                                todo!("DeliverConstructionMaterials not implemented yet")
+                            }
                         }
                         completed_tickets.insert(finance_ticket.clone());
                         let still_open_tickets = finance_tickets
@@ -590,6 +599,7 @@ impl Actionable for ShipAction {
                         PurchaseTradeGoods(_) => false,
                         SellTradeGoods(_) => false,
                         RefuelShip(_) => false,
+                        FinanceTicketDetails::DeliverConstructionMaterials(_) => false,
                         FinanceTicketDetails::PurchaseShip(details) => {
                             let shipyard_wp = details.waypoint_symbol.clone();
                             shipyard_wp == current_location
@@ -614,8 +624,9 @@ impl Actionable for ShipAction {
                     if let Some((_, ship_purchase_ticket)) = tickets.into_iter().find(|(_, t)| match t.details {
                         PurchaseTradeGoods(_) => false,
                         SellTradeGoods(_) => false,
-                        FinanceTicketDetails::PurchaseShip(_) => t.ship_symbol == state.symbol,
+                        FinanceTicketDetails::DeliverConstructionMaterials(_) => false,
                         RefuelShip(_) => false,
+                        FinanceTicketDetails::PurchaseShip(_) => t.ship_symbol == state.symbol,
                     }) {
                         state.set_trade_ticket(vec![ship_purchase_ticket]);
                     }

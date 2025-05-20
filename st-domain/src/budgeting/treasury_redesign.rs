@@ -34,6 +34,14 @@ pub struct SellTradeGoodsTicketDetails {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
+pub struct DeliverConstructionMaterialsTicketDetails {
+    pub waypoint_symbol: WaypointSymbol,
+    pub trade_good: TradeGoodSymbol,
+    pub quantity: u32,
+    pub maybe_matching_purchase_ticket: Option<TicketId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub struct PurchaseShipTicketDetails {
     pub ship_type: ShipType,
     pub assigned_fleet_id: FleetId,
@@ -68,6 +76,7 @@ pub enum FinanceResult {
 pub enum FinanceTicketDetails {
     PurchaseTradeGoods(PurchaseTradeGoodsTicketDetails),
     SellTradeGoods(SellTradeGoodsTicketDetails),
+    DeliverConstructionMaterials(DeliverConstructionMaterialsTicketDetails),
     PurchaseShip(PurchaseShipTicketDetails),
     RefuelShip(RefuelShipTicketDetails),
 }
@@ -79,33 +88,17 @@ impl FinanceTicketDetails {
             FinanceTicketDetails::SellTradeGoods(SellTradeGoodsTicketDetails { .. }) => 1,
             FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails { .. }) => -1,
             FinanceTicketDetails::RefuelShip(RefuelShipTicketDetails { .. }) => -1,
+            FinanceTicketDetails::DeliverConstructionMaterials(_) => 0,
         }
     }
 
     pub fn get_units(&self) -> u32 {
         match self {
-            FinanceTicketDetails::PurchaseTradeGoods(PurchaseTradeGoodsTicketDetails {
-                waypoint_symbol,
-                trade_good,
-                expected_price_per_unit,
-                quantity,
-                expected_total_purchase_price,
-            }) => *quantity,
-            FinanceTicketDetails::SellTradeGoods(SellTradeGoodsTicketDetails {
-                waypoint_symbol,
-                trade_good,
-                expected_price_per_unit,
-                quantity,
-                expected_total_sell_price,
-                maybe_matching_purchase_ticket,
-            }) => *quantity,
-            FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails { .. }) => 1,
-            FinanceTicketDetails::RefuelShip(RefuelShipTicketDetails {
-                expected_price_per_unit,
-                num_fuel_barrels,
-                expected_total_purchase_price,
-                waypoint_symbol,
-            }) => *num_fuel_barrels,
+            FinanceTicketDetails::PurchaseTradeGoods(d) => d.quantity,
+            FinanceTicketDetails::SellTradeGoods(d) => d.quantity,
+            FinanceTicketDetails::PurchaseShip(_) => 1,
+            FinanceTicketDetails::RefuelShip(d) => d.num_fuel_barrels,
+            FinanceTicketDetails::DeliverConstructionMaterials(d) => d.quantity,
         }
     }
 
@@ -115,6 +108,7 @@ impl FinanceTicketDetails {
             FinanceTicketDetails::SellTradeGoods(d) => d.waypoint_symbol.clone(),
             FinanceTicketDetails::PurchaseShip(d) => d.waypoint_symbol.clone(),
             FinanceTicketDetails::RefuelShip(d) => d.waypoint_symbol.clone(),
+            FinanceTicketDetails::DeliverConstructionMaterials(d) => d.waypoint_symbol.clone(),
         }
     }
 }
@@ -319,7 +313,7 @@ impl ThreadSafeTreasurer {
         self.with_treasurer(|t| t.try_finance_purchase_for_fleet(fleet_id, required_credits))
     }
 
-    pub fn set_fleet_total_capital(&self, fleet_id: &FleetId, new_total_capital: Credits) -> Result<()> {
+    pub fn set_fleet_budget(&self, fleet_id: &FleetId, new_total_capital: Credits) -> Result<()> {
         self.with_treasurer(|t| t.set_fleet_total_capital(fleet_id, new_total_capital))
     }
 
@@ -490,8 +484,7 @@ impl ImprovedTreasurer {
         expected_price_per_unit: Credits,
     ) -> Result<FinanceTicket> {
         if let Some(fleet_budget) = self.fleet_budgets.get(fleet_id) {
-            let fleet_reserve: Credits = 10_000.into();
-            let affordable_units: u32 = ((fleet_budget.current_capital - fleet_reserve).0 / expected_price_per_unit.0) as u32;
+            let affordable_units: u32 = (fleet_budget.available_capital().0 / expected_price_per_unit.0) as u32;
             let quantity = affordable_units.min(quantity);
             let total = (expected_price_per_unit.0 * quantity as i64).into();
             let ticket = FinanceTicket {
@@ -591,6 +584,7 @@ impl ImprovedTreasurer {
             FinanceTicketDetails::SellTradeGoods(SellTradeGoodsTicketDetails { quantity, .. }) => quantity,
             FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails { .. }) => 1,
             FinanceTicketDetails::RefuelShip(RefuelShipTicketDetails { num_fuel_barrels, .. }) => num_fuel_barrels,
+            FinanceTicketDetails::DeliverConstructionMaterials(DeliverConstructionMaterialsTicketDetails { quantity, .. }) => quantity,
         };
 
         self.process_ledger_entry(TicketCompleted {
@@ -1158,7 +1152,7 @@ mod tests {
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
         let mut expected_ledger_entries = treasurer.ledger_entries()?.into_iter().collect_vec();
 
-        treasurer.set_fleet_total_capital(fleet_id, 150_000.into())?;
+        treasurer.set_fleet_budget(fleet_id, 150_000.into())?;
 
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
         assert_eq!(
@@ -1181,7 +1175,7 @@ mod tests {
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
         //setting total capital below current_capital
-        treasurer.set_fleet_total_capital(fleet_id, 50_000.into())?;
+        treasurer.set_fleet_budget(fleet_id, 50_000.into())?;
 
         // this will produce two entries in the ledger - one for the set-action and another one for the transfer of funds
         expected_ledger_entries.push(LedgerEntry::SetNewTotalCapitalForFleet {

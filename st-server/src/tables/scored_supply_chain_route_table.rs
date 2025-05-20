@@ -120,7 +120,7 @@ impl From<ScoredSupplyChainSupportRoute> for ScoredSupplyChainRouteRow {
             purchase_price: route.purchase_price,
             sell_price: route.sell_price,
             spread: route.spread,
-            num_parallel_pickups: route.num_parallel_pickups,
+            num_parallel_pickups: route.num_allowed_parallel_pickups,
             score: route.score,
             source_trade_good_type: route.source_market.trade_good_type.clone(),
             rank: route.rank,

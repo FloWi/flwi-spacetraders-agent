@@ -201,7 +201,7 @@ impl FleetAdmiral {
             );
             admiral
                 .treasurer
-                .set_fleet_total_capital(fleet_id, new_total_capital)?;
+                .set_fleet_budget(fleet_id, new_total_capital)?;
 
             admiral
                 .treasurer
@@ -747,6 +747,7 @@ impl FleetAdmiral {
                 FinanceTicketDetails::PurchaseTradeGoods(_) => None,
                 FinanceTicketDetails::SellTradeGoods(_) => None,
                 FinanceTicketDetails::RefuelShip(_) => None,
+                FinanceTicketDetails::DeliverConstructionMaterials(_) => None,
             })
             .collect();
 
@@ -821,30 +822,18 @@ impl FleetAdmiral {
 
                     potential_trading_tasks
                         .into_iter()
-                        .filter_map(|potential_trading_task| {
+                        .filter_map(|potential_construction_task| {
+                            let purchase_details = potential_construction_task.create_purchase_ticket_details();
+
                             let maybe_purchase_ticket = admiral
                                 .treasurer
                                 .create_purchase_trade_goods_ticket(
                                     fleet_id,
-                                    potential_trading_task
-                                        .evaluation_result
-                                        .trading_opportunity
-                                        .purchase_market_trade_good_entry
-                                        .symbol
-                                        .clone(),
-                                    potential_trading_task
-                                        .evaluation_result
-                                        .trading_opportunity
-                                        .purchase_waypoint_symbol
-                                        .clone(),
-                                    potential_trading_task.ship_symbol.clone(),
-                                    potential_trading_task.evaluation_result.units,
-                                    potential_trading_task
-                                        .evaluation_result
-                                        .trading_opportunity
-                                        .purchase_market_trade_good_entry
-                                        .purchase_price
-                                        .into(),
+                                    purchase_details.trade_good,
+                                    purchase_details.waypoint_symbol,
+                                    potential_construction_task.ship_symbol.clone(),
+                                    purchase_details.quantity,
+                                    purchase_details.expected_price_per_unit,
                                 )
                                 .ok()
                                 .filter(|pt| pt.details.get_units() > 0);
@@ -852,44 +841,45 @@ impl FleetAdmiral {
                             let maybe_sell_ticket = if let Some(purchase_ticket) = &maybe_purchase_ticket {
                                 // we might not have been able to afford purchasing _all_ units
                                 let affordable_units = purchase_ticket.details.get_units();
-                                let planned_units = potential_trading_task.evaluation_result.units;
-                                if affordable_units != planned_units {
-                                    event!(Level::DEBUG, message = "Unable to afford purchasing all units", planned_units, affordable_units);
-                                }
 
-                                admiral
-                                    .treasurer
-                                    .create_sell_trade_goods_ticket(
-                                        fleet_id,
-                                        potential_trading_task
-                                            .evaluation_result
-                                            .trading_opportunity
-                                            .sell_market_trade_good_entry
-                                            .symbol
-                                            .clone(),
-                                        potential_trading_task
-                                            .evaluation_result
-                                            .trading_opportunity
-                                            .sell_waypoint_symbol
-                                            .clone(),
-                                        potential_trading_task.ship_symbol.clone(),
-                                        affordable_units,
-                                        potential_trading_task
-                                            .evaluation_result
-                                            .trading_opportunity
-                                            .sell_market_trade_good_entry
-                                            .sell_price
-                                            .into(),
-                                        Some(purchase_ticket.ticket_id),
-                                    )
-                                    .ok()
+                                let sell_or_delivery_details = potential_construction_task.create_sell_or_deliver_ticket_details();
+
+                                if let Some((trade_good, waypoint_symbol, quantity, expected_price_per_unit)) = match sell_or_delivery_details {
+                                    FinanceTicketDetails::PurchaseTradeGoods(_) => None,
+                                    FinanceTicketDetails::SellTradeGoods(d) => Some((d.trade_good, d.waypoint_symbol, d.quantity, d.expected_price_per_unit)),
+                                    FinanceTicketDetails::DeliverConstructionMaterials(d) => {
+                                        Some((d.trade_good, d.waypoint_symbol, d.quantity, Credits::default()))
+                                    }
+                                    FinanceTicketDetails::PurchaseShip(_) => None,
+                                    FinanceTicketDetails::RefuelShip(_) => None,
+                                } {
+                                    let planned_units = quantity;
+                                    if affordable_units != planned_units {
+                                        event!(Level::DEBUG, message = "Unable to afford purchasing all units", planned_units, affordable_units);
+                                    }
+
+                                    admiral
+                                        .treasurer
+                                        .create_sell_trade_goods_ticket(
+                                            fleet_id,
+                                            trade_good,
+                                            waypoint_symbol,
+                                            potential_construction_task.ship_symbol.clone(),
+                                            affordable_units,
+                                            expected_price_per_unit,
+                                            Some(purchase_ticket.ticket_id),
+                                        )
+                                        .ok()
+                                } else {
+                                    None
+                                }
                             } else {
                                 None
                             };
 
                             maybe_purchase_ticket
                                 .zip(maybe_sell_ticket)
-                                .map(|(pt, st)| (potential_trading_task.ship_symbol.clone(), ShipTask::Trade { tickets: vec![pt, st] }))
+                                .map(|(pt, st)| (potential_construction_task.ship_symbol.clone(), ShipTask::Trade { tickets: vec![pt, st] }))
                         })
                         .collect::<HashMap<_, _>>()
                 }
@@ -973,7 +963,31 @@ impl FleetAdmiral {
             .get_latest_market_data_for_system(&Ctx::Anonymous, &system_symbol)
             .await?;
 
-        admiral.try_create_ship_purchase_ticket(&ship_prices).await;
+        // increase construction budget to 20M after all ships have been purchased
+        if admiral.ship_purchase_demand.is_empty() {
+            if admiral.fleet_phase.name == FleetPhaseName::ConstructJumpGate {
+                if let Some((construction_fleet_id, _)) = admiral
+                    .fleets
+                    .iter()
+                    .find(|(id, fleet)| matches!(fleet.cfg, ConstructJumpGateCfg(_)))
+                {
+                    if let Ok(construction_fleet_budget) = admiral.treasurer.get_fleet_budget(construction_fleet_id) {
+                        let budget_during_construction_phase_after_ship_purchases = 20_000_000.into();
+                        if construction_fleet_budget.current_capital != budget_during_construction_phase_after_ship_purchases {
+                            admiral
+                                .treasurer
+                                .set_fleet_budget(construction_fleet_id, budget_during_construction_phase_after_ship_purchases)?;
+
+                            admiral
+                                .treasurer
+                                .transfer_funds_to_fleet_to_top_up_available_capital(construction_fleet_id)?;
+                        }
+                    }
+                }
+            }
+        } else {
+            admiral.try_create_ship_purchase_ticket(&ship_prices).await;
+        }
 
         let fleet_budgets = admiral.get_fleet_budgets();
 

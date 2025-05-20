@@ -375,7 +375,8 @@ fn calc_construction_related_trade_good_overview(
 
     let goods_for_sale_not_conflicting_with_construction: HashSet<TradeGoodSymbol> = products_for_sale
         .iter()
-        .filter(|tg| missing_construction_material.contains_key(tg).not()).filter(|&trade_symbol| {
+        .filter(|tg| missing_construction_material.contains_key(tg).not())
+        .filter(|&trade_symbol| {
             let products_involved = supply_chain
                 .individual_supply_chains
                 .get(trade_symbol)
@@ -393,7 +394,8 @@ fn calc_construction_related_trade_good_overview(
                 });
 
             no_conflict_with_construction_chains
-        }).cloned()
+        })
+        .cloned()
         .collect();
 
     let goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol> = products_for_sale
@@ -982,7 +984,7 @@ pub struct ScoredSupplyChainSupportRoute {
     pub purchase_price: i32,
     pub sell_price: i32,
     pub spread: i32,
-    pub num_parallel_pickups: u32,
+    pub num_allowed_parallel_pickups: u32,
     pub score: i32,
     pub rank: u32,
 }
@@ -1080,7 +1082,7 @@ impl ScoredSupplyChainSupportRoute {
             purchase_price,
             sell_price,
             spread,
-            num_parallel_pickups,
+            num_allowed_parallel_pickups: num_parallel_pickups,
             score,
             rank: tgr.rank,
         }
@@ -1102,4 +1104,45 @@ fn calc_activity_level_demand_score(supply_level_of_export_at_this_producer: &Su
             .map(|score| *MAX_ACTIVITY_LEVEL_SCORE - score)
             .unwrap_or(0)
     }
+}
+
+pub fn calc_scored_supply_chain_routes(
+    materialized_supply_chain: &MaterializedSupplyChain,
+    goods_of_interest_in_order: Vec<TradeGoodSymbol>,
+) -> Vec<ScoredSupplyChainSupportRoute> {
+    //FIXME: compute myself
+
+    let max_level = materialized_supply_chain
+        .all_routes
+        .iter()
+        .map(|route| match route {
+            DeliveryRoute::Raw(_) => 0,
+            DeliveryRoute::Processed { rank, .. } => *rank,
+        })
+        .max()
+        .unwrap_or_default();
+
+    let priorities_of_products_to_boost = goods_of_interest_in_order
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(idx, tg)| (tg, (goods_of_interest_in_order.len() - idx) as u32))
+        .collect();
+
+    let scored_supply_routes: Vec<ScoredSupplyChainSupportRoute> = materialized_supply_chain
+        .all_routes
+        .iter()
+        .filter_map(|route| match route {
+            DeliveryRoute::Raw(_) => None,
+            DeliveryRoute::Processed { route, .. } => Some(ScoredSupplyChainSupportRoute::calc(
+                route,
+                max_level,
+                &materialized_supply_chain.individual_routes_of_goods_for_sale,
+                &priorities_of_products_to_boost,
+            )),
+        })
+        .sorted_by_key(|r| (r.score * -1, r.spread * -1))
+        .collect_vec();
+
+    scored_supply_routes
 }

@@ -2,8 +2,8 @@ use leptos::html::*;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    ActivityLevel, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource, ScoredSupplyChainSupportRoute, SupplyLevel,
-    TradeGoodSymbol, WaypointSymbol,
+    calc_scored_supply_chain_routes, ActivityLevel, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource,
+    ScoredSupplyChainSupportRoute, SupplyLevel, TradeGoodSymbol, WaypointSymbol,
 };
 
 use crate::components::supply_chain_graph::{get_activity_fill_color, get_supply_fill_color, SupplyChainGraph};
@@ -165,8 +165,7 @@ async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec
 
     let materialized_supply_chain = facts.materialized_supply_chain.unwrap();
 
-    //FIXME: compute myself
-    let goods_of_interest = vec![
+    let goods_of_interest_in_order: Vec<TradeGoodSymbol> = vec![
         TradeGoodSymbol::ADVANCED_CIRCUITRY,
         TradeGoodSymbol::FAB_MATS,
         TradeGoodSymbol::SHIP_PLATING,
@@ -174,38 +173,8 @@ async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec
         TradeGoodSymbol::MICROPROCESSORS,
         TradeGoodSymbol::CLOTHING,
     ];
-    let max_level = materialized_supply_chain
-        .all_routes
-        .iter()
-        .map(|route| match route {
-            DeliveryRoute::Raw(_) => 0,
-            DeliveryRoute::Processed { rank, .. } => *rank,
-        })
-        .max()
-        .unwrap_or_default();
 
-    let priorities_of_products_to_boost = goods_of_interest
-        .iter()
-        .cloned()
-        .enumerate()
-        .map(|(idx, tg)| (tg, (goods_of_interest.len() - idx) as u32))
-        .collect();
-
-    let scored_supply_routes: Vec<ScoredSupplyChainSupportRoute> = materialized_supply_chain
-        .all_routes
-        .iter()
-        .filter_map(|route| match route {
-            DeliveryRoute::Raw(_) => None,
-            DeliveryRoute::Processed { route, .. } => Some(ScoredSupplyChainSupportRoute::calc(
-                route,
-                max_level,
-                &materialized_supply_chain.individual_routes_of_goods_for_sale,
-                &priorities_of_products_to_boost,
-            )),
-        })
-        .sorted_by_key(|r| (r.score * -1, r.spread * -1))
-        .collect_vec();
-
+    let scored_supply_chain_routes = calc_scored_supply_chain_routes(&materialized_supply_chain, goods_of_interest_in_order);
     assert!(
         materialized_supply_chain
             .raw_delivery_routes

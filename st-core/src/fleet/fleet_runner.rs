@@ -1268,14 +1268,14 @@ mod tests {
                         .iter()
                         .filter(|(_, s)| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER)
                         .count();
-                    let has_bought_all_haulers = num_haulers == 4;
 
                     let num_mining_drones = admiral
                         .all_ships
                         .iter()
                         .filter(|(_, s)| s.frame.symbol == ShipFrameSymbol::FRAME_LIGHT_FREIGHTER)
                         .count();
-                    let has_bought_all_mining_drones = num_mining_drones == 7;
+
+                    let has_bought_all_ships = admiral.ship_purchase_demand.is_empty();
 
                     let home_system = bmc
                         .agent_bmc()
@@ -1306,9 +1306,8 @@ mod tests {
                         && has_bought_ships
                         && has_probes_at_every_shipyard
                         && has_probes_at_every_marketplace
-                        && has_bought_all_haulers
-                        && has_bought_all_mining_drones;
-                    //&& has_started_construction;
+                        && has_bought_all_ships
+                        && has_started_construction;
 
                     println!(
                         r#"
@@ -1324,8 +1323,7 @@ shipyard_waypoints: {}
 has_probes_at_every_shipyard: {has_probes_at_every_shipyard}
 marketplace_waypoints: {}
 has_probes_at_every_marketplace: {has_probes_at_every_marketplace}
-has_bought_all_haulers: {has_bought_all_haulers}
-has_bought_all_mining_drones: {has_bought_all_mining_drones}
+has_bought_all_ships: {has_bought_all_ships}
 has_started_construction: {has_started_construction}
 
 evaluation_result: {evaluation_result}
