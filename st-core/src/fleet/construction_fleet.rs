@@ -141,9 +141,8 @@ fn determine_construction_fleet_actions(
 
     let cargo_sizes = unassigned_ships_of_fleet
         .iter()
-        .map(|s| s.cargo.capacity)
-        .unique()
-        .collect_vec();
+        .map(|s| (s.symbol.clone(), s.cargo.capacity))
+        .collect::<HashMap<_, _>>();
 
     let prioritized_actions = if let Some(materialized_supply_chain) = facts.materialized_supply_chain.clone() {
         let required_construction_materials = facts
@@ -290,13 +289,41 @@ fn find_best_combination(
         return HashMap::new();
     }
 
-    // We'll track the best score and the corresponding assignment
-    let mut best_total_distance = 0u32;
-    let mut best_assignment: HashMap<ShipSymbol, ConstructionFleetAction> = HashMap::new();
-
     if ships.len() == 1 {
         return HashMap::from([(ships[0].symbol.clone(), actions[0].clone())]);
     }
+
+    // if we have evaluated trading opportunities in here, we are currently overriding the ship symbol and therefor invalidating the whole result
+    // Let's keep those entries and only pick the best combination of the rest
+
+    let already_assigned_ships = actions
+        .iter()
+        .filter_map(|a| match a {
+            ConstructionFleetAction::DeliverConstructionMaterials { .. } => None,
+            ConstructionFleetAction::BoostSupplyChain { .. } => None,
+            ConstructionFleetAction::TradeProfitably {
+                evaluated_trading_opportunity, ..
+            } => Some((evaluated_trading_opportunity.ship_symbol.clone(), a.clone())),
+        })
+        .collect::<HashMap<_, _>>();
+
+    let actions = actions
+        .into_iter()
+        .filter(|a| match &a {
+            ConstructionFleetAction::DeliverConstructionMaterials { .. } => true,
+            ConstructionFleetAction::BoostSupplyChain { .. } => true,
+            ConstructionFleetAction::TradeProfitably { .. } => false,
+        })
+        .collect_vec();
+
+    let ships = ships
+        .into_iter()
+        .filter(|s| already_assigned_ships.contains_key(&s.symbol).not())
+        .collect_vec();
+
+    // We'll track the best score and the corresponding assignment
+    let mut best_total_distance = 0u32;
+    let mut best_assignment: HashMap<ShipSymbol, ConstructionFleetAction> = HashMap::new();
 
     // Generate all possible ways to select actions.len() ships from the ships vector
     for ship_combination in ships.iter().combinations(actions.len()) {
@@ -323,7 +350,12 @@ fn find_best_combination(
         }
     }
 
-    best_assignment
+    let result = best_assignment
+        .into_iter()
+        .chain(already_assigned_ships)
+        .collect();
+
+    result
 }
 
 fn calculate_total_distance(ship: &Ship, action: &ConstructionFleetAction, waypoint_map: &HashMap<WaypointSymbol, &Waypoint>) -> u32 {
