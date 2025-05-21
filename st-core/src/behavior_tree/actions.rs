@@ -9,11 +9,13 @@ use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
 use core::time::Duration;
 use itertools::Itertools;
+use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::{PurchaseTradeGoods, RefuelShip, SellTradeGoods};
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails};
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TravelAction,
+    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TradeGoodSymbol,
+    TravelAction,
 };
 use std::collections::HashSet;
 use std::ops::{Add, Not};
@@ -212,7 +214,9 @@ impl Actionable for ShipAction {
                 let ref response @ RefuelShipResponse {
                     data: RefuelShipResponseBody { fuel: ref new_fuel, .. },
                 } = state.refuel(false).await?;
+
                 state.set_fuel(new_fuel.clone());
+
                 action_completed_tx
                     .send(ActionEvent::Expense(
                         state.clone(),
@@ -220,7 +224,17 @@ impl Actionable for ShipAction {
                     ))
                     .await?;
 
-                Ok(Success)
+                match args.treasurer.report_expense(
+                    &state.my_fleet,
+                    state.current_navigation_destination.clone(),
+                    state.maybe_trades.clone().unwrap_or_default(),
+                    TradeGoodSymbol::FUEL,
+                    response.data.transaction.units as u32,
+                    Credits::from(response.data.transaction.price_per_unit),
+                ) {
+                    Ok(_) => Ok(Success),
+                    Err(err) => Err(anyhow!("Refueling failed: {err:?}")),
+                }
             }
 
             ShipAction::Dock => {
@@ -676,8 +690,8 @@ mod tests {
     use std::collections::HashMap;
 
     use st_domain::{
-        DockShipResponse, FlightMode, GetMarketResponse, NavAndFuelResponse, NavStatus, NavigateShipResponse, SetFlightModeResponse, ShipSymbol, TravelAction,
-        WaypointSymbol, WaypointTraitSymbol,
+        DockShipResponse, FleetId, FlightMode, GetMarketResponse, NavAndFuelResponse, NavStatus, NavigateShipResponse, SetFlightModeResponse, ShipSymbol,
+        TravelAction, WaypointSymbol, WaypointTraitSymbol,
     };
 
     use crate::behavior_tree::behavior_tree::Response::Success;
@@ -768,7 +782,7 @@ mod tests {
 
         let ship = TestObjects::test_ship(500);
 
-        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client), FleetId(42));
         let result = ship_ops.dock().await;
         assert!(result.is_ok());
     }
@@ -806,7 +820,7 @@ mod tests {
 
         mocked_client.never();
 
-        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client), FleetId(42));
         let (result, ship_states, action_events) = test_run_ship_behavior(&mut ship_ops, Duration::from_millis(1), args, ship_behavior)
             .await
             .unwrap();
@@ -847,7 +861,7 @@ mod tests {
 
         mocked_client.times(1);
 
-        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client), FleetId(42));
 
         let (result, ship_states, action_events) = test_run_ship_behavior(&mut ship_ops, Duration::from_millis(1), args, ship_behavior)
             .await
@@ -997,7 +1011,7 @@ mod tests {
 
         //println!("{}", ship_behavior.to_mermaid());
 
-        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client), FleetId(42));
         let args = BehaviorArgs {
             blackboard: Arc::new(mock_test_blackboard),
             treasurer: ThreadSafeTreasurer::new(0.into()),
@@ -1087,7 +1101,7 @@ mod tests {
 
         println!("{}", ship_behavior.to_mermaid());
 
-        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client), FleetId(42));
         let args = BehaviorArgs {
             blackboard: Arc::new(mock_test_blackboard),
         };
@@ -1239,7 +1253,7 @@ mod tests {
 
         println!("{}", ship_behavior.to_mermaid());
 
-        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client));
+        let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client), FleetId(42));
         let args = BehaviorArgs {
             blackboard: Arc::new(mock_test_blackboard),
         };

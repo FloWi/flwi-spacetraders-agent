@@ -3,8 +3,8 @@ use anyhow::*;
 use chrono::{DateTime, Utc};
 use st_domain::budgeting::treasury_redesign::FinanceTicket;
 use st_domain::{
-    CreateChartBody, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse,
-    SellTradeGoodResponse, Ship, ShipType, Shipyard, SupplyConstructionSiteResponse, TradeGoodSymbol, TravelAction, WaypointSymbol,
+    CreateChartBody, FleetId, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseShipResponse, PurchaseTradeGoodResponse,
+    RefuelShipResponse, SellTradeGoodResponse, Ship, ShipType, Shipyard, SupplyConstructionSiteResponse, TradeGoodSymbol, TravelAction, WaypointSymbol,
 };
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut, Not};
@@ -20,6 +20,7 @@ pub struct ShipOperations {
     pub permanent_observation_location: Option<WaypointSymbol>,
     pub maybe_next_observation_time: Option<DateTime<Utc>>,
     pub maybe_trades: Option<Vec<FinanceTicket>>,
+    pub my_fleet: FleetId,
 }
 
 impl PartialEq for ShipOperations {
@@ -84,7 +85,7 @@ maybe_trade: {:?},
         self.travel_action_queue = VecDeque::from(new_route);
     }
 
-    pub fn new(ship: Ship, client: Arc<dyn StClientTrait>) -> Self {
+    pub fn new(ship: Ship, client: Arc<dyn StClientTrait>, my_fleet: FleetId) -> Self {
         ShipOperations {
             ship,
             client,
@@ -94,6 +95,7 @@ maybe_trade: {:?},
             permanent_observation_location: None,
             maybe_next_observation_time: None,
             maybe_trades: None,
+            my_fleet,
         }
     }
 

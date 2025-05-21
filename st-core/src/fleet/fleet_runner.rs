@@ -18,7 +18,7 @@ use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
 use st_domain::{
-    get_exploration_tasks_for_waypoint, OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TransactionActionEvent,
+    get_exploration_tasks_for_waypoint, FleetId, OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TransactionActionEvent,
     WaypointTraitSymbol, WaypointType,
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
@@ -77,6 +77,7 @@ impl FleetRunner {
 
         let ship_ops: HashMap<ShipSymbol, Arc<Mutex<ShipOperations>>> = Default::default();
         let all_ships_map = fleet_admiral.lock().await.all_ships.clone();
+        let ship_fleet_assignment = fleet_admiral.lock().await.ship_fleet_assignment.clone();
 
         {
             let mut admiral = fleet_admiral.lock().await;
@@ -119,7 +120,15 @@ impl FleetRunner {
         ));
 
         for (ss, ship) in all_ships_map {
-            Self::launch_and_register_ship(Arc::clone(&fleet_runner_mutex), &ss, ship, sleep_duration, &all_ship_tasks).await?;
+            Self::launch_and_register_ship(
+                Arc::clone(&fleet_runner_mutex),
+                &ss,
+                ship,
+                sleep_duration,
+                &all_ship_tasks,
+                &ship_fleet_assignment,
+            )
+            .await?;
         }
 
         tokio::join!(msg_listeners_join_handle);
@@ -133,13 +142,15 @@ impl FleetRunner {
         ship: Ship,
         sleep_duration: Duration,
         all_ship_tasks: &HashMap<ShipSymbol, ShipTask>,
+        ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>,
     ) -> Result<()> {
         // if ss.0 != "FLWI-26" {
         //     return Ok(());
         // }
         let mut guard = runner.lock().await;
+        let fleet_id = ship_fleet_assignment.get(&ss).unwrap();
 
-        let ship_op_mutex = Arc::new(Mutex::new(ShipOperations::new(ship.clone(), Arc::clone(&guard.client))));
+        let ship_op_mutex = Arc::new(Mutex::new(ShipOperations::new(ship.clone(), Arc::clone(&guard.client), fleet_id.clone())));
         let maybe_ship_task = all_ship_tasks.get(ss);
 
         if let Some(ship_task) = maybe_ship_task {
@@ -533,7 +544,7 @@ impl FleetRunner {
             .report_ship_action_completed(msg, Arc::clone(&bmc), messages_in_queue)
             .await?;
 
-        let agent_credits = admiral_guard.agent_info_credits().await.0;
+        let treasurer_credits = admiral_guard.agent_info_credits().await.0;
 
         match msg {
             ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
@@ -693,7 +704,8 @@ impl FleetRunner {
                         price_per_unit = response.data.transaction.price_per_unit,
                         total_price = response.data.transaction.total_price,
                         waypoint_symbol = response.data.transaction.waypoint_symbol.0,
-                        agent_credits
+                        agent_credits = response.data.agent.credits,
+                        treasurer_credits
                     );
                 }
             },
@@ -712,7 +724,8 @@ impl FleetRunner {
                         price_per_unit = response.data.transaction.price_per_unit,
                         total_price = response.data.transaction.total_price,
                         waypoint_symbol = response.data.transaction.waypoint_symbol.0,
-                        agent_credits
+                        agent_credits = response.data.agent.credits,
+                        treasurer_credits
                     );
                 }
                 TransactionActionEvent::SoldTradeGoods {
@@ -729,7 +742,23 @@ impl FleetRunner {
                         price_per_unit = response.data.transaction.price_per_unit,
                         total_price = response.data.transaction.total_price,
                         waypoint_symbol = response.data.transaction.waypoint_symbol.0,
-                        agent_credits
+                        agent_credits = response.data.agent.credits,
+                        treasurer_credits
+                    );
+                }
+                TransactionActionEvent::SuppliedConstructionSite {
+                    ticket_id,
+                    ticket_details,
+                    response,
+                } => {
+                    event!(
+                        Level::INFO,
+                        message = "ShipStatusReport",
+                        report_type = "TransactionActionEvent::SuppliedConstructionSite",
+                        trade_symbol = ticket_details.trade_good.to_string(),
+                        units = ticket_details.quantity,
+                        waypoint_symbol = ticket_details.waypoint_symbol.to_string(),
+                        treasurer_credits
                     );
                 }
                 TransactionActionEvent::PurchasedShip {
@@ -744,7 +773,8 @@ impl FleetRunner {
                         new_ship = response.data.ship.symbol.0,
                         new_ship_type = response.data.ship.frame.symbol.to_string(),
                         assigned_fleet_id = ticket_details.assigned_fleet_id.0,
-                        agent_credits
+                        agent_credits = response.data.agent.credits,
+                        treasurer_credits
                     );
 
                     let new_ship = response.data.ship.clone();
@@ -787,6 +817,7 @@ impl FleetRunner {
                         new_ship.clone(),
                         sleep_duration,
                         &admiral_guard.ship_tasks,
+                        &admiral_guard.ship_fleet_assignment,
                     )
                     .await?
                 }

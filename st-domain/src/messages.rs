@@ -1,8 +1,9 @@
-use crate::budgeting::treasury_redesign::{FinanceTicket, PurchaseShipTicketDetails, PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails};
+use crate::budgeting::treasury_redesign::{
+    DeliverConstructionMaterialsTicketDetails, FinanceTicket, PurchaseShipTicketDetails, PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails,
+};
 use crate::{
-    Agent, Construction, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse,
-    PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip,
-    SystemSymbol, TradeGoodSymbol, WaypointSymbol,
+    Agent, Construction, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse,
+    SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol, TradeGoodSymbol, WaypointSymbol,
 };
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
@@ -358,6 +359,11 @@ pub enum TransactionActionEvent {
         ticket_id: TicketId,
         ticket_details: SellTradeGoodsTicketDetails,
         response: SellTradeGoodResponse,
+    },
+    SuppliedConstructionSite {
+        ticket_id: TicketId,
+        ticket_details: DeliverConstructionMaterialsTicketDetails,
+        response: SupplyConstructionSiteResponse,
     },
     PurchasedShip {
         ticket_id: TicketId,

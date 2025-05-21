@@ -2,6 +2,7 @@ use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::ship::ShipOperations;
 use anyhow::anyhow;
 use async_trait::async_trait;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::treasury_redesign::FinanceTicket;
 use st_domain::{OperationExpenseEvent, ShipSymbol, TransactionActionEvent};
@@ -306,6 +307,7 @@ where
                 }
             }
             Behavior::Select(behaviors, maybe_idx) => {
+                let mut errors = vec![];
                 for b in behaviors {
                     let result = b
                         .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
@@ -313,10 +315,16 @@ where
                     match result {
                         Ok(Response::Running) => return Ok(Response::Running),
                         Ok(r) => return Ok(r),
-                        Err(_) => continue,
+                        Err(e) => {
+                            errors.push(e);
+                            continue;
+                        }
                     }
                 }
-                Err(Self::ActionError::from(anyhow!("No behavior successful. Idx: {maybe_idx:?}.")))
+                Err(Self::ActionError::from(anyhow!(
+                    "No behavior successful. Idx: {maybe_idx:?}. Errors were: {}",
+                    errors.iter().map(|e| e.to_string()).join("\n")
+                )))
             } // Behavior::Sequence(_) => {}
             // Behavior::Success => {}
             // Behavior::While { .. } => {}
@@ -363,7 +371,9 @@ where
         };
         match &result {
             Ok(o) => {
-                if let Err(err) = state_changed_tx.send(state.clone()).await { return Err(Self::ActionError::from(anyhow!("sending to state_changed_tx failed. Error: {err}"))) }
+                if let Err(err) = state_changed_tx.send(state.clone()).await {
+                    return Err(Self::ActionError::from(anyhow!("sending to state_changed_tx failed. Error: {err}")));
+                }
 
                 let capacity = state_changed_tx.capacity();
                 event!(

@@ -290,7 +290,11 @@ fn find_best_combination(
     }
 
     if ships.len() == 1 {
-        return HashMap::from([(ships[0].symbol.clone(), actions[0].clone())]);
+        let ship = ships[0];
+        if ship.cargo.capacity < actions[0].units() as i32 {
+            println!("cargo doesn't fit");
+        }
+        return HashMap::from([(ship.symbol.clone(), actions[0].adjusted_for_cargo_space(ship))]);
     }
 
     // if we have evaluated trading opportunities in here, we are currently overriding the ship symbol and therefor invalidating the whole result
@@ -339,7 +343,12 @@ fn find_best_combination(
                 total_distance += pair_score;
 
                 // Store this assignment
-                current_assignment.insert(ship.symbol.clone(), action.adjusted_for_cargo_space(&ship.cargo));
+
+                let cargo_adjusted_action = action.adjusted_for_cargo_space(&ship);
+                if cargo_adjusted_action.units() > ship.cargo.capacity as u32 {
+                    println!("cargo doesn't fit");
+                }
+                current_assignment.insert(ship.symbol.clone(), cargo_adjusted_action);
             }
 
             // Update the best assignment if this one is better
@@ -350,10 +359,24 @@ fn find_best_combination(
         }
     }
 
-    let result = best_assignment
+    let result: HashMap<ShipSymbol, ConstructionFleetAction> = best_assignment
         .into_iter()
         .chain(already_assigned_ships)
         .collect();
+
+    if let Some((ship, action)) = result.iter().find_map(|(ss, action)| {
+        if let Some(ship) = ships.iter().find(|ship| ship.symbol == *ss) {
+            if action.units() > ship.cargo.capacity as u32 {
+                Some((ship, action.clone()))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }) {
+        println!("cargo doesn't fit");
+    }
 
     result
 }
@@ -393,8 +416,8 @@ pub enum ConstructionFleetAction {
 }
 
 impl ConstructionFleetAction {
-    pub(crate) fn adjusted_for_cargo_space(&self, cargo: &Cargo) -> Self {
-        let available_cargo_space = (cargo.capacity - cargo.units) as u32;
+    pub(crate) fn adjusted_for_cargo_space(&self, ship: &Ship) -> Self {
+        let available_cargo_space = (ship.cargo.capacity - ship.cargo.units) as u32;
         let mut copy = self.clone();
         match &mut copy {
             DeliverConstructionMaterials { units, .. } => {
@@ -412,11 +435,12 @@ impl ConstructionFleetAction {
                 );
             }
         }
+        if copy.units() > available_cargo_space {
+            eprintln!("Cargo doesn't fit - even it you squeeze");
+        }
         copy
     }
-}
 
-impl ConstructionFleetAction {
     pub(crate) fn purchase_location(&self) -> WaypointSymbol {
         match self {
             DeliverConstructionMaterials { from, .. } => from.clone(),
@@ -430,6 +454,16 @@ impl ConstructionFleetAction {
             DeliverConstructionMaterials { to, .. } => to.clone(),
             BoostSupplyChain { to, .. } => to.clone(),
             TradeProfitably { to, .. } => to.clone(),
+        }
+    }
+
+    fn units(&self) -> u32 {
+        match self {
+            DeliverConstructionMaterials { units, .. } => *units,
+            BoostSupplyChain { units, .. } => *units,
+            TradeProfitably {
+                evaluated_trading_opportunity, ..
+            } => evaluated_trading_opportunity.units,
         }
     }
 }

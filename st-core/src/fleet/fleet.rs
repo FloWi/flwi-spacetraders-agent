@@ -826,6 +826,15 @@ impl FleetAdmiral {
                         .filter_map(|potential_construction_task| {
                             let purchase_details = potential_construction_task.create_purchase_ticket_details();
 
+                            if let Some(ship) = admiral
+                                .all_ships
+                                .get(&potential_construction_task.ship_symbol)
+                            {
+                                if ship.cargo.capacity - ship.cargo.units < purchase_details.quantity as i32 {
+                                    println!("cargo doesn't fit");
+                                }
+                            }
+
                             let maybe_purchase_ticket = admiral
                                 .treasurer
                                 .create_purchase_trade_goods_ticket(

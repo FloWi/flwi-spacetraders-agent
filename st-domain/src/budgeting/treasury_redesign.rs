@@ -158,6 +158,10 @@ pub enum LedgerEntry {
     ExpenseLogged {
         fleet_id: FleetId,
         maybe_ticket_id: Option<TicketId>,
+        trade_good_symbol: TradeGoodSymbol,
+        units: u32,
+        price_per_unit: Credits,
+        total: Credits,
     },
     TransferredFundsFromFleetToTreasury {
         fleet_id: FleetId,
@@ -325,6 +329,18 @@ impl ThreadSafeTreasurer {
         })
     }
 
+    pub fn report_expense(
+        &self,
+        fleet_id: &FleetId,
+        current_destination: Option<WaypointSymbol>,
+        current_tickets: Vec<FinanceTicket>,
+        trade_good_symbol: TradeGoodSymbol,
+        units: u32,
+        price_per_unit: Credits,
+    ) -> Result<()> {
+        self.with_treasurer(|t| t.report_expense(fleet_id, current_destination, current_tickets, trade_good_symbol, units, price_per_unit))
+    }
+
     pub fn get_active_trade_routes(&self) -> Result<Vec<ActiveTradeRoute>> {
         self.with_treasurer(|t| t.get_active_trade_routes())
     }
@@ -464,6 +480,20 @@ impl ImprovedTreasurer {
         })?;
 
         Ok(())
+    }
+
+    fn reimburse_expense(&mut self, fleet_id: &FleetId, credits: Credits) -> Result<()> {
+        if let Some(_) = self.fleet_budgets.get(fleet_id) {
+            if credits > self.treasury_fund {
+                anyhow::bail!("Insufficient funds for reimbursing fleet #{} of {}", fleet_id, credits);
+            }
+            self.process_ledger_entry(TransferredFundsFromTreasuryToFleet {
+                fleet_id: fleet_id.clone(),
+                credits,
+            })
+        } else {
+            Err(anyhow!("Fleet not found {}", fleet_id))
+        }
     }
 
     fn transfer_funds_to_fleet_to_top_up_available_capital(&mut self, fleet_id: &FleetId) -> Result<()> {
@@ -641,6 +671,37 @@ impl ImprovedTreasurer {
         })?;
 
         Ok(ticket)
+    }
+
+    pub(crate) fn report_expense(
+        &mut self,
+        fleet_id: &FleetId,
+        current_destination: Option<WaypointSymbol>,
+        current_tickets: Vec<FinanceTicket>,
+        trade_good_symbol: TradeGoodSymbol,
+        units: u32,
+        price_per_unit: Credits,
+    ) -> Result<()> {
+        let maybe_ticket = current_destination.clone().and_then(|destination| {
+            current_tickets
+                .iter()
+                .find(|t| t.details.get_waypoint() == destination)
+        });
+
+        let total = price_per_unit * units;
+
+        self.reimburse_expense(fleet_id, total)?;
+
+        self.process_ledger_entry(ExpenseLogged {
+            fleet_id: fleet_id.clone(),
+            maybe_ticket_id: maybe_ticket.map(|t| t.ticket_id.clone()),
+            trade_good_symbol,
+            units,
+            price_per_unit,
+            total,
+        })?;
+
+        Ok(())
     }
 
     pub fn get_ticket(&self, ticket_id: &TicketId) -> Result<FinanceTicket> {
@@ -900,9 +961,17 @@ impl ImprovedTreasurer {
                     return Err(anyhow!("Fleet {} doesn't exist", fleet_id));
                 }
             }
-            ExpenseLogged { .. } => {}
             ArchivedFleetBudget { fleet_id, .. } => {
                 if self.fleet_budgets.remove(&fleet_id).is_some() {
+                    self.ledger_entries.push_back(ledger_entry);
+                } else {
+                    return Err(anyhow!("Fleet {} doesn't exist", fleet_id));
+                }
+            }
+            ExpenseLogged { fleet_id, total, .. } => {
+                if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
+                    budget.current_capital -= total;
+
                     self.ledger_entries.push_back(ledger_entry);
                 } else {
                     return Err(anyhow!("Fleet {} doesn't exist", fleet_id));
