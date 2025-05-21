@@ -76,7 +76,7 @@ pub enum FinanceResult {
 pub enum FinanceTicketDetails {
     PurchaseTradeGoods(PurchaseTradeGoodsTicketDetails),
     SellTradeGoods(SellTradeGoodsTicketDetails),
-    DeliverConstructionMaterials(DeliverConstructionMaterialsTicketDetails),
+    SupplyConstructionSite(DeliverConstructionMaterialsTicketDetails),
     PurchaseShip(PurchaseShipTicketDetails),
     RefuelShip(RefuelShipTicketDetails),
 }
@@ -88,7 +88,7 @@ impl FinanceTicketDetails {
             FinanceTicketDetails::SellTradeGoods(SellTradeGoodsTicketDetails { .. }) => 1,
             FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails { .. }) => -1,
             FinanceTicketDetails::RefuelShip(RefuelShipTicketDetails { .. }) => -1,
-            FinanceTicketDetails::DeliverConstructionMaterials(_) => 0,
+            FinanceTicketDetails::SupplyConstructionSite(_) => 0,
         }
     }
 
@@ -110,7 +110,7 @@ impl FinanceTicketDetails {
                 "Refueling of {} fuel-barrels à {} at {} for a total of {}",
                 d.num_fuel_barrels, d.expected_price_per_unit, d.waypoint_symbol, d.expected_total_purchase_price
             ),
-            FinanceTicketDetails::DeliverConstructionMaterials(d) => format!("Delivering of {} units of {} to {}", d.quantity, d.trade_good, d.waypoint_symbol),
+            FinanceTicketDetails::SupplyConstructionSite(d) => format!("Delivering of {} units of {} to {}", d.quantity, d.trade_good, d.waypoint_symbol),
         }
     }
 
@@ -120,7 +120,7 @@ impl FinanceTicketDetails {
             FinanceTicketDetails::SellTradeGoods(d) => d.quantity,
             FinanceTicketDetails::PurchaseShip(_) => 1,
             FinanceTicketDetails::RefuelShip(d) => d.num_fuel_barrels,
-            FinanceTicketDetails::DeliverConstructionMaterials(d) => d.quantity,
+            FinanceTicketDetails::SupplyConstructionSite(d) => d.quantity,
         }
     }
 
@@ -130,7 +130,7 @@ impl FinanceTicketDetails {
             FinanceTicketDetails::SellTradeGoods(d) => d.waypoint_symbol.clone(),
             FinanceTicketDetails::PurchaseShip(d) => d.waypoint_symbol.clone(),
             FinanceTicketDetails::RefuelShip(d) => d.waypoint_symbol.clone(),
-            FinanceTicketDetails::DeliverConstructionMaterials(d) => d.waypoint_symbol.clone(),
+            FinanceTicketDetails::SupplyConstructionSite(d) => d.waypoint_symbol.clone(),
         }
     }
 }
@@ -598,7 +598,7 @@ impl ImprovedTreasurer {
             ticket_id: Default::default(),
             fleet_id: fleet_id.clone(),
             ship_symbol,
-            details: FinanceTicketDetails::DeliverConstructionMaterials(DeliverConstructionMaterialsTicketDetails {
+            details: FinanceTicketDetails::SupplyConstructionSite(DeliverConstructionMaterialsTicketDetails {
                 waypoint_symbol,
                 trade_good: trade_good_symbol,
                 quantity,
@@ -656,7 +656,7 @@ impl ImprovedTreasurer {
             FinanceTicketDetails::SellTradeGoods(SellTradeGoodsTicketDetails { quantity, .. }) => quantity,
             FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails { .. }) => 1,
             FinanceTicketDetails::RefuelShip(RefuelShipTicketDetails { num_fuel_barrels, .. }) => num_fuel_barrels,
-            FinanceTicketDetails::DeliverConstructionMaterials(DeliverConstructionMaterialsTicketDetails { quantity, .. }) => quantity,
+            FinanceTicketDetails::SupplyConstructionSite(DeliverConstructionMaterialsTicketDetails { quantity, .. }) => quantity,
         };
 
         self.process_ledger_entry(TicketCompleted {

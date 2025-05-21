@@ -8,8 +8,8 @@ use st_domain::blackboard_ops::BlackboardOps;
 
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, ThreadSafeTreasurer};
 use st_domain::{
-    JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard, TravelAction,
-    Waypoint, WaypointSymbol,
+    JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard, SupplyConstructionSiteResponse,
+    TravelAction, Waypoint, WaypointSymbol,
 };
 use st_store::bmc::{Bmc, DbBmc};
 use st_store::{
@@ -42,6 +42,13 @@ impl BehaviorArgs {
     pub(crate) fn mark_ship_purchase_as_completed(&self, ticket: FinanceTicket, response: &PurchaseShipResponse) -> Result<()> {
         self.treasurer
             .complete_ticket(&ticket.fleet_id, &ticket, (response.data.transaction.price as i64).into())?;
+
+        Ok(())
+    }
+
+    pub(crate) fn mark_construction_delivery_as_completed(&self, ticket: FinanceTicket, response: &SupplyConstructionSiteResponse) -> Result<()> {
+        self.treasurer
+            .complete_ticket(&ticket.fleet_id, &ticket, 0.into())?;
 
         Ok(())
     }

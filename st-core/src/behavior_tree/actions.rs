@@ -460,7 +460,7 @@ impl Actionable for ShipAction {
                                     .iter()
                                     .any(|t| t.ticket_id == related_purchase_ticket),
                             },
-                            FinanceTicketDetails::DeliverConstructionMaterials(details) => match details.maybe_matching_purchase_ticket {
+                            FinanceTicketDetails::SupplyConstructionSite(details) => match details.maybe_matching_purchase_ticket {
                                 None => true,
                                 Some(related_purchase_ticket) => !trades
                                     .iter()
@@ -490,6 +490,9 @@ impl Actionable for ShipAction {
             },
 
             ShipAction::PerformTradeActionAndMarkAsCompleted => {
+                if state.nav.status != NavStatus::Docked {
+                    println!("Hello, breakpoint. Ship should be docked by now");
+                }
                 if let Some(finance_tickets) = &state.maybe_trades.clone() {
                     let mut completed_tickets: HashSet<FinanceTicket> = HashSet::new();
 
@@ -557,8 +560,12 @@ impl Actionable for ShipAction {
                                     .await?;
                             }
                             RefuelShip(_details) => {}
-                            FinanceTicketDetails::DeliverConstructionMaterials(_details) => {
-                                todo!("DeliverConstructionMaterials not implemented yet")
+                            FinanceTicketDetails::SupplyConstructionSite(details) => {
+                                let response = state
+                                    .supply_construction_site(details.quantity, &details.trade_good, &details.waypoint_symbol)
+                                    .await?;
+
+                                args.mark_construction_delivery_as_completed(finance_ticket.clone(), &response)?;
                             }
                         }
                         completed_tickets.insert(finance_ticket.clone());
@@ -599,7 +606,7 @@ impl Actionable for ShipAction {
                         PurchaseTradeGoods(_) => false,
                         SellTradeGoods(_) => false,
                         RefuelShip(_) => false,
-                        FinanceTicketDetails::DeliverConstructionMaterials(_) => false,
+                        FinanceTicketDetails::SupplyConstructionSite(_) => false,
                         FinanceTicketDetails::PurchaseShip(details) => {
                             let shipyard_wp = details.waypoint_symbol.clone();
                             shipyard_wp == current_location
@@ -624,7 +631,7 @@ impl Actionable for ShipAction {
                     if let Some((_, ship_purchase_ticket)) = tickets.into_iter().find(|(_, t)| match t.details {
                         PurchaseTradeGoods(_) => false,
                         SellTradeGoods(_) => false,
-                        FinanceTicketDetails::DeliverConstructionMaterials(_) => false,
+                        FinanceTicketDetails::SupplyConstructionSite(_) => false,
                         RefuelShip(_) => false,
                         FinanceTicketDetails::PurchaseShip(_) => t.ship_symbol == state.symbol,
                     }) {

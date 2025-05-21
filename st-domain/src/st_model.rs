@@ -336,6 +336,12 @@ impl Construction {
                 .collect()
         }
     }
+
+    pub fn get_material_mut(&mut self, trade_symbol: &TradeGoodSymbol) -> Option<&mut ConstructionMaterial> {
+        self.materials
+            .iter_mut()
+            .find(|material| &material.trade_symbol == trade_symbol)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -1154,7 +1160,7 @@ pub struct Cargo {
 }
 
 impl Cargo {
-    pub fn with_units_removed(&self, trade_good_symbol: TradeGoodSymbol, units: u32) -> Result<Cargo, NotEnoughFuelInCargoError> {
+    pub fn with_units_removed(&self, trade_good_symbol: TradeGoodSymbol, units: u32) -> Result<Cargo, NotEnoughItemsInCargoError> {
         let mut cargo = self.clone();
 
         // Find the index of the inventory item with the matching symbol
@@ -1169,7 +1175,7 @@ impl Cargo {
 
             // Check if we have enough units to remove
             if item.units < units {
-                return Err(NotEnoughFuelInCargoError {
+                return Err(NotEnoughItemsInCargoError {
                     required: units,
                     current: item.units,
                 });
@@ -1189,7 +1195,7 @@ impl Cargo {
             Ok(cargo)
         } else {
             // Item not found in inventory
-            Err(NotEnoughFuelInCargoError { required: units, current: 0 })
+            Err(NotEnoughItemsInCargoError { required: units, current: 0 })
         }
     }
 }
@@ -1398,7 +1404,7 @@ pub enum TradeGoodSymbol {
     SHIP_BULK_FREIGHTER,
 }
 
-pub struct NotEnoughFuelInCargoError {
+pub struct NotEnoughItemsInCargoError {
     pub required: u32,
     pub current: u32,
 }

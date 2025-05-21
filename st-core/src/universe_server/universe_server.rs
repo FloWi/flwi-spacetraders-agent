@@ -11,11 +11,11 @@ use st_domain::{
     Agent, AgentResponse, AgentSymbol, Cargo, Construction, Cooldown, CreateChartResponse, Crew, Data, DockShipResponse, FactionSymbol, FlightMode, Fuel,
     FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, JumpGate,
     LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Nav, NavAndFuelResponse, NavOnlyResponse, NavRouteWaypoint, NavStatus,
-    NavigateShipResponse, NotEnoughFuelInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody, PurchaseTradeGoodResponse,
+    NavigateShipResponse, NotEnoughItemsInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody, PurchaseTradeGoodResponse,
     PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest, RegistrationResponse, Route,
     SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction, ShipRegistrationRole, ShipSymbol, ShipTransaction,
-    ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, TradeGoodType,
-    Transaction, TransactionType, Waypoint, WaypointSymbol,
+    ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyConstructionSiteResponse, SupplyConstructionSiteResponseBody, SystemSymbol, SystemsPageData,
+    TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, Waypoint, WaypointSymbol,
 };
 use std::collections::HashMap;
 use std::ops::Add;
@@ -119,7 +119,7 @@ impl InMemoryUniverse {
                             .map(|inv| inv.units)
                             .unwrap_or_default();
                         Err(NotEnoughFuelInCargo {
-                            reason: NotEnoughFuelInCargoError {
+                            reason: NotEnoughItemsInCargoError {
                                 required: number_fuel_barrels,
                                 current: inventory_fuel_barrels,
                             },
@@ -250,6 +250,7 @@ impl InMemoryUniverse {
             Err(anyhow!("Ship not found"))
         }
     }
+
     pub fn perform_sell_trade_good(&mut self, ship_symbol: ShipSymbol, units: u32, trade_good: TradeGoodSymbol) -> Result<SellTradeGoodResponse> {
         if let Some(ship) = self.ships.get_mut(&ship_symbol) {
             // Ensure ship is docked
@@ -336,6 +337,68 @@ impl InMemoryUniverse {
         }
     }
 
+    fn perform_supply_construction_site(
+        &mut self,
+        ship_symbol: ShipSymbol,
+        units: u32,
+        trade_good: TradeGoodSymbol,
+        waypoint_symbol: WaypointSymbol,
+    ) -> Result<SupplyConstructionSiteResponse> {
+        if let Some(ship) = self.ships.get_mut(&ship_symbol) {
+            if ship.nav.status != NavStatus::Docked {
+                anyhow::bail!("Ship {} not docked", ship.symbol);
+            }
+            if ship.nav.waypoint_symbol != waypoint_symbol {
+                anyhow::bail!("Ship {} is not at waypoint {}", ship.symbol, waypoint_symbol.0.clone());
+            }
+            match self.construction_sites.get_mut(&waypoint_symbol) {
+                Some(construction_site) => {
+                    if construction_site.is_complete {
+                        anyhow::bail!("Construction site is already complete");
+                    }
+
+                    // Get a mutable reference to a specific material
+                    if let Some(material) = construction_site.get_material_mut(&trade_good) {
+                        // Modify the material
+                        let rest = material.required - material.fulfilled;
+                        if units > rest {
+                            anyhow::bail!(
+                                "Can't accept {units} units. Required are {} and fulfilled are {}. Can only accept {}",
+                                material.required,
+                                material.fulfilled,
+                                rest
+                            );
+                        }
+
+                        match ship.cargo.with_units_removed(trade_good, units) {
+                            Ok(updated_cargo) => {
+                                ship.cargo = updated_cargo.clone();
+                                material.fulfilled += units;
+
+                                Ok(SupplyConstructionSiteResponse {
+                                    data: SupplyConstructionSiteResponseBody {
+                                        cargo: updated_cargo,
+                                        construction: construction_site.clone(),
+                                    },
+                                })
+                            }
+                            Err(_) => {
+                                anyhow::bail!("Not enough cargo in inventory");
+                            }
+                        }
+                    } else {
+                        anyhow::bail!("Construction material {} not found", trade_good);
+                    }
+                }
+                None => {
+                    anyhow::bail!("Construction site at {} not found", waypoint_symbol);
+                }
+            }
+        } else {
+            anyhow::bail!("Ship not found");
+        }
+    }
+
     pub fn book_transaction_and_adjust_agent_credits(&mut self, transaction: &Transaction) {
         let cash_amount = match transaction.transaction_type {
             TransactionType::Purchase => -transaction.total_price,
@@ -375,7 +438,7 @@ pub enum RefuelTaskAnalysisSuccess {
 pub enum RefuelTaskAnalysisError {
     NotEnoughCredits { required: i64, current: i64 },
     WaypointDoesntSellFuel { waypoint_symbol: WaypointSymbol },
-    NotEnoughFuelInCargo { reason: NotEnoughFuelInCargoError },
+    NotEnoughFuelInCargo { reason: NotEnoughItemsInCargoError },
     ShipNotFound,
 }
 
@@ -625,7 +688,7 @@ impl StClientTrait for InMemoryUniverseClient {
             Err(err) => match err {
                 NotEnoughCredits { required, current } => Err(anyhow!("Not enough credits to refuel. required: {required}; current: {current} ")),
                 NotEnoughFuelInCargo {
-                    reason: NotEnoughFuelInCargoError { required, current },
+                    reason: NotEnoughItemsInCargoError { required, current },
                 } => Err(anyhow!("Not enough cargo units to refuel. required: {required}; current: {current} ")),
                 WaypointDoesntSellFuel { waypoint_symbol } => Err(anyhow!("Waypoint: {} doesn't sell fuel", waypoint_symbol.0.clone())),
                 ShipNotFound => Err(anyhow!("Ship not found")),
@@ -681,8 +744,10 @@ impl StClientTrait for InMemoryUniverseClient {
         units: u32,
         trade_good: TradeGoodSymbol,
         waypoint_symbol: WaypointSymbol,
-    ) -> anyhow::Result<SupplyConstructionSiteResponse> {
-        todo!()
+    ) -> Result<SupplyConstructionSiteResponse> {
+        let mut universe = self.universe.write().await;
+
+        universe.perform_supply_construction_site(ship_symbol, units, trade_good, waypoint_symbol)
     }
 
     async fn purchase_ship(&self, ship_type: ShipType, symbol: WaypointSymbol) -> anyhow::Result<PurchaseShipResponse> {

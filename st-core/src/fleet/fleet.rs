@@ -748,7 +748,7 @@ impl FleetAdmiral {
                 FinanceTicketDetails::PurchaseTradeGoods(_) => None,
                 FinanceTicketDetails::SellTradeGoods(_) => None,
                 FinanceTicketDetails::RefuelShip(_) => None,
-                FinanceTicketDetails::DeliverConstructionMaterials(_) => None,
+                FinanceTicketDetails::SupplyConstructionSite(_) => None,
             })
             .collect();
 
@@ -864,7 +864,7 @@ impl FleetAdmiral {
                                             Some(purchase_ticket.ticket_id),
                                         )
                                         .ok(),
-                                    FinanceTicketDetails::DeliverConstructionMaterials(d) => admiral
+                                    FinanceTicketDetails::SupplyConstructionSite(d) => admiral
                                         .treasurer
                                         .create_delivery_construction_material_ticket(
                                             fleet_id,

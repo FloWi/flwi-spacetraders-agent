@@ -539,7 +539,7 @@ impl PotentialConstructionTask {
                     maybe_matching_purchase_ticket: None, // will be set after we created the actual purchase ticket
                 };
 
-                FinanceTicketDetails::DeliverConstructionMaterials(delivery_details)
+                FinanceTicketDetails::SupplyConstructionSite(delivery_details)
             }
             BoostSupplyChain {
                 trade_good_symbol,
