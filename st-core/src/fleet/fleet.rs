@@ -23,7 +23,8 @@ use st_domain::{
     get_exploration_tasks_for_waypoint, trading, ConstructJumpGateFleetConfig, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase,
     FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MarketTradeGood, MiningFleetConfig,
     OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
-    StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradingFleetConfig, TransactionActionEvent, Waypoint, WaypointSymbol,
+    StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradingFleetConfig, TransactionActionEvent, Waypoint,
+    WaypointSymbol,
 };
 use st_store::bmc::Bmc;
 use st_store::{load_fleet_overview, upsert_fleets_data, Ctx};
@@ -824,6 +825,9 @@ impl FleetAdmiral {
                         .into_iter()
                         .filter_map(|potential_construction_task| {
                             let purchase_details = potential_construction_task.create_purchase_ticket_details();
+                            if purchase_details.quantity > 100 || purchase_details.trade_good == TradeGoodSymbol::FAB_MATS {
+                                println!("Why, just why??");
+                            }
 
                             let maybe_purchase_ticket = admiral
                                 .treasurer
@@ -844,34 +848,33 @@ impl FleetAdmiral {
 
                                 let sell_or_delivery_details = potential_construction_task.create_sell_or_deliver_ticket_details();
 
-                                if let Some((trade_good, waypoint_symbol, quantity, expected_price_per_unit)) = match sell_or_delivery_details {
-                                    FinanceTicketDetails::PurchaseTradeGoods(_) => None,
-                                    FinanceTicketDetails::SellTradeGoods(d) => Some((d.trade_good, d.waypoint_symbol, d.quantity, d.expected_price_per_unit)),
-                                    FinanceTicketDetails::DeliverConstructionMaterials(d) => {
-                                        Some((d.trade_good, d.waypoint_symbol, d.quantity, Credits::default()))
-                                    }
-                                    FinanceTicketDetails::PurchaseShip(_) => None,
+                                match sell_or_delivery_details {
                                     FinanceTicketDetails::RefuelShip(_) => None,
-                                } {
-                                    let planned_units = quantity;
-                                    if affordable_units != planned_units {
-                                        event!(Level::DEBUG, message = "Unable to afford purchasing all units", planned_units, affordable_units);
-                                    }
-
-                                    admiral
+                                    FinanceTicketDetails::PurchaseShip(_) => None,
+                                    FinanceTicketDetails::PurchaseTradeGoods(_) => None,
+                                    FinanceTicketDetails::SellTradeGoods(d) => admiral
                                         .treasurer
                                         .create_sell_trade_goods_ticket(
                                             fleet_id,
-                                            trade_good,
-                                            waypoint_symbol,
+                                            d.trade_good,
+                                            d.waypoint_symbol,
                                             potential_construction_task.ship_symbol.clone(),
                                             affordable_units,
-                                            expected_price_per_unit,
+                                            d.expected_price_per_unit,
                                             Some(purchase_ticket.ticket_id),
                                         )
-                                        .ok()
-                                } else {
-                                    None
+                                        .ok(),
+                                    FinanceTicketDetails::DeliverConstructionMaterials(d) => admiral
+                                        .treasurer
+                                        .create_delivery_construction_material_ticket(
+                                            fleet_id,
+                                            d.trade_good,
+                                            d.waypoint_symbol,
+                                            potential_construction_task.ship_symbol.clone(),
+                                            affordable_units,
+                                            Some(purchase_ticket.ticket_id),
+                                        )
+                                        .ok(),
                                 }
                             } else {
                                 None

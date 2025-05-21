@@ -14,8 +14,8 @@ use st_domain::{
     NavigateShipResponse, NotEnoughFuelInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody, PurchaseTradeGoodResponse,
     PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest, RegistrationResponse, Route,
     SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction, ShipRegistrationRole, ShipSymbol, ShipTransaction,
-    ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData,
-    TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, Waypoint, WaypointSymbol,
+    ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, TradeGoodType,
+    Transaction, TransactionType, Waypoint, WaypointSymbol,
 };
 use std::collections::HashMap;
 use std::ops::Add;
@@ -271,7 +271,21 @@ impl InMemoryUniverse {
                         .find(|mtg| {
                             mtg.symbol == trade_good && (mtg.trade_good_type == TradeGoodType::Import || mtg.trade_good_type == TradeGoodType::Exchange)
                         }) {
-                        None => Err(anyhow!("TradeGood cannot be sold at waypoint.")),
+                        None => Err(anyhow!(
+                            "TradeGood {} cannot be sold at waypoint {}. Imports: {}; Exchanges: {}",
+                            trade_good,
+                            market_data.symbol,
+                            market_data
+                                .imports
+                                .iter()
+                                .map(|tg| tg.symbol.to_string())
+                                .join(", "),
+                            market_data
+                                .exchange
+                                .iter()
+                                .map(|tg| tg.symbol.to_string())
+                                .join(", ")
+                        )),
                         Some(mtg) => {
                             if mtg.trade_volume < units as i32 {
                                 Err(anyhow!("TradeVolume is lower than requested units. Aborting purchase."))
@@ -440,7 +454,7 @@ impl StClientTrait for InMemoryUniverseClient {
 
     async fn get_supply_chain(&self) -> Result<GetSupplyChainResponse> {
         let supply_chain = self.universe.read().await.supply_chain.clone();
-        
+
         Ok(supply_chain)
     }
 

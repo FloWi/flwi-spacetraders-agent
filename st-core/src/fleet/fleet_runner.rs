@@ -352,7 +352,10 @@ impl FleetRunner {
                     message = "Ship is executing trades",
                     ship = ship.symbol.0.clone(),
                     ids = tickets.iter().map(|t| t.ticket_id.to_string()).join(", "),
-                    r#types = tickets.iter().map(|t| t.details.to_string()).join(", "),
+                    r#types = tickets
+                        .iter()
+                        .map(|t| t.details.get_description())
+                        .join(", "),
                 );
                 //println!("ship_loop: Ship {:?} is running trading_behavior", ship.symbol);
                 Some((behaviors.trading_behavior, "trading_behavior"))

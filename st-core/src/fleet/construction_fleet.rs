@@ -9,7 +9,7 @@ use st_domain::budgeting::treasury_redesign::{
     SellTradeGoodsTicketDetails,
 };
 use st_domain::{
-    calc_scored_supply_chain_routes, trading, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, FleetId,
+    calc_scored_supply_chain_routes, trading, Cargo, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, FleetId,
     LabelledCoordinate, MarketEntry, MarketTradeGood, ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, SupplyLevel, TradeGoodSymbol,
     TradeGoodType, Waypoint, WaypointSymbol,
 };
@@ -299,9 +299,9 @@ fn find_best_combination(
     let already_assigned_ships = actions
         .iter()
         .filter_map(|a| match a {
-            ConstructionFleetAction::DeliverConstructionMaterials { .. } => None,
-            ConstructionFleetAction::BoostSupplyChain { .. } => None,
-            ConstructionFleetAction::TradeProfitably {
+            DeliverConstructionMaterials { .. } => None,
+            BoostSupplyChain { .. } => None,
+            TradeProfitably {
                 evaluated_trading_opportunity, ..
             } => Some((evaluated_trading_opportunity.ship_symbol.clone(), a.clone())),
         })
@@ -310,9 +310,9 @@ fn find_best_combination(
     let actions = actions
         .into_iter()
         .filter(|a| match &a {
-            ConstructionFleetAction::DeliverConstructionMaterials { .. } => true,
-            ConstructionFleetAction::BoostSupplyChain { .. } => true,
-            ConstructionFleetAction::TradeProfitably { .. } => false,
+            DeliverConstructionMaterials { .. } => true,
+            BoostSupplyChain { .. } => true,
+            TradeProfitably { .. } => false,
         })
         .collect_vec();
 
@@ -339,7 +339,7 @@ fn find_best_combination(
                 total_distance += pair_score;
 
                 // Store this assignment
-                current_assignment.insert(ship.symbol.clone(), (*action).clone());
+                current_assignment.insert(ship.symbol.clone(), action.adjusted_for_cargo_space(&ship.cargo));
             }
 
             // Update the best assignment if this one is better
@@ -393,19 +393,43 @@ pub enum ConstructionFleetAction {
 }
 
 impl ConstructionFleetAction {
+    pub(crate) fn adjusted_for_cargo_space(&self, cargo: &Cargo) -> Self {
+        let available_cargo_space = (cargo.capacity - cargo.units) as u32;
+        let mut copy = self.clone();
+        match &mut copy {
+            DeliverConstructionMaterials { units, .. } => {
+                *units = (*units).min(available_cargo_space);
+            }
+            BoostSupplyChain { units, .. } => {
+                *units = (*units).min(available_cargo_space);
+            }
+            TradeProfitably {
+                evaluated_trading_opportunity, ..
+            } => {
+                assert!(
+                    evaluated_trading_opportunity.units <= available_cargo_space,
+                    "the evaluated trading opportunity should already have the correct units"
+                );
+            }
+        }
+        copy
+    }
+}
+
+impl ConstructionFleetAction {
     pub(crate) fn purchase_location(&self) -> WaypointSymbol {
         match self {
-            ConstructionFleetAction::DeliverConstructionMaterials { from, .. } => from.clone(),
-            ConstructionFleetAction::BoostSupplyChain { from, .. } => from.clone(),
-            ConstructionFleetAction::TradeProfitably { from, .. } => from.clone(),
+            DeliverConstructionMaterials { from, .. } => from.clone(),
+            BoostSupplyChain { from, .. } => from.clone(),
+            TradeProfitably { from, .. } => from.clone(),
         }
     }
 
     pub(crate) fn delivery_location(&self) -> WaypointSymbol {
         match self {
-            ConstructionFleetAction::DeliverConstructionMaterials { to, .. } => to.clone(),
-            ConstructionFleetAction::BoostSupplyChain { to, .. } => to.clone(),
-            ConstructionFleetAction::TradeProfitably { to, .. } => to.clone(),
+            DeliverConstructionMaterials { to, .. } => to.clone(),
+            BoostSupplyChain { to, .. } => to.clone(),
+            TradeProfitably { to, .. } => to.clone(),
         }
     }
 }
@@ -415,7 +439,7 @@ impl ConstructionFleetAction {
         match self {
             BoostSupplyChain { estimated_costs, .. } => estimated_costs.clone(),
             TradeProfitably { estimated_costs, .. } => estimated_costs.clone(),
-            ConstructionFleetAction::DeliverConstructionMaterials { estimated_costs, .. } => estimated_costs.clone(),
+            DeliverConstructionMaterials { estimated_costs, .. } => estimated_costs.clone(),
         }
     }
 
@@ -466,16 +490,14 @@ impl PotentialConstructionTask {
                 trade_good_symbol,
                 from,
                 scored_supply_chain_support_route,
+                units,
                 estimated_costs,
                 ..
             } => PurchaseTradeGoodsTicketDetails {
                 waypoint_symbol: from.clone(),
                 trade_good: trade_good_symbol.clone(),
                 expected_price_per_unit: scored_supply_chain_support_route.purchase_price.into(),
-                quantity: scored_supply_chain_support_route
-                    .tgr
-                    .source_market_entry
-                    .trade_volume as u32,
+                quantity: *units,
                 expected_total_purchase_price: *estimated_costs,
             },
             TradeProfitably {

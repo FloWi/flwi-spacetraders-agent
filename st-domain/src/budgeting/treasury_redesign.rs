@@ -92,6 +92,28 @@ impl FinanceTicketDetails {
         }
     }
 
+    pub fn get_description(&self) -> String {
+        match self {
+            FinanceTicketDetails::PurchaseTradeGoods(d) => format!(
+                "Purchase of {} units of {} à {}/unit at {} for a total of {}",
+                d.quantity, d.trade_good, d.expected_price_per_unit, d.waypoint_symbol, d.expected_total_purchase_price
+            ),
+            FinanceTicketDetails::SellTradeGoods(d) => format!(
+                "Sell of {} units of {} à {}/unit at {} for a total of {}",
+                d.quantity, d.trade_good, d.expected_price_per_unit, d.waypoint_symbol, d.expected_total_sell_price
+            ),
+            FinanceTicketDetails::PurchaseShip(d) => format!(
+                "ShipPurchase of {} for {} at {} for fleet #{}",
+                d.ship_type, d.expected_purchase_price, d.waypoint_symbol, d.assigned_fleet_id
+            ),
+            FinanceTicketDetails::RefuelShip(d) => format!(
+                "Refueling of {} fuel-barrels à {} at {} for a total of {}",
+                d.num_fuel_barrels, d.expected_price_per_unit, d.waypoint_symbol, d.expected_total_purchase_price
+            ),
+            FinanceTicketDetails::DeliverConstructionMaterials(d) => format!("Delivering of {} units of {} to {}", d.quantity, d.trade_good, d.waypoint_symbol),
+        }
+    }
+
     pub fn get_units(&self) -> u32 {
         match self {
             FinanceTicketDetails::PurchaseTradeGoods(d) => d.quantity,
@@ -277,6 +299,27 @@ impl ThreadSafeTreasurer {
                 ship_symbol,
                 quantity,
                 expected_price_per_unit,
+                maybe_matching_purchase_ticket,
+            )
+        })
+    }
+
+    pub fn create_delivery_construction_material_ticket(
+        &self,
+        fleet_id: &FleetId,
+        trade_good_symbol: TradeGoodSymbol,
+        waypoint_symbol: WaypointSymbol,
+        ship_symbol: ShipSymbol,
+        quantity: u32,
+        maybe_matching_purchase_ticket: Option<TicketId>,
+    ) -> Result<FinanceTicket> {
+        self.with_treasurer(|t| {
+            t.create_delivery_construction_material_ticket(
+                fleet_id,
+                trade_good_symbol,
+                waypoint_symbol,
+                ship_symbol,
+                quantity,
                 maybe_matching_purchase_ticket,
             )
         })
@@ -530,6 +573,35 @@ impl ImprovedTreasurer {
                 expected_total_sell_price: expected_price_per_unit * quantity,
                 quantity,
                 expected_price_per_unit,
+                maybe_matching_purchase_ticket,
+            }),
+            allocated_credits: 0.into(),
+        };
+
+        self.process_ledger_entry(TicketCreated {
+            fleet_id: fleet_id.clone(),
+            ticket_details: ticket.clone(),
+        })?;
+        Ok(ticket)
+    }
+
+    pub fn create_delivery_construction_material_ticket(
+        &mut self,
+        fleet_id: &FleetId,
+        trade_good_symbol: TradeGoodSymbol,
+        waypoint_symbol: WaypointSymbol,
+        ship_symbol: ShipSymbol,
+        quantity: u32,
+        maybe_matching_purchase_ticket: Option<TicketId>,
+    ) -> Result<FinanceTicket> {
+        let ticket = FinanceTicket {
+            ticket_id: Default::default(),
+            fleet_id: fleet_id.clone(),
+            ship_symbol,
+            details: FinanceTicketDetails::DeliverConstructionMaterials(DeliverConstructionMaterialsTicketDetails {
+                waypoint_symbol,
+                trade_good: trade_good_symbol,
+                quantity,
                 maybe_matching_purchase_ticket,
             }),
             allocated_credits: 0.into(),
