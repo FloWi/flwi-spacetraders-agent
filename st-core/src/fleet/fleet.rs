@@ -825,9 +825,6 @@ impl FleetAdmiral {
                         .into_iter()
                         .filter_map(|potential_construction_task| {
                             let purchase_details = potential_construction_task.create_purchase_ticket_details();
-                            if purchase_details.quantity > 100 || purchase_details.trade_good == TradeGoodSymbol::FAB_MATS {
-                                println!("Why, just why??");
-                            }
 
                             let maybe_purchase_ticket = admiral
                                 .treasurer

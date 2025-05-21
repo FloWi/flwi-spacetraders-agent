@@ -525,15 +525,10 @@ impl PotentialConstructionTask {
     pub fn create_sell_or_deliver_ticket_details(&self) -> FinanceTicketDetails {
         match &self.task {
             DeliverConstructionMaterials {
-                trade_good_symbol,
-                from,
-                units,
-                market_trade_good,
-                estimated_costs,
-                ..
+                trade_good_symbol, to, units, ..
             } => {
                 let delivery_details = DeliverConstructionMaterialsTicketDetails {
-                    waypoint_symbol: from.clone(),
+                    waypoint_symbol: to.clone(),
                     trade_good: trade_good_symbol.clone(),
                     quantity: *units,
                     maybe_matching_purchase_ticket: None, // will be set after we created the actual purchase ticket
