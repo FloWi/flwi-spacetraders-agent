@@ -156,6 +156,7 @@ impl FleetRunner {
         if let Some(ship_task) = maybe_ship_task {
             // Clone all the values that need to be moved into the async task
             let ship_op_clone = Arc::clone(&ship_op_mutex);
+            let fleet_id_clone = fleet_id.clone();
             let args_clone = guard.args.clone();
             let ship_updated_tx_clone = guard.ship_updated_tx.clone();
             let ship_action_completed_tx_clone = guard.ship_action_completed_tx.clone();
@@ -172,6 +173,7 @@ impl FleetRunner {
                     ship_action_completed_tx_clone,
                     ship_task_clone,
                     sleep_duration,
+                    fleet_id_clone,
                 )
                 .await
                 {
@@ -206,6 +208,7 @@ impl FleetRunner {
         all_ships: HashSet<ShipSymbol>,
         ship_tasks: HashMap<ShipSymbol, ShipTask>,
         sleep_duration: Duration,
+        ship_fleet_assignment: &HashMap<ShipSymbol, FleetId>,
     ) -> Result<()> {
         let not_running_ships = {
             let runner_guard = runner.lock().await;
@@ -243,7 +246,8 @@ impl FleetRunner {
         };
 
         for ss in not_running_ships {
-            Self::relaunch_ship(Arc::clone(&runner), &ss, ship_tasks.clone(), sleep_duration).await?
+            let fleet_id = ship_fleet_assignment.get(&ss).unwrap();
+            Self::relaunch_ship(Arc::clone(&runner), &ss, ship_tasks.clone(), sleep_duration, fleet_id.clone()).await?
         }
 
         Ok(())
@@ -255,6 +259,7 @@ impl FleetRunner {
         ss: &ShipSymbol,
         ship_tasks: HashMap<ShipSymbol, ShipTask>,
         sleep_duration: Duration,
+        fleet_id: FleetId,
     ) -> Result<()> {
         let mut guard = runner.lock().await;
 
@@ -276,7 +281,7 @@ impl FleetRunner {
             let ship_status_report_tx_clone = guard.ship_status_report_tx.clone();
             let ship_task_clone = ship_task.clone();
             let ship_symbol_clone = ss.clone();
-
+            let fleet_id_clone = fleet_id.clone();
             let ship_symbol_clone2 = ship_symbol_clone.clone();
 
             let fiber = tokio::spawn(async move {
@@ -288,6 +293,7 @@ impl FleetRunner {
                     ship_action_completed_tx_clone,
                     ship_task_clone,
                     sleep_duration,
+                    fleet_id_clone,
                 )
                 .await
                 {
@@ -326,6 +332,7 @@ impl FleetRunner {
         ship_action_completed_tx: Sender<ActionEvent>,
         ship_task: ShipTask,
         sleep_duration: Duration,
+        fleet_id: FleetId,
     ) -> Result<Option<(Ship, ShipTask)>> {
         use crate::behavior_tree::behavior_tree::Response;
         use crate::behavior_tree::ship_behaviors::ship_behaviors;
@@ -337,7 +344,9 @@ impl FleetRunner {
         event!(Level::INFO, message = "behavior_runner - trying to get lock on ship_op",);
 
         let mut ship = ship_op.lock().await;
+
         event!(Level::INFO, message = "behavior_runner - successfully got lock on ship_op",);
+        ship.my_fleet = fleet_id;
         let ship_updated_tx_clone = ship_updated_tx.clone();
         let ship_action_completed_tx_clone = ship_action_completed_tx.clone();
 
@@ -605,7 +614,7 @@ impl FleetRunner {
 
                         let ship_fleet_assignment =
                             FleetAdmiral::assign_ships(&fleet_task_list, &admiral_guard.all_ships, &admiral_guard.fleet_phase.shopping_list_in_order);
-                        admiral_guard.ship_fleet_assignment = ship_fleet_assignment;
+                        admiral_guard.ship_fleet_assignment = ship_fleet_assignment.clone();
 
                         admiral_guard.redistribute_distribute_fleet_budgets(&ship_price_info, &system_symbol)?;
 
@@ -621,6 +630,7 @@ impl FleetRunner {
                                 .collect::<HashSet<_>>(),
                             admiral_guard.ship_tasks.clone(),
                             sleep_duration,
+                            &ship_fleet_assignment,
                         )
                         .await?;
 
@@ -658,7 +668,11 @@ impl FleetRunner {
                             admiral_guard.get_task_of_ship(&ship_symbol).is_some(),
                             "After AssignNewTaskToShip, the ship is supposed to have a new task, but it was None"
                         );
-                        Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration).await?;
+                        let fleet_id = admiral_guard
+                            .ship_fleet_assignment
+                            .get(&ship_symbol)
+                            .unwrap();
+                        Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration, fleet_id.clone()).await?;
                         upsert_fleets_data(
                             Arc::clone(&bmc),
                             &Ctx::Anonymous,

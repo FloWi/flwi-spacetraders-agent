@@ -217,6 +217,15 @@ impl Actionable for ShipAction {
 
                 state.set_fuel(new_fuel.clone());
 
+                args.treasurer.report_expense(
+                    &state.my_fleet,
+                    state.current_navigation_destination.clone(),
+                    state.maybe_trades.clone().unwrap_or_default(),
+                    TradeGoodSymbol::FUEL,
+                    response.data.transaction.units as u32,
+                    Credits::from(response.data.transaction.price_per_unit),
+                )?;
+
                 action_completed_tx
                     .send(ActionEvent::Expense(
                         state.clone(),
@@ -224,17 +233,7 @@ impl Actionable for ShipAction {
                     ))
                     .await?;
 
-                match args.treasurer.report_expense(
-                    &state.my_fleet,
-                    state.current_navigation_destination.clone(),
-                    state.maybe_trades.clone().unwrap_or_default(),
-                    TradeGoodSymbol::FUEL,
-                    response.data.transaction.units as u32,
-                    Credits::from(response.data.transaction.price_per_unit),
-                ) {
-                    Ok(_) => Ok(Success),
-                    Err(err) => Err(anyhow!("Refueling failed: {err:?}")),
-                }
+                Ok(Success)
             }
 
             ShipAction::Dock => {
