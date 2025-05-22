@@ -3,12 +3,20 @@ use anyhow::*;
 use chrono::{DateTime, Utc};
 use st_domain::budgeting::treasury_redesign::FinanceTicket;
 use st_domain::{
-    CreateChartBody, FleetId, FlightMode, Fuel, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseShipResponse, PurchaseTradeGoodResponse,
-    RefuelShipResponse, SellTradeGoodResponse, Ship, ShipType, Shipyard, SupplyConstructionSiteResponse, TradeGoodSymbol, TravelAction, WaypointSymbol,
+    CreateChartBody, FleetId, FlightMode, Fuel, JettisonCargoResponse, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseShipResponse,
+    PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipType, Shipyard, SiphonResourcesResponse, SupplyConstructionSiteResponse,
+    TradeGoodSymbol, TravelAction, WaypointSymbol,
 };
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::{Deref, DerefMut, Not};
 use std::sync::Arc;
+
+#[derive(Clone, Debug)]
+pub struct SiphoningConfig {
+    pub siphoning_waypoint: WaypointSymbol,
+    pub demanded_goods: HashSet<TradeGoodSymbol>,
+    pub delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+}
 
 #[derive(Clone, Debug)]
 pub struct ShipOperations {
@@ -21,6 +29,7 @@ pub struct ShipOperations {
     pub maybe_next_observation_time: Option<DateTime<Utc>>,
     pub maybe_trades: Option<Vec<FinanceTicket>>,
     pub my_fleet: FleetId,
+    pub maybe_siphoning_config: Option<SiphoningConfig>,
 }
 
 impl PartialEq for ShipOperations {
@@ -96,6 +105,7 @@ maybe_trade: {:?},
             maybe_next_observation_time: None,
             maybe_trades: None,
             my_fleet,
+            maybe_siphoning_config: None,
         }
     }
 
@@ -105,6 +115,19 @@ maybe_trade: {:?},
 
     pub fn set_destination(&mut self, destination: WaypointSymbol) {
         self.current_navigation_destination = Some(destination)
+    }
+
+    pub fn set_siphoning_config(
+        &mut self,
+        siphoning_waypoint: WaypointSymbol,
+        demanded_goods: HashSet<TradeGoodSymbol>,
+        delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+    ) {
+        self.maybe_siphoning_config = Some(SiphoningConfig {
+            siphoning_waypoint,
+            demanded_goods,
+            delivery_locations,
+        });
     }
 
     pub fn set_next_observation_time(&mut self, next_time: DateTime<Utc>) {
@@ -124,7 +147,7 @@ maybe_trade: {:?},
         self.permanent_observation_location = Some(waypoint_symbol);
     }
 
-    pub fn set_trade_ticket(&mut self, trade_tickets: Vec<FinanceTicket>) {
+    pub fn set_trade_tickets(&mut self, trade_tickets: Vec<FinanceTicket>) {
         if trade_tickets.is_empty() {
             self.maybe_trades = None;
         } else {
@@ -136,6 +159,29 @@ maybe_trade: {:?},
         let response = self.client.dock_ship(self.ship.symbol.clone()).await?;
         //println!("{:?}", response);
         Ok(response.data.nav)
+    }
+
+    pub async fn siphon_resources(&mut self) -> Result<SiphonResourcesResponse> {
+        let response = self
+            .client
+            .siphon_resources(self.ship.symbol.clone())
+            .await?;
+
+        self.cargo = response.data.cargo.clone();
+        self.cooldown = response.data.cooldown.clone();
+
+        Ok(response)
+    }
+
+    pub async fn jettison_cargo(&mut self, trade_good_symbol: &TradeGoodSymbol, units: u32) -> Result<JettisonCargoResponse> {
+        let response = self
+            .client
+            .jettison_cargo(self.ship.symbol.clone(), trade_good_symbol.clone(), units)
+            .await?;
+
+        self.cargo = response.data.cargo.clone();
+
+        Ok(response)
     }
 
     pub(crate) async fn get_market(&self) -> Result<MarketData> {

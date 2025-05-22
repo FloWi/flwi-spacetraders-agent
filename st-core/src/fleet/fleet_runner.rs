@@ -366,7 +366,7 @@ impl FleetRunner {
             ShipTask::SurveyAsteroid { .. } => None,
             ShipTask::Trade { tickets } => {
                 // println!("running trading behavior for ship, successfully started ticket execution");
-                ship.set_trade_ticket(tickets.clone());
+                ship.set_trade_tickets(tickets.clone());
                 event!(
                     Level::INFO,
                     message = "Ship is executing trades",
@@ -383,6 +383,14 @@ impl FleetRunner {
             ShipTask::PrepositionShipForTrade { first_purchase_location } => {
                 ship.set_destination(first_purchase_location);
                 Some((behaviors.navigate_to_destination, "navigate_to_destination"))
+            }
+            ShipTask::SiphonCarboHydradesAtWaypoint {
+                siphoning_waypoint,
+                delivery_locations,
+                demanded_goods,
+            } => {
+                ship.set_siphoning_config(siphoning_waypoint, demanded_goods, delivery_locations);
+                Some((behaviors.siphoning_behavior, "siphoning_behavior"))
             }
         };
 

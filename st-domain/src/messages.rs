@@ -8,7 +8,7 @@ use crate::{
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use strum::Display;
 use uuid::Uuid;
@@ -50,6 +50,8 @@ pub struct FleetDecisionFacts {
     pub ships: Vec<Ship>,
     pub materialized_supply_chain: Option<MaterializedSupplyChain>,
     pub agent_info: Agent,
+    pub gas_giant: WaypointSymbol,
+    pub engineered_asteroid: WaypointSymbol,
 }
 
 impl FleetDecisionFacts {
@@ -107,17 +109,34 @@ pub enum PurchaseReason {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Display)]
 pub enum ShipTask {
-    ObserveWaypointDetails { waypoint_symbol: WaypointSymbol },
+    ObserveWaypointDetails {
+        waypoint_symbol: WaypointSymbol,
+    },
 
-    ObserveAllWaypointsOnce { waypoint_symbols: Vec<WaypointSymbol> },
+    ObserveAllWaypointsOnce {
+        waypoint_symbols: Vec<WaypointSymbol>,
+    },
 
-    MineMaterialsAtWaypoint { mining_waypoint: WaypointSymbol },
+    MineMaterialsAtWaypoint {
+        mining_waypoint: WaypointSymbol,
+    },
 
-    SurveyAsteroid { waypoint_symbol: WaypointSymbol },
+    SurveyAsteroid {
+        waypoint_symbol: WaypointSymbol,
+    },
 
-    Trade { tickets: Vec<FinanceTicket> },
+    Trade {
+        tickets: Vec<FinanceTicket>,
+    },
 
-    PrepositionShipForTrade { first_purchase_location: WaypointSymbol },
+    PrepositionShipForTrade {
+        first_purchase_location: WaypointSymbol,
+    },
+    SiphonCarboHydradesAtWaypoint {
+        siphoning_waypoint: WaypointSymbol,
+        delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+        demanded_goods: HashSet<TradeGoodSymbol>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -147,7 +166,6 @@ pub struct TradingFleetConfig {
 pub struct ConstructJumpGateFleetConfig {
     pub system_symbol: SystemSymbol,
     pub jump_gate_waypoint: WaypointSymbol,
-    pub materialized_supply_chain: Option<MaterializedSupplyChain>,
     pub desired_fleet_config: Vec<ShipType>,
 }
 
@@ -155,9 +173,6 @@ pub struct ConstructJumpGateFleetConfig {
 pub struct MiningFleetConfig {
     pub system_symbol: SystemSymbol,
     pub mining_waypoint: WaypointSymbol,
-    pub materials: Vec<TradeGoodSymbol>,
-    pub delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
-    pub materialized_supply_chain: Option<MaterializedSupplyChain>,
     pub desired_fleet_config: Vec<ShipType>,
 }
 
@@ -165,9 +180,6 @@ pub struct MiningFleetConfig {
 pub struct SiphoningFleetConfig {
     pub system_symbol: SystemSymbol,
     pub siphoning_waypoint: WaypointSymbol,
-    pub materials: Vec<TradeGoodSymbol>,
-    pub delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
-    pub materialized_supply_chain: Option<MaterializedSupplyChain>,
     pub desired_fleet_config: Vec<ShipType>,
 }
 

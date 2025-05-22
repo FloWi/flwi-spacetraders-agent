@@ -5,20 +5,23 @@ use crate::universe_server::universe_snapshot::load_universe;
 use crate::{calculate_fuel_consumption, calculate_time};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use chrono::format::Fixed::TimezoneOffsetDoubleColon;
 use chrono::{TimeDelta, Utc};
 use itertools::Itertools;
+use rand::prelude::IteratorRandom;
 use st_domain::{
     Agent, AgentResponse, AgentSymbol, Cargo, Construction, Cooldown, CreateChartResponse, Crew, Data, DockShipResponse, FactionSymbol, FlightMode, Fuel,
-    FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, JumpGate,
-    LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Nav, NavAndFuelResponse, NavOnlyResponse, NavRouteWaypoint, NavStatus,
-    NavigateShipResponse, NotEnoughItemsInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody, PurchaseTradeGoodResponse,
-    PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest, RegistrationResponse, Route,
-    SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction, ShipRegistrationRole, ShipSymbol, ShipTransaction,
-    ShipType, Shipyard, ShipyardShip, StStatusResponse, SupplyConstructionSiteResponse, SupplyConstructionSiteResponseBody, SystemSymbol, SystemsPageData,
-    TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, Waypoint, WaypointSymbol,
+    FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse,
+    JettisonCargoResponse, JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Nav, NavAndFuelResponse, NavOnlyResponse,
+    NavRouteWaypoint, NavStatus, NavigateShipResponse, NotEnoughItemsInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody,
+    PurchaseTradeGoodResponse, PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest,
+    RegistrationResponse, Route, SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction, ShipRegistrationRole,
+    ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, Siphon, SiphonResourcesResponse, SiphonResourcesResponseBody, SiphonYield, StStatusResponse,
+    SupplyConstructionSiteResponse, SupplyConstructionSiteResponseBody, SystemSymbol, SystemsPageData, TradeGoodSymbol, TradeGoodType, Transaction,
+    TransactionType, Waypoint, WaypointSymbol,
 };
 use std::collections::HashMap;
-use std::ops::Add;
+use std::ops::{Add, Not};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -550,6 +553,65 @@ impl StClientTrait for InMemoryUniverseClient {
         }
     }
 
+    async fn siphon_resources(&self, ship_symbol: ShipSymbol) -> Result<SiphonResourcesResponse> {
+        let carbohydrates = [
+            TradeGoodSymbol::LIQUID_HYDROGEN,
+            TradeGoodSymbol::LIQUID_NITROGEN,
+            TradeGoodSymbol::HYDROCARBON,
+        ];
+
+        let random_element = carbohydrates
+            .iter()
+            .choose(&mut rand::thread_rng())
+            .unwrap();
+
+        let mut universe = self.universe.write().await;
+        if let Some(ship) = universe.ships.get_mut(&ship_symbol) {
+            let siphoning_strength: u32 = ship
+                .mounts
+                .iter()
+                .filter_map(|m| {
+                    m.symbol
+                        .is_gas_siphon()
+                        .then_some(m.strength.unwrap_or_default() as u32)
+                })
+                .sum();
+
+            if siphoning_strength == 0 {
+                anyhow::bail!("Ship does not have any gas siphon modules")
+            }
+
+            ship.try_add_cargo(siphoning_strength, random_element)?;
+
+            Ok(SiphonResourcesResponse {
+                data: SiphonResourcesResponseBody {
+                    siphon: Siphon {
+                        ship_symbol: ship_symbol.clone(),
+                        siphon_yield: SiphonYield {
+                            symbol: random_element.clone(),
+                            units: siphoning_strength,
+                        },
+                    },
+                    cooldown: Cooldown {
+                        ship_symbol: ship_symbol.clone(),
+                        total_seconds: 1,
+                        remaining_seconds: 1,
+                        expiration: Some(Utc::now().add(TimeDelta::milliseconds(1))),
+                    },
+                    cargo: ship.cargo.clone(),
+                },
+            })
+        } else {
+            anyhow::bail!("Ship not found")
+        }
+    }
+
+    async fn jettison_cargo(&self, ship_symbol: ShipSymbol, trade_good_symbol: TradeGoodSymbol, units: u32) -> Result<JettisonCargoResponse> {
+        let mut universe = self.universe.write().await;
+
+        todo!("jettison_cargo not yet implemented")
+    }
+
     async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> anyhow::Result<SetFlightModeResponse> {
         let mut universe = self.universe.write().await;
         if let Some(ship) = universe.ships.get_mut(&ship_symbol) {
@@ -1049,7 +1111,7 @@ fn create_ship_from_shipyard_ship(
         reactor: shipyard_ship.reactor.clone(),
         engine: shipyard_ship.engine.clone(),
         cooldown: Cooldown {
-            ship_symbol: ship_symbol.0.clone(),
+            ship_symbol: ship_symbol.clone(),
             total_seconds: 0,
             remaining_seconds: 0,
             expiration: None,

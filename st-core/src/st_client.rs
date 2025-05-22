@@ -10,11 +10,11 @@ use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
 use st_domain::{
     extract_system_symbol, AgentResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse, GetJumpGateResponse,
-    GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, ListAgentsResponse, NavigateShipRequest, NavigateShipResponse,
-    OrbitShipResponse, PatchShipNavRequest, PurchaseShipRequest, PurchaseShipResponse, PurchaseTradeGoodRequest, PurchaseTradeGoodResponse, RefuelShipRequest,
-    RefuelShipResponse, RegistrationRequest, RegistrationResponse, SellTradeGoodRequest, SellTradeGoodResponse, SetFlightModeResponse, Ship, ShipSymbol,
-    ShipType, StStatusResponse, SupplyConstructionSiteRequest, SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, Waypoint,
-    WaypointSymbol,
+    GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, JettisonCargoRequest, JettisonCargoResponse, ListAgentsResponse,
+    NavigateShipRequest, NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PurchaseShipRequest, PurchaseShipResponse, PurchaseTradeGoodRequest,
+    PurchaseTradeGoodResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest, RegistrationResponse, SellTradeGoodRequest, SellTradeGoodResponse,
+    SetFlightModeResponse, Ship, ShipSymbol, ShipType, SiphonResourcesResponse, StStatusResponse, SupplyConstructionSiteRequest,
+    SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, Waypoint, WaypointSymbol,
 };
 use std::any::type_name;
 use std::fmt::Debug;
@@ -115,6 +115,28 @@ impl StClientTrait for StClient {
                 self.base_url
                     .join(&format!("my/ships/{}/dock", ship_symbol.0))?,
             ),
+        )
+        .await
+    }
+
+    async fn siphon_resources(&self, ship_symbol: ShipSymbol) -> Result<SiphonResourcesResponse> {
+        Self::make_api_call(
+            self.client.post(
+                self.base_url
+                    .join(&format!("my/ships/{}/siphon", ship_symbol.0))?,
+            ),
+        )
+        .await
+    }
+
+    async fn jettison_cargo(&self, ship_symbol: ShipSymbol, symbol: TradeGoodSymbol, units: u32) -> Result<JettisonCargoResponse> {
+        Self::make_api_call(
+            self.client
+                .post(
+                    self.base_url
+                        .join(&format!("my/ships/{}/jettison", ship_symbol.0))?,
+                )
+                .json(&JettisonCargoRequest { symbol, units }),
         )
         .await
     }
@@ -359,6 +381,10 @@ pub trait StClientTrait: Send + Sync + Debug {
     async fn get_supply_chain(&self) -> Result<GetSupplyChainResponse>;
 
     async fn dock_ship(&self, ship_symbol: ShipSymbol) -> Result<DockShipResponse>;
+
+    async fn siphon_resources(&self, ship_symbol: ShipSymbol) -> Result<SiphonResourcesResponse>;
+
+    async fn jettison_cargo(&self, ship_symbol: ShipSymbol, trade_good_symbol: TradeGoodSymbol, units: u32) -> Result<JettisonCargoResponse>;
 
     async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> Result<SetFlightModeResponse>;
 

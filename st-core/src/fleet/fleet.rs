@@ -2,6 +2,7 @@ use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::fleet::construction_fleet::ConstructJumpGateFleet;
 use crate::fleet::fleet_runner::FleetRunner;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
+use crate::fleet::siphoning_fleet::SiphoningFleet;
 use crate::fleet::supply_chain_test::format_number;
 use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
 use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_shipyards_for_exploration};
@@ -24,7 +25,7 @@ use st_domain::{
     FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MarketTradeGood,
     MiningFleetConfig, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
     StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradingFleetConfig, TransactionActionEvent, Waypoint,
-    WaypointSymbol,
+    WaypointSymbol, WaypointType,
 };
 use st_store::bmc::Bmc;
 use st_store::{load_fleet_overview, upsert_fleets_data, Ctx};
@@ -936,7 +937,7 @@ Fleet Budgets after rebalancing
                 }
                 TradingCfg(cfg) => Default::default(),
                 MiningCfg(cfg) => Default::default(),
-                SiphoningCfg(cfg) => Default::default(),
+                SiphoningCfg(cfg) => SiphoningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet)?,
             };
 
             for (ss, task) in computed_new_tasks {
@@ -1529,6 +1530,21 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
                 ))
             }
         }
+        ShipTask::SiphonCarboHydradesAtWaypoint {
+            siphoning_waypoint,
+            delivery_locations,
+            demanded_goods,
+        } => {
+            // Keep doing, what you're doing
+            Ok(NewTaskResult::AssignNewTaskToShip {
+                ship_symbol: ship.symbol.clone(),
+                task: ShipTask::SiphonCarboHydradesAtWaypoint {
+                    siphoning_waypoint: siphoning_waypoint.clone(),
+                    delivery_locations: delivery_locations.clone(),
+                    demanded_goods: demanded_goods.clone(),
+                },
+            })
+        }
     }
 }
 
@@ -1573,7 +1589,6 @@ pub fn compute_fleet_configs(
                         .clone()
                         .expect("construction_site")
                         .symbol,
-                    materialized_supply_chain: None,
                     desired_fleet_config,
                 })),
                 FleetTask::TradeProfitably { system_symbol } => Some(TradingCfg(TradingFleetConfig {
@@ -1583,19 +1598,12 @@ pub fn compute_fleet_configs(
                 })),
                 FleetTask::MineOres { system_symbol } => Some(MiningCfg(MiningFleetConfig {
                     system_symbol: system_symbol.clone(),
-                    mining_waypoint: WaypointSymbol("TODO add engineered asteroid".to_string()),
-                    materials: vec![],
-                    delivery_locations: Default::default(),
-                    materialized_supply_chain: None,
-
+                    mining_waypoint: fleet_decision_facts.engineered_asteroid.clone(),
                     desired_fleet_config,
                 })),
                 FleetTask::SiphonGases { system_symbol } => Some(SiphoningCfg(SiphoningFleetConfig {
                     system_symbol: system_symbol.clone(),
-                    siphoning_waypoint: WaypointSymbol("TODO add gas giant".to_string()),
-                    materials: vec![],
-                    delivery_locations: Default::default(),
-                    materialized_supply_chain: None,
+                    siphoning_waypoint: fleet_decision_facts.gas_giant.clone(),
                     desired_fleet_config,
                 })),
             };
@@ -1826,23 +1834,9 @@ fn get_ship_type_of_ship(ship: &Ship) -> Result<ShipType> {
     use ShipRegistrationRole::*;
     use ShipType::*;
 
-    let is_miner = || {
-        ship.mounts.iter().any(|m| {
-            m.symbol
-                .starts_with(MOUNT_MINING_LASER_I.to_string().as_str())
-        })
-    };
-    let is_siphoner = || {
-        ship.mounts.iter().any(|m| {
-            m.symbol
-                .starts_with(MOUNT_GAS_SIPHON_I.to_string().as_str())
-        })
-    };
-    let is_surveyor = || {
-        ship.mounts
-            .iter()
-            .any(|m| m.symbol.starts_with(MOUNT_SURVEYOR_I.to_string().as_str()))
-    };
+    let is_miner = || ship.mounts.iter().any(|m| m.symbol.is_mining_laser());
+    let is_siphoner = || ship.mounts.iter().any(|m| m.symbol.is_gas_siphon());
+    let is_surveyor = || ship.mounts.iter().any(|m| m.symbol.is_surveyor());
     let is_refining_freighter = || ship.registration.role == Refinery;
 
     match &ship.frame.symbol {
@@ -1991,6 +1985,19 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         None
     };
 
+    let gas_giant = waypoints_of_system
+        .iter()
+        .find(|wp| wp.r#type == WaypointType::GAS_GIANT)
+        .unwrap()
+        .clone()
+        .symbol;
+    let engineered_asteroid = waypoints_of_system
+        .iter()
+        .find(|wp| wp.r#type == WaypointType::ENGINEERED_ASTEROID)
+        .unwrap()
+        .clone()
+        .symbol;
+
     Ok(FleetDecisionFacts {
         marketplaces_of_interest: marketplace_symbols_of_interest.clone(),
         marketplaces_with_up_to_date_infos,
@@ -2000,6 +2007,8 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         ships,
         materialized_supply_chain,
         agent_info,
+        gas_giant,
+        engineered_asteroid,
     })
 }
 pub fn diff_waypoint_symbols(waypoints_of_interest: &[WaypointSymbol], already_explored: &[WaypointSymbol]) -> Vec<WaypointSymbol> {

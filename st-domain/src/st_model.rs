@@ -886,8 +886,37 @@ pub struct NavOnlyResponse {
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
+pub struct CargoOnlyResponse {
+    pub cargo: Cargo,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
 pub struct DockShipResponse {
     pub data: NavOnlyResponse,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct SiphonYield {
+    pub symbol: TradeGoodSymbol,
+    pub units: u32,
+}
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct Siphon {
+    pub ship_symbol: ShipSymbol,
+    #[serde(rename = "yield")]
+    pub siphon_yield: SiphonYield,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct SiphonResourcesResponseBody {
+    pub siphon: Siphon,
+    pub cooldown: Cooldown,
+    pub cargo: Cargo,
+    //FIXME: add events
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -895,6 +924,17 @@ pub struct DockShipResponse {
 pub struct PatchShipNavRequest {
     pub flight_mode: FlightMode,
 }
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct JettisonCargoRequest {
+    pub symbol: TradeGoodSymbol,
+    pub units: u32,
+}
+
+pub type SiphonResourcesResponse = Data<SiphonResourcesResponseBody>;
+
+pub type JettisonCargoResponse = Data<CargoOnlyResponse>;
 
 pub type PatchShipNavResponse = Data<NavOnlyResponse>;
 
@@ -1098,7 +1138,7 @@ pub struct Requirements {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct Cooldown {
-    pub ship_symbol: String,
+    pub ship_symbol: ShipSymbol,
     pub total_seconds: i32,
     pub remaining_seconds: i32,
     pub expiration: Option<DateTime<Utc>>,
@@ -1143,7 +1183,7 @@ pub struct Module {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct Mount {
-    pub symbol: String,
+    pub symbol: ShipMountSymbol,
     pub name: String,
     pub description: Option<String>,
     pub strength: Option<i32>,
@@ -1152,7 +1192,40 @@ pub struct Mount {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-#[serde(rename_all = "camelCase")]
+#[allow(non_camel_case_types)]
+pub enum ShipMountSymbol {
+    MOUNT_GAS_SIPHON_I,
+    MOUNT_GAS_SIPHON_II,
+    MOUNT_GAS_SIPHON_III,
+    MOUNT_SURVEYOR_I,
+    MOUNT_SURVEYOR_II,
+    MOUNT_SURVEYOR_III,
+    MOUNT_SENSOR_ARRAY_I,
+    MOUNT_SENSOR_ARRAY_II,
+    MOUNT_SENSOR_ARRAY_III,
+    MOUNT_MINING_LASER_I,
+    MOUNT_MINING_LASER_II,
+    MOUNT_MINING_LASER_III,
+    MOUNT_LASER_CANNON_I,
+    MOUNT_MISSILE_LAUNCHER_I,
+    MOUNT_TURRET_I,
+}
+
+impl ShipMountSymbol {
+    pub fn is_mining_laser(&self) -> bool {
+        self == &ShipMountSymbol::MOUNT_MINING_LASER_I || self == &ShipMountSymbol::MOUNT_MINING_LASER_II || self == &ShipMountSymbol::MOUNT_MINING_LASER_III
+    }
+
+    pub fn is_gas_siphon(&self) -> bool {
+        self == &ShipMountSymbol::MOUNT_GAS_SIPHON_I || self == &ShipMountSymbol::MOUNT_GAS_SIPHON_II || self == &ShipMountSymbol::MOUNT_GAS_SIPHON_III
+    }
+
+    pub fn is_surveyor(&self) -> bool {
+        self == &ShipMountSymbol::MOUNT_SURVEYOR_I || self == &ShipMountSymbol::MOUNT_SURVEYOR_II || self == &ShipMountSymbol::MOUNT_SURVEYOR_III
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Cargo {
     pub capacity: i32,
     pub units: i32,

@@ -12,12 +12,14 @@ use itertools::Itertools;
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::{PurchaseTradeGoods, RefuelShip, SellTradeGoods};
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails};
+use st_domain::TradeGoodSymbol::MOUNT_GAS_SIPHON_I;
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
     get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TradeGoodSymbol,
     TravelAction,
 };
 use std::collections::HashSet;
+use std::hint::unreachable_unchecked;
 use std::ops::{Add, Not};
 use tokio::sync::mpsc::Sender;
 use tracing::event;
@@ -85,7 +87,7 @@ impl Actionable for ShipAction {
 
                     if is_still_travelling {
                         let duration = arrival_time - now;
-                        event!(Level::DEBUG, "WaitForArrival: {duration:?}");
+                        event!(Level::DEBUG, "Waiting for arrival for: {duration:?}");
                         tokio::time::sleep(Duration::from_millis(u64::try_from(duration.num_milliseconds()).unwrap_or(0))).await;
                         Ok(Success)
                     } else {
@@ -93,6 +95,28 @@ impl Actionable for ShipAction {
                     }
                 }
             },
+            ShipAction::WaitForCooldown => {
+                let now: DateTime<Utc> = Utc::now();
+                let cooldown_finished_time: DateTime<Utc> = state.cooldown.expiration.unwrap_or(Utc::now());
+
+                let is_still_cooling_down: bool = now < cooldown_finished_time;
+                event!(
+                    Level::DEBUG,
+                    "ShipAction::WaitForCooldown: Ship is still cooling down. now: {} cooldown_finished_time: {} is_still_cooling_down: {}",
+                    now,
+                    cooldown_finished_time,
+                    is_still_cooling_down
+                );
+
+                if is_still_cooling_down {
+                    let duration = cooldown_finished_time - now;
+                    event!(Level::DEBUG, "Waiting for cooldown for: {duration:?}");
+                    tokio::time::sleep(Duration::from_millis(u64::try_from(duration.num_milliseconds()).unwrap_or(0))).await;
+                    Ok(Success)
+                } else {
+                    Ok(Success)
+                }
+            }
 
             ShipAction::FixNavStatusIfNecessary => match state.nav.status {
                 NavStatus::InOrbit | NavStatus::Docked => Ok(Success),
@@ -602,7 +626,7 @@ impl Actionable for ShipAction {
                             .filter(|t| completed_tickets.contains(t).not())
                             .cloned()
                             .collect_vec();
-                        state.set_trade_ticket(still_open_tickets)
+                        state.set_trade_tickets(still_open_tickets)
                     }
 
                     Ok(Success)
@@ -663,11 +687,126 @@ impl Actionable for ShipAction {
                         RefuelShip(_) => false,
                         FinanceTicketDetails::PurchaseShip(_) => t.ship_symbol == state.symbol,
                     }) {
-                        state.set_trade_ticket(vec![ship_purchase_ticket]);
+                        state.set_trade_tickets(vec![ship_purchase_ticket]);
                     }
                 }
 
                 Ok(Success)
+            }
+            ShipAction::SiphonResources => {
+                state.siphon_resources().await?;
+
+                Ok(Success)
+            }
+            ShipAction::JettisonInvaluableCarboHydrates => {
+                if let Some(cfg) = state.maybe_siphoning_config.clone() {
+                    let items_to_jettison = state
+                        .cargo
+                        .inventory
+                        .iter()
+                        .filter_map(|inventory_entry| {
+                            cfg.demanded_goods
+                                .contains(&inventory_entry.symbol)
+                                .not()
+                                .then_some(inventory_entry.clone())
+                        })
+                        .collect_vec();
+
+                    for item in items_to_jettison {
+                        state.jettison_cargo(&item.symbol, item.units).await?;
+                    }
+                }
+
+                Ok(Success)
+            }
+            ShipAction::IsAtSiphoningSite => {
+                if let Some(cfg) = state.maybe_siphoning_config.clone() {
+                    if state.current_location() == cfg.siphoning_waypoint && state.nav.status == NavStatus::InOrbit {
+                        Ok(Success)
+                    } else {
+                        Err(anyhow!("No siphoning config found"))
+                    }
+                } else {
+                    Err(anyhow!("No siphoning config found"))
+                }
+            }
+            ShipAction::SetSiphoningSiteAsDestination => {
+                if let Some(cfg) = state.maybe_siphoning_config.clone() {
+                    state.set_destination(cfg.siphoning_waypoint);
+                    Ok(Success)
+                } else {
+                    Err(anyhow!("No siphoning config found"))
+                }
+            }
+            ShipAction::HasCargoSpaceForSiphoning => {
+                // val spaceLeft = ship.cargo.capacity - ship.cargo.units
+                // val yieldSize = ship.mounts.filter(m => laserMounts.contains(m.symbol) || siphonMounts.contains(m.symbol)).map(_.strength.getOrElse(0)).sum
+                // spaceLeft >= yieldSize
+
+                let cargo_space_left = (state.cargo.capacity - state.cargo.units) as u32;
+                let yield_size = state
+                    .mounts
+                    .iter()
+                    .filter_map(|m| {
+                        m.symbol
+                            .is_gas_siphon()
+                            .then_some(m.strength.unwrap_or_default() as u32)
+                    })
+                    .sum::<u32>();
+
+                if yield_size < cargo_space_left {
+                    Ok(Success)
+                } else {
+                    Err(anyhow!(
+                        "cargo space too small. Yield size: {}, cargo space left: {}",
+                        yield_size,
+                        cargo_space_left
+                    ))
+                }
+            }
+            ShipAction::CreateSellTicketsForAllCargoItems => {
+                if let Some(cfg) = state.maybe_siphoning_config.clone() {
+                    let (cargo_items_with_delivery_location, cargo_items_without_delivery_location): (Vec<_>, Vec<_>) =
+                        state.cargo.inventory.iter().partition_map(|inv| {
+                            if let Some(delivery_location) = cfg.delivery_locations.get(&inv.symbol) {
+                                itertools::Either::Left((inv.clone(), delivery_location.clone()))
+                            } else {
+                                itertools::Either::Right(inv.clone())
+                            }
+                        });
+
+                    if cargo_items_without_delivery_location.len() > 0 {
+                        let items = cargo_items_without_delivery_location
+                            .iter()
+                            .map(|inv| inv.symbol.clone().to_string())
+                            .join(", ");
+                        Err(anyhow!(
+                            "No delivery location found for {} of the {} cargo items: {}",
+                            cargo_items_without_delivery_location.len(),
+                            state.cargo.inventory.len(),
+                            items
+                        ))
+                    } else {
+                        let mut sell_tickets = vec![];
+                        for (item, delivery_location) in cargo_items_with_delivery_location.into_iter() {
+                            let ticket = args.treasurer.create_sell_trade_goods_ticket(
+                                &state.my_fleet,
+                                item.symbol.clone(),
+                                delivery_location.clone(),
+                                state.symbol.clone(),
+                                item.units.clone(),
+                                Credits::default(),
+                                None,
+                            )?;
+                            sell_tickets.push(ticket);
+                        }
+
+                        state.set_trade_tickets(sell_tickets);
+                        Ok(Success)
+                    }
+                } else {
+                    Err(anyhow!("No siphoning config found"))
+                }
             }
         };
 
