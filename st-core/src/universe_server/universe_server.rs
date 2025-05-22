@@ -10,15 +10,15 @@ use chrono::{TimeDelta, Utc};
 use itertools::Itertools;
 use rand::prelude::IteratorRandom;
 use st_domain::{
-    Agent, AgentResponse, AgentSymbol, Cargo, Construction, Cooldown, CreateChartResponse, Crew, Data, DockShipResponse, FactionSymbol, FlightMode, Fuel,
-    FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse,
-    JettisonCargoResponse, JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Nav, NavAndFuelResponse, NavOnlyResponse,
-    NavRouteWaypoint, NavStatus, NavigateShipResponse, NotEnoughItemsInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody,
-    PurchaseTradeGoodResponse, PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest,
-    RegistrationResponse, Route, SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction, ShipRegistrationRole,
-    ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, Siphon, SiphonResourcesResponse, SiphonResourcesResponseBody, SiphonYield, StStatusResponse,
-    SupplyConstructionSiteResponse, SupplyConstructionSiteResponseBody, SystemSymbol, SystemsPageData, TradeGoodSymbol, TradeGoodType, Transaction,
-    TransactionType, Waypoint, WaypointSymbol,
+    Agent, AgentResponse, AgentSymbol, Cargo, CargoOnlyResponse, Construction, Cooldown, CreateChartResponse, Crew, Data, DockShipResponse, FactionSymbol,
+    FlightMode, Fuel, FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse,
+    GetSystemResponse, JettisonCargoResponse, JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Nav, NavAndFuelResponse,
+    NavOnlyResponse, NavRouteWaypoint, NavStatus, NavigateShipResponse, NotEnoughItemsInCargoError, OrbitShipResponse, PurchaseShipResponse,
+    PurchaseShipResponseBody, PurchaseTradeGoodResponse, PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration,
+    RegistrationRequest, RegistrationResponse, Route, SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction,
+    ShipRegistrationRole, ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, Siphon, SiphonResourcesResponse, SiphonResourcesResponseBody,
+    SiphonYield, StStatusResponse, SupplyConstructionSiteResponse, SupplyConstructionSiteResponseBody, SystemSymbol, SystemsPageData, TradeGoodSymbol,
+    TradeGoodType, Transaction, TransactionType, Waypoint, WaypointSymbol,
 };
 use std::collections::HashMap;
 use std::ops::{Add, Not};
@@ -606,10 +606,17 @@ impl StClientTrait for InMemoryUniverseClient {
         }
     }
 
-    async fn jettison_cargo(&self, ship_symbol: ShipSymbol, trade_good_symbol: TradeGoodSymbol, units: u32) -> Result<JettisonCargoResponse> {
+    async fn jettison_cargo(&self, ship_symbol: ShipSymbol, trade_good: TradeGoodSymbol, units: u32) -> Result<JettisonCargoResponse> {
         let mut universe = self.universe.write().await;
+        if let Some(ship) = universe.ships.get_mut(&ship_symbol) {
+            ship.try_remove_cargo(units, &trade_good)?;
 
-        todo!("jettison_cargo not yet implemented")
+            Ok(JettisonCargoResponse {
+                data: CargoOnlyResponse { cargo: ship.cargo.clone() },
+            })
+        } else {
+            anyhow::bail!("Ship not found")
+        }
     }
 
     async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> anyhow::Result<SetFlightModeResponse> {
