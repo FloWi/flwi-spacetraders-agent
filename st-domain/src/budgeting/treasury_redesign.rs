@@ -483,7 +483,7 @@ impl ImprovedTreasurer {
     }
 
     fn reimburse_expense(&mut self, fleet_id: &FleetId, credits: Credits) -> Result<()> {
-        if let Some(_) = self.fleet_budgets.get(fleet_id) {
+        if let Some(fleet_budget) = self.fleet_budgets.get(fleet_id) {
             if credits > self.treasury_fund {
                 anyhow::bail!("Insufficient funds for reimbursing fleet #{} of {}", fleet_id, credits);
             }
@@ -690,7 +690,9 @@ impl ImprovedTreasurer {
 
         let total = price_per_unit * units;
 
-        self.reimburse_expense(fleet_id, total)?;
+        if self.treasury_fund >= total {
+            self.reimburse_expense(fleet_id, total)?;
+        }
 
         self.process_ledger_entry(ExpenseLogged {
             fleet_id: fleet_id.clone(),
@@ -802,20 +804,24 @@ impl ImprovedTreasurer {
     }
 
     pub fn transfer_all_funds_to_treasury(&mut self) -> Result<()> {
-        for (fleet_id, budget) in self
-            .fleet_budgets
-            .clone()
-            .iter()
-            .sorted_by_key(|(id, _)| id.0)
-        {
+        for fleet_id in self.fleet_budgets.keys().cloned().sorted_by_key(|id| id.0) {
+            self.transfer_all_funds_from_fleet_to_treasury(&fleet_id)?
+        }
+        Ok(())
+    }
+
+    fn transfer_all_funds_from_fleet_to_treasury(&mut self, fleet_id: &FleetId) -> Result<()> {
+        if let Some(budget) = self.fleet_budgets.get(fleet_id) {
             if budget.current_capital.is_positive() {
                 self.process_ledger_entry(TransferredFundsFromFleetToTreasury {
                     fleet_id: fleet_id.clone(),
                     credits: budget.current_capital,
                 })?;
             }
+            Ok(())
+        } else {
+            Err(anyhow!("Fleet {} doesn't exist", fleet_id))
         }
-        Ok(())
     }
 
     pub fn remove_all_fleets(&mut self) -> Result<()> {
@@ -835,6 +841,8 @@ impl ImprovedTreasurer {
     }
 
     pub(crate) fn remove_fleet(&mut self, fleet_id: &FleetId) -> Result<()> {
+        self.transfer_all_funds_from_fleet_to_treasury(fleet_id)?;
+
         if let Some(budget) = self.fleet_budgets.get(fleet_id) {
             self.process_ledger_entry(ArchivedFleetBudget {
                 fleet_id: fleet_id.clone(),
