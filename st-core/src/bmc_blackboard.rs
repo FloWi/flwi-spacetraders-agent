@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::{JumpGate, LabelledCoordinate, MarketData, Shipyard, TravelAction, Waypoint, WaypointSymbol};
+use st_domain::{Construction, JumpGate, LabelledCoordinate, MarketData, Shipyard, TravelAction, Waypoint, WaypointSymbol};
 use st_store::bmc::Bmc;
 use st_store::Ctx;
 use std::sync::Arc;
@@ -134,5 +134,13 @@ impl BlackboardOps for BmcBlackboard {
             .load_agent(&Ctx::Anonymous)
             .await?
             .credits)
+    }
+
+    async fn update_construction_site(&self, construction: &Construction) -> anyhow::Result<()> {
+        Ok(self
+            .bmc
+            .construction_bmc()
+            .save_construction_site(&Ctx::Anonymous, construction.clone())
+            .await?)
     }
 }

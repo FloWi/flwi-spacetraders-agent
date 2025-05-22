@@ -1,7 +1,8 @@
 use crate::supply_chain::RawMaterialSourceType::{Extraction, Siphoning};
 use crate::{
-    ActivityLevel, ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, SupplyChainMap,
-    SupplyLevel, SystemSymbol, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType, MAX_ACTIVITY_LEVEL_SCORE, MAX_SUPPLY_LEVEL_SCORE,
+    ActivityLevel, Construction, ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol,
+    SupplyChainMap, SupplyLevel, SystemSymbol, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType, MAX_ACTIVITY_LEVEL_SCORE,
+    MAX_SUPPLY_LEVEL_SCORE,
 };
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
@@ -210,14 +211,13 @@ pub fn materialize_supply_chain(
     supply_chain: &SupplyChain,
     market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
-    maybe_construction_site: &Option<GetConstructionResponse>,
+    maybe_construction_site: &Option<Construction>,
 ) -> MaterializedSupplyChain {
     let missing_construction_materials: Vec<&ConstructionMaterial> = match maybe_construction_site {
         None => {
             vec![]
         }
         Some(construction_site) => construction_site
-            .data
             .materials
             .iter()
             .filter(|cm| cm.fulfilled < cm.required)
@@ -326,7 +326,7 @@ pub fn materialize_supply_chain(
 
     let missing_construction_material_map = maybe_construction_site
         .clone()
-        .map(|cs| cs.data.missing_construction_materials())
+        .map(|cs| cs.missing_construction_materials())
         .unwrap_or_default();
 
     let ConstructionRelatedTradeGoodsOverview {

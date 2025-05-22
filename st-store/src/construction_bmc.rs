@@ -6,7 +6,7 @@ use chrono::Utc;
 use itertools::Itertools;
 use mockall::automock;
 use sqlx::types::Json;
-use st_domain::{GetConstructionResponse, SystemSymbol};
+use st_domain::{Construction, SystemSymbol};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -20,20 +20,20 @@ pub struct DbConstructionBmc {
 #[automock]
 #[async_trait]
 pub trait ConstructionBmcTrait: Send + Sync + Debug {
-    async fn get_construction_site_for_system(&self, ctx: &Ctx, system_symbol: SystemSymbol) -> Result<Option<GetConstructionResponse>>;
-    async fn save_construction_site(&self, ctx: &Ctx, construction_site: GetConstructionResponse) -> Result<()>;
+    async fn get_construction_site_for_system(&self, ctx: &Ctx, system_symbol: SystemSymbol) -> Result<Option<Construction>>;
+    async fn save_construction_site(&self, ctx: &Ctx, construction_site: Construction) -> Result<()>;
 }
 
 #[async_trait]
 impl ConstructionBmcTrait for DbConstructionBmc {
-    async fn get_construction_site_for_system(&self, ctx: &Ctx, system_symbol: SystemSymbol) -> Result<Option<GetConstructionResponse>> {
+    async fn get_construction_site_for_system(&self, ctx: &Ctx, system_symbol: SystemSymbol) -> Result<Option<Construction>> {
         let waypoint_symbol_pattern = format!("{}%", system_symbol.0);
 
         let maybe_construction_entry: Option<DbConstructionSiteEntry> = sqlx::query_as!(
             DbConstructionSiteEntry,
             r#"
 SELECT waypoint_symbol
-     , entry as "entry: Json<GetConstructionResponse>"
+     , entry as "entry: Json<Construction>"
      , created_at
      , updated_at
   from construction_sites
@@ -48,14 +48,14 @@ SELECT waypoint_symbol
         Ok(maybe_construction_entry.map(|db_entry| db_entry.entry.0))
     }
 
-    async fn save_construction_site(&self, ctx: &Ctx, construction_site: GetConstructionResponse) -> Result<()> {
+    async fn save_construction_site(&self, ctx: &Ctx, construction_site: Construction) -> Result<()> {
         db::upsert_construction_site(self.mm.pool(), construction_site, Utc::now()).await
     }
 }
 
 #[derive(Debug)]
 pub struct InMemoryConstruction {
-    construction_sites: HashMap<SystemSymbol, GetConstructionResponse>,
+    construction_sites: HashMap<SystemSymbol, Construction>,
 }
 
 impl Default for InMemoryConstruction {
@@ -93,7 +93,7 @@ impl InMemoryConstructionBmc {
 
 #[async_trait]
 impl ConstructionBmcTrait for InMemoryConstructionBmc {
-    async fn get_construction_site_for_system(&self, _ctx: &Ctx, system_symbol: SystemSymbol) -> Result<Option<GetConstructionResponse>> {
+    async fn get_construction_site_for_system(&self, _ctx: &Ctx, system_symbol: SystemSymbol) -> Result<Option<Construction>> {
         Ok(self
             .in_memory_construction
             .read()
@@ -103,12 +103,12 @@ impl ConstructionBmcTrait for InMemoryConstructionBmc {
             .cloned())
     }
 
-    async fn save_construction_site(&self, _ctx: &Ctx, construction_site: GetConstructionResponse) -> Result<()> {
+    async fn save_construction_site(&self, _ctx: &Ctx, construction_site: Construction) -> Result<()> {
         self.in_memory_construction
             .write()
             .await
             .construction_sites
-            .insert(construction_site.data.symbol.system_symbol(), construction_site.clone());
+            .insert(construction_site.symbol.system_symbol(), construction_site.clone());
         Ok(())
     }
 }

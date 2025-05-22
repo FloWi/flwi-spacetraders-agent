@@ -144,6 +144,49 @@ fn determine_construction_fleet_actions(
         .map(|s| (s.symbol.clone(), s.cargo.capacity))
         .collect::<HashMap<_, _>>();
 
+    let profitable_trading_actions = best_new_trading_opportunities
+        .iter()
+        .take(unassigned_ships_of_fleet.len())
+        .cloned()
+        .map(|(e)| {
+            let volume = e
+                .trading_opportunity
+                .purchase_market_trade_good_entry
+                .trade_volume
+                .min(
+                    e.trading_opportunity
+                        .sell_market_trade_good_entry
+                        .trade_volume,
+                ) as u32;
+
+            let estimated_costs = Credits::from(
+                e.trading_opportunity
+                    .purchase_market_trade_good_entry
+                    .purchase_price,
+            ) * volume;
+
+            (
+                e.ship_symbol.clone(),
+                TradeProfitably {
+                    evaluated_trading_opportunity: e.clone(),
+                    estimated_costs,
+                    from: e.trading_opportunity.purchase_waypoint_symbol.clone(),
+                    to: e.trading_opportunity.sell_waypoint_symbol.clone(),
+                },
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    let num_of_traders = admiral
+        .get_ships_of_fleet_id(my_fleet_id)
+        .iter()
+        .filter(|s| s.cargo.capacity > 0)
+        .count() as u32;
+    let budget_per_trader: Credits = 75_000.into();
+    let budget_required_for_trading = budget_per_trader * num_of_traders;
+
+    let is_low_on_cash = fleet_budget.available_capital() < budget_required_for_trading;
+
     let prioritized_actions = if let Some(materialized_supply_chain) = facts.materialized_supply_chain.clone() {
         let required_construction_materials = facts
             .construction_site
@@ -180,17 +223,19 @@ fn determine_construction_fleet_actions(
         // if the supply-level of the construction materials is sufficiently high, we prioritise them
         let construction_material_deliveries: Vec<ConstructionFleetAction> = flattened_market_data
             .iter()
-            .filter(|(mtg, wps)| {
-                required_construction_materials.contains_key(&mtg.symbol) && mtg.trade_good_type == TradeGoodType::Export && mtg.supply >= SupplyLevel::High
+            .filter_map(|(mtg, wps)| match required_construction_materials.get(&mtg.symbol) {
+                None => None,
+                Some(qty_missing) => (mtg.trade_good_type == TradeGoodType::Export && mtg.supply >= SupplyLevel::High).then_some((mtg, wps, qty_missing)),
             })
-            .filter(|(mtg, wps)| {
+            .filter(|(mtg, wps, _)| {
                 active_trade_routes
                     .iter()
-                    .any(|atr| atr.from == *wps && atr.trade_good == mtg.symbol)
+                    .any(|atr| atr.from == **wps && atr.trade_good == mtg.symbol)
                     .not()
             })
-            .map(|(mtg, wps)| {
-                let volume = mtg.trade_volume as u32;
+            .map(|(mtg, wps, qty_missing)| {
+                // Don't deliver more than necessary
+                let volume = (mtg.trade_volume as u32).min(*qty_missing);
 
                 DeliverConstructionMaterials {
                     trade_good_symbol: mtg.symbol.clone(),
@@ -231,44 +276,16 @@ fn determine_construction_fleet_actions(
             })
             .collect_vec();
 
-        let profitable_trades = best_new_trading_opportunities
-            .iter()
-            .take(unassigned_ships_of_fleet.len())
-            .cloned()
-            .map(|(e)| {
-                let volume = e
-                    .trading_opportunity
-                    .purchase_market_trade_good_entry
-                    .trade_volume
-                    .min(
-                        e.trading_opportunity
-                            .sell_market_trade_good_entry
-                            .trade_volume,
-                    ) as u32;
-
-                let estimated_costs = Credits::from(
-                    e.trading_opportunity
-                        .purchase_market_trade_good_entry
-                        .purchase_price,
-                ) * volume;
-
-                TradeProfitably {
-                    evaluated_trading_opportunity: e.clone(),
-                    estimated_costs,
-                    from: e.trading_opportunity.purchase_waypoint_symbol.clone(),
-                    to: e.trading_opportunity.sell_waypoint_symbol.clone(),
-                }
-            })
-            .collect_vec();
-
-        let prioritized_actions: Vec<ConstructionFleetAction> = construction_material_deliveries
-            .into_iter()
-            .chain(boosted_trade_routes)
-            .chain(profitable_trades)
-            .collect_vec();
-
-        println!("Hello, breakpoint");
-        find_best_combination(unassigned_ships_of_fleet, &prioritized_actions, &waypoint_map, fleet_budget)
+        if is_low_on_cash {
+            profitable_trading_actions
+        } else {
+            let prioritized_actions = construction_material_deliveries
+                .into_iter()
+                .chain(boosted_trade_routes)
+                .chain(profitable_trading_actions.values().cloned())
+                .collect_vec();
+            find_best_combination(unassigned_ships_of_fleet, &prioritized_actions, &waypoint_map, fleet_budget)
+        }
     } else {
         HashMap::new()
     };
@@ -292,9 +309,10 @@ fn find_best_combination(
     if ships.len() == 1 {
         let ship = ships[0];
         if ship.cargo.capacity < actions[0].units() as i32 {
-            println!("cargo doesn't fit");
+            println!("cargo doesn't fit - adjusting for cargo");
         }
-        return HashMap::from([(ship.symbol.clone(), actions[0].adjusted_for_cargo_space(ship))]);
+        let action_adjusted_for_cargo = actions[0].adjusted_for_cargo_space(ship);
+        return HashMap::from([(ship.symbol.clone(), action_adjusted_for_cargo)]);
     }
 
     // if we have evaluated trading opportunities in here, we are currently overriding the ship symbol and therefor invalidating the whole result

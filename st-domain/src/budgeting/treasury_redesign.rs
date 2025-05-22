@@ -516,22 +516,33 @@ impl ImprovedTreasurer {
     fn get_active_trade_routes(&self) -> Result<Vec<ActiveTradeRoute>> {
         let mut active_routes = HashMap::new();
 
-        for ticket in self.active_tickets.values() {
-            if let FinanceTicketDetails::SellTradeGoods(sell_ticket_details) = &ticket.details {
-                if let Some(purchase_ticket_id) = sell_ticket_details.maybe_matching_purchase_ticket {
-                    let maybe_purchase_ticket = self
-                        .active_tickets
-                        .get(&purchase_ticket_id)
-                        .or_else(|| self.completed_tickets.get(&purchase_ticket_id));
+        // we have two types of delivery tickets - SellTradeGoods and SupplyConstructionSite
+        for (waypoint_symbol, trade_good, maybe_matching_purchase_ticket) in self
+            .active_tickets
+            .values()
+            .filter_map(|t| match &t.details {
+                FinanceTicketDetails::SupplyConstructionSite(d) => {
+                    Some((d.waypoint_symbol.clone(), d.trade_good.clone(), d.maybe_matching_purchase_ticket.clone()))
+                }
+                FinanceTicketDetails::SellTradeGoods(d) => Some((d.waypoint_symbol.clone(), d.trade_good.clone(), d.maybe_matching_purchase_ticket.clone())),
+                FinanceTicketDetails::PurchaseTradeGoods(_) => None,
+                FinanceTicketDetails::PurchaseShip(_) => None,
+                FinanceTicketDetails::RefuelShip(_) => None,
+            })
+        {
+            if let Some(purchase_ticket_id) = maybe_matching_purchase_ticket {
+                let maybe_purchase_ticket = self
+                    .active_tickets
+                    .get(&purchase_ticket_id)
+                    .or_else(|| self.completed_tickets.get(&purchase_ticket_id));
 
-                    if let Some(purchase_ticket) = maybe_purchase_ticket {
-                        let from_wp = purchase_ticket.details.get_waypoint();
-                        let to_wp = sell_ticket_details.waypoint_symbol.clone();
-                        active_routes
-                            .entry((from_wp, to_wp, sell_ticket_details.trade_good.clone()))
-                            .and_modify(|counter| *counter += 1)
-                            .or_insert(1);
-                    }
+                if let Some(purchase_ticket) = maybe_purchase_ticket {
+                    let from_wp = purchase_ticket.details.get_waypoint();
+                    let to_wp = waypoint_symbol.clone();
+                    active_routes
+                        .entry((from_wp, to_wp, trade_good.clone()))
+                        .and_modify(|counter| *counter += 1)
+                        .or_insert(1);
                 }
             }
         }

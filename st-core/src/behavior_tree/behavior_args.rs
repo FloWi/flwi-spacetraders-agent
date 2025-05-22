@@ -8,8 +8,8 @@ use st_domain::blackboard_ops::BlackboardOps;
 
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, ThreadSafeTreasurer};
 use st_domain::{
-    JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard, SupplyConstructionSiteResponse,
-    TravelAction, Waypoint, WaypointSymbol,
+    Construction, JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard,
+    SupplyConstructionSiteResponse, TravelAction, Waypoint, WaypointSymbol,
 };
 use st_store::bmc::{Bmc, DbBmc};
 use st_store::{
@@ -169,5 +169,13 @@ impl BlackboardOps for DbBlackboard {
             .load_agent(&Ctx::Anonymous)
             .await?
             .credits)
+    }
+
+    async fn update_construction_site(&self, construction: &Construction) -> Result<()> {
+        Ok(self
+            .bmc
+            .construction_bmc()
+            .save_construction_site(&Ctx::Anonymous, construction.clone())
+            .await?)
     }
 }

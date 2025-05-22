@@ -12,8 +12,8 @@ use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
 use st_domain::{
-    distance_to, Data, GetConstructionResponse, JumpGate, MarketData, MarketEntry, RegistrationResponse, Ship, ShipTask, Shipyard, ShipyardData,
-    StStatusResponse, SupplyChain, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    distance_to, Construction, Data, JumpGate, MarketData, MarketEntry, RegistrationResponse, Ship, ShipTask, Shipyard, ShipyardData, StStatusResponse,
+    SupplyChain, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
 #[derive(Clone)]
@@ -243,7 +243,7 @@ pub struct DbShipTaskEntry {
 #[derive(Serialize, Clone, Debug, Deserialize)]
 pub struct DbConstructionSiteEntry {
     pub waypoint_symbol: String,
-    pub entry: Json<GetConstructionResponse>,
+    pub entry: Json<Construction>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -753,9 +753,9 @@ on conflict (ship_symbol) do UPDATE set entry = excluded.entry, updated_at = exc
     }
 }
 
-pub async fn upsert_construction_site(pool: &Pool<Postgres>, construction: GetConstructionResponse, now: DateTime<Utc>) -> Result<()> {
+pub async fn upsert_construction_site(pool: &Pool<Postgres>, construction: Construction, now: DateTime<Utc>) -> Result<()> {
     let db_entry: DbConstructionSiteEntry = DbConstructionSiteEntry {
-        waypoint_symbol: construction.data.symbol.0.clone(),
+        waypoint_symbol: construction.symbol.0.clone(),
         entry: Json(construction.clone()),
         created_at: now,
         updated_at: now,

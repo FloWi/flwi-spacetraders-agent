@@ -12,7 +12,7 @@ use itertools::Itertools;
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::{PurchaseTradeGoods, RefuelShip, SellTradeGoods};
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails};
-use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods};
+use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
     get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TradeGoodSymbol,
     TravelAction,
@@ -579,6 +579,21 @@ impl Actionable for ShipAction {
                                     .await?;
 
                                 args.mark_construction_delivery_as_completed(finance_ticket.clone(), &response)?;
+                                args.blackboard
+                                    .update_construction_site(&response.data.construction)
+                                    .await?;
+
+                                action_completed_tx
+                                    .send(ActionEvent::TransactionCompleted(
+                                        state.clone(),
+                                        SuppliedConstructionSite {
+                                            ticket_id: finance_ticket.ticket_id,
+                                            ticket_details: details.clone(),
+                                            response,
+                                        },
+                                        finance_ticket.clone(),
+                                    ))
+                                    .await?;
                             }
                         }
                         completed_tickets.insert(finance_ticket.clone());

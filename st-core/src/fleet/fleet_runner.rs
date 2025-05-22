@@ -766,6 +766,13 @@ impl FleetRunner {
                     ticket_details,
                     response,
                 } => {
+                    let overview_str = response
+                        .data
+                        .construction
+                        .materials
+                        .iter()
+                        .map(|cm| format!("{}: {} of {}", cm.trade_symbol, cm.fulfilled, cm.required))
+                        .join(", ");
                     event!(
                         Level::INFO,
                         message = "ShipStatusReport",
@@ -773,6 +780,7 @@ impl FleetRunner {
                         trade_symbol = ticket_details.trade_good.to_string(),
                         units = ticket_details.quantity,
                         waypoint_symbol = ticket_details.waypoint_symbol.to_string(),
+                        material_overview = overview_str,
                         treasurer_credits
                     );
                 }
@@ -1119,9 +1127,9 @@ impl FleetRunner {
                     .get_construction_site(&jump_gate_wp_of_home_system.symbol)
                     .await?;
                 bmc.construction_bmc()
-                    .save_construction_site(ctx, cs.clone())
+                    .save_construction_site(ctx, cs.data.clone())
                     .await?;
-                cs
+                cs.data
             }
         };
 
@@ -1340,10 +1348,14 @@ mod tests {
                         .await
                         .expect("construction_site");
 
+                    let has_completed_construction = maybe_construction_site
+                        .clone()
+                        .map(|cs| cs.is_complete)
+                        .unwrap_or(false);
+
                     let has_started_construction = maybe_construction_site
                         .map(|cs| {
-                            cs.data
-                                .materials
+                            cs.materials
                                 .iter()
                                 .any(|cm| &cm.trade_symbol != &TradeGoodSymbol::QUANTUM_STABILIZERS && cm.fulfilled > 0)
                         })
@@ -1356,7 +1368,8 @@ mod tests {
                         && has_probes_at_every_shipyard
                         && has_probes_at_every_marketplace
                         && has_bought_all_ships
-                        && has_started_construction;
+                        && has_started_construction
+                        && has_completed_construction;
 
                     println!(
                         r#"
@@ -1374,6 +1387,7 @@ marketplace_waypoints: {}
 has_probes_at_every_marketplace: {has_probes_at_every_marketplace}
 has_bought_all_ships: {has_bought_all_ships}
 has_started_construction: {has_started_construction}
+has_completed_construction: {has_completed_construction}
 
 evaluation_result: {evaluation_result}
 "#,

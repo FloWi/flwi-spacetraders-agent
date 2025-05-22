@@ -1,4 +1,4 @@
-use crate::{get_exploration_tasks_for_waypoint, ExplorationTask, JumpGate, MarketData, Shipyard, TravelAction, Waypoint, WaypointSymbol};
+use crate::{get_exploration_tasks_for_waypoint, Construction, ExplorationTask, JumpGate, MarketData, Shipyard, TravelAction, Waypoint, WaypointSymbol};
 use async_trait::async_trait;
 use mockall::automock;
 
@@ -30,4 +30,6 @@ pub trait BlackboardOps: Send + Sync {
         let waypoint = self.get_waypoint(waypoint_symbol).await?;
         Ok(get_exploration_tasks_for_waypoint(&waypoint))
     }
+
+    async fn update_construction_site(&self, construction: &Construction) -> anyhow::Result<()>;
 }

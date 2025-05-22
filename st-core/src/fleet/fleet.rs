@@ -20,9 +20,9 @@ use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{ConstructJumpGate, InitialExploration, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably};
 use st_domain::TradeGoodSymbol::{MOUNT_GAS_SIPHON_I, MOUNT_MINING_LASER_I, MOUNT_SURVEYOR_I};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, trading, ConstructJumpGateFleetConfig, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId, FleetPhase,
-    FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MarketTradeGood, MiningFleetConfig,
-    OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
+    get_exploration_tasks_for_waypoint, trading, ConstructJumpGateFleetConfig, Construction, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId,
+    FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MarketTradeGood,
+    MiningFleetConfig, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
     StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradingFleetConfig, TransactionActionEvent, Waypoint,
     WaypointSymbol,
 };
@@ -1050,6 +1050,7 @@ Fleet Budgets after rebalancing
                 .cloned()
                 .collect_vec();
             let active_trade_routes = admiral.treasurer.get_active_trade_routes()?;
+
             Self::pure_compute_ship_tasks(
                 admiral,
                 facts,
@@ -1514,6 +1515,13 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
                 println!("{}", FleetAdmiral::generate_state_overview(admiral).await);
                 let new_tasks = FleetAdmiral::compute_ship_tasks(admiral, &facts, Arc::clone(&bmc)).await?;
 
+                event!(
+                    Level::WARN,
+                    message = "No new task for ship found after finishing task",
+                    ship = ship.symbol.0.clone(),
+                    finished_task = finished_task.to_string()
+                );
+
                 Err(anyhow!(
                     "No new task for this ship {} found after finishing task {}",
                     &ship.symbol,
@@ -1922,7 +1930,7 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         .collect_vec();
     let shipyards_to_explore = find_shipyards_for_exploration(shipyards_of_interest.clone());
 
-    let maybe_construction_site: Option<GetConstructionResponse> = bmc
+    let maybe_construction_site: Option<Construction> = bmc
         .construction_bmc()
         .get_construction_site_for_system(&Ctx::Anonymous, system_symbol.clone())
         .await?;
@@ -1988,7 +1996,7 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         marketplaces_with_up_to_date_infos,
         shipyards_of_interest: shipyard_symbols_of_interest.clone(),
         shipyards_with_up_to_date_infos: diff_waypoint_symbols(&shipyard_symbols_of_interest, &shipyards_to_explore),
-        construction_site: maybe_construction_site.map(|resp| resp.data),
+        construction_site: maybe_construction_site,
         ships,
         materialized_supply_chain,
         agent_info,
