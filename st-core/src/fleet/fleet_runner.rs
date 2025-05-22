@@ -553,7 +553,7 @@ impl FleetRunner {
             .report_ship_action_completed(msg, Arc::clone(&bmc), messages_in_queue)
             .await?;
 
-        let treasurer_credits = admiral_guard.agent_info_credits().await.0;
+        let treasurer_credits = admiral_guard.agent_info_credits().0;
 
         match msg {
             ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
@@ -579,6 +579,7 @@ impl FleetRunner {
                         let system_symbol = ship.nav.system_symbol.clone();
 
                         FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle.clone())?;
+
                         bmc.fleet_bmc()
                             .delete_fleets(&Ctx::Anonymous, &fleets_to_dismantle)
                             .await?;
@@ -1257,7 +1258,7 @@ mod tests {
             Some(FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. })
         ));
 
-        let actual_agent_credits = fleet_admiral.agent_info_credits().await;
+        let actual_agent_credits = fleet_admiral.agent_info_credits();
         let expected_agent_credits = client.get_agent().await.expect("agent").data.credits;
         assert_eq!(expected_agent_credits, actual_agent_credits.0);
         let admiral_mutex = Arc::new(Mutex::new(fleet_admiral));

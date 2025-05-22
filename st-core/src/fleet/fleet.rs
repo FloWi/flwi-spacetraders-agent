@@ -78,6 +78,15 @@ impl FleetAdmiral {
             event!(Level::WARN, message = "called redistribute_fleet_budgets with active_tickets");
         }
 
+        let treasury_credits_before_rebalancing = self.agent_info_credits();
+        let treasury_overview_before_rebalancing = self.generate_budgets_overview();
+
+        event!(
+            Level::INFO,
+            message = "Fleet Budgets before rebalancing",
+            treasury_credits = treasury_credits_before_rebalancing.0
+        );
+
         //FIXME: make sure this works with multiple systems
         self.treasurer.remove_all_fleets()?;
 
@@ -156,8 +165,41 @@ impl FleetAdmiral {
             FleetPhaseName::TradeProfitably => {}
         }
 
-        event!(Level::INFO, message = "rebalanced budgets among fleets", fleet_count = self.fleets.len());
-        println!("{}", self.generate_budgets_overview());
+        let treasury_credits_after_rebalancing = self.agent_info_credits();
+        let treasury_overview_after_rebalancing = self.generate_budgets_overview();
+        event!(
+            Level::INFO,
+            message = "Fleet Budgets after rebalancing",
+            fleet_count = self.fleets.len(),
+            treasury_credits = treasury_credits_after_rebalancing.0
+        );
+        println!(
+            r#"============================================================================================
+Fleet Budgets before rebalancing
+
+{}
+
+============================================================================================
+Fleet Budgets after rebalancing
+
+{}
+"#,
+            treasury_overview_before_rebalancing, treasury_overview_after_rebalancing,
+        );
+
+        if treasury_credits_before_rebalancing != treasury_credits_after_rebalancing {
+            event!(
+                Level::ERROR,
+                message = "error during rebalancing of fleet budgets - the agent credits differ",
+                treasury_credits_before_rebalancing = treasury_credits_before_rebalancing.0,
+                treasury_credits_after_rebalancing = treasury_credits_after_rebalancing.0
+            );
+
+            eprintln!(
+                "Json entries of all ledger entries:\n{}",
+                serde_json::to_string(&self.treasurer.ledger_entries()?).unwrap_or_default()
+            )
+        }
 
         Ok(())
     }
@@ -1034,11 +1076,63 @@ impl FleetAdmiral {
     }
 
     pub(crate) fn dismantle_fleets(admiral: &mut FleetAdmiral, fleets_to_dismantle: Vec<FleetId>) -> Result<()> {
+        let treasury_credits_before_dismantling = admiral.agent_info_credits();
+        let treasury_overview_before_dismantling = admiral.generate_budgets_overview();
+        let ledger_json_before_dismantling = serde_json::to_string(&admiral.treasurer.ledger_entries()?).unwrap_or_default();
+
+        event!(
+            Level::INFO,
+            message = "Fleet Budgets before dismantling fleets",
+            treasury_credits = treasury_credits_before_dismantling.0
+        );
+
         for fleet_id in fleets_to_dismantle {
             admiral.mark_fleet_tasks_as_complete(&fleet_id);
             admiral.remove_ships_from_fleet(&fleet_id);
             admiral.fleets.remove(&fleet_id);
             admiral.treasurer.remove_fleet(&fleet_id)?;
+        }
+
+        let treasury_credits_after_dismantling = admiral.agent_info_credits();
+        let treasury_overview_after_dismantling = admiral.generate_budgets_overview();
+        let ledger_json_after_dismantling = serde_json::to_string(&admiral.treasurer.ledger_entries()?).unwrap_or_default();
+
+        event!(
+            Level::INFO,
+            message = "Fleet Budgets after dismantling fleets",
+            treasury_credits = treasury_credits_after_dismantling.0
+        );
+
+        println!(
+            r#"============================================================================================
+Fleet Budgets before dismantling
+
+{}
+
+============================================================================================
+Fleet Budgets after dismantling
+
+{}
+"#,
+            treasury_overview_before_dismantling, treasury_overview_after_dismantling,
+        );
+
+        if treasury_credits_before_dismantling != treasury_credits_after_dismantling {
+            event!(
+                Level::ERROR,
+                message = "error during dismantling of fleet budgets - the agent credits differ",
+                treasury_credits_before_dismantling = treasury_credits_before_dismantling.0,
+                treasury_credits_after_dismantling = treasury_credits_after_dismantling.0
+            );
+
+            eprintln!(
+                r#"Json entries of all ledger entries before dismantling the fleets:\n{}
+
+Json entries of all ledger entries after dismantling the fleets:\n{}
+                "#,
+                ledger_json_before_dismantling, ledger_json_after_dismantling,
+            );
+            panic!("Hello, breakpoint");
         }
 
         Ok(())
@@ -1338,7 +1432,7 @@ impl FleetAdmiral {
             .find_map(|(id, tasks)| tasks.contains(fleet_task).then_some(id.clone()))
     }
 
-    pub async fn agent_info_credits(&self) -> Credits {
+    pub fn agent_info_credits(&self) -> Credits {
         self.treasurer.current_agent_credits().unwrap()
     }
 
