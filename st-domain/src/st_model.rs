@@ -503,6 +503,23 @@ pub struct GetMarketResponse {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct TransferCargoRequest {
+    pub trade_symbol: TradeGoodSymbol,
+    pub units: u32,
+    pub ship_symbol: ShipSymbol,
+}
+
+pub type TransferCargoResponse = Data<TransferCargoResponseBody>;
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferCargoResponseBody {
+    pub cargo: Cargo,
+    pub target_cargo: Cargo,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct GetSystemResponse {
     pub data: SystemsPageData,
 }
@@ -779,8 +796,6 @@ impl Ship {
         } else {
             let new_entry = Inventory {
                 symbol: trade_good_symbol.clone(),
-                name: trade_good_symbol.clone().to_string(),
-                description: trade_good_symbol.to_string(),
                 units,
             };
             self.cargo.inventory.push(new_entry);
@@ -1233,18 +1248,60 @@ pub struct Cargo {
 }
 
 impl Cargo {
+    pub fn with_item_added_mut(&mut self, new_item: TradeGoodSymbol, units: u32) -> Result<(), NotEnoughSpaceError> {
+        let available_space = (self.capacity - self.units) as u32;
+
+        if available_space < units {
+            return Err(NotEnoughSpaceError {
+                required: units,
+                available: available_space,
+            });
+        }
+
+        // Find the index of the inventory item with the matching symbol
+        let maybe_item_index = self
+            .inventory
+            .iter()
+            .position(|item| item.symbol == new_item);
+
+        // If the item exists in inventory
+        if let Some(index) = maybe_item_index {
+            let item = &mut self.inventory[index];
+            item.units += units;
+        } else {
+            self.inventory.push(Inventory::new(new_item, units));
+        }
+
+        self.units += units as i32;
+
+        Ok(())
+    }
+
+    pub fn with_item_added(&self, new_item: TradeGoodSymbol, units: u32) -> Result<Cargo, NotEnoughSpaceError> {
+        let mut cloned = self.clone();
+
+        match cloned.with_item_added_mut(new_item, units) {
+            Ok(_) => Ok(cloned),
+            Err(e) => Err(e),
+        }
+    }
+
     pub fn with_units_removed(&self, trade_good_symbol: TradeGoodSymbol, units: u32) -> Result<Cargo, NotEnoughItemsInCargoError> {
         let mut cargo = self.clone();
 
+        cargo.with_units_removed_mut(trade_good_symbol, units)?;
+        Ok(cargo)
+    }
+    pub fn with_units_removed_mut(&mut self, trade_good_symbol: TradeGoodSymbol, units: u32) -> Result<(), NotEnoughItemsInCargoError> {
         // Find the index of the inventory item with the matching symbol
-        let maybe_item_index = cargo
+        let maybe_item_index = self
             .inventory
             .iter()
             .position(|item| item.symbol == trade_good_symbol);
 
         // If the item exists in inventory
         if let Some(index) = maybe_item_index {
-            let item = &mut cargo.inventory[index];
+            let item = &mut self.inventory[index];
 
             // Check if we have enough units to remove
             if item.units < units {
@@ -1259,13 +1316,13 @@ impl Cargo {
 
             // If units became 0, remove the item from inventory
             if item.units == 0 {
-                cargo.inventory.remove(index);
+                self.inventory.remove(index);
             }
 
             // Update the total cargo units
-            cargo.units -= units as i32;
+            self.units -= units as i32;
 
-            Ok(cargo)
+            Ok(())
         } else {
             // Item not found in inventory
             Err(NotEnoughItemsInCargoError { required: units, current: 0 })
@@ -1277,9 +1334,13 @@ impl Cargo {
 #[serde(rename_all = "camelCase")]
 pub struct Inventory {
     pub symbol: TradeGoodSymbol,
-    pub name: String,
-    pub description: String,
     pub units: u32,
+}
+
+impl Inventory {
+    pub fn new(symbol: TradeGoodSymbol, units: u32) -> Self {
+        Self { symbol, units }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -1477,7 +1538,14 @@ pub enum TradeGoodSymbol {
     SHIP_BULK_FREIGHTER,
 }
 
+#[derive(Debug)]
 pub struct NotEnoughItemsInCargoError {
     pub required: u32,
     pub current: u32,
+}
+
+#[derive(Debug)]
+pub struct NotEnoughSpaceError {
+    pub required: u32,
+    pub available: u32,
 }

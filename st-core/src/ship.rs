@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use st_domain::budgeting::treasury_redesign::FinanceTicket;
 use st_domain::{
     CreateChartBody, FleetId, FlightMode, Fuel, JettisonCargoResponse, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseShipResponse,
-    PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipType, Shipyard, SiphonResourcesResponse, SupplyConstructionSiteResponse,
-    TradeGoodSymbol, TravelAction, WaypointSymbol,
+    PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, SiphonResourcesResponse,
+    SupplyConstructionSiteResponse, TradeGoodSymbol, TransferCargoResponse, TravelAction, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::{Deref, DerefMut, Not};
@@ -157,7 +157,6 @@ maybe_trade: {:?},
 
     pub async fn dock(&mut self) -> Result<Nav> {
         let response = self.client.dock_ship(self.ship.symbol.clone()).await?;
-        //println!("{:?}", response);
         Ok(response.data.nav)
     }
 
@@ -189,8 +188,17 @@ maybe_trade: {:?},
             .client
             .get_marketplace(self.nav.waypoint_symbol.clone())
             .await?;
-        //println!("{:?}", response);
         Ok(response.data)
+    }
+
+    pub(crate) async fn transfer_cargo(&mut self, to_ship_id: ShipSymbol, trade_symbol: TradeGoodSymbol, units: u32) -> Result<TransferCargoResponse> {
+        let response = self
+            .client
+            .transfer_cargo(self.symbol.clone(), to_ship_id, trade_symbol, units)
+            .await?;
+
+        self.cargo = response.data.cargo.clone();
+        Ok(response)
     }
 
     pub(crate) async fn get_jump_gate(&self) -> Result<JumpGate> {
@@ -198,7 +206,6 @@ maybe_trade: {:?},
             .client
             .get_jump_gate(self.nav.waypoint_symbol.clone())
             .await?;
-        //println!("{:?}", response);
         Ok(response.data)
     }
 
@@ -207,13 +214,11 @@ maybe_trade: {:?},
             .client
             .get_shipyard(self.nav.waypoint_symbol.clone())
             .await?;
-        //println!("{:?}", response);
         Ok(response.data)
     }
 
     pub(crate) async fn chart_waypoint(&self) -> Result<CreateChartBody> {
         let response = self.client.create_chart(self.symbol.clone()).await?;
-        //println!("{:?}", response);
         Ok(response.data)
     }
 
@@ -222,30 +227,29 @@ maybe_trade: {:?},
             .client
             .set_flight_mode(self.ship.symbol.clone(), mode)
             .await?;
-        //println!("{:?}", response);
         Ok(response.data)
     }
 
     pub async fn orbit(&mut self) -> Result<Nav> {
         let response = self.client.orbit_ship(self.ship.symbol.clone()).await?;
-        //println!("{:?}", response);
         Ok(response.data.nav)
     }
 
     pub async fn navigate(&self, to: &WaypointSymbol) -> Result<NavAndFuelResponse> {
         let response = self.client.navigate(self.ship.symbol.clone(), to).await?;
-        //println!("{:?}", response);
         Ok(response.data)
     }
 
-    pub(crate) async fn refuel(&self, from_cargo: bool) -> Result<RefuelShipResponse> {
+    pub(crate) async fn refuel(&mut self, from_cargo: bool) -> Result<RefuelShipResponse> {
         let amount = self.fuel.capacity - self.fuel.current;
 
         let response = self
             .client
             .refuel(self.ship.symbol.clone(), amount as u32, from_cargo)
             .await?;
-        //println!("{:?}", response);
+
+        self.fuel = response.data.fuel.clone();
+
         Ok(response)
     }
 
@@ -256,8 +260,6 @@ maybe_trade: {:?},
             .await?;
         self.cargo = response.data.cargo.clone();
 
-        //println!("{:?}", response);
-
         Ok(response)
     }
 
@@ -267,7 +269,6 @@ maybe_trade: {:?},
             .purchase_trade_good(self.symbol.clone(), quantity, trade_good_symbol)
             .await?;
         self.cargo = response.data.cargo.clone();
-        //println!("{:?}", response);
 
         Ok(response)
     }
@@ -283,7 +284,6 @@ maybe_trade: {:?},
             .supply_construction_site(self.symbol.clone(), quantity, trade_good.clone(), construction_site_waypoint_symbol.clone())
             .await?;
         self.cargo = response.data.cargo.clone();
-        //println!("{:?}", response);
 
         Ok(response)
     }

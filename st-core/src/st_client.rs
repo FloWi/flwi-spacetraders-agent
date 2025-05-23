@@ -14,7 +14,7 @@ use st_domain::{
     NavigateShipRequest, NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PurchaseShipRequest, PurchaseShipResponse, PurchaseTradeGoodRequest,
     PurchaseTradeGoodResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest, RegistrationResponse, SellTradeGoodRequest, SellTradeGoodResponse,
     SetFlightModeResponse, Ship, ShipSymbol, ShipType, SiphonResourcesResponse, StStatusResponse, SupplyConstructionSiteRequest,
-    SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, Waypoint, WaypointSymbol,
+    SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, TransferCargoRequest, TransferCargoResponse, Waypoint, WaypointSymbol,
 };
 use std::any::type_name;
 use std::fmt::Debug;
@@ -318,6 +318,28 @@ impl StClientTrait for StClient {
         Self::make_api_call(request).await
     }
 
+    async fn transfer_cargo(
+        &self,
+        from_ship_symbol: ShipSymbol,
+        to_ship_id: ShipSymbol,
+        trade_symbol: TradeGoodSymbol,
+        units: u32,
+    ) -> Result<TransferCargoResponse> {
+        let request = self
+            .client
+            .post(
+                self.base_url
+                    .join(&format!("/my/ships/{}/transfer", from_ship_symbol.0,))?,
+            )
+            .json(&TransferCargoRequest {
+                ship_symbol: to_ship_id,
+                trade_symbol,
+                units,
+            });
+
+        Self::make_api_call(request).await
+    }
+
     async fn get_jump_gate(&self, waypoint_symbol: WaypointSymbol) -> Result<GetJumpGateResponse> {
         let request = self.client.get(self.base_url.join(&format!(
             "/systems/{}/waypoints/{}/jump-gate",
@@ -419,6 +441,14 @@ pub trait StClientTrait: Send + Sync + Debug {
     async fn get_system(&self, system_symbol: &SystemSymbol) -> Result<GetSystemResponse>;
 
     async fn get_marketplace(&self, waypoint_symbol: WaypointSymbol) -> Result<GetMarketResponse>;
+
+    async fn transfer_cargo(
+        &self,
+        from_ship_symbol: ShipSymbol,
+        to_ship_id: ShipSymbol,
+        trade_symbol: TradeGoodSymbol,
+        units: u32,
+    ) -> Result<TransferCargoResponse>;
 
     async fn get_jump_gate(&self, waypoint_symbol: WaypointSymbol) -> Result<GetJumpGateResponse>;
 

@@ -18,7 +18,7 @@ use st_domain::{
     RegistrationRequest, RegistrationResponse, Route, SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction,
     ShipRegistrationRole, ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, Siphon, SiphonResourcesResponse, SiphonResourcesResponseBody,
     SiphonYield, StStatusResponse, SupplyConstructionSiteResponse, SupplyConstructionSiteResponseBody, SystemSymbol, SystemsPageData, TradeGoodSymbol,
-    TradeGoodType, Transaction, TransactionType, Waypoint, WaypointSymbol,
+    TradeGoodType, Transaction, TransactionType, TransferCargoResponse, Waypoint, WaypointSymbol,
 };
 use std::collections::HashMap;
 use std::ops::{Add, Not};
@@ -619,7 +619,7 @@ impl StClientTrait for InMemoryUniverseClient {
         }
     }
 
-    async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> anyhow::Result<SetFlightModeResponse> {
+    async fn set_flight_mode(&self, ship_symbol: ShipSymbol, mode: &FlightMode) -> Result<SetFlightModeResponse> {
         let mut universe = self.universe.write().await;
         if let Some(ship) = universe.ships.get_mut(&ship_symbol) {
             let maybe_cant_set_flight_mode_reason = match ship.nav.status {
@@ -1009,6 +1009,16 @@ impl StClientTrait for InMemoryUniverseClient {
                 }
             }
         }
+    }
+
+    async fn transfer_cargo(
+        &self,
+        from_ship_symbol: ShipSymbol,
+        to_ship_id: ShipSymbol,
+        trade_symbol: TradeGoodSymbol,
+        units: u32,
+    ) -> Result<TransferCargoResponse> {
+        todo!()
     }
 
     async fn get_jump_gate(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetJumpGateResponse> {

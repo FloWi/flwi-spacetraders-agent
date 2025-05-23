@@ -239,8 +239,6 @@ impl Actionable for ShipAction {
                     data: RefuelShipResponseBody { fuel: ref new_fuel, .. },
                 } = state.refuel(false).await?;
 
-                state.set_fuel(new_fuel.clone());
-
                 args.treasurer.report_expense(
                     &state.my_fleet,
                     state.current_navigation_destination.clone(),
