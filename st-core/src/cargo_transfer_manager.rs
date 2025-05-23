@@ -1,7 +1,7 @@
 use anyhow::Result;
 use itertools::Itertools;
 use metrics::IntoF64;
-use st_domain::{Cargo, Inventory, NotEnoughItemsInCargoError, ShipSymbol, TradeGoodSymbol, WaypointSymbol};
+use st_domain::{Cargo, Inventory, ShipSymbol, TradeGoodSymbol, WaypointSymbol};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::Arc;
@@ -198,12 +198,11 @@ fn find_transfer_tasks(miner_ship_symbol: ShipSymbol, miner_cargo: Cargo, waitin
 #[cfg(test)]
 mod tests {
     use crate::cargo_transfer_manager::{
-        find_transfer_tasks, CargoTransferError, CargoTransferManager, CargoTransferRequest, CargoTransferResponse, TestCargoTransferFoo, TransferCargoResult,
+        find_transfer_tasks, CargoTransferError, CargoTransferManager, CargoTransferRequest, TestCargoTransferFoo, TransferCargoResult,
     };
     use itertools::Itertools;
     use st_domain::{Cargo, Inventory, ShipSymbol, TradeGoodSymbol, WaypointSymbol};
     use std::collections::HashMap;
-    use std::future::Future;
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
