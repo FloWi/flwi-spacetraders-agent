@@ -318,13 +318,29 @@ mod tests {
             cargo_entries: Arc::new(Mutex::new(local_state)),
         };
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        let transfer_result = loop {
+            let sleep_duration = tokio::time::Duration::from_millis(5);
 
-        let transfer_result = transfer_manager
-            .try_to_transfer_cargo_until_available_space(ShipSymbol("MINER".to_string()), waypoint.clone(), miner_cargo, |req| {
-                local_state_manager.transfer(req)
-            })
-            .await?;
+            match transfer_manager
+                .try_to_transfer_cargo_until_available_space(ShipSymbol("MINER".to_string()), waypoint.clone(), miner_cargo.clone(), |req| {
+                    local_state_manager.transfer(req)
+                })
+                .await
+            {
+                Ok(result) => match result {
+                    TransferCargoResult::Success { .. } => {
+                        break result;
+                    }
+                    TransferCargoResult::NoMatchingShipFound => {
+                        println!("NoMatchingShipFound yet - trying again in {sleep_duration:?}")
+                    }
+                },
+                Err(e) => {
+                    panic!("error: {e:?}");
+                }
+            }
+            tokio::time::sleep(sleep_duration).await;
+        };
 
         assert_eq!(
             transfer_result,
