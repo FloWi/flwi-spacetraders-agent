@@ -1,5 +1,6 @@
 pub mod blackboard_ops;
 pub mod budgeting;
+pub mod cargo_transfer;
 pub mod messages;
 pub mod st_model;
 pub mod supply_chain;

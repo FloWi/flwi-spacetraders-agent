@@ -1,74 +1,33 @@
 use anyhow::Result;
 use itertools::Itertools;
 use metrics::IntoF64;
-use st_domain::{Cargo, Inventory, ShipSymbol, TradeGoodSymbol, WaypointSymbol};
+use st_domain::cargo_transfer::{InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoResult, TransferCargoError};
+use st_domain::{Cargo, Inventory, ShipSymbol, WaypointSymbol};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
-#[derive(Debug)]
-pub enum TransferError {
-    ApiError(String),
-    InsufficientCapacity,
-    ShipNotFound,
-    Cancelled,
-}
 
 pub struct TransferCargoManager {
     // Haulers waiting at each location
     waiting_haulers: Arc<Mutex<HashMap<WaypointSymbol, HashMap<ShipSymbol, Cargo>>>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct InternalTransferCargoRequest {
-    sending_ship: ShipSymbol,
-    receiving_ship: ShipSymbol,
-    trade_good_symbol: TradeGoodSymbol,
-    units: u32,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct InternalTransferCargoResponse {
-    receiving_ship: ShipSymbol,
-    trade_good_symbol: TradeGoodSymbol,
-    units: u32,
-    sending_ship_cargo: Cargo,
-    receiving_ship_cargo: Cargo,
-}
-
-#[derive(Debug)]
-pub enum TransferCargoError {
-    SendingShipDoesntExist,
-    ReceiveShipDoesntExist,
-    NotEnoughItemsInSendingShipCargo,
-    NotEnoughSpaceInReceivingShip,
-}
-
-#[derive(PartialEq, Debug)]
-pub enum InternalTransferCargoResult {
-    NoMatchingShipFound,
-    Success {
-        updated_miner_cargo: Cargo,
-        transfer_tasks: Vec<InternalTransferCargoRequest>,
-    },
-}
-
 impl TransferCargoManager {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             waiting_haulers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    async fn register_hauler_for_pickup_and_wait_until_full(
+    pub async fn register_hauler_for_pickup_and_wait_until_full(
         &self,
         waypoint_symbol: WaypointSymbol,
         hauler_ship_symbol: ShipSymbol,
         hauler_cargo: Cargo,
     ) -> Result<Cargo> {
-        // we wait and semantically block for transfers until we're full enough (90%)
-        // then we yield the new cargo
+        // we wait and semantically block for transfers until we're full enough (80%)
+        // then we yield the updated cargo of the hauler
         {
             let mut guard = self.waiting_haulers.lock().await;
             guard
@@ -98,7 +57,7 @@ impl TransferCargoManager {
         Ok(cargo)
     }
 
-    async fn try_to_transfer_cargo_until_available_space<F, Fut>(
+    pub async fn try_to_transfer_cargo_until_available_space<F, Fut>(
         &self,
         sending_ship: ShipSymbol,
         waypoint_symbol: WaypointSymbol,
@@ -134,7 +93,6 @@ impl TransferCargoManager {
         }
     }
 }
-
 
 fn find_transfer_task(
     sending_ship: ShipSymbol,
@@ -198,10 +156,9 @@ fn find_transfer_tasks(miner_ship_symbol: ShipSymbol, miner_cargo: Cargo, waitin
 
 #[cfg(test)]
 mod tests {
-    use crate::cargo_transfer_manager::{
-        find_transfer_tasks, TransferCargoError, TransferCargoManager, InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoResult,
-    };
+    use crate::transfer_cargo_manager::{find_transfer_tasks, TransferCargoManager};
     use itertools::Itertools;
+    use st_domain::cargo_transfer::{InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoResult, TransferCargoError};
     use st_domain::{Cargo, Inventory, ShipSymbol, TradeGoodSymbol, WaypointSymbol};
     use std::collections::HashMap;
     use std::sync::Arc;

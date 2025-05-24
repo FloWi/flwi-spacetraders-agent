@@ -21,9 +21,9 @@ pub mod marketplaces;
 pub mod pathfinder;
 pub mod universe_server;
 
-mod cargo_transfer_manager;
 #[cfg(test)]
 pub mod test_objects;
+mod transfer_cargo_manager;
 
 pub fn calculate_fuel_consumption(flight_mode: &FlightMode, distance: u32) -> u32 {
     match flight_mode {
