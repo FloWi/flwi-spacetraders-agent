@@ -5,40 +5,63 @@ use crate::universe_server::universe_snapshot::load_universe;
 use crate::{calculate_fuel_consumption, calculate_time};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use chrono::format::Fixed::TimezoneOffsetDoubleColon;
 use chrono::{TimeDelta, Utc};
 use itertools::Itertools;
 use rand::prelude::IteratorRandom;
+use rand::{thread_rng, Rng};
 use st_domain::{
-    Agent, AgentResponse, AgentSymbol, Cargo, CargoOnlyResponse, Construction, Cooldown, CreateChartResponse, Crew, Data, DockShipResponse, FactionSymbol,
-    FlightMode, Fuel, FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse,
-    GetSystemResponse, JettisonCargoResponse, JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Nav, NavAndFuelResponse,
-    NavOnlyResponse, NavRouteWaypoint, NavStatus, NavigateShipResponse, NotEnoughItemsInCargoError, OrbitShipResponse, PurchaseShipResponse,
-    PurchaseShipResponseBody, PurchaseTradeGoodResponse, PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration,
-    RegistrationRequest, RegistrationResponse, Route, SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipPurchaseTransaction,
+    Agent, AgentResponse, AgentSymbol, Cargo, CargoOnlyResponse, Construction, Cooldown, CreateChartResponse, CreateSurveyResponse, CreateSurveyResponseBody,
+    Crew, Data, DockShipResponse, ExtractResourcesResponse, ExtractResourcesResponseBody, Extraction, ExtractionYield, FactionSymbol, FlightMode, Fuel,
+    FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse,
+    JettisonCargoResponse, JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Mount, Nav, NavAndFuelResponse, NavOnlyResponse,
+    NavRouteWaypoint, NavStatus, NavigateShipResponse, NotEnoughItemsInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody,
+    PurchaseTradeGoodResponse, PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest,
+    RegistrationResponse, Route, SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipMountSymbol, ShipPurchaseTransaction,
     ShipRegistrationRole, ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, Siphon, SiphonResourcesResponse, SiphonResourcesResponseBody,
-    SiphonYield, StStatusResponse, SupplyConstructionSiteResponse, SupplyConstructionSiteResponseBody, SystemSymbol, SystemsPageData, TradeGoodSymbol,
-    TradeGoodType, Transaction, TransactionType, TransferCargoResponse, Waypoint, WaypointSymbol,
+    SiphonYield, StStatusResponse, SupplyConstructionSiteResponse, SupplyConstructionSiteResponseBody, Survey, SurveyDeposit, SurveySignature, SurveySize,
+    SystemSymbol, SystemsPageData, TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, TransferCargoResponse, Waypoint, WaypointSymbol,
+    WaypointTraitSymbol, WaypointType,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::{Add, Not};
 use std::path::Path;
 use std::sync::Arc;
+use strum::{Display, IntoEnumIterator};
 use tokio::sync::RwLock;
+use uuid::Uuid;
 use RefuelTaskAnalysisError::NotEnoughFuelInCargo;
 
 #[derive(Debug)]
 pub struct InMemoryUniverse {
-    pub(crate) systems: HashMap<SystemSymbol, SystemsPageData>,
-    pub(crate) waypoints: HashMap<WaypointSymbol, Waypoint>,
-    pub(crate) ships: HashMap<ShipSymbol, Ship>,
+    pub systems: HashMap<SystemSymbol, SystemsPageData>,
+    pub waypoints: HashMap<WaypointSymbol, Waypoint>,
+    pub ships: HashMap<ShipSymbol, Ship>,
     pub marketplaces: HashMap<WaypointSymbol, MarketData>,
     pub shipyards: HashMap<WaypointSymbol, Shipyard>,
-    pub(crate) construction_sites: HashMap<WaypointSymbol, Construction>,
-    pub(crate) agent: Agent,
-    pub(crate) transactions: Vec<Transaction>,
-    pub(crate) jump_gates: HashMap<WaypointSymbol, JumpGate>,
-    pub(crate) supply_chain: GetSupplyChainResponse,
+    pub construction_sites: HashMap<WaypointSymbol, Construction>,
+    pub agent: Agent,
+    pub transactions: Vec<Transaction>,
+    pub jump_gates: HashMap<WaypointSymbol, JumpGate>,
+    pub supply_chain: GetSupplyChainResponse,
+    pub created_surveys: HashMap<SurveySignature, (Survey, TotalExtractionYield)>,
+}
+
+pub enum CheckConditionsResult {
+    AllChecksPassed,
+    ChecksFailed {
+        num_checks: usize,
+        conditions_passed: Vec<CheckCondition>,
+        conditions_failed: Vec<(CheckCondition, anyhow::Error)>,
+    },
+}
+
+#[derive(Clone, Display)]
+pub enum CheckCondition {
+    ShipIsInOrbit(ShipSymbol),
+    ShipIsAtAsteroid(ShipSymbol),
+    ShipHasSurveyorModule(ShipSymbol),
+    ShipIsCooledDown(ShipSymbol),
+    ShipIsAtWaypoint(ShipSymbol, WaypointSymbol),
 }
 
 impl InMemoryUniverse {
@@ -48,6 +71,105 @@ impl InMemoryUniverse {
             .any(|(_, ship)| ship.nav.status == NavStatus::Docked && &ship.nav.waypoint_symbol == waypoint_symbol)
             .then_some(())
             .ok_or(anyhow!("No ship docked at waypoint {}", waypoint_symbol.0.clone()))
+    }
+
+    fn validate_ship(&self, ship_symbol: ShipSymbol) -> Result<(&Ship)> {
+        self.ships
+            .get(&ship_symbol)
+            .ok_or(anyhow!("Ship not found"))
+    }
+    fn validate_waypoint(&self, waypoint_symbol: WaypointSymbol) -> Result<(&Waypoint)> {
+        self.waypoints
+            .get(&waypoint_symbol)
+            .ok_or(anyhow!("Waypoint not found"))
+    }
+
+    fn validate_condition(&self, condition: CheckCondition) -> Result<()> {
+        match condition {
+            CheckCondition::ShipIsInOrbit(ss) => {
+                let ship = self.validate_ship(ss.clone())?;
+
+                if ship.nav.status == NavStatus::InOrbit {
+                    Ok(())
+                } else {
+                    anyhow::bail!("Ship not in orbit")
+                }
+            }
+            CheckCondition::ShipIsAtAsteroid(ss) => {
+                let ship = self.validate_ship(ss.clone())?;
+                let wp = self.validate_waypoint(ship.nav.waypoint_symbol.clone())?;
+
+                if wp.r#type == WaypointType::ASTEROID || wp.r#type == WaypointType::ENGINEERED_ASTEROID {
+                    Ok(())
+                } else {
+                    anyhow::bail!("Waypoint is of type {} and not ASTEROID or ENGINEERED_ASTEROID", wp.r#type);
+                }
+            }
+            CheckCondition::ShipHasSurveyorModule(ss) => {
+                let ship = self.validate_ship(ss.clone())?;
+
+                if ship.mounts.iter().any(|mount| mount.symbol.is_surveyor()) {
+                    Ok(())
+                } else {
+                    anyhow::bail!("Ship has no surveyor mounts")
+                }
+            }
+            CheckCondition::ShipIsCooledDown(ss) => {
+                let now = Utc::now();
+                let ship = self.validate_ship(ss.clone())?;
+
+                if let Some(expiration) = ship.cooldown.expiration {
+                    if expiration > now {
+                        Ok(())
+                    } else {
+                        anyhow::bail!("Ship is not cooled down yet")
+                    }
+                } else {
+                    Ok(())
+                }
+            }
+            CheckCondition::ShipIsAtWaypoint(ss, wps) => {
+                let ship = self.validate_ship(ss.clone())?;
+                if ship.nav.waypoint_symbol == wps {
+                    Ok(())
+                } else {
+                    anyhow::bail!("Ship is not waypoint {}", wps);
+                }
+            }
+        }
+    }
+
+    pub fn ensure(&self, conditions: Vec<CheckCondition>) -> Result<()> {
+        let mut num_checks = 0;
+        let mut conditions_failed = Vec::new();
+
+        for condition in conditions {
+            let check_result = self.validate_condition(condition.clone());
+
+            match check_result {
+                Ok(_) => {}
+                Err(e) => {
+                    conditions_failed.push((condition, e));
+                }
+            }
+
+            num_checks += 1;
+        }
+
+        if conditions_failed.is_empty() {
+            Ok(())
+        } else {
+            let error_summary = conditions_failed
+                .iter()
+                .map(|(check, error)| format!("Check {} resulted in an error: {}", check, error))
+                .join("\n");
+            Err(anyhow!(
+                "{} out of {} checks failed.\nSummary: \n{}",
+                conditions_failed.len(),
+                num_checks,
+                error_summary
+            ))
+        }
     }
 
     pub(crate) fn insert_shipyard_transaction(&mut self, waypoint_symbol: &WaypointSymbol, shipyard_tx: ShipTransaction) {
@@ -340,6 +462,155 @@ impl InMemoryUniverse {
         }
     }
 
+    fn perform_extraction_with_survey(&mut self, ship_symbol: ShipSymbol, survey: Survey) -> anyhow::Result<ExtractResourcesResponse> {
+        self.ensure(vec![
+            CheckCondition::ShipIsInOrbit(ship_symbol.clone()),
+            CheckCondition::ShipIsCooledDown(ship_symbol.clone()),
+            CheckCondition::ShipIsAtAsteroid(ship_symbol.clone()),
+            CheckCondition::ShipIsAtWaypoint(ship_symbol.clone(), survey.symbol.clone()),
+        ])?;
+
+        let ship = self.ships.get(&ship_symbol).unwrap();
+        let laser_strength = ship.get_yield_size_for_mining();
+
+        let available_cargo_space = ship.cargo.capacity - ship.cargo.units;
+        if laser_strength > available_cargo_space as u32 {
+            anyhow::bail!("Not enough cargo space for extraction with a combined laser strength of {}", laser_strength);
+        }
+
+        let ship = self
+            .ships
+            .get_mut(&ship_symbol)
+            .ok_or(anyhow!("Ship not found"))?;
+        if let Some((stored_survey, total_extraction_yield)) = self.created_surveys.get_mut(&survey.signature) {
+            if stored_survey != &survey {
+                anyhow::bail!(
+                    "content of survey changed compared to stored survey. Stored survey: {:?}",
+                    serde_json::to_string(&stored_survey)?
+                );
+            }
+
+            if total_extraction_yield.current_total_extraction_yield + laser_strength > total_extraction_yield.max_extraction_yield {
+                self.created_surveys.remove(&survey.signature);
+                anyhow::bail!("Survey is exhausted");
+            }
+
+            let random_element = survey
+                .deposits
+                .iter()
+                .choose(&mut thread_rng())
+                .unwrap()
+                .clone();
+
+            total_extraction_yield.current_total_extraction_yield += laser_strength;
+            let random_extraction_trade_good = random_element.symbol;
+
+            ship.cargo
+                .with_item_added_mut(random_extraction_trade_good.clone(), laser_strength)
+                .map_err(|e| anyhow!("Cargo doesn't fit: {e:?}"))?;
+
+            ship.cooldown = Cooldown {
+                ship_symbol: ship_symbol.clone(),
+                total_seconds: 1,
+                remaining_seconds: 1,
+                expiration: Some(Utc::now().add(TimeDelta::milliseconds(1))),
+            };
+
+            Ok(Self::create_extract_resource_response(
+                ship_symbol,
+                laser_strength,
+                random_extraction_trade_good,
+                ship.cargo.clone(),
+                ship.cooldown.clone(),
+            ))
+        } else {
+            anyhow::bail!("Survey not found");
+        }
+    }
+
+    fn perform_extraction(&mut self, ship_symbol: ShipSymbol) -> anyhow::Result<ExtractResourcesResponse> {
+        self.ensure(vec![
+            CheckCondition::ShipIsInOrbit(ship_symbol.clone()),
+            CheckCondition::ShipIsCooledDown(ship_symbol.clone()),
+            CheckCondition::ShipIsAtAsteroid(ship_symbol.clone()),
+        ])?;
+
+        let ship = self.ships.get(&ship_symbol).unwrap();
+        let laser_strength = ship.get_yield_size_for_mining();
+
+        let available_cargo_space = ship.cargo.capacity - ship.cargo.units;
+        if laser_strength > available_cargo_space as u32 {
+            anyhow::bail!("Not enough cargo space for extraction with a combined laser strength of {}", laser_strength);
+        }
+
+        let ship = self
+            .ships
+            .get_mut(&ship_symbol)
+            .ok_or(anyhow!("Ship not found"))?;
+
+        let waypoint = self
+            .waypoints
+            .get(&ship.nav.waypoint_symbol)
+            .ok_or(anyhow!("waypoint not found"))?;
+
+        let waypoint_trait_symbols = waypoint
+            .traits
+            .iter()
+            .map(|wpt| wpt.symbol.clone())
+            .collect_vec();
+
+        let available_elements_at_waypoint = get_possible_extraction_materials_by_waypoint_traits(&waypoint_trait_symbols);
+
+        let random_element = available_elements_at_waypoint
+            .iter()
+            .choose(&mut thread_rng())
+            .unwrap()
+            .clone();
+
+        let random_extraction_trade_good = random_element;
+
+        ship.cargo
+            .with_item_added_mut(random_extraction_trade_good.clone(), laser_strength)
+            .map_err(|e| anyhow!("Cargo doesn't fit: {e:?}"))?;
+
+        ship.cooldown = Cooldown {
+            ship_symbol: ship_symbol.clone(),
+            total_seconds: 1,
+            remaining_seconds: 1,
+            expiration: Some(Utc::now().add(TimeDelta::milliseconds(1))),
+        };
+
+        Ok(Self::create_extract_resource_response(
+            ship_symbol,
+            laser_strength,
+            random_extraction_trade_good,
+            ship.cargo.clone(),
+            ship.cooldown.clone(),
+        ))
+    }
+
+    fn create_extract_resource_response(
+        ship_symbol: ShipSymbol,
+        laser_strength: u32,
+        random_extraction_trade_good: TradeGoodSymbol,
+        updated_ship_cargo: Cargo,
+        cooldown: Cooldown,
+    ) -> Data<ExtractResourcesResponseBody> {
+        ExtractResourcesResponse {
+            data: ExtractResourcesResponseBody {
+                extraction: Extraction {
+                    ship: ship_symbol.clone(),
+                    extraction_yield: ExtractionYield {
+                        symbol: random_extraction_trade_good,
+                        units: laser_strength,
+                    },
+                },
+                cooldown,
+                cargo: updated_ship_cargo,
+            },
+        }
+    }
+
     fn perform_supply_construction_site(
         &mut self,
         ship_symbol: ShipSymbol,
@@ -485,6 +756,12 @@ impl InMemoryUniverseClient {
     pub fn clone_universe_handle(&self) -> Arc<RwLock<InMemoryUniverse>> {
         Arc::clone(&self.universe)
     }
+}
+
+#[derive(Debug)]
+pub struct TotalExtractionYield {
+    pub current_total_extraction_yield: u32,
+    pub max_extraction_yield: u32,
 }
 
 #[async_trait]
@@ -817,6 +1094,66 @@ impl StClientTrait for InMemoryUniverseClient {
         let mut universe = self.universe.write().await;
 
         universe.perform_supply_construction_site(ship_symbol, units, trade_good, waypoint_symbol)
+    }
+
+    async fn extract_resources_with_survey(&self, ship_symbol: ShipSymbol, survey: Survey) -> Result<ExtractResourcesResponse> {
+        self.universe
+            .write()
+            .await
+            .perform_extraction_with_survey(ship_symbol, survey)
+    }
+
+    async fn extract_resources(&self, ship_symbol: ShipSymbol) -> Result<ExtractResourcesResponse> {
+        self.universe.write().await.perform_extraction(ship_symbol)
+    }
+
+    async fn survey(&self, ship_symbol: ShipSymbol) -> Result<CreateSurveyResponse> {
+        let read_guard = self.universe.read().await;
+        read_guard.ensure(vec![
+            CheckCondition::ShipIsInOrbit(ship_symbol.clone()),
+            CheckCondition::ShipIsAtAsteroid(ship_symbol.clone()),
+            CheckCondition::ShipHasSurveyorModule(ship_symbol.clone()),
+        ])?;
+
+        let ship = read_guard.ships.get(&ship_symbol).cloned().unwrap();
+        let waypoint = read_guard
+            .waypoints
+            .get(&ship.nav.waypoint_symbol)
+            .cloned()
+            .unwrap();
+
+        let random_surveys = generate_random_surveys(&waypoint, &ship.mounts);
+
+        {
+            let mut guard = self.universe.write().await;
+            for survey in random_surveys.iter() {
+                let allowed_range = get_allowed_total_extraction_units(survey.size.clone());
+                let random_max_extraction_yield = allowed_range.choose(&mut rand::thread_rng()).unwrap();
+
+                guard.created_surveys.insert(
+                    survey.signature.clone(),
+                    (
+                        survey.clone(),
+                        TotalExtractionYield {
+                            current_total_extraction_yield: 0,
+                            max_extraction_yield: random_max_extraction_yield,
+                        },
+                    ),
+                );
+            }
+        }
+
+        Ok(CreateSurveyResponse {
+            data: CreateSurveyResponseBody {
+                cooldown: Cooldown {
+                    ship_symbol: ship_symbol.clone(),
+                    total_seconds: 1,
+                    remaining_seconds: 1,
+                    expiration: Some(Utc::now().add(TimeDelta::milliseconds(1))),
+                },
+                surveys: random_surveys,
+            },
+        })
     }
 
     async fn purchase_ship(&self, ship_type: ShipType, symbol: WaypointSymbol) -> anyhow::Result<PurchaseShipResponse> {
@@ -1166,5 +1503,306 @@ fn ship_type_to_ship_registration_role(ship_type: &ShipType) -> ShipRegistration
         ShipType::SHIP_REFINING_FREIGHTER => ShipRegistrationRole::Refinery,
         ShipType::SHIP_SURVEYOR => ShipRegistrationRole::Surveyor,
         ShipType::SHIP_BULK_FREIGHTER => ShipRegistrationRole::Transport,
+    }
+}
+
+fn generate_random_surveys(waypoint: &Waypoint, ship_mounts: &[Mount]) -> Vec<Survey> {
+    let waypoint_traits: Vec<WaypointTraitSymbol> = waypoint
+        .traits
+        .iter()
+        .map(|wp_trait| wp_trait.symbol.clone())
+        .collect_vec();
+
+    let ship_mount_details: Vec<(ShipMountSymbol, Option<i32>, Vec<TradeGoodSymbol>)> = ship_mounts
+        .iter()
+        .map(|m| (m.symbol.clone(), m.strength.clone(), m.deposits.clone().unwrap_or_default()))
+        .collect_vec();
+
+    generate_random_surveys_internal(waypoint.symbol.clone(), &waypoint_traits, &ship_mount_details)
+}
+
+fn generate_random_surveys_internal(
+    waypoint_symbol: WaypointSymbol,
+    waypoint_trait_symbols: &[WaypointTraitSymbol],
+    ship_mount_details: &[(ShipMountSymbol, Option<i32>, Vec<TradeGoodSymbol>)],
+) -> Vec<Survey> {
+    let possible_materials_at_this_waypoint = get_possible_extraction_materials_by_waypoint_traits(waypoint_trait_symbols);
+
+    let mut surveys = vec![];
+    let now = Utc::now();
+
+    let mut rng = rand::thread_rng();
+    for (mount_symbol, mount_strength, mount_deposits) in ship_mount_details {
+        if mount_symbol.is_surveyor() {
+            for _ in 1..=mount_strength.unwrap_or(1) {
+                let items_detectable_by_mount = HashSet::from_iter(mount_deposits.iter().cloned());
+                let detectable_at_this_wp = items_detectable_by_mount
+                    .intersection(&possible_materials_at_this_waypoint)
+                    .collect::<HashSet<_>>();
+
+                let detectable_vec: Vec<TradeGoodSymbol> = detectable_at_this_wp.into_iter().cloned().collect_vec();
+
+                let num_elements = rng.gen_range(3..=7);
+
+                // we need to pick with repetition, because often the number of elements is only 6 (e.g. ENGINEERED_ASTEROID)
+                let random_elements: Vec<_> = (0..num_elements)
+                    .map(|_| detectable_vec.iter().choose(&mut rng).unwrap())
+                    .collect();
+
+                let random_size = SurveySize::iter().choose(&mut rng).unwrap();
+                let random_minutes = (5..=60).choose(&mut rng).unwrap();
+                let random_expiration = now.add(TimeDelta::minutes(random_minutes));
+
+                surveys.push(Survey {
+                    signature: SurveySignature(format!("{}-{}", waypoint_symbol.clone(), Uuid::new_v4().to_string())),
+                    symbol: waypoint_symbol.clone(),
+                    deposits: random_elements
+                        .into_iter()
+                        .map(|tg| SurveyDeposit { symbol: tg.clone().clone() })
+                        .collect(),
+                    expiration: random_expiration,
+                    size: random_size,
+                })
+            }
+        }
+    }
+
+    surveys
+}
+
+fn get_possible_extraction_materials_by_waypoint_traits(waypoint_trait_symbols: &[WaypointTraitSymbol]) -> HashSet<TradeGoodSymbol> {
+    let trade_symbols_by_waypoint_trait_map = trade_symbols_by_waypoint_trait();
+
+    waypoint_trait_symbols
+        .iter()
+        .flat_map(|wp_trait_symbol| {
+            trade_symbols_by_waypoint_trait_map
+                .get(&wp_trait_symbol)
+                .cloned()
+                .unwrap_or_default()
+        })
+        .collect::<HashSet<_>>()
+}
+
+/// TradeSymbols available for extraction based on WaypointTraits.
+/// This is unlikely to be a correct/complete list.
+/// This was created by reading the WaypointTrait descriptions.
+/// translated from eseidel
+/// https://github.com/eseidel/space_traders/blob/32eb0101536afd6a0038ba4129af2bb9f368d967/packages/cli/lib/plan/extraction_score.dart#L262
+fn trade_symbols_by_waypoint_trait() -> HashMap<WaypointTraitSymbol, HashSet<TradeGoodSymbol>> {
+    HashMap::from([
+        (
+            WaypointTraitSymbol::COMMON_METAL_DEPOSITS,
+            HashSet::from([
+                // Listed in trait descriptions:
+                TradeGoodSymbol::ALUMINUM_ORE,
+                TradeGoodSymbol::COPPER_ORE,
+                TradeGoodSymbol::IRON_ORE,
+                // Seen in game:
+                TradeGoodSymbol::ICE_WATER,
+                TradeGoodSymbol::SILICON_CRYSTALS,
+                TradeGoodSymbol::QUARTZ_SAND,
+            ]),
+        ),
+        (
+            WaypointTraitSymbol::MINERAL_DEPOSITS,
+            HashSet::from([
+                // Listed in trait descriptions:
+                TradeGoodSymbol::SILICON_CRYSTALS,
+                TradeGoodSymbol::QUARTZ_SAND,
+                // Seen in game:
+                TradeGoodSymbol::AMMONIA_ICE,
+                TradeGoodSymbol::ICE_WATER,
+                TradeGoodSymbol::IRON_ORE,
+                TradeGoodSymbol::PRECIOUS_STONES,
+            ]),
+        ),
+        (
+            WaypointTraitSymbol::PRECIOUS_METAL_DEPOSITS,
+            HashSet::from([
+                // Listed in trait descriptions:
+                TradeGoodSymbol::PLATINUM_ORE,
+                TradeGoodSymbol::GOLD_ORE,
+                TradeGoodSymbol::SILVER_ORE,
+                // Seen in game:
+                TradeGoodSymbol::ALUMINUM_ORE,
+                TradeGoodSymbol::COPPER_ORE,
+                TradeGoodSymbol::ICE_WATER,
+                TradeGoodSymbol::QUARTZ_SAND,
+                TradeGoodSymbol::SILICON_CRYSTALS,
+            ]),
+        ),
+        (
+            WaypointTraitSymbol::RARE_METAL_DEPOSITS,
+            HashSet::from([
+                // Listed in trait descriptions:
+                TradeGoodSymbol::URANITE_ORE,
+                TradeGoodSymbol::MERITIUM_ORE,
+            ]),
+        ),
+        (
+            WaypointTraitSymbol::FROZEN,
+            HashSet::from([
+                // Listed in trait descriptions:
+                TradeGoodSymbol::ICE_WATER,
+                TradeGoodSymbol::AMMONIA_ICE,
+            ]),
+        ),
+        (
+            WaypointTraitSymbol::ICE_CRYSTALS,
+            HashSet::from([
+                // Listed in trait descriptions:
+                TradeGoodSymbol::ICE_WATER,
+                TradeGoodSymbol::AMMONIA_ICE,
+                TradeGoodSymbol::LIQUID_HYDROGEN,
+                TradeGoodSymbol::LIQUID_NITROGEN,
+            ]),
+        ),
+        (
+            WaypointTraitSymbol::EXPLOSIVE_GASES,
+            HashSet::from([
+                // Listed in trait descriptions:
+                TradeGoodSymbol::HYDROCARBON,
+            ]),
+        ),
+        (
+            WaypointTraitSymbol::SWAMP,
+            HashSet::from([
+                // Listed in trait descriptions:
+                TradeGoodSymbol::HYDROCARBON,
+            ]),
+        ),
+        (
+            WaypointTraitSymbol::STRONG_MAGNETOSPHERE,
+            HashSet::from([
+                // Listed in trait descriptions:
+                TradeGoodSymbol::EXOTIC_MATTER,
+                TradeGoodSymbol::GRAVITON_EMITTERS,
+            ]),
+        ),
+    ])
+}
+
+fn get_allowed_total_extraction_units(survey_size: SurveySize) -> std::ops::RangeInclusive<u32> {
+    /*
+    extraction units (measured by eseidel)
+    SMALL: Avg 322, Min 48, Max 447
+    MODERATE: Avg 761, Min 110, Max 1034
+    LARGE: Avg 1688, Min 866, Max 2431
+
+    extraction units (measured by kitz)
+    SMALL:    count: 185, average: 275.19, max:  453
+    MODERATE: count:  85, average: 476.53, max: 1051
+    LARGE:    count:  20, average: 753.70, max: 2179
+
+    extract counts (measured by kitz)
+    SMALL:    extracts average:  9.17, max: 20
+    MODERATE: extracts average: 16.95, max: 46
+    LARGE:    extracts average: 22.24, max: 65
+    */
+    match survey_size {
+        SurveySize::SMALL => 48..=447,
+        SurveySize::MODERATE => 110..=1034,
+        SurveySize::LARGE => 866..=2431,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::universe_server::universe_server::generate_random_surveys_internal;
+    use itertools::Itertools;
+    use st_domain::{Mount, Requirements, ShipMountSymbol, Survey, WaypointSymbol, WaypointTraitSymbol};
+
+    fn get_surveyor_1_mount() -> Mount {
+        use st_domain::TradeGoodSymbol::*;
+
+        Mount {
+            symbol: ShipMountSymbol::MOUNT_SURVEYOR_I,
+            name: "MOUNT_SURVEYOR_II".to_string(),
+            description: Some("A basic survey probe that can be used to gather information about a mineral deposit.".to_string()),
+            strength: Some(1),
+            deposits: Some(vec![
+                QUARTZ_SAND,
+                SILICON_CRYSTALS,
+                PRECIOUS_STONES,
+                ICE_WATER,
+                AMMONIA_ICE,
+                IRON_ORE,
+                COPPER_ORE,
+                SILVER_ORE,
+                ALUMINUM_ORE,
+                GOLD_ORE,
+                PLATINUM_ORE,
+            ]),
+            requirements: Requirements {
+                power: Some(1),
+                crew: Some(1),
+                slots: None,
+            },
+        }
+    }
+
+    fn get_surveyor_2_mount() -> Mount {
+        use st_domain::TradeGoodSymbol::*;
+
+        Mount {
+            symbol: ShipMountSymbol::MOUNT_SURVEYOR_II,
+            name: "MOUNT_SURVEYOR_II".to_string(),
+            description: Some("An advanced survey probe that can be used to gather information about a mineral deposit with greater accuracy.".to_string()),
+            strength: Some(2),
+            deposits: Some(vec![
+                QUARTZ_SAND,
+                SILICON_CRYSTALS,
+                PRECIOUS_STONES,
+                ICE_WATER,
+                AMMONIA_ICE,
+                IRON_ORE,
+                COPPER_ORE,
+                SILVER_ORE,
+                ALUMINUM_ORE,
+                GOLD_ORE,
+                PLATINUM_ORE,
+                DIAMONDS,
+                URANITE_ORE,
+            ]),
+            requirements: Requirements {
+                power: Some(3),
+                crew: Some(4),
+                slots: None,
+            },
+        }
+    }
+
+    #[test]
+    //#[tokio::test] // for accessing runtime-infos with tokio-console
+    fn test_generate_random_survey() {
+        let mount_config = vec![get_surveyor_2_mount()]
+            .into_iter()
+            .map(|m| (m.symbol, m.strength, m.deposits.unwrap_or_default()))
+            .collect_vec();
+
+        let mut all_surveys: Vec<Survey> = Vec::new();
+
+        for _ in 0..10_000 {
+            let surveys = generate_random_surveys_internal(
+                WaypointSymbol("X1-FOO-BAR".to_string()),
+                &vec![WaypointTraitSymbol::COMMON_METAL_DEPOSITS],
+                &mount_config,
+            );
+            assert!(
+                surveys.iter().all(|s| (3..=7).contains(&s.deposits.len())),
+                "surveys must each have 3-7 deposits"
+            );
+            all_surveys.extend_from_slice(&surveys);
+        }
+
+        let length_distribution = all_surveys.iter().map(|s| s.deposits.len() as u32).counts();
+
+        println!("length_distribution: {:?}", length_distribution);
+        assert_eq!(all_surveys.len(), 20_000, "Expecting 2 surveys per call (because of mount strength");
+
+        for expected_length in 3..=7 {
+            assert!(length_distribution.contains_key(&expected_length), "surveys must each have 3-7 deposits");
+        }
     }
 }

@@ -8,8 +8,8 @@ use st_domain::blackboard_ops::BlackboardOps;
 
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, ThreadSafeTreasurer};
 use st_domain::{
-    Construction, JumpGate, LabelledCoordinate, MarketData, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard,
-    SupplyConstructionSiteResponse, TravelAction, Waypoint, WaypointSymbol,
+    Construction, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard,
+    SupplyConstructionSiteResponse, Survey, TravelAction, Waypoint, WaypointSymbol,
 };
 use st_store::bmc::{Bmc, DbBmc};
 use st_store::{
@@ -177,5 +177,9 @@ impl BlackboardOps for DbBlackboard {
             .construction_bmc()
             .save_construction_site(&Ctx::Anonymous, construction.clone())
             .await?)
+    }
+
+    async fn get_best_survey_for_current_demand(&self, mining_config: &MiningOpsConfig) -> Result<Option<Survey>> {
+        todo!()
     }
 }

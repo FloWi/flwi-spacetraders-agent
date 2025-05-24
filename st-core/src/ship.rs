@@ -1,22 +1,16 @@
 use crate::st_client::StClientTrait;
 use anyhow::*;
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use st_domain::budgeting::treasury_redesign::FinanceTicket;
 use st_domain::{
-    CreateChartBody, FleetId, FlightMode, Fuel, JettisonCargoResponse, JumpGate, MarketData, Nav, NavAndFuelResponse, PurchaseShipResponse,
-    PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, SiphonResourcesResponse,
-    SupplyConstructionSiteResponse, TradeGoodSymbol, TransferCargoResponse, TravelAction, WaypointSymbol,
+    CreateChartBody, ExtractResourcesResponse, FleetId, FlightMode, Fuel, JettisonCargoResponse, JumpGate, MarketData, MiningOpsConfig, Nav,
+    NavAndFuelResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard,
+    SiphonResourcesResponse, SiphoningOpsConfig, SupplyConstructionSiteResponse, Survey, TradeGoodSymbol, TransferCargoResponse, TravelAction, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::{Deref, DerefMut, Not};
 use std::sync::Arc;
-
-#[derive(Clone, Debug)]
-pub struct SiphoningConfig {
-    pub siphoning_waypoint: WaypointSymbol,
-    pub demanded_goods: HashSet<TradeGoodSymbol>,
-    pub delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
-}
 
 #[derive(Clone, Debug)]
 pub struct ShipOperations {
@@ -29,7 +23,8 @@ pub struct ShipOperations {
     pub maybe_next_observation_time: Option<DateTime<Utc>>,
     pub maybe_trades: Option<Vec<FinanceTicket>>,
     pub my_fleet: FleetId,
-    pub maybe_siphoning_config: Option<SiphoningConfig>,
+    pub maybe_siphoning_config: Option<SiphoningOpsConfig>,
+    pub maybe_mining_config: Option<MiningOpsConfig>,
 }
 
 impl PartialEq for ShipOperations {
@@ -106,6 +101,7 @@ maybe_trade: {:?},
             maybe_trades: None,
             my_fleet,
             maybe_siphoning_config: None,
+            maybe_mining_config: None,
         }
     }
 
@@ -123,7 +119,7 @@ maybe_trade: {:?},
         demanded_goods: HashSet<TradeGoodSymbol>,
         delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
     ) {
-        self.maybe_siphoning_config = Some(SiphoningConfig {
+        self.maybe_siphoning_config = Some(SiphoningOpsConfig {
             siphoning_waypoint,
             demanded_goods,
             delivery_locations,
@@ -170,6 +166,28 @@ maybe_trade: {:?},
         self.cooldown = response.data.cooldown.clone();
 
         Ok(response)
+    }
+
+    pub(crate) async fn jettison_everything_not_on_list(&mut self, allow_list: HashSet<TradeGoodSymbol>) -> Result<Vec<JettisonCargoResponse>> {
+        let items_to_jettison = self
+            .cargo
+            .inventory
+            .iter()
+            .filter_map(|inventory_entry| {
+                allow_list
+                    .contains(&inventory_entry.symbol)
+                    .not()
+                    .then_some(inventory_entry.clone())
+            })
+            .collect_vec();
+
+        let mut responses = vec![];
+
+        for item in items_to_jettison {
+            let response = self.jettison_cargo(&item.symbol, item.units).await?;
+            responses.push(response);
+        }
+        Ok(responses)
     }
 
     pub async fn jettison_cargo(&mut self, trade_good_symbol: &TradeGoodSymbol, units: u32) -> Result<JettisonCargoResponse> {
@@ -283,6 +301,21 @@ maybe_trade: {:?},
             .client
             .supply_construction_site(self.symbol.clone(), quantity, trade_good.clone(), construction_site_waypoint_symbol.clone())
             .await?;
+        self.cargo = response.data.cargo.clone();
+
+        Ok(response)
+    }
+
+    pub async fn extract_resources(&mut self, maybe_survey: Option<Survey>) -> Result<ExtractResourcesResponse> {
+        let response = match maybe_survey {
+            Some(survey) => {
+                self.client
+                    .extract_resources_with_survey(self.symbol.clone(), survey)
+                    .await?
+            }
+            None => self.client.extract_resources(self.symbol.clone()).await?,
+        };
+
         self.cargo = response.data.cargo.clone();
 
         Ok(response)

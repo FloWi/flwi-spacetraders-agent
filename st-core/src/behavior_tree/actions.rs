@@ -15,7 +15,7 @@ use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetail
 use st_domain::TradeGoodSymbol::MOUNT_GAS_SIPHON_I;
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, TradeGoodSymbol,
+    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, Survey, TradeGoodSymbol,
     TravelAction,
 };
 use std::collections::HashSet;
@@ -698,21 +698,9 @@ impl Actionable for ShipAction {
             }
             ShipAction::JettisonInvaluableCarboHydrates => {
                 if let Some(cfg) = state.maybe_siphoning_config.clone() {
-                    let items_to_jettison = state
-                        .cargo
-                        .inventory
-                        .iter()
-                        .filter_map(|inventory_entry| {
-                            cfg.demanded_goods
-                                .contains(&inventory_entry.symbol)
-                                .not()
-                                .then_some(inventory_entry.clone())
-                        })
-                        .collect_vec();
-
-                    for item in items_to_jettison {
-                        state.jettison_cargo(&item.symbol, item.units).await?;
-                    }
+                    let _responses = state
+                        .jettison_everything_not_on_list(cfg.demanded_goods)
+                        .await?;
                 }
 
                 Ok(Success)
@@ -737,26 +725,14 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::HasCargoSpaceForSiphoning => {
-                // val spaceLeft = ship.cargo.capacity - ship.cargo.units
-                // val yieldSize = ship.mounts.filter(m => laserMounts.contains(m.symbol) || siphonMounts.contains(m.symbol)).map(_.strength.getOrElse(0)).sum
-                // spaceLeft >= yieldSize
-
                 let cargo_space_left = (state.cargo.capacity - state.cargo.units) as u32;
-                let yield_size = state
-                    .mounts
-                    .iter()
-                    .filter_map(|m| {
-                        m.symbol
-                            .is_gas_siphon()
-                            .then_some(m.strength.unwrap_or_default() as u32)
-                    })
-                    .sum::<u32>();
+                let yield_size = state.get_yield_size_for_siphoning();
 
                 if yield_size < cargo_space_left {
                     Ok(Success)
                 } else {
                     Err(anyhow!(
-                        "cargo space too small. Yield size: {}, cargo space left: {}",
+                        "Cargo space too small for siphoning. Yield size: {}, cargo space left: {}",
                         yield_size,
                         cargo_space_left
                     ))
@@ -805,6 +781,57 @@ impl Actionable for ShipAction {
                 } else {
                     Err(anyhow!("No siphoning config found"))
                 }
+            }
+            ShipAction::HasCargoSpaceForMining => {
+                let cargo_space_left = (state.cargo.capacity - state.cargo.units) as u32;
+                let yield_size = state.get_yield_size_for_mining();
+
+                if yield_size < cargo_space_left {
+                    Ok(Success)
+                } else {
+                    Err(anyhow!(
+                        "Cargo space too small for mining. Yield size: {}, cargo space left: {}",
+                        yield_size,
+                        cargo_space_left
+                    ))
+                }
+            }
+            ShipAction::JettisonInvaluableMinerals => {
+                if let Some(cfg) = state.maybe_mining_config.clone() {
+                    let _responses = state
+                        .jettison_everything_not_on_list(cfg.demanded_goods)
+                        .await?;
+                }
+
+                Ok(Success)
+            }
+            ShipAction::ExtractResources => {
+                if let Some(cfg) = state.maybe_mining_config.clone() {
+                    let maybe_survey: Option<Survey> = args
+                        .blackboard
+                        .get_best_survey_for_current_demand(&cfg)
+                        .await?;
+                }
+
+                todo!()
+            }
+            ShipAction::Survey => {
+                todo!()
+            }
+            ShipAction::IsSurveyCapable => {
+                todo!()
+            }
+            ShipAction::IsSurveyNecessary => {
+                todo!()
+            }
+            ShipAction::SetMiningSiteAsDestination => {
+                todo!()
+            }
+            ShipAction::IsAtMiningSite => {
+                todo!()
+            }
+            ShipAction::AttemptCargoTransfer => {
+                todo!()
             }
         };
 

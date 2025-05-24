@@ -781,6 +781,39 @@ pub struct Ship {
 }
 
 impl Ship {
+    pub fn get_yield_size_for_siphoning(&self) -> u32 {
+        self.mounts
+            .iter()
+            .filter_map(|m| {
+                m.symbol
+                    .is_gas_siphon()
+                    .then_some(m.strength.unwrap_or_default() as u32)
+            })
+            .sum::<u32>()
+    }
+
+    pub fn get_yield_size_for_mining(&self) -> u32 {
+        self.mounts
+            .iter()
+            .filter_map(|m| {
+                m.symbol
+                    .is_mining_laser()
+                    .then_some(m.strength.unwrap_or_default() as u32)
+            })
+            .sum::<u32>()
+    }
+
+    pub fn get_yield_size_for_surveying(&self) -> u32 {
+        self.mounts
+            .iter()
+            .filter_map(|m| {
+                m.symbol
+                    .is_surveyor()
+                    .then_some(m.strength.unwrap_or_default() as u32)
+            })
+            .sum::<u32>()
+    }
+
     pub fn try_add_cargo(&mut self, units: u32, trade_good_symbol: &TradeGoodSymbol) -> Result<()> {
         if self.cargo.units + units as i32 > self.cargo.capacity {
             return Err(anyhow!("Not enough cargo space"));
@@ -989,6 +1022,66 @@ pub type SellTradeGoodResponse = Data<SellTradeGoodResponseBody>;
 pub type PurchaseTradeGoodResponse = Data<PurchaseTradeGoodResponseBody>;
 pub type SupplyConstructionSiteResponse = Data<SupplyConstructionSiteResponseBody>;
 pub type PurchaseShipResponse = Data<PurchaseShipResponseBody>;
+
+pub type ExtractResourcesResponse = Data<ExtractResourcesResponseBody>;
+
+pub type CreateSurveyResponse = Data<CreateSurveyResponseBody>;
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct SurveySignature(pub String);
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct SurveyDeposit {
+    pub symbol: TradeGoodSymbol,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, EnumIter)]
+#[allow(non_camel_case_types)]
+pub enum SurveySize {
+    SMALL,
+    MODERATE,
+    LARGE,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct Survey {
+    pub signature: SurveySignature,
+    pub symbol: WaypointSymbol,
+    pub deposits: Vec<SurveyDeposit>,
+    pub expiration: DateTime<Utc>,
+    pub size: SurveySize,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSurveyResponseBody {
+    pub cooldown: Cooldown,
+    pub surveys: Vec<Survey>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct Extraction {
+    pub ship: ShipSymbol,
+    pub extraction_yield: ExtractionYield,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionYield {
+    pub symbol: TradeGoodSymbol,
+    pub units: u32,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractResourcesResponseBody {
+    pub extraction: Extraction,
+    pub cooldown: Cooldown,
+    pub cargo: Cargo,
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
@@ -1202,7 +1295,7 @@ pub struct Mount {
     pub name: String,
     pub description: Option<String>,
     pub strength: Option<i32>,
-    pub deposits: Option<Vec<String>>,
+    pub deposits: Option<Vec<TradeGoodSymbol>>,
     pub requirements: Requirements,
 }
 
@@ -1370,7 +1463,7 @@ pub struct GetSupplyChainResponse {
     pub data: SupplyChainMap,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Deserialize, Serialize, Debug, Display, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[allow(non_camel_case_types)]
 pub enum WaypointType {
     PLANET,

@@ -1,4 +1,7 @@
-use crate::{get_exploration_tasks_for_waypoint, Construction, ExplorationTask, JumpGate, MarketData, Shipyard, TravelAction, Waypoint, WaypointSymbol};
+use crate::{
+    get_exploration_tasks_for_waypoint, Construction, ExplorationTask, JumpGate, MarketData, MiningOpsConfig, Shipyard, Survey, TravelAction, Waypoint,
+    WaypointSymbol,
+};
 use async_trait::async_trait;
 use mockall::automock;
 
@@ -32,4 +35,6 @@ pub trait BlackboardOps: Send + Sync {
     }
 
     async fn update_construction_site(&self, construction: &Construction) -> anyhow::Result<()>;
+
+    async fn get_best_survey_for_current_demand(&self, mining_config: &MiningOpsConfig) -> anyhow::Result<Option<Survey>>;
 }

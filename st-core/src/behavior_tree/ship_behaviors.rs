@@ -53,6 +53,15 @@ pub enum ShipAction {
     IsAtSiphoningSite,
     WaitForCooldown,
     CreateSellTicketsForAllCargoItems,
+    HasCargoSpaceForMining,
+    JettisonInvaluableMinerals,
+    ExtractResources,
+    Survey,
+    IsSurveyCapable,
+    IsSurveyNecessary,
+    SetMiningSiteAsDestination,
+    IsAtMiningSite,
+    AttemptCargoTransfer,
 }
 
 pub struct Behaviors {
@@ -66,6 +75,8 @@ pub struct Behaviors {
     pub stationary_probe_behavior: Behavior<ShipAction>,
     pub trading_behavior: Behavior<ShipAction>,
     pub siphoning_behavior: Behavior<ShipAction>,
+    pub mining_hauler_behavior: Behavior<ShipAction>,
+    pub miner_behavior: Behavior<ShipAction>,
 }
 
 impl Behaviors {
@@ -274,6 +285,17 @@ pub fn ship_behaviors() -> Behaviors {
         ]),
     ]);
 
+    let go_to_mining_site_if_necessary = Behavior::new_select(vec![
+        Behavior::new_sequence(vec![
+            Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
+            Behavior::new_action(ShipAction::IsAtMiningSite),
+        ]),
+        Behavior::new_sequence(vec![
+            Behavior::new_action(ShipAction::SetMiningSiteAsDestination),
+            navigate_to_destination.clone(),
+        ]),
+    ]);
+
     let siphon_until_full_behavior = Behavior::new_sequence(vec![
         go_to_siphoning_site_if_necessary.clone(),
         wait_for_arrival_bt.clone(),
@@ -296,6 +318,39 @@ pub fn ship_behaviors() -> Behaviors {
 
     let mut siphoning_behavior = Behavior::new_sequence(vec![siphon_until_full_behavior, deliver_all_carbohydrates_behavior]);
 
+    let mut mining_hauler_behavior = Behavior::new_sequence(vec![]);
+
+    let survey_if_necessary = Behavior::new_select(vec![
+        Behavior::new_invert(Behavior::new_action(ShipAction::IsSurveyNecessary)),
+        Behavior::new_invert(Behavior::new_action(ShipAction::IsSurveyCapable)),
+        Behavior::new_sequence(vec![
+            wait_for_arrival_bt.clone(),
+            wait_for_cooldown_bt.clone(),
+            Behavior::new_action(ShipAction::Survey),
+        ]),
+    ]);
+
+    let extract_resources = Behavior::new_sequence(vec![
+        wait_for_arrival_bt.clone(),
+        wait_for_cooldown_bt.clone(),
+        orbit_if_necessary.clone(),
+        Behavior::new_action(ShipAction::ExtractResources),
+        Behavior::new_action(ShipAction::JettisonInvaluableMinerals),
+    ]);
+
+    let mine_if_necessary = Behavior::new_sequence(vec![survey_if_necessary, extract_resources]);
+
+    let mut miner_behavior = Behavior::new_sequence(vec![
+        go_to_mining_site_if_necessary.clone(),
+        wait_for_arrival_bt.clone(),
+        orbit_if_necessary.clone(),
+        Behavior::new_while(
+            Behavior::new_invert(Behavior::new_action(ShipAction::HasCargoSpaceForMining)),
+            Behavior::new_action(ShipAction::AttemptCargoTransfer),
+        ),
+        mine_if_necessary.clone(),
+    ]);
+
     Behaviors {
         wait_for_arrival_bt: wait_for_arrival_bt.update_indices().clone(),
         orbit_if_necessary: orbit_if_necessary.update_indices().clone(),
@@ -307,6 +362,8 @@ pub fn ship_behaviors() -> Behaviors {
         stationary_probe_behavior: stationary_probe_behavior.update_indices().clone(),
         trading_behavior: trading_behavior.update_indices().clone(),
         siphoning_behavior: siphoning_behavior.update_indices().clone(),
+        mining_hauler_behavior: mining_hauler_behavior.update_indices().clone(),
+        miner_behavior: miner_behavior.update_indices().clone(),
     }
 }
 

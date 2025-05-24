@@ -460,3 +460,17 @@ pub struct JumpGateEntry {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+#[derive(Clone, Debug)]
+pub struct SiphoningOpsConfig {
+    pub siphoning_waypoint: WaypointSymbol,
+    pub demanded_goods: HashSet<TradeGoodSymbol>,
+    pub delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MiningOpsConfig {
+    pub mining_waypoint: WaypointSymbol,
+    pub demanded_goods: HashSet<TradeGoodSymbol>,
+    pub delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+}

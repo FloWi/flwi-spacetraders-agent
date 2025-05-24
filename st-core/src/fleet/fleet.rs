@@ -1778,11 +1778,11 @@ pub fn create_construction_fleet_phase(system_symbol: &SystemSymbol, num_shipyar
     let mining_fleet = [
         vec![ShipType::SHIP_MINING_DRONE],
         [
+            ShipType::SHIP_LIGHT_HAULER,
             ShipType::SHIP_MINING_DRONE,
             ShipType::SHIP_MINING_DRONE,
             ShipType::SHIP_MINING_DRONE,
             ShipType::SHIP_SURVEYOR,
-            ShipType::SHIP_LIGHT_HAULER,
         ]
         .repeat(2),
     ]

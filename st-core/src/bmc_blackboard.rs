@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::{Construction, JumpGate, LabelledCoordinate, MarketData, Shipyard, TravelAction, Waypoint, WaypointSymbol};
+use st_domain::{Construction, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, Shipyard, Survey, TravelAction, Waypoint, WaypointSymbol};
 use st_store::bmc::Bmc;
 use st_store::Ctx;
 use std::sync::Arc;
@@ -142,5 +142,9 @@ impl BlackboardOps for BmcBlackboard {
             .construction_bmc()
             .save_construction_site(&Ctx::Anonymous, construction.clone())
             .await?)
+    }
+
+    async fn get_best_survey_for_current_demand(&self, mining_config: &MiningOpsConfig) -> anyhow::Result<Option<Survey>> {
+        todo!()
     }
 }

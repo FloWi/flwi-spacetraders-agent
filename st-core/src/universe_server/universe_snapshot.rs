@@ -104,6 +104,7 @@ impl UniverseSnapshot {
             jump_gates,
 
             supply_chain: self.supply_chain.clone(),
+            created_surveys: Default::default(),
         }
     }
 }

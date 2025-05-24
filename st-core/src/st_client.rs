@@ -9,12 +9,13 @@ use reqwest_middleware::ClientWithMiddleware;
 use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
 use st_domain::{
-    extract_system_symbol, AgentResponse, AgentSymbol, CreateChartResponse, Data, DockShipResponse, FlightMode, GetConstructionResponse, GetJumpGateResponse,
-    GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, JettisonCargoRequest, JettisonCargoResponse, ListAgentsResponse,
-    NavigateShipRequest, NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PurchaseShipRequest, PurchaseShipResponse, PurchaseTradeGoodRequest,
-    PurchaseTradeGoodResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest, RegistrationResponse, SellTradeGoodRequest, SellTradeGoodResponse,
-    SetFlightModeResponse, Ship, ShipSymbol, ShipType, SiphonResourcesResponse, StStatusResponse, SupplyConstructionSiteRequest,
-    SupplyConstructionSiteResponse, SystemSymbol, SystemsPageData, TradeGoodSymbol, TransferCargoRequest, TransferCargoResponse, Waypoint, WaypointSymbol,
+    extract_system_symbol, AgentResponse, AgentSymbol, CreateChartResponse, CreateSurveyResponse, Data, DockShipResponse, ExtractResourcesResponse, FlightMode,
+    GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, JettisonCargoRequest,
+    JettisonCargoResponse, ListAgentsResponse, NavigateShipRequest, NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PurchaseShipRequest,
+    PurchaseShipResponse, PurchaseTradeGoodRequest, PurchaseTradeGoodResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest,
+    RegistrationResponse, SellTradeGoodRequest, SellTradeGoodResponse, SetFlightModeResponse, Ship, ShipSymbol, ShipType, SiphonResourcesResponse,
+    StStatusResponse, SupplyConstructionSiteRequest, SupplyConstructionSiteResponse, Survey, SystemSymbol, SystemsPageData, TradeGoodSymbol,
+    TransferCargoRequest, TransferCargoResponse, Waypoint, WaypointSymbol,
 };
 use std::any::type_name;
 use std::fmt::Debug;
@@ -224,6 +225,32 @@ impl StClientTrait for StClient {
         .await
     }
 
+    async fn extract_resources_with_survey(&self, ship_symbol: ShipSymbol, survey: Survey) -> Result<ExtractResourcesResponse> {
+        Self::make_api_call(
+            self.client
+                .post(
+                    self.base_url
+                        .join(&format!("my/ships/{}/extract/survey", ship_symbol.0))?,
+                )
+                .json(&survey),
+        )
+        .await
+    }
+
+    async fn extract_resources(&self, ship_symbol: ShipSymbol) -> Result<ExtractResourcesResponse> {
+        Self::make_api_call(
+            self.client.post(
+                self.base_url
+                    .join(&format!("my/ships/{}/extract", ship_symbol.0))?,
+            ),
+        )
+        .await
+    }
+
+    async fn survey(&self, ship_symbol: ShipSymbol) -> Result<CreateSurveyResponse> {
+        todo!()
+    }
+
     async fn purchase_ship(&self, ship_type: ShipType, waypoint_symbol: WaypointSymbol) -> Result<PurchaseShipResponse> {
         Self::make_api_call(
             self.client
@@ -425,6 +452,12 @@ pub trait StClientTrait: Send + Sync + Debug {
         trade_good: TradeGoodSymbol,
         waypoint_symbol: WaypointSymbol,
     ) -> Result<SupplyConstructionSiteResponse>;
+
+    async fn extract_resources_with_survey(&self, ship_symbol: ShipSymbol, survey: Survey) -> Result<ExtractResourcesResponse>;
+
+    async fn extract_resources(&self, ship_symbol: ShipSymbol) -> Result<ExtractResourcesResponse>;
+
+    async fn survey(&self, ship_symbol: ShipSymbol) -> Result<CreateSurveyResponse>;
 
     async fn purchase_ship(&self, ship_type: ShipType, symbol: WaypointSymbol) -> Result<PurchaseShipResponse>;
 
