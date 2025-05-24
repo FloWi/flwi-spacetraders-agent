@@ -8,20 +8,20 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
-enum TransferError {
+pub enum TransferError {
     ApiError(String),
     InsufficientCapacity,
     ShipNotFound,
     Cancelled,
 }
 
-struct CargoTransferManager {
+pub struct TransferCargoManager {
     // Haulers waiting at each location
     waiting_haulers: Arc<Mutex<HashMap<WaypointSymbol, HashMap<ShipSymbol, Cargo>>>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct CargoTransferRequest {
+pub struct InternalTransferCargoRequest {
     sending_ship: ShipSymbol,
     receiving_ship: ShipSymbol,
     trade_good_symbol: TradeGoodSymbol,
@@ -29,7 +29,7 @@ struct CargoTransferRequest {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct CargoTransferResponse {
+pub struct InternalTransferCargoResponse {
     receiving_ship: ShipSymbol,
     trade_good_symbol: TradeGoodSymbol,
     units: u32,
@@ -38,14 +38,23 @@ struct CargoTransferResponse {
 }
 
 #[derive(Debug)]
-enum CargoTransferError {
+pub enum TransferCargoError {
     SendingShipDoesntExist,
     ReceiveShipDoesntExist,
     NotEnoughItemsInSendingShipCargo,
     NotEnoughSpaceInReceivingShip,
 }
 
-impl CargoTransferManager {
+#[derive(PartialEq, Debug)]
+pub enum InternalTransferCargoResult {
+    NoMatchingShipFound,
+    Success {
+        updated_miner_cargo: Cargo,
+        transfer_tasks: Vec<InternalTransferCargoRequest>,
+    },
+}
+
+impl TransferCargoManager {
     fn new() -> Self {
         Self {
             waiting_haulers: Arc::new(Mutex::new(HashMap::new())),
@@ -95,10 +104,10 @@ impl CargoTransferManager {
         waypoint_symbol: WaypointSymbol,
         miner_cargo: Cargo,
         execute_cargo_transfer_fn: F,
-    ) -> Result<TransferCargoResult, CargoTransferError>
+    ) -> Result<InternalTransferCargoResult, TransferCargoError>
     where
-        F: Fn(CargoTransferRequest) -> Fut,
-        Fut: Future<Output = Result<CargoTransferResponse, CargoTransferError>>,
+        F: Fn(InternalTransferCargoRequest) -> Fut,
+        Fut: Future<Output = Result<InternalTransferCargoResponse, TransferCargoError>>,
     {
         {
             let mut guard = self.waiting_haulers.lock().await;
@@ -115,9 +124,9 @@ impl CargoTransferManager {
                 successful_tasks.push(transfer_task);
             }
             if successful_tasks.is_empty() {
-                Ok(TransferCargoResult::NoMatchingShipFound)
+                Ok(InternalTransferCargoResult::NoMatchingShipFound)
             } else {
-                Ok(TransferCargoResult::Success {
+                Ok(InternalTransferCargoResult::Success {
                     updated_miner_cargo,
                     transfer_tasks: successful_tasks,
                 })
@@ -126,20 +135,12 @@ impl CargoTransferManager {
     }
 }
 
-#[derive(PartialEq, Debug)]
-enum TransferCargoResult {
-    NoMatchingShipFound,
-    Success {
-        updated_miner_cargo: Cargo,
-        transfer_tasks: Vec<CargoTransferRequest>,
-    },
-}
 
 fn find_transfer_task(
     sending_ship: ShipSymbol,
     cargo_item_to_transfer: Inventory,
     waiting_haulers: &HashMap<ShipSymbol, Cargo>,
-) -> Option<CargoTransferRequest> {
+) -> Option<InternalTransferCargoRequest> {
     let scored_haulers = waiting_haulers
         .iter()
         .map(|(ss, hauler_cargo)| {
@@ -167,7 +168,7 @@ fn find_transfer_task(
         .max_by_key(|(_, _, _, total_score)| total_score)
         .cloned();
 
-    maybe_best_hauler.map(|(ss, cargo, _, _)| CargoTransferRequest {
+    maybe_best_hauler.map(|(ss, cargo, _, _)| InternalTransferCargoRequest {
         sending_ship,
         receiving_ship: ss.clone(),
         trade_good_symbol: cargo_item_to_transfer.symbol.clone(),
@@ -175,7 +176,7 @@ fn find_transfer_task(
     })
 }
 
-fn find_transfer_tasks(miner_ship_symbol: ShipSymbol, miner_cargo: Cargo, waiting_haulers: &HashMap<ShipSymbol, Cargo>) -> Vec<CargoTransferRequest> {
+fn find_transfer_tasks(miner_ship_symbol: ShipSymbol, miner_cargo: Cargo, waiting_haulers: &HashMap<ShipSymbol, Cargo>) -> Vec<InternalTransferCargoRequest> {
     let mut hauler_cargos = waiting_haulers.clone();
 
     let mut tasks = vec![];
@@ -198,7 +199,7 @@ fn find_transfer_tasks(miner_ship_symbol: ShipSymbol, miner_cargo: Cargo, waitin
 #[cfg(test)]
 mod tests {
     use crate::cargo_transfer_manager::{
-        find_transfer_tasks, CargoTransferError, CargoTransferManager, CargoTransferRequest, TestCargoTransferFoo, TransferCargoResult,
+        find_transfer_tasks, TransferCargoError, TransferCargoManager, InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoResult,
     };
     use itertools::Itertools;
     use st_domain::{Cargo, Inventory, ShipSymbol, TradeGoodSymbol, WaypointSymbol};
@@ -256,7 +257,7 @@ mod tests {
 
         assert_eq!(
             tasks,
-            vec![CargoTransferRequest {
+            vec![InternalTransferCargoRequest {
                 sending_ship: ShipSymbol("MINER".to_string()),
                 receiving_ship: ShipSymbol("HAULER_2_WITH_IRON_ORE".to_string()),
                 trade_good_symbol: TradeGoodSymbol::IRON_ORE,
@@ -266,7 +267,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transfer_cargo() -> Result<(), CargoTransferError> {
+    async fn test_transfer_cargo() -> Result<(), TransferCargoError> {
         let cargo_40_out_of_80_iron_ore = create_test_cargo(
             &vec![Inventory {
                 symbol: TradeGoodSymbol::IRON_ORE,
@@ -287,7 +288,7 @@ mod tests {
 
         let miner_cargo = create_test_cargo(&vec![iron_ore_entry_40_units.clone()], 40);
 
-        let transfer_manager = Arc::new(CargoTransferManager::new());
+        let transfer_manager = Arc::new(TransferCargoManager::new());
 
         let waypoint = WaypointSymbol("WP1".to_string());
 
@@ -327,10 +328,10 @@ mod tests {
                 .await
             {
                 Ok(result) => match result {
-                    TransferCargoResult::Success { .. } => {
+                    InternalTransferCargoResult::Success { .. } => {
                         break result;
                     }
-                    TransferCargoResult::NoMatchingShipFound => {
+                    InternalTransferCargoResult::NoMatchingShipFound => {
                         println!("NoMatchingShipFound yet - trying again in {sleep_duration:?}")
                     }
                 },
@@ -343,9 +344,9 @@ mod tests {
 
         assert_eq!(
             transfer_result,
-            TransferCargoResult::Success {
+            InternalTransferCargoResult::Success {
                 updated_miner_cargo: create_test_cargo(&vec![], 40),
-                transfer_tasks: vec![CargoTransferRequest {
+                transfer_tasks: vec![InternalTransferCargoRequest {
                     sending_ship: ShipSymbol("MINER".to_string()),
                     receiving_ship: ShipSymbol("HAULER_2_WITH_IRON_ORE".to_string()),
                     trade_good_symbol: TradeGoodSymbol::IRON_ORE,
@@ -365,7 +366,7 @@ mod tests {
     }
 
     async fn wait_until_cargo_is_full(
-        transfer_manager: Arc<CargoTransferManager>,
+        transfer_manager: Arc<TransferCargoManager>,
         waypoint_symbol: WaypointSymbol,
         ship_symbol: ShipSymbol,
         cargo: Cargo,
@@ -376,44 +377,44 @@ mod tests {
 
         Ok((ship_symbol.clone(), new_cargo))
     }
-}
 
-struct TestCargoTransferFoo {
-    cargo_entries: Arc<Mutex<HashMap<ShipSymbol, Cargo>>>,
-}
+    struct TestCargoTransferFoo {
+        cargo_entries: Arc<Mutex<HashMap<ShipSymbol, Cargo>>>,
+    }
 
-impl TestCargoTransferFoo {
-    async fn transfer(&self, request: CargoTransferRequest) -> Result<CargoTransferResponse, CargoTransferError> {
-        let mut guard = self.cargo_entries.lock().await;
+    impl TestCargoTransferFoo {
+        async fn transfer(&self, request: InternalTransferCargoRequest) -> anyhow::Result<InternalTransferCargoResponse, TransferCargoError> {
+            let mut guard = self.cargo_entries.lock().await;
 
-        let from_cargo = guard
-            .get(&request.sending_ship)
-            .ok_or(CargoTransferError::SendingShipDoesntExist)?;
+            let from_cargo = guard
+                .get(&request.sending_ship)
+                .ok_or(TransferCargoError::SendingShipDoesntExist)?;
 
-        let to_cargo = guard
-            .get(&request.receiving_ship)
-            .ok_or(CargoTransferError::ReceiveShipDoesntExist)?;
+            let to_cargo = guard
+                .get(&request.receiving_ship)
+                .ok_or(TransferCargoError::ReceiveShipDoesntExist)?;
 
-        let new_from = from_cargo
-            .clone()
-            .with_units_removed(request.trade_good_symbol.clone(), request.units)
-            .map_err(|_| CargoTransferError::NotEnoughItemsInSendingShipCargo)?;
+            let new_from = from_cargo
+                .clone()
+                .with_units_removed(request.trade_good_symbol.clone(), request.units)
+                .map_err(|_| TransferCargoError::NotEnoughItemsInSendingShipCargo)?;
 
-        let new_to = to_cargo
-            .clone()
-            .with_item_added(request.trade_good_symbol.clone(), request.units)
-            .map_err(|_| CargoTransferError::NotEnoughSpaceInReceivingShip)?;
+            let new_to = to_cargo
+                .clone()
+                .with_item_added(request.trade_good_symbol.clone(), request.units)
+                .map_err(|_| TransferCargoError::NotEnoughSpaceInReceivingShip)?;
 
-        guard.insert(request.sending_ship.clone(), new_from.clone());
-        guard.insert(request.receiving_ship.clone(), new_to.clone());
+            guard.insert(request.sending_ship.clone(), new_from.clone());
+            guard.insert(request.receiving_ship.clone(), new_to.clone());
 
-        let response = CargoTransferResponse {
-            receiving_ship: request.receiving_ship.clone(),
-            trade_good_symbol: request.trade_good_symbol.clone(),
-            units: request.units,
-            sending_ship_cargo: new_from,
-            receiving_ship_cargo: new_to,
-        };
-        Ok(response)
+            let response = InternalTransferCargoResponse {
+                receiving_ship: request.receiving_ship.clone(),
+                trade_good_symbol: request.trade_good_symbol.clone(),
+                units: request.units,
+                sending_ship_cargo: new_from,
+                receiving_ship_cargo: new_to,
+            };
+            Ok(response)
+        }
     }
 }
