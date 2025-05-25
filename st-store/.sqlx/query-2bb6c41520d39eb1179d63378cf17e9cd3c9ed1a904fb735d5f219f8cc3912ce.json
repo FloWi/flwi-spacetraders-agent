@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nselect waypoint_symbol\n     , signature\n     , entry as \"entry: Json<Survey>\"\n     , created_at\n     , expires_at\n     , is_discarded\nfrom surveys\nwhere waypoint_symbol = $1\n  and expires_at > $2\n  and is_discarded = false\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "waypoint_symbol",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "signature",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "entry: Json<Survey>",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "is_discarded",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2bb6c41520d39eb1179d63378cf17e9cd3c9ed1a904fb735d5f219f8cc3912ce"
+}

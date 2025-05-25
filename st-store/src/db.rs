@@ -13,7 +13,7 @@ use tracing::{event, Level};
 
 use st_domain::{
     distance_to, Construction, Data, JumpGate, MarketData, MarketEntry, RegistrationResponse, Ship, ShipTask, Shipyard, ShipyardData, StStatusResponse,
-    SupplyChain, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    SupplyChain, Survey, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
 #[derive(Clone)]
@@ -224,6 +224,16 @@ pub struct DbShipyardData {
     pub waypoint_symbol: String,
     pub entry: Json<Shipyard>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbSurveyEntry {
+    pub waypoint_symbol: String,
+    pub signature: String,
+    pub entry: Json<Survey>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub is_discarded: bool,
 }
 
 #[derive(Serialize, Clone, Debug, Deserialize)]
@@ -812,4 +822,67 @@ select entry as "entry: Json<SupplyChain>"
     .await?;
 
     Ok(maybe_supply_chain.map(|db_entry| db_entry.entry.0))
+}
+
+pub(crate) async fn upsert_surveys(pool: &Pool<Postgres>, surveys: Vec<Survey>, now: DateTime<Utc>) -> Result<()> {
+    let db_entries: Vec<DbSurveyEntry> = surveys
+        .iter()
+        .map(|s| DbSurveyEntry {
+            waypoint_symbol: s.waypoint_symbol.clone().0,
+            signature: s.signature.0.clone(),
+            entry: Json(s.clone()),
+            created_at: now,
+            expires_at: s.expiration.clone(),
+            is_discarded: false,
+        })
+        .collect();
+
+    for entry in db_entries {
+        sqlx::query!(
+            r#"
+insert into surveys (waypoint_symbol, signature, entry, created_at, expires_at, is_discarded)
+values ($1, $2, $3, $4, $5, $6)
+        "#,
+            entry.waypoint_symbol,
+            entry.signature,
+            entry.entry as _,
+            now,
+            entry.expires_at,
+            entry.is_discarded,
+        )
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn get_valid_surveys_for_waypoint(
+    pool: &Pool<Postgres>,
+    waypoint_symbol: WaypointSymbol,
+    now: DateTime<Utc>,
+) -> anyhow::Result<Vec<Survey>> {
+    let entries: Vec<DbSurveyEntry> = sqlx::query_as!(
+        DbSurveyEntry,
+        r#"
+select waypoint_symbol
+     , signature
+     , entry as "entry: Json<Survey>"
+     , created_at
+     , expires_at
+     , is_discarded
+from surveys
+where waypoint_symbol = $1
+  and expires_at > $2
+  and is_discarded = false
+    "#,
+        waypoint_symbol.0,
+        now
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(entries
+        .iter()
+        .map(|db_entry| db_entry.entry.0.clone())
+        .collect_vec())
 }

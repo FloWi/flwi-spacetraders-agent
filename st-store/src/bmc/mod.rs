@@ -1,6 +1,7 @@
 use crate::bmc::jump_gate_bmc::{DbJumpGateBmc, InMemoryJumpGateBmc, JumpGateBmcTrait};
 use crate::bmc::ship_bmc::{DbShipBmc, InMemoryShipsBmc, ShipBmcTrait};
 use crate::shipyard_bmc::{DbShipyardBmc, InMemoryShipyardBmc, ShipyardBmcTrait};
+use crate::survey_bmc::{DbSurveyBmc, InMemorySurveyBmc, SurveyBmcTrait};
 use crate::trade_bmc::{DbTradeBmc, InMemoryTradeBmc, TradeBmcTrait};
 use crate::{
     AgentBmcTrait, ConstructionBmcTrait, DbAgentBmc, DbConstructionBmc, DbFleetBmc, DbMarketBmc, DbModelManager, DbStatusBmc, DbSupplyChainBmc, DbSystemBmc,
@@ -22,6 +23,7 @@ pub trait Bmc: Send + Sync + Debug {
     fn system_bmc(&self) -> Arc<dyn SystemBmcTrait>;
     fn agent_bmc(&self) -> Arc<dyn AgentBmcTrait>;
     fn construction_bmc(&self) -> Arc<dyn ConstructionBmcTrait>;
+    fn survey_bmc(&self) -> Arc<dyn SurveyBmcTrait>;
     fn market_bmc(&self) -> Arc<dyn MarketBmcTrait>;
     fn jump_gate_bmc(&self) -> Arc<dyn JumpGateBmcTrait>;
     fn shipyard_bmc(&self) -> Arc<dyn ShipyardBmcTrait>;
@@ -38,6 +40,7 @@ pub struct DbBmc {
     system_bmc: Arc<DbSystemBmc>,
     agent_bmc: Arc<DbAgentBmc>,
     construction_bmc: Arc<DbConstructionBmc>,
+    survey_bmc: Arc<DbSurveyBmc>,
     market_bmc: Arc<DbMarketBmc>,
     jump_gate_bmc: Arc<DbJumpGateBmc>,
     shipyard_bmc: Arc<DbShipyardBmc>,
@@ -55,6 +58,7 @@ impl DbBmc {
             system_bmc: Arc::new(DbSystemBmc { mm: mm.clone() }),
             agent_bmc: Arc::new(DbAgentBmc { mm: mm.clone() }),
             construction_bmc: Arc::new(DbConstructionBmc { mm: mm.clone() }),
+            survey_bmc: Arc::new(DbSurveyBmc { mm: mm.clone() }),
             market_bmc: Arc::new(DbMarketBmc { mm: mm.clone() }),
             jump_gate_bmc: Arc::new(DbJumpGateBmc { mm: mm.clone() }),
             shipyard_bmc: Arc::new(DbShipyardBmc { mm: mm.clone() }),
@@ -89,6 +93,10 @@ impl Bmc for DbBmc {
         self.construction_bmc.clone() as Arc<dyn ConstructionBmcTrait>
     }
 
+    fn survey_bmc(&self) -> Arc<dyn SurveyBmcTrait> {
+        self.survey_bmc.clone() as Arc<dyn SurveyBmcTrait>
+    }
+
     fn market_bmc(&self) -> Arc<dyn MarketBmcTrait> {
         self.market_bmc.clone() as Arc<dyn MarketBmcTrait>
     }
@@ -118,6 +126,7 @@ pub struct InMemoryBmc {
     pub in_mem_system_bmc: Arc<InMemorySystemsBmc>,
     pub in_mem_agent_bmc: Arc<InMemoryAgentBmc>,
     pub in_mem_construction_bmc: Arc<InMemoryConstructionBmc>,
+    pub in_mem_survey_bmc: Arc<InMemorySurveyBmc>,
     pub in_mem_market_bmc: Arc<InMemoryMarketBmc>,
     pub in_mem_jump_gate_bmc: Arc<InMemoryJumpGateBmc>,
     pub in_mem_shipyard_bmc: Arc<InMemoryShipyardBmc>,
@@ -148,6 +157,10 @@ impl Bmc for InMemoryBmc {
 
     fn construction_bmc(&self) -> Arc<dyn ConstructionBmcTrait> {
         Arc::clone(&self.in_mem_construction_bmc) as Arc<dyn ConstructionBmcTrait>
+    }
+
+    fn survey_bmc(&self) -> Arc<dyn SurveyBmcTrait> {
+        Arc::clone(&self.in_mem_survey_bmc) as Arc<dyn SurveyBmcTrait>
     }
 
     fn market_bmc(&self) -> Arc<dyn MarketBmcTrait> {

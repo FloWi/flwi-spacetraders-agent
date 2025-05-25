@@ -9,6 +9,7 @@ pub mod market_bmc;
 pub mod shipyard_bmc;
 pub mod status_bmc;
 pub mod supply_chain_bmc;
+pub mod survey_bmc;
 pub mod system_bmc;
 pub mod trade_bmc;
 

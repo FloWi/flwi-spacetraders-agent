@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nSELECT waypoint_symbol\n     , entry as \"entry: Json<GetConstructionResponse>\"\n     , created_at\n     , updated_at\n  from construction_sites\n where waypoint_symbol like $1\n\n        ",
+  "query": "\nSELECT waypoint_symbol\n     , entry as \"entry: Json<Construction>\"\n     , created_at\n     , updated_at\n  from construction_sites\n where waypoint_symbol like $1\n\n        ",
   "describe": {
     "columns": [
       {
@@ -10,7 +10,7 @@
       },
       {
         "ordinal": 1,
-        "name": "entry: Json<GetConstructionResponse>",
+        "name": "entry: Json<Construction>",
         "type_info": "Jsonb"
       },
       {
@@ -36,5 +36,5 @@
       false
     ]
   },
-  "hash": "15a704faccd09f6dc4ec08b147a6a71c2a697e6824267d1ea1b6b209d5a78dea"
+  "hash": "3867cd1619c476d7bef14e23ae47e074d69b5516a78bf7b98afe2acb3bf00f02"
 }
