@@ -410,10 +410,6 @@ impl FleetRunner {
                 ship.set_mining_config(mining_waypoint, Some(demanded_goods.clone()), None);
                 Some((behaviors.miner_behavior, "miner_behavior"))
             }
-            ShipTask::SurveyAsteroid { mining_waypoint } => {
-                ship.set_mining_config(mining_waypoint, None, None);
-                Some((behaviors.surveyor_behavior, "surveyor_behavior"))
-            }
         };
 
         event!(

@@ -1439,12 +1439,6 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
     bmc: Arc<dyn Bmc>,
 ) -> Result<NewTaskResult> {
     match finished_task {
-        ShipTask::MineMaterialsAtWaypoint { .. } => {
-            unreachable!("this behavior should run forever")
-        }
-        ShipTask::SurveyAsteroid { .. } => {
-            unreachable!("this behavior should run forever")
-        }
         ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
             let waypoints = bmc
                 .system_bmc()
@@ -1528,6 +1522,11 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
                 task: finished_task.clone(),
             })
         }
+        ShipTask::MineMaterialsAtWaypoint { .. } => Ok(NewTaskResult::AssignNewTaskToShip {
+            ship_symbol: ship.symbol.clone(),
+            task: finished_task.clone(),
+        }),
+
         ShipTask::HaulMiningGoods { .. } => Ok(NewTaskResult::AssignNewTaskToShip {
             ship_symbol: ship.symbol.clone(),
             task: finished_task.clone(),

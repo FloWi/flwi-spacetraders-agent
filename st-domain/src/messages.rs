@@ -132,10 +132,6 @@ pub enum ShipTask {
         demanded_goods: HashSet<TradeGoodSymbol>,
     },
 
-    SurveyAsteroid {
-        mining_waypoint: WaypointSymbol,
-    },
-
     Trade {
         tickets: Vec<FinanceTicket>,
     },

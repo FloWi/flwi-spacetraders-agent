@@ -74,11 +74,15 @@ impl InMemorySurveyBmc {
 impl SurveyBmcTrait for InMemorySurveyBmc {
     async fn save_surveys(&self, ctx: &Ctx, surveys: Vec<Survey>) -> Result<()> {
         let mut in_memory_surveys = self.in_memory_surveys.write().await;
+        let now = Utc::now();
+
         for survey in surveys {
             let mut surveys_at_wp = in_memory_surveys
                 .surveys
                 .entry(survey.waypoint_symbol.clone())
                 .or_default();
+
+            surveys_at_wp.retain(|_signature, survey| survey.expiration > now);
 
             surveys_at_wp
                 .entry(survey.signature.clone())
@@ -88,17 +92,18 @@ impl SurveyBmcTrait for InMemorySurveyBmc {
         Ok(())
     }
 
-    async fn get_all_valid_surveys_for_waypoint(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Vec<Survey>> {
+    async fn get_all_valid_surveys_for_waypoint(&self, _ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Vec<Survey>> {
         let mut in_memory_surveys = self.in_memory_surveys.write().await;
 
         let now = Utc::now();
 
-        if let Some(surveys_at_wp) = in_memory_surveys.surveys.get_mut(waypoint_symbol) {
+        let result = if let Some(surveys_at_wp) = in_memory_surveys.surveys.get_mut(waypoint_symbol) {
             // clean up expired ones
             surveys_at_wp.retain(|_signature, survey| survey.expiration > now);
             Ok(surveys_at_wp.values().cloned().collect_vec())
         } else {
-            anyhow::bail!("Surveys have been saved already");
-        }
+            Ok(Vec::new())
+        };
+        result
     }
 }
