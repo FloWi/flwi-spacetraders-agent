@@ -467,7 +467,7 @@ impl InMemoryUniverse {
             CheckCondition::ShipIsInOrbit(ship_symbol.clone()),
             CheckCondition::ShipIsCooledDown(ship_symbol.clone()),
             CheckCondition::ShipIsAtAsteroid(ship_symbol.clone()),
-            CheckCondition::ShipIsAtWaypoint(ship_symbol.clone(), survey.symbol.clone()),
+            CheckCondition::ShipIsAtWaypoint(ship_symbol.clone(), survey.waypoint_symbol.clone()),
         ])?;
 
         let ship = self.ships.get(&ship_symbol).unwrap();
@@ -513,7 +513,7 @@ impl InMemoryUniverse {
                 ship_symbol: ship_symbol.clone(),
                 total_seconds: 1,
                 remaining_seconds: 1,
-                expiration: Some(Utc::now().add(TimeDelta::milliseconds(1))),
+                expiration: Some(Utc::now().add(TimeDelta::seconds(1))),
             };
 
             Ok(Self::create_extract_resource_response(
@@ -577,7 +577,7 @@ impl InMemoryUniverse {
             ship_symbol: ship_symbol.clone(),
             total_seconds: 1,
             remaining_seconds: 1,
-            expiration: Some(Utc::now().add(TimeDelta::milliseconds(1))),
+            expiration: Some(Utc::now().add(TimeDelta::seconds(1))),
         };
 
         Ok(Self::create_extract_resource_response(
@@ -1108,21 +1108,23 @@ impl StClientTrait for InMemoryUniverseClient {
     }
 
     async fn survey(&self, ship_symbol: ShipSymbol) -> Result<CreateSurveyResponse> {
-        let read_guard = self.universe.read().await;
-        read_guard.ensure(vec![
-            CheckCondition::ShipIsInOrbit(ship_symbol.clone()),
-            CheckCondition::ShipIsAtAsteroid(ship_symbol.clone()),
-            CheckCondition::ShipHasSurveyorModule(ship_symbol.clone()),
-        ])?;
+        let random_surveys = {
+            let read_guard = self.universe.read().await;
+            read_guard.ensure(vec![
+                CheckCondition::ShipIsInOrbit(ship_symbol.clone()),
+                CheckCondition::ShipIsAtAsteroid(ship_symbol.clone()),
+                CheckCondition::ShipHasSurveyorModule(ship_symbol.clone()),
+            ])?;
 
-        let ship = read_guard.ships.get(&ship_symbol).cloned().unwrap();
-        let waypoint = read_guard
-            .waypoints
-            .get(&ship.nav.waypoint_symbol)
-            .cloned()
-            .unwrap();
+            let ship = read_guard.ships.get(&ship_symbol).cloned().unwrap();
+            let waypoint = read_guard
+                .waypoints
+                .get(&ship.nav.waypoint_symbol)
+                .cloned()
+                .unwrap();
 
-        let random_surveys = generate_random_surveys(&waypoint, &ship.mounts);
+            generate_random_surveys(&waypoint, &ship.mounts)
+        };
 
         {
             let mut guard = self.universe.write().await;
@@ -1149,7 +1151,7 @@ impl StClientTrait for InMemoryUniverseClient {
                     ship_symbol: ship_symbol.clone(),
                     total_seconds: 1,
                     remaining_seconds: 1,
-                    expiration: Some(Utc::now().add(TimeDelta::milliseconds(1))),
+                    expiration: Some(Utc::now().add(TimeDelta::seconds(1))),
                 },
                 surveys: random_surveys,
             },
@@ -1555,7 +1557,7 @@ fn generate_random_surveys_internal(
 
                 surveys.push(Survey {
                     signature: SurveySignature(format!("{}-{}", waypoint_symbol.clone(), Uuid::new_v4().to_string())),
-                    symbol: waypoint_symbol.clone(),
+                    waypoint_symbol: waypoint_symbol.clone(),
                     deposits: random_elements
                         .into_iter()
                         .map(|tg| SurveyDeposit { symbol: tg.clone().clone() })

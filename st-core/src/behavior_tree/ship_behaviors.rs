@@ -77,6 +77,7 @@ pub struct Behaviors {
     pub siphoning_behavior: Behavior<ShipAction>,
     pub mining_hauler_behavior: Behavior<ShipAction>,
     pub miner_behavior: Behavior<ShipAction>,
+    pub surveyor_behavior: Behavior<ShipAction>,
 }
 
 impl Behaviors {
@@ -351,6 +352,16 @@ pub fn ship_behaviors() -> Behaviors {
         mine_if_necessary.clone(),
     ]);
 
+    let mut surveyor_behavior = Behavior::new_sequence(vec![
+        go_to_mining_site_if_necessary.clone(),
+        wait_for_arrival_bt.clone(),
+        orbit_if_necessary.clone(),
+        Behavior::new_while(
+            Behavior::new_action(ShipAction::IsAtMiningSite), // intentional endless loop
+            Behavior::new_sequence(vec![wait_for_cooldown_bt, Behavior::new_action(ShipAction::Survey)]),
+        ),
+    ]);
+
     Behaviors {
         wait_for_arrival_bt: wait_for_arrival_bt.update_indices().clone(),
         orbit_if_necessary: orbit_if_necessary.update_indices().clone(),
@@ -364,6 +375,7 @@ pub fn ship_behaviors() -> Behaviors {
         siphoning_behavior: siphoning_behavior.update_indices().clone(),
         mining_hauler_behavior: mining_hauler_behavior.update_indices().clone(),
         miner_behavior: miner_behavior.update_indices().clone(),
+        surveyor_behavior: surveyor_behavior.update_indices().clone(),
     }
 }
 

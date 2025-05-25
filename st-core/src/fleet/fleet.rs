@@ -2,6 +2,7 @@ use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::fleet::construction_fleet::ConstructJumpGateFleet;
 use crate::fleet::fleet_runner::FleetRunner;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
+use crate::fleet::mining_fleet::MiningFleet;
 use crate::fleet::siphoning_fleet::SiphoningFleet;
 use crate::fleet::supply_chain_test::format_number;
 use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
@@ -795,17 +796,6 @@ Fleet Budgets after rebalancing
             })
             .collect();
 
-        fn get_allowed_ship_types_per_fleet_type(fc: &FleetConfig) -> HashSet<ShipFrameSymbol> {
-            match fc {
-                SystemSpawningCfg(_) => HashSet::from([ShipFrameSymbol::FRAME_FRIGATE]),
-                MarketObservationCfg(_) => HashSet::from([ShipFrameSymbol::FRAME_PROBE]),
-                TradingCfg(_) => HashSet::from([ShipFrameSymbol::FRAME_FRIGATE, ShipFrameSymbol::FRAME_LIGHT_FREIGHTER]),
-                ConstructJumpGateCfg(_) => HashSet::from([ShipFrameSymbol::FRAME_FRIGATE, ShipFrameSymbol::FRAME_LIGHT_FREIGHTER]),
-                MiningCfg(_) => HashSet::from([ShipFrameSymbol::FRAME_LIGHT_FREIGHTER, ShipFrameSymbol::FRAME_MINER]),
-                SiphoningCfg(_) => HashSet::from([ShipFrameSymbol::FRAME_LIGHT_FREIGHTER, ShipFrameSymbol::FRAME_MINER]),
-            }
-        }
-
         for (fleet_id, fleet) in admiral.fleets.clone().iter() {
             let ships_of_fleet: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
 
@@ -844,8 +834,6 @@ Fleet Budgets after rebalancing
                 })
                 .cloned()
                 .collect_vec();
-
-            let allowed_ship_types = get_allowed_ship_types_per_fleet_type(&fleet.cfg);
 
             let computed_new_tasks = match &fleet.cfg {
                 SystemSpawningCfg(cfg) => SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet)?,
@@ -936,26 +924,11 @@ Fleet Budgets after rebalancing
                         .collect::<HashMap<_, _>>()
                 }
                 TradingCfg(cfg) => Default::default(),
-                MiningCfg(cfg) => Default::default(),
+                MiningCfg(cfg) => MiningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet)?,
                 SiphoningCfg(cfg) => SiphoningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet)?,
             };
 
             for (ss, task) in computed_new_tasks {
-                ships_of_fleet
-                    .iter()
-                    .filter(|s| !allowed_ship_types.contains(&s.frame.symbol))
-                    .for_each(|s| {
-                        event!(
-                            Level::ERROR,
-                            message = "Ship should not be assigned to fleet",
-                            ship_symbol = s.symbol.to_string(),
-                            ship_frame = s.frame.symbol.to_string(),
-                            fleet = fleet.cfg.to_string(),
-                            assigned_task = task.to_string(),
-                        );
-                        eprintln!("Hello, breakpoint!");
-                    });
-
                 new_ship_tasks.insert(ss, task);
             }
         }
@@ -1530,7 +1503,7 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
                 ))
             }
         }
-        ShipTask::SiphonCarboHydradesAtWaypoint {
+        ShipTask::SiphonCarboHydratesAtWaypoint {
             siphoning_waypoint,
             delivery_locations,
             demanded_goods,
@@ -1538,13 +1511,27 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
             // Keep doing, what you're doing
             Ok(NewTaskResult::AssignNewTaskToShip {
                 ship_symbol: ship.symbol.clone(),
-                task: ShipTask::SiphonCarboHydradesAtWaypoint {
+                task: ShipTask::SiphonCarboHydratesAtWaypoint {
                     siphoning_waypoint: siphoning_waypoint.clone(),
                     delivery_locations: delivery_locations.clone(),
                     demanded_goods: demanded_goods.clone(),
                 },
             })
         }
+        ShipTask::SurveyMiningSite { .. } => {
+            event!(
+                Level::WARN,
+                "The ShipTask::SurveyMiningSite task ended - this shouldn't happen, since it's an infinite task"
+            );
+            Ok(NewTaskResult::AssignNewTaskToShip {
+                ship_symbol: ship.symbol.clone(),
+                task: finished_task.clone(),
+            })
+        }
+        ShipTask::HaulMiningGoods { .. } => Ok(NewTaskResult::AssignNewTaskToShip {
+            ship_symbol: ship.symbol.clone(),
+            task: finished_task.clone(),
+        }),
     }
 }
 

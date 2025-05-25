@@ -6,10 +6,11 @@ use itertools::Itertools;
 use sqlx::{Pool, Postgres};
 use st_domain::blackboard_ops::BlackboardOps;
 
+use crate::survey_manager;
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, ThreadSafeTreasurer};
 use st_domain::{
-    Construction, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, Shipyard,
-    SupplyConstructionSiteResponse, Survey, TravelAction, Waypoint, WaypointSymbol,
+    Construction, CreateSurveyResponse, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, PurchaseShipResponse, PurchaseTradeGoodResponse,
+    SellTradeGoodResponse, Shipyard, SupplyConstructionSiteResponse, Survey, TravelAction, Waypoint, WaypointSymbol,
 };
 use st_store::bmc::{Bmc, DbBmc};
 use st_store::{
@@ -180,6 +181,33 @@ impl BlackboardOps for DbBlackboard {
     }
 
     async fn get_best_survey_for_current_demand(&self, mining_config: &MiningOpsConfig) -> Result<Option<Survey>> {
-        todo!()
+        let surveys = self
+            .bmc
+            .survey_bmc()
+            .get_all_valid_surveys_for_waypoint(&Ctx::Anonymous, &mining_config.mining_waypoint)
+            .await?;
+
+        Ok(survey_manager::pick_best_survey(surveys, mining_config))
+    }
+
+    async fn save_survey_response(&self, create_survey_response: CreateSurveyResponse) -> Result<()> {
+        self.bmc
+            .survey_bmc()
+            .save_surveys(&Ctx::Anonymous, create_survey_response.data.surveys)
+            .await
+    }
+
+    async fn is_survey_necessary(&self, maybe_mining_waypoint: Option<WaypointSymbol>) -> anyhow::Result<bool> {
+        // FIXME: remove duplicated code
+        if let Some(mining_waypoint) = maybe_mining_waypoint {
+            let available_surveys = self
+                .bmc
+                .survey_bmc()
+                .get_all_valid_surveys_for_waypoint(&Ctx::Anonymous, &mining_waypoint)
+                .await?;
+            Ok(available_surveys.len() > 4)
+        } else {
+            Ok(false)
+        }
     }
 }

@@ -50,7 +50,7 @@ impl SiphoningFleet {
                 .map(|s| {
                     (
                         s.symbol.clone(),
-                        ShipTask::SiphonCarboHydradesAtWaypoint {
+                        ShipTask::SiphonCarboHydratesAtWaypoint {
                             siphoning_waypoint: cfg.siphoning_waypoint.clone(),
                             delivery_locations: delivery_locations.clone(),
                             demanded_goods: demanded_goods.clone(),

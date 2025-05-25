@@ -119,10 +119,21 @@ pub enum ShipTask {
 
     MineMaterialsAtWaypoint {
         mining_waypoint: WaypointSymbol,
+        demanded_goods: HashSet<TradeGoodSymbol>,
+    },
+
+    SurveyMiningSite {
+        mining_waypoint: WaypointSymbol,
+    },
+
+    HaulMiningGoods {
+        mining_waypoint: WaypointSymbol,
+        delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+        demanded_goods: HashSet<TradeGoodSymbol>,
     },
 
     SurveyAsteroid {
-        waypoint_symbol: WaypointSymbol,
+        mining_waypoint: WaypointSymbol,
     },
 
     Trade {
@@ -132,7 +143,7 @@ pub enum ShipTask {
     PrepositionShipForTrade {
         first_purchase_location: WaypointSymbol,
     },
-    SiphonCarboHydradesAtWaypoint {
+    SiphonCarboHydratesAtWaypoint {
         siphoning_waypoint: WaypointSymbol,
         delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
         demanded_goods: HashSet<TradeGoodSymbol>,

@@ -797,7 +797,7 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::JettisonInvaluableMinerals => {
-                if let Some(cfg) = state.maybe_mining_config.clone() {
+                if let Some(cfg) = state.maybe_mining_ops_config.clone() {
                     let _responses = state
                         .jettison_everything_not_on_list(cfg.demanded_goods)
                         .await?;
@@ -806,29 +806,66 @@ impl Actionable for ShipAction {
                 Ok(Success)
             }
             ShipAction::ExtractResources => {
-                if let Some(cfg) = state.maybe_mining_config.clone() {
+                if let Some(cfg) = state.maybe_mining_ops_config.clone() {
                     let maybe_survey: Option<Survey> = args
                         .blackboard
                         .get_best_survey_for_current_demand(&cfg)
                         .await?;
-                }
 
-                todo!()
+                    let result = state.extract_resources(maybe_survey).await?;
+                    state.cargo = result.data.cargo.clone();
+                    state.cooldown = result.data.cooldown.clone();
+                    Ok(Success)
+                } else {
+                    Err(anyhow!("No mining config found"))
+                }
             }
             ShipAction::Survey => {
-                todo!()
+                let survey_response = state.perform_survey().await;
+                match survey_response {
+                    Ok(survey_response) => {
+                        args.blackboard
+                            .save_survey_response(survey_response)
+                            .await?;
+
+                        Ok(Success)
+                    }
+
+                    Err(e) => Err(anyhow!(e)),
+                }
             }
             ShipAction::IsSurveyCapable => {
-                todo!()
+                if state.is_surveyor() {
+                    Ok(Success)
+                } else {
+                    Err(anyhow!("Ship is not a surveyor"))
+                }
             }
             ShipAction::IsSurveyNecessary => {
-                todo!()
+                if args
+                    .blackboard
+                    .is_survey_necessary(state.get_mining_site())
+                    .await?
+                {
+                    Ok(Success)
+                } else {
+                    Err(anyhow!("No survey needed"))
+                }
             }
             ShipAction::SetMiningSiteAsDestination => {
-                todo!()
+                if let Some(mining_site_wps) = state.get_mining_site() {
+                    state.set_destination(mining_site_wps);
+                    Ok(Success)
+                } else {
+                    Err(anyhow!("Mining site not found"))
+                }
             }
             ShipAction::IsAtMiningSite => {
-                todo!()
+                if state.is_at_mining_waypoint() {
+                    Ok(Success)
+                } else {
+                    Err(anyhow!("Not at mining site yet"))
+                }
             }
             ShipAction::AttemptCargoTransfer => {
                 todo!()

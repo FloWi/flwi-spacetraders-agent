@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use st_domain::budgeting::treasury_redesign::FinanceTicket;
 use st_domain::{
-    CreateChartBody, ExtractResourcesResponse, FleetId, FlightMode, Fuel, JettisonCargoResponse, JumpGate, MarketData, MiningOpsConfig, Nav,
-    NavAndFuelResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard,
+    CreateChartBody, CreateSurveyResponse, ExtractResourcesResponse, FleetId, FlightMode, Fuel, JettisonCargoResponse, JumpGate, MarketData, MiningOpsConfig,
+    Nav, NavAndFuelResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard,
     SiphonResourcesResponse, SiphoningOpsConfig, SupplyConstructionSiteResponse, Survey, TradeGoodSymbol, TransferCargoResponse, TravelAction, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -24,7 +24,7 @@ pub struct ShipOperations {
     pub maybe_trades: Option<Vec<FinanceTicket>>,
     pub my_fleet: FleetId,
     pub maybe_siphoning_config: Option<SiphoningOpsConfig>,
-    pub maybe_mining_config: Option<MiningOpsConfig>,
+    pub maybe_mining_ops_config: Option<MiningOpsConfig>,
 }
 
 impl PartialEq for ShipOperations {
@@ -101,7 +101,7 @@ maybe_trade: {:?},
             maybe_trades: None,
             my_fleet,
             maybe_siphoning_config: None,
-            maybe_mining_config: None,
+            maybe_mining_ops_config: None,
         }
     }
 
@@ -124,6 +124,33 @@ maybe_trade: {:?},
             demanded_goods,
             delivery_locations,
         });
+    }
+
+    pub fn set_mining_config(
+        &mut self,
+        mining_waypoint: WaypointSymbol,
+        demanded_goods: Option<HashSet<TradeGoodSymbol>>,
+        delivery_locations: Option<HashMap<TradeGoodSymbol, WaypointSymbol>>,
+    ) {
+        self.maybe_mining_ops_config = Some(MiningOpsConfig {
+            mining_waypoint,
+            demanded_goods: demanded_goods.unwrap_or_default(),
+            delivery_locations: delivery_locations.unwrap_or_default(),
+        });
+    }
+
+    pub fn is_at_mining_waypoint(&self) -> bool {
+        self.has_arrived()
+            && self
+                .get_mining_site()
+                .map(|wps| wps == self.nav.waypoint_symbol)
+                .unwrap_or(false)
+    }
+
+    pub fn get_mining_site(&self) -> Option<WaypointSymbol> {
+        self.maybe_mining_ops_config
+            .clone()
+            .map(|cfg| cfg.mining_waypoint.clone())
     }
 
     pub fn set_next_observation_time(&mut self, next_time: DateTime<Utc>) {
@@ -154,6 +181,12 @@ maybe_trade: {:?},
     pub async fn dock(&mut self) -> Result<Nav> {
         let response = self.client.dock_ship(self.ship.symbol.clone()).await?;
         Ok(response.data.nav)
+    }
+
+    pub async fn perform_survey(&mut self) -> Result<CreateSurveyResponse> {
+        let response = self.client.survey(self.ship.symbol.clone()).await?;
+        self.cooldown = response.data.cooldown.clone();
+        Ok(response)
     }
 
     pub async fn siphon_resources(&mut self) -> Result<SiphonResourcesResponse> {

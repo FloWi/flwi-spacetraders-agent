@@ -781,6 +781,14 @@ pub struct Ship {
 }
 
 impl Ship {
+    pub fn is_in_orbit(&self) -> bool {
+        self.nav.status == NavStatus::InOrbit
+    }
+
+    pub fn has_arrived(&self) -> bool {
+        self.is_in_orbit() || self.nav.route.arrival > Utc::now()
+    }
+
     pub fn get_yield_size_for_siphoning(&self) -> u32 {
         self.mounts
             .iter()
@@ -790,6 +798,37 @@ impl Ship {
                     .then_some(m.strength.unwrap_or_default() as u32)
             })
             .sum::<u32>()
+    }
+
+    pub fn is_mining_drone(&self) -> bool {
+        match self.frame.symbol {
+            ShipFrameSymbol::FRAME_DRONE => self.get_yield_size_for_mining() > 0,
+            ShipFrameSymbol::FRAME_MINER => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_hauler(&self) -> bool {
+        match self.frame.symbol {
+            ShipFrameSymbol::FRAME_BULK_FREIGHTER => true,
+            ShipFrameSymbol::FRAME_LIGHT_FREIGHTER => true,
+            ShipFrameSymbol::FRAME_HEAVY_FREIGHTER => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_siphoner(&self) -> bool {
+        match self.frame.symbol {
+            ShipFrameSymbol::FRAME_DRONE => self.get_yield_size_for_siphoning() > 0,
+            _ => false,
+        }
+    }
+
+    pub fn is_surveyor(&self) -> bool {
+        match self.frame.symbol {
+            ShipFrameSymbol::FRAME_DRONE => self.get_yield_size_for_surveying() > 0,
+            _ => false,
+        }
     }
 
     pub fn get_yield_size_for_mining(&self) -> u32 {
@@ -1048,7 +1087,8 @@ pub enum SurveySize {
 #[serde(rename_all = "camelCase")]
 pub struct Survey {
     pub signature: SurveySignature,
-    pub symbol: WaypointSymbol,
+    #[serde(rename = "symbol")]
+    pub waypoint_symbol: WaypointSymbol,
     pub deposits: Vec<SurveyDeposit>,
     pub expiration: DateTime<Utc>,
     pub size: SurveySize,

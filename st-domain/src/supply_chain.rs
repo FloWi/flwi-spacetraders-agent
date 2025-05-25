@@ -1,4 +1,4 @@
-use crate::supply_chain::RawMaterialSourceType::{Extraction, Siphoning};
+use crate::supply_chain::RawMaterialSourceType::{Mining, Siphoning};
 use crate::{
     ActivityLevel, Construction, ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol,
     SupplyChainMap, SupplyLevel, SystemSymbol, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType, MAX_ACTIVITY_LEVEL_SCORE,
@@ -865,19 +865,19 @@ pub fn get_raw_material_source() -> HashMap<TradeGoodSymbol, RawMaterialSourceTy
     use TradeGoodSymbol::*;
 
     HashMap::from([
-        (AMMONIA_ICE, Extraction),
-        (DIAMONDS, Extraction),
-        (IRON_ORE, Extraction),
-        (COPPER_ORE, Extraction),
-        (SILICON_CRYSTALS, Extraction),
-        (QUARTZ_SAND, Extraction),
-        (ALUMINUM_ORE, Extraction),
-        (PRECIOUS_STONES, Extraction),
-        (ICE_WATER, Extraction),
-        (SILVER_ORE, Extraction),
-        (GOLD_ORE, Extraction),
-        (PLATINUM_ORE, Extraction),
-        (URANITE_ORE, Extraction),
+        (AMMONIA_ICE, Mining),
+        (DIAMONDS, Mining),
+        (IRON_ORE, Mining),
+        (COPPER_ORE, Mining),
+        (SILICON_CRYSTALS, Mining),
+        (QUARTZ_SAND, Mining),
+        (ALUMINUM_ORE, Mining),
+        (PRECIOUS_STONES, Mining),
+        (ICE_WATER, Mining),
+        (SILVER_ORE, Mining),
+        (GOLD_ORE, Mining),
+        (PLATINUM_ORE, Mining),
+        (URANITE_ORE, Mining),
         (LIQUID_NITROGEN, Siphoning),
         (LIQUID_HYDROGEN, Siphoning),
         (HYDROCARBON, Siphoning),
@@ -885,13 +885,13 @@ pub fn get_raw_material_source() -> HashMap<TradeGoodSymbol, RawMaterialSourceTy
 }
 
 pub fn get_sourcing_waypoints(waypoint_map: &HashMap<WaypointSymbol, &Waypoint>) -> HashMap<RawMaterialSourceType, Vec<Waypoint>> {
-    [Extraction, Siphoning]
+    [Mining, Siphoning]
         .into_iter()
         .map(|source| {
             let relevant_waypoints = waypoint_map
                 .values()
                 .filter(|wp| match source {
-                    Extraction => wp.r#type == WaypointType::ENGINEERED_ASTEROID,
+                    Mining => wp.r#type == WaypointType::ENGINEERED_ASTEROID,
                     Siphoning => wp.r#type == WaypointType::GAS_GIANT,
                 })
                 .cloned()
@@ -904,7 +904,7 @@ pub fn get_sourcing_waypoints(waypoint_map: &HashMap<WaypointSymbol, &Waypoint>)
 
 #[derive(Eq, Clone, PartialEq, Hash, Debug, Display, Serialize, Deserialize)]
 pub enum RawMaterialSourceType {
-    Extraction,
+    Mining,
     Siphoning,
 }
 
