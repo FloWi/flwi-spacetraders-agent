@@ -11,6 +11,7 @@ use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
+use std::cmp::min;
 
 use crate::bmc_blackboard::BmcBlackboard;
 use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
@@ -362,8 +363,6 @@ impl FleetRunner {
                 //println!("ship_loop: Ship {:?} is running explorer_behavior", ship.symbol);
                 Some((behaviors.explorer_behavior, "explorer_behavior"))
             }
-            ShipTask::MineMaterialsAtWaypoint { .. } => None,
-            ShipTask::SurveyAsteroid { .. } => None,
             ShipTask::Trade { tickets } => {
                 // println!("running trading behavior for ship, successfully started ticket execution");
                 ship.set_trade_tickets(tickets.clone());
@@ -384,13 +383,36 @@ impl FleetRunner {
                 ship.set_destination(first_purchase_location);
                 Some((behaviors.navigate_to_destination, "navigate_to_destination"))
             }
-            ShipTask::SiphonCarboHydradesAtWaypoint {
+            ShipTask::SiphonCarboHydratesAtWaypoint {
                 siphoning_waypoint,
                 delivery_locations,
                 demanded_goods,
             } => {
                 ship.set_siphoning_config(siphoning_waypoint, demanded_goods, delivery_locations);
                 Some((behaviors.siphoning_behavior, "siphoning_behavior"))
+            }
+            ShipTask::SurveyMiningSite { mining_waypoint } => {
+                ship.set_mining_config(mining_waypoint.clone(), None, None);
+                Some((behaviors.surveyor_behavior, "surveyor_behavior"))
+            }
+            ShipTask::HaulMiningGoods {
+                mining_waypoint,
+                delivery_locations,
+                demanded_goods,
+            } => {
+                ship.set_mining_config(mining_waypoint, Some(demanded_goods.clone()), Some(delivery_locations));
+                Some((behaviors.mining_hauler_behavior, "mining_hauler_behavior"))
+            }
+            ShipTask::MineMaterialsAtWaypoint {
+                mining_waypoint,
+                demanded_goods,
+            } => {
+                ship.set_mining_config(mining_waypoint, Some(demanded_goods.clone()), None);
+                Some((behaviors.miner_behavior, "miner_behavior"))
+            }
+            ShipTask::SurveyAsteroid { mining_waypoint } => {
+                ship.set_mining_config(mining_waypoint, None, None);
+                Some((behaviors.surveyor_behavior, "surveyor_behavior"))
             }
         };
 
@@ -1164,6 +1186,7 @@ mod tests {
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
     use st_store::bmc::{Bmc, InMemoryBmc};
     use st_store::shipyard_bmc::InMemoryShipyardBmc;
+    use st_store::survey_bmc::InMemorySurveyBmc;
     use st_store::trade_bmc::InMemoryTradeBmc;
     use st_store::{
         Ctx, FleetBmcTrait, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc,
@@ -1215,6 +1238,7 @@ mod tests {
         let fleet_bmc = InMemoryFleetBmc::new();
         let system_bmc = InMemorySystemsBmc::new();
         let construction_bmc = InMemoryConstructionBmc::new();
+        let survey_bmc = InMemorySurveyBmc::new();
 
         //insert some data
         //construction_bmc.save_construction_site(&Ctx::Anonymous, in_memory_client.get_construction_site().unwrap())
@@ -1234,6 +1258,7 @@ mod tests {
             in_mem_system_bmc: Arc::new(system_bmc),
             in_mem_agent_bmc: Arc::new(agent_bmc),
             in_mem_construction_bmc: Arc::new(construction_bmc),
+            in_mem_survey_bmc: Arc::new(survey_bmc),
             in_mem_market_bmc: Arc::clone(&market_bmc),
             in_mem_jump_gate_bmc: Arc::new(jump_gate_bmc),
             in_mem_shipyard_bmc: Arc::new(shipyard_bmc),

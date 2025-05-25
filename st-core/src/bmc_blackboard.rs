@@ -1,10 +1,13 @@
 use crate::pathfinder::pathfinder;
+use crate::survey_manager;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::Utc;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
-use st_domain::{Construction, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, Shipyard, Survey, TravelAction, Waypoint, WaypointSymbol};
+use st_domain::{
+    Construction, CreateSurveyResponse, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, Shipyard, Survey, TravelAction, Waypoint, WaypointSymbol,
+};
 use st_store::bmc::Bmc;
 use st_store::Ctx;
 use std::sync::Arc;
@@ -145,6 +148,35 @@ impl BlackboardOps for BmcBlackboard {
     }
 
     async fn get_best_survey_for_current_demand(&self, mining_config: &MiningOpsConfig) -> anyhow::Result<Option<Survey>> {
-        todo!()
+        let available_surveys = self
+            .bmc
+            .survey_bmc()
+            .get_all_valid_surveys_for_waypoint(&Ctx::Anonymous, &mining_config.mining_waypoint)
+            .await?;
+
+        Ok(survey_manager::pick_best_survey(available_surveys, mining_config))
+    }
+
+    async fn save_survey_response(&self, create_survey_response: CreateSurveyResponse) -> anyhow::Result<()> {
+        let surveys = create_survey_response.data.surveys;
+        Ok(self
+            .bmc
+            .survey_bmc()
+            .save_surveys(&Ctx::Anonymous, surveys)
+            .await?)
+    }
+
+    async fn is_survey_necessary(&self, maybe_mining_waypoint: Option<WaypointSymbol>) -> anyhow::Result<bool> {
+        // FIXME: remove duplicated code
+        if let Some(mining_waypoint) = maybe_mining_waypoint {
+            let available_surveys = self
+                .bmc
+                .survey_bmc()
+                .get_all_valid_surveys_for_waypoint(&Ctx::Anonymous, &mining_waypoint)
+                .await?;
+            Ok(available_surveys.len() > 4)
+        } else {
+            Ok(false)
+        }
     }
 }

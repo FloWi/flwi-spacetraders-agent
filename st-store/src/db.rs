@@ -856,11 +856,7 @@ values ($1, $2, $3, $4, $5, $6)
     Ok(())
 }
 
-pub(crate) async fn get_valid_surveys_for_waypoint(
-    pool: &Pool<Postgres>,
-    waypoint_symbol: WaypointSymbol,
-    now: DateTime<Utc>,
-) -> anyhow::Result<Vec<Survey>> {
+pub(crate) async fn get_valid_surveys_for_waypoint(pool: &Pool<Postgres>, waypoint_symbol: WaypointSymbol, now: DateTime<Utc>) -> anyhow::Result<Vec<Survey>> {
     let entries: Vec<DbSurveyEntry> = sqlx::query_as!(
         DbSurveyEntry,
         r#"

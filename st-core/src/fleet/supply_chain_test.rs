@@ -5,8 +5,8 @@ use comfy_table::{ContentArrangement, Table};
 use itertools::Itertools;
 use st_domain::trading::find_trading_opportunities_sorted_by_profit_per_distance_unit;
 use st_domain::{
-    ActivityLevel, DeliveryRoute, FleetDecisionFacts, FleetPhaseName, MarketTradeGood, MaterializedIndividualSupplyChain,
-    MaterializedSupplyChain, ShipSymbol, SupplyLevel, TradeGoodSymbol, Waypoint, WaypointSymbol,
+    ActivityLevel, DeliveryRoute, FleetDecisionFacts, FleetPhaseName, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, ShipSymbol,
+    SupplyLevel, TradeGoodSymbol, Waypoint, WaypointSymbol,
 };
 use std::collections::HashMap;
 use strum::IntoEnumIterator;
@@ -303,6 +303,7 @@ mod tests {
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
     use st_store::bmc::{Bmc, InMemoryBmc};
     use st_store::shipyard_bmc::InMemoryShipyardBmc;
+    use st_store::survey_bmc::InMemorySurveyBmc;
     use st_store::trade_bmc::InMemoryTradeBmc;
     use st_store::{
         Ctx, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc,
@@ -347,6 +348,7 @@ mod tests {
         let fleet_bmc = InMemoryFleetBmc::new();
         let system_bmc = InMemorySystemsBmc::new();
         let construction_bmc = InMemoryConstructionBmc::new();
+        let survey_bmc = InMemorySurveyBmc::new();
 
         //insert some data
         //construction_bmc.save_construction_site(&Ctx::Anonymous, in_memory_client.get_construction_site().unwrap())
@@ -366,6 +368,7 @@ mod tests {
             in_mem_system_bmc: Arc::new(system_bmc),
             in_mem_agent_bmc: Arc::new(agent_bmc),
             in_mem_construction_bmc: Arc::new(construction_bmc),
+            in_mem_survey_bmc: Arc::new(survey_bmc),
             in_mem_market_bmc: Arc::clone(&market_bmc),
             in_mem_jump_gate_bmc: Arc::new(jump_gate_bmc),
             in_mem_shipyard_bmc: Arc::new(shipyard_bmc),
@@ -434,6 +437,7 @@ mod tests {
         let fleet_bmc = InMemoryFleetBmc::new();
         let system_bmc = InMemorySystemsBmc::new();
         let construction_bmc = InMemoryConstructionBmc::new();
+        let survey_bmc = InMemorySurveyBmc::new();
 
         //insert some data
         //construction_bmc.save_construction_site(&Ctx::Anonymous, in_memory_client.get_construction_site().unwrap())
@@ -453,6 +457,7 @@ mod tests {
             in_mem_system_bmc: Arc::new(system_bmc),
             in_mem_agent_bmc: Arc::new(agent_bmc),
             in_mem_construction_bmc: Arc::new(construction_bmc),
+            in_mem_survey_bmc: Arc::new(survey_bmc),
             in_mem_market_bmc: Arc::clone(&market_bmc),
             in_mem_jump_gate_bmc: Arc::new(jump_gate_bmc),
             in_mem_shipyard_bmc: Arc::new(shipyard_bmc),

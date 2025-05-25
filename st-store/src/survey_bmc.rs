@@ -1,12 +1,11 @@
 use crate::ctx::Ctx;
-use crate::{db, DbConstructionSiteEntry, DbModelManager};
+use crate::{db, DbModelManager};
 use anyhow::*;
 use async_trait::async_trait;
 use chrono::Utc;
 use itertools::Itertools;
 use mockall::automock;
-use sqlx::types::Json;
-use st_domain::{Construction, Survey, SurveySignature, SystemSymbol, WaypointSymbol};
+use st_domain::{Survey, SurveySignature, WaypointSymbol};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -21,12 +20,17 @@ pub struct DbSurveyBmc {
 #[async_trait]
 pub trait SurveyBmcTrait: Send + Sync + Debug {
     async fn save_surveys(&self, ctx: &Ctx, surveys: Vec<Survey>) -> Result<()>;
+    async fn get_all_valid_surveys_for_waypoint(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Vec<Survey>>;
 }
 
 #[async_trait]
 impl SurveyBmcTrait for DbSurveyBmc {
     async fn save_surveys(&self, ctx: &Ctx, surveys: Vec<Survey>) -> Result<()> {
         db::upsert_surveys(self.mm.pool(), surveys, Utc::now()).await
+    }
+
+    async fn get_all_valid_surveys_for_waypoint(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Vec<Survey>> {
+        db::get_valid_surveys_for_waypoint(self.mm.pool(), waypoint_symbol.clone(), Utc::now()).await
     }
 }
 
@@ -82,5 +86,19 @@ impl SurveyBmcTrait for InMemorySurveyBmc {
         }
 
         Ok(())
+    }
+
+    async fn get_all_valid_surveys_for_waypoint(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Vec<Survey>> {
+        let mut in_memory_surveys = self.in_memory_surveys.write().await;
+
+        let now = Utc::now();
+
+        if let Some(surveys_at_wp) = in_memory_surveys.surveys.get_mut(waypoint_symbol) {
+            // clean up expired ones
+            surveys_at_wp.retain(|_signature, survey| survey.expiration > now);
+            Ok(surveys_at_wp.values().cloned().collect_vec())
+        } else {
+            anyhow::bail!("Surveys have been saved already");
+        }
     }
 }

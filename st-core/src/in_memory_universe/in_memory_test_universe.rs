@@ -4,6 +4,7 @@ use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
 use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
 use st_store::bmc::{Bmc, InMemoryBmc};
 use st_store::shipyard_bmc::InMemoryShipyardBmc;
+use st_store::survey_bmc::InMemorySurveyBmc;
 use st_store::trade_bmc::InMemoryTradeBmc;
 use st_store::{InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc};
 use std::collections::HashSet;
@@ -44,6 +45,7 @@ pub async fn get_test_universe() -> (Arc<dyn Bmc>, Arc<dyn StClientTrait>) {
     let fleet_bmc = InMemoryFleetBmc::new();
     let system_bmc = InMemorySystemsBmc::new();
     let construction_bmc = InMemoryConstructionBmc::new();
+    let survey_bmc = InMemorySurveyBmc::new();
 
     //insert some data
     //construction_bmc.save_construction_site(&Ctx::Anonymous, in_memory_client.get_construction_site().unwrap())
@@ -63,6 +65,7 @@ pub async fn get_test_universe() -> (Arc<dyn Bmc>, Arc<dyn StClientTrait>) {
         in_mem_system_bmc: Arc::new(system_bmc),
         in_mem_agent_bmc: Arc::new(agent_bmc),
         in_mem_construction_bmc: Arc::new(construction_bmc),
+        in_mem_survey_bmc: Arc::new(survey_bmc),
         in_mem_market_bmc: Arc::clone(&market_bmc),
         in_mem_jump_gate_bmc: Arc::new(jump_gate_bmc),
         in_mem_shipyard_bmc: Arc::new(shipyard_bmc),
