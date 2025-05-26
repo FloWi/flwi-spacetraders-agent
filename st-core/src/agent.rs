@@ -22,11 +22,12 @@ use crate::marketplaces::marketplaces::{find_marketplaces_to_collect_remotely, f
 use crate::pagination::{fetch_all_pages_into_queue, PaginationInput};
 use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
+use crate::transfer_cargo_manager::TransferCargoManager;
 use crate::universe_server::universe_server::InMemoryUniverseClient;
 use st_domain::{LabelledCoordinate, StStatusResponse, SupplyChain, SystemSymbol, WaypointSymbol, WaypointType};
 use st_store::bmc::{Bmc, DbBmc, InMemoryBmc};
 
-pub async fn run_agent(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> Result<()> {
+pub async fn run_agent(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>, transfer_cargo_manager: Arc<TransferCargoManager>) -> Result<()> {
     let headquarters_system_symbol = client.get_agent().await?.data.headquarters.system_symbol();
 
     // everything has to be cloned to give ownership to the spawned task
@@ -38,7 +39,14 @@ pub async fn run_agent(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> Res
         ));
 
         async move {
-            if let Err(e) = FleetAdmiral::run_fleets(Arc::clone(&admiral), Arc::clone(&client_clone), Arc::clone(&bmc)).await {
+            if let Err(e) = FleetAdmiral::run_fleets(
+                Arc::clone(&admiral),
+                Arc::clone(&client_clone),
+                Arc::clone(&bmc),
+                Arc::clone(&transfer_cargo_manager),
+            )
+            .await
+            {
                 eprintln!("Error on FleetAdmiral::start_fleets: {}", e);
             }
         }

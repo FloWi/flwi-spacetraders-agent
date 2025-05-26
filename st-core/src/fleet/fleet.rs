@@ -9,6 +9,7 @@ use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
 use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_shipyards_for_exploration};
 use crate::pagination::fetch_all_pages;
 use crate::st_client::StClientTrait;
+use crate::transfer_cargo_manager::TransferCargoManager;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use comfy_table::presets::UTF8_FULL;
@@ -473,10 +474,22 @@ Fleet Budgets after rebalancing
         tasks
     }
 
-    pub async fn run_fleets(fleet_admiral: Arc<Mutex<FleetAdmiral>>, client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> Result<()> {
+    pub async fn run_fleets(
+        fleet_admiral: Arc<Mutex<FleetAdmiral>>,
+        client: Arc<dyn StClientTrait>,
+        bmc: Arc<dyn Bmc>,
+        transfer_cargo_manager: Arc<TransferCargoManager>,
+    ) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
-        FleetRunner::run_fleets(Arc::clone(&fleet_admiral), Arc::clone(&client), bmc, Duration::from_secs(5)).await?;
+        FleetRunner::run_fleets(
+            Arc::clone(&fleet_admiral),
+            Arc::clone(&client),
+            bmc,
+            Arc::clone(&transfer_cargo_manager),
+            Duration::from_secs(5),
+        )
+        .await?;
 
         Ok(())
     }

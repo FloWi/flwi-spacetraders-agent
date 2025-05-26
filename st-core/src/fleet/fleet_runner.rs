@@ -15,6 +15,7 @@ use std::cmp::min;
 
 use crate::bmc_blackboard::BmcBlackboard;
 use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
+use crate::transfer_cargo_manager::TransferCargoManager;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
@@ -55,6 +56,7 @@ impl FleetRunner {
         fleet_admiral: Arc<Mutex<FleetAdmiral>>,
         client: Arc<dyn StClientTrait>,
         bmc: Arc<dyn Bmc>,
+        transfer_cargo_manager: Arc<TransferCargoManager>,
         sleep_duration: Duration,
     ) -> Result<()> {
         event!(Level::INFO, "Running fleets");
@@ -72,6 +74,7 @@ impl FleetRunner {
         let args: BehaviorArgs = BehaviorArgs {
             blackboard: Arc::clone(&blackboard),
             treasurer: thread_safe_treasurer.clone(),
+            transfer_cargo_manager: Arc::clone(&transfer_cargo_manager),
         };
 
         let ship_fibers: HashMap<ShipSymbol, JoinHandle<Result<()>>> = HashMap::new();
@@ -342,16 +345,12 @@ impl FleetRunner {
         use tracing::{span, Level};
         let behaviors = ship_behaviors();
 
-        event!(Level::INFO, message = "behavior_runner - trying to get lock on ship_op",);
-
         let mut ship = ship_op.lock().await;
 
-        event!(Level::INFO, message = "behavior_runner - successfully got lock on ship_op",);
         ship.my_fleet = fleet_id;
         let ship_updated_tx_clone = ship_updated_tx.clone();
         let ship_action_completed_tx_clone = ship_action_completed_tx.clone();
 
-        event!(Level::INFO, message = "behavior_runner - trying to get behavior for ship", ship = ship.symbol.0);
         let maybe_behavior = match ship_task.clone() {
             ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
                 ship.set_permanent_observation_location(waypoint_symbol);
@@ -1175,6 +1174,7 @@ mod tests {
     use crate::fleet::fleet_runner::FleetRunner;
     use crate::format_and_sort_collection;
     use crate::st_client::StClientTrait;
+    use crate::transfer_cargo_manager::TransferCargoManager;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
     use itertools::Itertools;
     use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipFrameSymbol, ShipRegistrationRole, TradeGoodSymbol, WaypointSymbol};
@@ -1265,6 +1265,7 @@ mod tests {
         let client = Arc::new(in_memory_client) as Arc<dyn StClientTrait>;
         let bmc = Arc::new(bmc) as Arc<dyn Bmc>;
         let blackboard = BmcBlackboard::new(Arc::clone(&bmc));
+        let transfer_cargo_manager = Arc::new(TransferCargoManager::new());
 
         FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
             .await
@@ -1304,9 +1305,15 @@ mod tests {
         // This task runs your fleets
         let fleet_future = async {
             println!("Running fleets");
-            FleetRunner::run_fleets(Arc::clone(&admiral_mutex), Arc::clone(&client), Arc::clone(&bmc), Duration::from_millis(1))
-                .await
-                .unwrap();
+            FleetRunner::run_fleets(
+                Arc::clone(&admiral_mutex),
+                Arc::clone(&client),
+                Arc::clone(&bmc),
+                Arc::clone(&transfer_cargo_manager),
+                Duration::from_millis(1),
+            )
+            .await
+            .unwrap();
         };
 
         // This task periodically checks if the condition is met

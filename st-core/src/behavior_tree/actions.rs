@@ -3,6 +3,7 @@ use crate::behavior_tree::behavior_tree::Response::Success;
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::ship::ShipOperations;
+use crate::st_client::StClientTrait;
 use anyhow::Result;
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
@@ -12,6 +13,7 @@ use itertools::Itertools;
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::{PurchaseTradeGoods, RefuelShip, SellTradeGoods};
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails};
+use st_domain::cargo_transfer::{InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoResult, TransferCargoError};
 use st_domain::TradeGoodSymbol::MOUNT_GAS_SIPHON_I;
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
@@ -21,6 +23,7 @@ use st_domain::{
 use std::collections::HashSet;
 use std::hint::unreachable_unchecked;
 use std::ops::{Add, Not};
+use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tracing::event;
 use tracing_core::Level;
@@ -868,7 +871,62 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::AttemptCargoTransfer => {
-                todo!()
+                let cargo_transfer_result = args
+                    .transfer_cargo_manager
+                    .try_to_transfer_cargo_until_available_space(state.symbol.clone(), state.nav.waypoint_symbol.clone(), state.cargo.clone(), |args| {
+                        wrap_transfer_cargo_request(Arc::clone(&state.client), args)
+                    })
+                    .await;
+
+                match cargo_transfer_result {
+                    Ok(res) => match res {
+                        InternalTransferCargoResult::NoMatchingShipFound => {}
+                        InternalTransferCargoResult::Success {
+                            updated_miner_cargo,
+                            transfer_tasks,
+                        } => {
+                            state.cargo = updated_miner_cargo;
+                            println!(
+                                "Ship {} transferred cargo to haulers in {} transfers: {:?}",
+                                state.symbol,
+                                transfer_tasks.len(),
+                                transfer_tasks
+                            );
+                        }
+                    },
+                    Err(err) => {
+                        eprintln!("err: {err:?}");
+                    }
+                }
+
+                Ok(Success)
+            }
+            ShipAction::AnnounceHaulerReadyForPickup => {
+                let hauler_wait_result = args
+                    .transfer_cargo_manager
+                    .register_hauler_for_pickup_and_wait_until_full(state.nav.waypoint_symbol.clone(), state.symbol.clone(), state.cargo.clone())
+                    .await;
+
+                match hauler_wait_result {
+                    Ok(res) => {
+                        state.cargo = res;
+                        Ok(Success)
+                    }
+                    Err(err) => Err(err),
+                }
+            }
+            ShipAction::IsHaulerFilledEnoughForDelivery => {
+                let fill_ratio = state.cargo.units as f64 / state.cargo.capacity as f64;
+                if fill_ratio > 0.8 {
+                    Ok(Success)
+                } else {
+                    Err(anyhow!(
+                        "Ship cargo is {} out of {} --> {}% <= 80%",
+                        state.cargo.units,
+                        state.cargo.units,
+                        (fill_ratio * 100.0).round() as u32
+                    ))
+                }
             }
         };
 
@@ -890,6 +948,30 @@ impl Actionable for ShipAction {
         };
 
         result
+    }
+}
+
+async fn wrap_transfer_cargo_request(
+    client: Arc<dyn StClientTrait>,
+    internal_args: InternalTransferCargoRequest,
+) -> Result<InternalTransferCargoResponse, TransferCargoError> {
+    let result = client
+        .transfer_cargo(
+            internal_args.sending_ship.clone(),
+            internal_args.receiving_ship.clone(),
+            internal_args.trade_good_symbol.clone(),
+            internal_args.units,
+        )
+        .await;
+    match result {
+        Ok(server_response) => Ok(InternalTransferCargoResponse {
+            receiving_ship: internal_args.receiving_ship,
+            trade_good_symbol: internal_args.trade_good_symbol.clone(),
+            units: internal_args.units,
+            sending_ship_cargo: server_response.data.cargo,
+            receiving_ship_cargo: server_response.data.target_cargo,
+        }),
+        Err(err) => Err(TransferCargoError::ServerError(err)),
     }
 }
 
@@ -918,6 +1000,7 @@ mod tests {
     use tokio::sync::mpsc::{Receiver, Sender};
 
     use crate::test_objects::TestObjects;
+    use crate::transfer_cargo_manager::TransferCargoManager;
     use st_domain::blackboard_ops::MockBlackboardOps;
     use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
     use test_log::test;
@@ -1009,6 +1092,7 @@ mod tests {
         let args = BehaviorArgs {
             blackboard: Arc::new(MockBlackboardOps::new()),
             treasurer: ThreadSafeTreasurer::new(0.into()),
+            transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
         };
 
         let mocked_client = mock_client
@@ -1050,6 +1134,7 @@ mod tests {
         let args = BehaviorArgs {
             blackboard: Arc::new(MockBlackboardOps::new()),
             treasurer: ThreadSafeTreasurer::new(0.into()),
+            transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
         };
 
         let mocked_client = mock_client
@@ -1230,6 +1315,7 @@ mod tests {
         let args = BehaviorArgs {
             blackboard: Arc::new(mock_test_blackboard),
             treasurer: ThreadSafeTreasurer::new(0.into()),
+            transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
         };
 
         let explorer_waypoint_symbols = explorer_waypoints

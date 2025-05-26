@@ -782,11 +782,26 @@ pub struct Ship {
 
 impl Ship {
     pub fn is_in_orbit(&self) -> bool {
-        self.nav.status == NavStatus::InOrbit
+        self.nav.status == NavStatus::InOrbit || (self.nav.status == NavStatus::InTransit && self.nav.route.arrival > Utc::now())
     }
 
-    pub fn has_arrived(&self) -> bool {
-        self.is_in_orbit() || self.nav.route.arrival > Utc::now()
+    pub fn is_docked(&self) -> bool {
+        self.nav.status == NavStatus::Docked
+    }
+
+    pub fn is_stationary(&self) -> bool {
+        self.is_docked() || self.is_in_orbit()
+    }
+
+    pub fn has_trade_good_in_cargo(&self, trade_good: &TradeGoodSymbol, units: u32) -> bool {
+        self.cargo
+            .inventory
+            .iter()
+            .any(|inv| &inv.symbol == trade_good && inv.units >= units)
+    }
+
+    pub fn available_cargo_space(&self) -> u32 {
+        (self.cargo.capacity - self.cargo.units) as u32
     }
 
     pub fn get_yield_size_for_siphoning(&self) -> u32 {

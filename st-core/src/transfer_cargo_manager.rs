@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 
 pub struct TransferCargoManager {
     // Haulers waiting at each location
-    waiting_haulers: Arc<Mutex<HashMap<WaypointSymbol, HashMap<ShipSymbol, Cargo>>>>,
+    waiting_haulers: Arc<Mutex<HashMap<WaypointSymbol, HashMap<ShipSymbol, (Cargo)>>>>,
 }
 
 impl TransferCargoManager {

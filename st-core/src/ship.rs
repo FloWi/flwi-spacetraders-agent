@@ -15,7 +15,7 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub struct ShipOperations {
     pub ship: Ship,
-    client: Arc<dyn StClientTrait>,
+    pub client: Arc<dyn StClientTrait>,
     pub travel_action_queue: VecDeque<TravelAction>,
     pub current_navigation_destination: Option<WaypointSymbol>,
     pub explore_location_queue: VecDeque<WaypointSymbol>,
@@ -140,7 +140,7 @@ maybe_trade: {:?},
     }
 
     pub fn is_at_mining_waypoint(&self) -> bool {
-        self.has_arrived()
+        self.is_stationary()
             && self
                 .get_mining_site()
                 .map(|wps| wps == self.nav.waypoint_symbol)

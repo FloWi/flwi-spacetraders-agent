@@ -2,6 +2,7 @@ use crate::agent::run_agent;
 use crate::configuration::AgentConfiguration;
 use crate::reqwest_helpers::{create_client, ResetSignal};
 use crate::st_client::{StClient, StClientTrait};
+use crate::transfer_cargo_manager::TransferCargoManager;
 use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
 use anyhow::Result;
 use futures::StreamExt;
@@ -153,20 +154,26 @@ impl AgentManager {
         };
 
         let bmc = Arc::new(bmc) as Arc<dyn Bmc>;
+        let transfer_cargo_manager = Arc::new(TransferCargoManager::new());
 
         self.bmc = Some(bmc.clone());
 
         // Spawn the agent task
-        let handle = Self::spawn_and_get_handle(shutdown_rx, client, bmc);
+        let handle = Self::spawn_and_get_handle(shutdown_rx, client, bmc, transfer_cargo_manager);
 
         Ok(handle)
     }
 
-    fn spawn_and_get_handle(shutdown_rx: Receiver<bool>, client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> JoinHandle<()> {
+    fn spawn_and_get_handle(
+        shutdown_rx: Receiver<bool>,
+        client: Arc<dyn StClientTrait>,
+        bmc: Arc<dyn Bmc>,
+        transfer_cargo_manager: Arc<TransferCargoManager>,
+    ) -> JoinHandle<()> {
         let handle = tokio::spawn(async move {
             // Run agent with the authenticated client
             let agent_task = async {
-                match run_agent(client, bmc).await {
+                match run_agent(client, bmc, transfer_cargo_manager).await {
                     Ok(()) => event!(Level::INFO, "Agent completed successfully"),
                     Err(e) => event!(Level::ERROR, "Agent error: {}", e),
                 }
@@ -223,8 +230,9 @@ impl AgentManager {
         let bmc = Arc::new(db_bmc) as Arc<dyn Bmc>;
 
         self.bmc = Some(bmc.clone());
+        let transfer_cargo_manager = Arc::new(TransferCargoManager::new());
 
-        let handle = Self::spawn_and_get_handle(shutdown_rx, client, bmc);
+        let handle = Self::spawn_and_get_handle(shutdown_rx, client, bmc, transfer_cargo_manager);
 
         Ok(handle)
     }

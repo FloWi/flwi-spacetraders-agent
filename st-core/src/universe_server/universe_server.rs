@@ -19,8 +19,8 @@ use st_domain::{
     RegistrationResponse, Route, SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipMountSymbol, ShipPurchaseTransaction,
     ShipRegistrationRole, ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, Siphon, SiphonResourcesResponse, SiphonResourcesResponseBody,
     SiphonYield, StStatusResponse, SupplyConstructionSiteResponse, SupplyConstructionSiteResponseBody, Survey, SurveyDeposit, SurveySignature, SurveySize,
-    SystemSymbol, SystemsPageData, TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, TransferCargoResponse, Waypoint, WaypointSymbol,
-    WaypointTraitSymbol, WaypointType,
+    SystemSymbol, SystemsPageData, TradeGoodSymbol, TradeGoodType, Transaction, TransactionType, TransferCargoResponse, TransferCargoResponseBody, Waypoint,
+    WaypointSymbol, WaypointTraitSymbol, WaypointType,
 };
 use std::collections::{HashMap, HashSet};
 use std::ops::{Add, Not};
@@ -119,7 +119,7 @@ impl InMemoryUniverse {
                 let ship = self.validate_ship(ss.clone())?;
 
                 if let Some(expiration) = ship.cooldown.expiration {
-                    if expiration > now {
+                    if expiration < now {
                         Ok(())
                     } else {
                         anyhow::bail!("Ship is not cooled down yet")
@@ -296,6 +296,76 @@ impl InMemoryUniverse {
         } else {
             Err(ShipNotFound)
         }
+    }
+
+    pub fn perform_transfer_cargo(
+        &mut self,
+        provider_ship_symbol: ShipSymbol,
+        receiver_ship_symbol: ShipSymbol,
+        trade_symbol: TradeGoodSymbol,
+        units: u32,
+    ) -> Result<TransferCargoResponse> {
+        let (original_provider_ship_cargo, original_receiver_ship_cargo) = if let Some((provider_ship, receiver_ship)) = self
+            .ships
+            .get(&provider_ship_symbol)
+            .zip(self.ships.get(&receiver_ship_symbol))
+        {
+            if provider_ship.is_stationary().not() {
+                anyhow::bail!("{provider_ship_symbol} is not stationary");
+            }
+            if receiver_ship.is_stationary().not() {
+                anyhow::bail!("{receiver_ship_symbol} is not stationary");
+            }
+            if receiver_ship.is_in_orbit() && provider_ship.is_in_orbit().not() {
+                anyhow::bail!("Both ships must have the same nav status");
+            }
+            if receiver_ship.is_docked() && provider_ship.is_docked().not() {
+                anyhow::bail!("Both ships must have the same nav status");
+            }
+            if provider_ship
+                .has_trade_good_in_cargo(&trade_symbol, units)
+                .not()
+            {
+                anyhow::bail!("{provider_ship_symbol} does not have {} units of {}", units, trade_symbol);
+            }
+            if receiver_ship.available_cargo_space() < units {
+                anyhow::bail!("{receiver_ship_symbol} does not have enough cargo space");
+            }
+            (provider_ship.cargo.clone(), receiver_ship.cargo.clone())
+        } else {
+            anyhow::bail!("One or both ships not found");
+        };
+
+        let updated_provider_ship_cargo = if let Some(provider_ship) = self.ships.get_mut(&provider_ship_symbol) {
+            if let Err(e) = provider_ship
+                .cargo
+                .with_units_removed_mut(trade_symbol.clone(), units)
+            {
+                anyhow::bail!("Error removing cargo units from provider_ship {}: {:?}", provider_ship_symbol, e)
+            }
+            provider_ship.cargo.clone()
+        } else {
+            anyhow::bail!("Ship {} not found", provider_ship_symbol);
+        };
+
+        let updated_receiver_ship_cargo = if let Some(receiver_ship) = self.ships.get_mut(&receiver_ship_symbol) {
+            if let Err(e) = receiver_ship
+                .cargo
+                .with_item_added_mut(trade_symbol.clone(), units)
+            {
+                anyhow::bail!("Error adding cargo units to receiver_ship {}: {:?}", receiver_ship_symbol, e)
+            }
+            receiver_ship.cargo.clone()
+        } else {
+            anyhow::bail!("Ship {} not found", receiver_ship_symbol);
+        };
+
+        Ok(TransferCargoResponse {
+            data: TransferCargoResponseBody {
+                cargo: updated_provider_ship_cargo,
+                target_cargo: updated_receiver_ship_cargo,
+            },
+        })
     }
 
     pub fn perform_purchase_trade_good(&mut self, ship_symbol: ShipSymbol, units: u32, trade_good: TradeGoodSymbol) -> Result<PurchaseTradeGoodResponse> {
@@ -1357,7 +1427,9 @@ impl StClientTrait for InMemoryUniverseClient {
         trade_symbol: TradeGoodSymbol,
         units: u32,
     ) -> Result<TransferCargoResponse> {
-        todo!()
+        let mut guard = self.universe.write().await;
+
+        guard.perform_transfer_cargo(from_ship_symbol, to_ship_id, trade_symbol, units)
     }
 
     async fn get_jump_gate(&self, waypoint_symbol: WaypointSymbol) -> anyhow::Result<GetJumpGateResponse> {

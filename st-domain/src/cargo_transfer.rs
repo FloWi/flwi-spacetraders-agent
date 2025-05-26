@@ -23,6 +23,7 @@ pub enum TransferCargoError {
     ReceiveShipDoesntExist,
     NotEnoughItemsInSendingShipCargo,
     NotEnoughSpaceInReceivingShip,
+    ServerError(anyhow::Error),
 }
 
 #[derive(PartialEq, Debug)]

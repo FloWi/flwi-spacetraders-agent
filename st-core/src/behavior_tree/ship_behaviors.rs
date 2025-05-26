@@ -62,6 +62,8 @@ pub enum ShipAction {
     SetMiningSiteAsDestination,
     IsAtMiningSite,
     AttemptCargoTransfer,
+    AnnounceHaulerReadyForPickup,
+    IsHaulerFilledEnoughForDelivery,
 }
 
 pub struct Behaviors {
@@ -312,14 +314,12 @@ pub fn ship_behaviors() -> Behaviors {
         ),
     ]);
 
-    let deliver_all_carbohydrates_behavior = Behavior::new_sequence(vec![
+    let deliver_all_goods_behavior = Behavior::new_sequence(vec![
         Behavior::new_action(ShipAction::CreateSellTicketsForAllCargoItems),
         trading_behavior.clone(),
     ]);
 
-    let mut siphoning_behavior = Behavior::new_sequence(vec![siphon_until_full_behavior, deliver_all_carbohydrates_behavior]);
-
-    let mut mining_hauler_behavior = Behavior::new_sequence(vec![]);
+    let mut siphoning_behavior = Behavior::new_sequence(vec![siphon_until_full_behavior, deliver_all_goods_behavior.clone()]);
 
     let survey_if_necessary = Behavior::new_select(vec![
         Behavior::new_invert(Behavior::new_action(ShipAction::IsSurveyNecessary)),
@@ -340,6 +340,20 @@ pub fn ship_behaviors() -> Behaviors {
     ]);
 
     let mine_if_necessary = Behavior::new_sequence(vec![survey_if_necessary, extract_resources]);
+
+    let mut mining_hauler_behavior = Behavior::new_select(vec![
+        Behavior::new_sequence(vec![
+            Behavior::new_action(ShipAction::IsHaulerFilledEnoughForDelivery),
+            deliver_all_goods_behavior.clone(),
+        ]),
+        Behavior::new_sequence(vec![
+            go_to_mining_site_if_necessary.clone(),
+            wait_for_arrival_bt.clone(),
+            orbit_if_necessary.clone(),
+            Behavior::new_action(ShipAction::AnnounceHaulerReadyForPickup),
+            deliver_all_goods_behavior.clone(),
+        ]),
+    ]);
 
     let mut miner_behavior = Behavior::new_sequence(vec![
         go_to_mining_site_if_necessary.clone(),

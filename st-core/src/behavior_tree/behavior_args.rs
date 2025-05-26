@@ -7,6 +7,7 @@ use sqlx::{Pool, Postgres};
 use st_domain::blackboard_ops::BlackboardOps;
 
 use crate::survey_manager;
+use crate::transfer_cargo_manager::TransferCargoManager;
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, ThreadSafeTreasurer};
 use st_domain::{
     Construction, CreateSurveyResponse, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, PurchaseShipResponse, PurchaseTradeGoodResponse,
@@ -23,6 +24,7 @@ use std::sync::Arc;
 pub struct BehaviorArgs {
     pub blackboard: Arc<dyn BlackboardOps>,
     pub treasurer: ThreadSafeTreasurer,
+    pub transfer_cargo_manager: Arc<TransferCargoManager>,
 }
 
 impl BehaviorArgs {
