@@ -10,16 +10,8 @@ async fn main() {
     use st_core::configuration::AgentConfiguration;
     use st_server::app::{shell, App};
     use st_server::cli_args::AppConfig;
-    use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
-    use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
-    use st_store::bmc::InMemoryBmc;
     use st_store::bmc::{Bmc, DbBmc};
-    use st_store::shipyard_bmc::InMemoryShipyardBmc;
-    use st_store::trade_bmc::InMemoryTradeBmc;
     use st_store::{db, DbModelManager};
-    use st_store::{
-        InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc,
-    };
     use std::sync::Arc;
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -52,9 +44,9 @@ async fn main() {
         use_in_memory_agent,
     };
 
-    if !cfg.use_in_memory_agent {
-        panic!("use_in_memory_agent should be set to true");
-    }
+    // if !cfg.use_in_memory_agent {
+    //     panic!("use_in_memory_agent should be set to true");
+    // }
 
     // Create the agent manager and get the reset channel
     let (mut agent_manager, _reset_tx) = AgentManager::new(cfg.clone());

@@ -7,3 +7,4 @@ pub mod ship_runner;
 mod siphoning_fleet;
 mod supply_chain_test;
 mod system_spawning_fleet;
+mod initial_data_collector;

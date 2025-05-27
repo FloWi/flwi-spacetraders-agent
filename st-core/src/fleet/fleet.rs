@@ -40,6 +40,7 @@ use strum::{Display, IntoEnumIterator};
 use tokio::sync::Mutex;
 use tracing::{event, Level};
 use FleetConfig::{ConstructJumpGateCfg, MarketObservationCfg, MiningCfg, SiphoningCfg, TradingCfg};
+use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum ShipStatusReport {
@@ -584,7 +585,9 @@ Fleet Budgets after rebalancing
 
         match Self::load_admiral(Arc::clone(&bmc)).await? {
             None => {
-                println!("loading admiral failed - creating a new one");
+                event!(Level::INFO, "loading admiral failed - creating a new one");
+                load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await?;
+
                 let admiral = Self::create(Arc::clone(&bmc), system_symbol, Arc::clone(&client)).await?;
                 upsert_fleets_data(
                     Arc::clone(&bmc),
@@ -1922,12 +1925,7 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         .map(|db_entry| db_entry.waypoint_symbol.clone())
         .collect_vec();
     let shipyards_to_explore = find_shipyards_for_exploration(shipyards_of_interest.clone());
-
-    let maybe_construction_site: Option<Construction> = bmc
-        .construction_bmc()
-        .get_construction_site_for_system(&Ctx::Anonymous, system_symbol.clone())
-        .await?;
-
+    
     let supply_chain = bmc
         .supply_chain_bmc()
         .get_supply_chain(&Ctx::Anonymous)
@@ -1939,6 +1937,7 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         .load_agent(&Ctx::Anonymous)
         .await
         .expect("agent");
+    
     let headquarters_waypoint = agent.headquarters;
 
     let market_data = bmc

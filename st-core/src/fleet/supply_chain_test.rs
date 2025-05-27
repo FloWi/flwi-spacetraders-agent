@@ -312,6 +312,7 @@ mod tests {
     use std::ops::Not;
     use std::sync::Arc;
     use test_log::test;
+    use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
 
     #[test(tokio::test)]
     //#[tokio::test] // for accessing runtime-infos with tokio-console
@@ -380,7 +381,7 @@ mod tests {
         let bmc = Arc::new(bmc) as Arc<dyn Bmc>;
         let blackboard = BmcBlackboard::new(Arc::clone(&bmc));
 
-        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
+        load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
             .await
             .expect("FleetRunner::load_and_store_initial_data");
 
@@ -470,7 +471,7 @@ mod tests {
         let blackboard = BmcBlackboard::new(Arc::clone(&bmc));
 
         // because of the override, we should have detailed market data
-        FleetRunner::load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
+        load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc))
             .await
             .expect("FleetRunner::load_and_store_initial_data");
 
