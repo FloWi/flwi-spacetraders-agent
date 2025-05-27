@@ -78,7 +78,9 @@ pub fn ProfitCellRenderer<F: 'static>(class: String, value: Signal<u64>, row: Rw
 
     view! {
         <td class=class>
-            <span class=profit_class()>{move || format!("{}c", value.get_untracked().separate_with_commas())}</span>
+            <span class=profit_class()>
+                {move || format!("{}c", value.get_untracked().separate_with_commas())}
+            </span>
         </td>
     }
 }
@@ -109,7 +111,13 @@ pub fn TradeGoodSymbolListCellRenderer<F: 'static>(class: String, value: Signal<
     view! {
         <td class=class>
             {move || {
-                value.get_untracked().iter().map(|tg| tg.to_string()).sorted().join(", ").to_string()
+                value
+                    .get_untracked()
+                    .iter()
+                    .map(|tg| tg.to_string())
+                    .sorted()
+                    .join(", ")
+                    .to_string()
             }}
         </td>
     }

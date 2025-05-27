@@ -87,7 +87,12 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>) -> im
                 <Icon icon=TRUCK size="3em" />
                 <div class="flex flex-col gap-1">
                     <h3 class="text-xl text-white">{ship.symbol.0.to_string()}</h3>
-                    <p class="text-slate-400">{maybe_ship_task.clone().map(|t| t.to_string()).unwrap_or("---".to_string())}</p>
+                    <p class="text-slate-400">
+                        {maybe_ship_task
+                            .clone()
+                            .map(|t| t.to_string())
+                            .unwrap_or("---".to_string())}
+                    </p>
                 </div>
             </div>
             <div class="flex flex-col gap-1">
@@ -95,7 +100,8 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>) -> im
                     <Icon icon=TRUCK />
                     <p>{ship.nav.waypoint_symbol.0.to_string()}</p>
                     {move || {
-                        maybe_travel_time_left.get()
+                        maybe_travel_time_left
+                            .get()
                             .map(|duration| {
                                 view! {
                                     <>
@@ -132,7 +138,7 @@ pub fn ShipOverviewPage() -> impl IntoView {
     let _handle = use_interval_fn(move || ships_resource.refetch(), 5_000);
 
     view! {
-        <div class="bg-blue-950 text-white flex flex-col min-h-screen">
+        <div class="text-white flex flex-col min-h-screen">
             <h1 class="font-bold text-2xl">"Ships Status"</h1>
             <div>
                 <Transition>
@@ -154,8 +160,12 @@ pub fn ShipOverviewPage() -> impl IntoView {
                                                 .iter()
                                                 .sorted_by_key(|s| s.symbol.0.clone())
                                                 .map(|ship| {
-                                                    let maybe_ship_task = ships_overview.ship_tasks.get(&ship.symbol);
-                                                    view! { <ShipCard ship=ship maybe_ship_task = maybe_ship_task /> }
+                                                    let maybe_ship_task = ships_overview
+                                                        .ship_tasks
+                                                        .get(&ship.symbol);
+                                                    view! {
+                                                        <ShipCard ship=ship maybe_ship_task=maybe_ship_task />
+                                                    }
                                                 })
                                                 .collect_view()}
                                         </div>

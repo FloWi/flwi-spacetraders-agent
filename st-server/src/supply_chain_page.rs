@@ -135,7 +135,14 @@ pub fn SupplyChainPage() -> impl IntoView {
             <div class="flex flex-col">
                 <Transition fallback=move || view! { <p>"Loading..."</p> }>
                     <ErrorBoundary fallback=|errors| {
-                        view! { <p>"Error: " {format!("{errors:?}")}</p> }
+                        view! {
+                            <div>
+                                <p>"Error: " {format!("{errors:?}")}</p>
+                                <p>
+                                    "In order to compute the supply chain, we need detailed information about all marketplaces"
+                                </p>
+                            </div>
+                        }
                     }>
                         {move || {
                             supply_chain_resource

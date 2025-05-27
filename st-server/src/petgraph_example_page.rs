@@ -207,7 +207,9 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                 .map(|result| {
                                     match result {
                                         Ok(
-                                            Some((materialized_supply_chain, scored_supply_chain_routes)),
+                                            Some(
+                                                (materialized_supply_chain, scored_supply_chain_routes),
+                                            ),
                                         ) => {
                                             let scored_supply_chains_table_data: Vec<
                                                 ScoredSupplyChainRouteRow,
@@ -300,11 +302,14 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                             }
                                                 .into_any()
                                         }
-                                    Ok(None) => {
-                                            view! { <p>"Supply Chain not ready yet - we first need to collect detailed information about all marketplaces"</p> }
+                                        Ok(None) => {
+                                            view! {
+                                                <p>
+                                                    "Supply Chain not ready yet - we first need to collect detailed information about all marketplaces"
+                                                </p>
+                                            }
                                                 .into_any()
-
-                                    }
+                                        }
                                         Err(e) => {
 
                                             view! { <p>"Error: " {e.to_string()}</p> }
