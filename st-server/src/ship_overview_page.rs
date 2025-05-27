@@ -6,11 +6,13 @@ use leptos::{component, view, IntoView};
 use leptos_use::use_interval_fn;
 use phosphor_leptos::{Icon, CLOCK, GAS_PUMP, PACKAGE, TRUCK};
 use serde::{Deserialize, Serialize};
-use st_domain::{NavStatus, Ship};
+use st_domain::{NavStatus, Ship, ShipSymbol, ShipTask};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
     ships: Vec<Ship>,
+    ship_tasks: HashMap<ShipSymbol, ShipTask>,
     last_update: DateTime<Utc>,
 }
 
@@ -38,14 +40,21 @@ async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOvervie
         .await
         .expect("get_ships");
 
+    let ship_tasks = bmc
+        .ship_bmc()
+        .load_ship_tasks(&Ctx::Anonymous)
+        .await
+        .expect("load_ship_tasks");
+
     Ok(ShipsOverview {
         ships,
+        ship_tasks,
         last_update: Utc::now(),
     })
 }
 
 #[component]
-pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
+pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>) -> impl IntoView {
     let is_traveling = match ship.nav.status {
         NavStatus::InTransit => true,
         NavStatus::InOrbit => false,
@@ -78,7 +87,7 @@ pub fn ShipCard<'a>(ship: &'a Ship) -> impl IntoView {
                 <Icon icon=TRUCK size="3em" />
                 <div class="flex flex-col gap-1">
                     <h3 class="text-xl text-white">{ship.symbol.0.to_string()}</h3>
-                    <p class="text-slate-400">"Role"</p>
+                    <p class="text-slate-400">{maybe_ship_task.clone().map(|t| t.to_string()).unwrap_or("---".to_string())}</p>
                 </div>
             </div>
             <div class="flex flex-col gap-1">
@@ -145,7 +154,8 @@ pub fn ShipOverviewPage() -> impl IntoView {
                                                 .iter()
                                                 .sorted_by_key(|s| s.symbol.0.clone())
                                                 .map(|ship| {
-                                                    view! { <ShipCard ship=ship /> }
+                                                    let maybe_ship_task = ships_overview.ship_tasks.get(&ship.symbol);
+                                                    view! { <ShipCard ship=ship maybe_ship_task = maybe_ship_task /> }
                                                 })
                                                 .collect_view()}
                                         </div>

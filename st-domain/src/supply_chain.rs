@@ -4,6 +4,7 @@ use crate::{
     SupplyChainMap, SupplyLevel, SystemSymbol, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType, MAX_ACTIVITY_LEVEL_SCORE,
     MAX_SUPPLY_LEVEL_SCORE,
 };
+use anyhow::anyhow;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
@@ -212,7 +213,7 @@ pub fn materialize_supply_chain(
     market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
     maybe_construction_site: &Option<Construction>,
-) -> MaterializedSupplyChain {
+) -> anyhow::Result<MaterializedSupplyChain> {
     let missing_construction_materials: Vec<&ConstructionMaterial> = match maybe_construction_site {
         None => {
             vec![]
@@ -266,7 +267,7 @@ pub fn materialize_supply_chain(
 
         let relevant_supply_chain = find_complete_supply_chain(&relevant_products, &supply_chain.trade_map);
 
-        let all_routes = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data);
+        let all_routes = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data)?;
 
         let total_distance: u32 = all_routes
             .iter()
@@ -312,7 +313,7 @@ pub fn materialize_supply_chain(
 
     let relevant_supply_chain = find_complete_supply_chain(&relevant_products, &supply_chain.trade_map);
 
-    let all_routes = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data);
+    let all_routes = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data)?;
 
     let trading_opportunities = crate::trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map);
 
@@ -334,7 +335,7 @@ pub fn materialize_supply_chain(
         goods_for_sale_conflicting_with_construction,
     } = calc_construction_related_trade_good_overview(supply_chain, missing_construction_material_map, &goods_for_sale);
 
-    MaterializedSupplyChain {
+    Ok(MaterializedSupplyChain {
         explanation: format!(
             r#"Completion Overview:
 {completion_explanation}
@@ -350,7 +351,7 @@ pub fn materialize_supply_chain(
         goods_for_sale_not_conflicting_with_construction,
         goods_for_sale_conflicting_with_construction,
         individual_routes_of_goods_for_sale,
-    }
+    })
 }
 
 struct ConstructionRelatedTradeGoodsOverview {
@@ -430,7 +431,7 @@ fn compute_all_routes(
     relevant_supply_chain: &[SupplyChainNode],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
     market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
-) -> Vec<DeliveryRoute> {
+) -> anyhow::Result<Vec<DeliveryRoute>> {
     // Note that we deliver some of the ores directly to the smelting location (e.g. COPPER_ORE --> COPPER), which means that we don't have provider-market of COPPER_ORE
 
     let raw_input_sources: HashMap<TradeGoodSymbol, WaypointSymbol> = raw_delivery_routes
@@ -529,7 +530,7 @@ fn compute_all_routes(
         if are_all_dependencies_fulfilled {
             let candidate_export_entries = export_markets
                 .get(&candidate)
-                .unwrap_or_else(|| panic!("Supply market of {} should exist", candidate));
+                .ok_or(anyhow!("Supply market of {} should exist", candidate))?;
             assert_eq!(1, candidate_export_entries.len(), "We expect only one producing market of {}", candidate);
             let (candidate_export_wps, candidate_export_mtg) = candidate_export_entries.first().cloned().unwrap();
 
@@ -540,7 +541,7 @@ fn compute_all_routes(
                     .unwrap_or_default()
                     .iter()
                     .find_map(|(wps, mtg)| (wps == &candidate_export_wps).then_some(mtg.clone()))
-                    .unwrap_or_else(|| panic!("An import market of {} should exist at {}", dep_trade_good, candidate_export_wps));
+                    .ok_or(anyhow!("An import market of {} should exist at {}", dep_trade_good, candidate_export_wps))?;
 
                 let relevant_supply_markets = supply_markets
                     .get(dep_trade_good)
@@ -552,8 +553,7 @@ fn compute_all_routes(
                     .find(|(wps, export_or_exchange_mtg)| dep_wps == wps)
                     .cloned()
                 else {
-                    eprintln!("An export/exchange market of {} should exist at {}", dep_trade_good, dep_wps);
-                    panic!("boom");
+                    anyhow::bail!("An export/exchange market of {} should exist at {}", dep_trade_good, dep_wps);
                 };
 
                 let from_wp = waypoint_map.get(&provider_wps).unwrap();
@@ -615,7 +615,7 @@ fn compute_all_routes(
 
     // println!("all_routes: {}", serde_json::to_string(&all_routes).unwrap());
 
-    all_routes
+    Ok(all_routes)
 }
 
 fn combine_maps<K, V>(map1: &HashMap<K, Vec<V>>, map2: &HashMap<K, Vec<V>>) -> HashMap<K, Vec<V>>

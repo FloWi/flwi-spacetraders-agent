@@ -1977,7 +1977,7 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
             &market_data,
             &waypoint_map,
             &maybe_construction_site,
-        );
+        )?;
         Some(materialized_chain)
     } else {
         None

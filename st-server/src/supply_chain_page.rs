@@ -1,5 +1,6 @@
 use crate::components::clipboard_button::ClipboardButton;
 use crate::tables::trading_opportunity_table::TradingOpportunityRow;
+use anyhow::anyhow;
 use itertools::Itertools;
 use leptos::prelude::*;
 use leptos_meta::Title;
@@ -34,79 +35,82 @@ async fn get_supply_chain_data() -> Result<
     use st_store::db;
     use st_store::*;
 
-    let state = expect_context::<crate::app::AppState>();
-    let bmc = state.bmc;
-    let supply_chain = bmc
-        .supply_chain_bmc()
-        .get_supply_chain(&Ctx::Anonymous)
-        .await
-        .unwrap()
-        .unwrap();
+    async fn anyhow_fn() -> anyhow::Result<(
+        SupplyChain,
+        Vec<(WaypointSymbol, Vec<MarketTradeGood>)>,
+        Option<Construction>,
+        MaterializedSupplyChain,
+        Vec<EvaluatedTradingOpportunity>,
+        Vec<EvaluatedTradingOpportunity>,
+    )> {
+        let state = expect_context::<crate::app::AppState>();
+        let bmc = state.bmc;
+        let supply_chain = bmc
+            .supply_chain_bmc()
+            .get_supply_chain(&Ctx::Anonymous)
+            .await
+            .unwrap()
+            .unwrap();
 
-    let agent = bmc
-        .agent_bmc()
-        .load_agent(&Ctx::Anonymous)
-        .await
-        .expect("agent");
-    let headquarters_waypoint = agent.headquarters;
+        let agent = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?;
 
-    let market_data = bmc
-        .market_bmc()
-        .get_latest_market_data_for_system(&Ctx::Anonymous, &headquarters_waypoint.system_symbol())
-        .await
-        .expect("status");
+        let headquarters_waypoint = agent.headquarters;
 
-    let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
+        let market_data = bmc
+            .market_bmc()
+            .get_latest_market_data_for_system(&Ctx::Anonymous, &headquarters_waypoint.system_symbol())
+            .await?;
 
-    let maybe_construction_site = bmc
-        .construction_bmc()
-        .get_construction_site_for_system(&Ctx::Anonymous, headquarters_waypoint.system_symbol())
-        .await
-        .expect("construction_site");
+        let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
 
-    let waypoints_of_system = bmc
-        .system_bmc()
-        .get_waypoints_of_system(&Ctx::Anonymous, &headquarters_waypoint.system_symbol())
-        .await
-        .expect("waypoints");
+        let maybe_construction_site = bmc
+            .construction_bmc()
+            .get_construction_site_for_system(&Ctx::Anonymous, headquarters_waypoint.system_symbol())
+            .await?;
 
-    let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints_of_system
-        .iter()
-        .map(|wp| (wp.symbol.clone(), wp))
-        .collect::<HashMap<_, _>>();
+        let waypoints_of_system = bmc
+            .system_bmc()
+            .get_waypoints_of_system(&Ctx::Anonymous, &headquarters_waypoint.system_symbol())
+            .await?;
 
-    let materialized_supply_chain = st_domain::supply_chain::materialize_supply_chain(
-        headquarters_waypoint.system_symbol(),
-        &supply_chain,
-        &market_data,
-        &waypoint_map,
-        &maybe_construction_site,
-    );
+        let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints_of_system
+            .iter()
+            .map(|wp| (wp.symbol.clone(), wp))
+            .collect::<HashMap<_, _>>();
 
-    let ships = bmc
-        .ship_bmc()
-        .get_ships(&Ctx::Anonymous, None)
-        .await
-        .expect("Ships");
+        let materialized_supply_chain = st_domain::supply_chain::materialize_supply_chain(
+            headquarters_waypoint.system_symbol(),
+            &supply_chain,
+            &market_data,
+            &waypoint_map,
+            &maybe_construction_site,
+        )?;
 
-    let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map);
-    let cargo_capable_ships = ships.iter().filter(|s| s.cargo.capacity > 0).collect_vec();
+        let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await?;
 
-    let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
-        trading::evaluate_trading_opportunities(&cargo_capable_ships, &waypoint_map, &trading_opportunities, agent.credits);
+        let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map);
+        let cargo_capable_ships = ships.iter().filter(|s| s.cargo.capacity > 0).collect_vec();
 
-    let active_trades = HashSet::new();
+        let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
+            trading::evaluate_trading_opportunities(&cargo_capable_ships, &waypoint_map, &trading_opportunities, agent.credits);
 
-    let trading_decision = trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trades);
+        let active_trades = HashSet::new();
 
-    Ok((
-        supply_chain,
-        market_data,
-        maybe_construction_site,
-        materialized_supply_chain,
-        evaluated_trading_opportunities,
-        trading_decision,
-    ))
+        let trading_decision = trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trades);
+
+        Ok((
+            supply_chain,
+            market_data,
+            maybe_construction_site,
+            materialized_supply_chain,
+            evaluated_trading_opportunities,
+            trading_decision,
+        ))
+    }
+
+    let result = anyhow_fn().await;
+
+    result.map_err(ServerFnError::new)
 }
 
 #[component]

@@ -140,7 +140,7 @@ impl Point {
 }
 
 #[server]
-async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec<ScoredSupplyChainSupportRoute>), ServerFnError> {
+async fn get_materialized_supply_chain() -> Result<Option<(MaterializedSupplyChain, Vec<ScoredSupplyChainSupportRoute>)>, ServerFnError> {
     use st_core::fleet::fleet::collect_fleet_decision_facts;
     use st_core::fleet::fleet_runner::FleetRunner;
     use st_core::st_client::StClientTrait;
@@ -163,27 +163,29 @@ async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec
         .await
         .expect("collect_fleet_decision_facts");
 
-    let materialized_supply_chain = facts.materialized_supply_chain.unwrap();
+    if let Some(materialized_supply_chain) = facts.materialized_supply_chain {
+        let goods_of_interest_in_order: Vec<TradeGoodSymbol> = vec![
+            TradeGoodSymbol::ADVANCED_CIRCUITRY,
+            TradeGoodSymbol::FAB_MATS,
+            TradeGoodSymbol::SHIP_PLATING,
+            TradeGoodSymbol::SHIP_PARTS,
+            TradeGoodSymbol::MICROPROCESSORS,
+            TradeGoodSymbol::CLOTHING,
+        ];
 
-    let goods_of_interest_in_order: Vec<TradeGoodSymbol> = vec![
-        TradeGoodSymbol::ADVANCED_CIRCUITRY,
-        TradeGoodSymbol::FAB_MATS,
-        TradeGoodSymbol::SHIP_PLATING,
-        TradeGoodSymbol::SHIP_PARTS,
-        TradeGoodSymbol::MICROPROCESSORS,
-        TradeGoodSymbol::CLOTHING,
-    ];
+        let scored_supply_chain_routes = calc_scored_supply_chain_routes(&materialized_supply_chain, goods_of_interest_in_order);
+        assert!(
+            materialized_supply_chain
+                .raw_delivery_routes
+                .is_empty()
+                .not(),
+            "raw_delivery_routes should not be empty"
+        );
 
-    let scored_supply_chain_routes = calc_scored_supply_chain_routes(&materialized_supply_chain, goods_of_interest_in_order);
-    assert!(
-        materialized_supply_chain
-            .raw_delivery_routes
-            .is_empty()
-            .not(),
-        "raw_delivery_routes should not be empty"
-    );
-
-    Ok((materialized_supply_chain, scored_supply_chain_routes))
+        Ok(Some((materialized_supply_chain, scored_supply_chain_routes)))
+    } else {
+        Ok(None)
+    }
 }
 
 #[component]
@@ -205,7 +207,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                 .map(|result| {
                                     match result {
                                         Ok(
-                                            (materialized_supply_chain, scored_supply_chain_routes),
+                                            Some((materialized_supply_chain, scored_supply_chain_routes)),
                                         ) => {
                                             let scored_supply_chains_table_data: Vec<
                                                 ScoredSupplyChainRouteRow,
@@ -298,6 +300,11 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                             }
                                                 .into_any()
                                         }
+                                    Ok(None) => {
+                                            view! { <p>"Supply Chain not ready yet - we first need to collect detailed information about all marketplaces"</p> }
+                                                .into_any()
+
+                                    }
                                         Err(e) => {
 
                                             view! { <p>"Error: " {e.to_string()}</p> }
