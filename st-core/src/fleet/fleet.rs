@@ -551,7 +551,7 @@ Fleet Budgets after rebalancing
             }
             ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
                 event!(
-                    Level::INFO,
+                    Level::DEBUG,
                     message = "Ship finished behavior tree",
                     ship = ship.symbol.0,
                     task = task.to_string(),

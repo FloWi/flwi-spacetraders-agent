@@ -782,7 +782,7 @@ pub struct Ship {
 
 impl Ship {
     pub fn is_in_orbit(&self) -> bool {
-        self.nav.status == NavStatus::InOrbit || (self.nav.status == NavStatus::InTransit && self.nav.route.arrival > Utc::now())
+        self.nav.status == NavStatus::InOrbit || (self.nav.status == NavStatus::InTransit && self.nav.route.arrival <= Utc::now())
     }
 
     pub fn is_docked(&self) -> bool {

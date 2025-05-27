@@ -60,7 +60,6 @@ impl ConstructJumpGateFleet {
             trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, active_trade_routes);
 
         let new_tasks = if admiral.ship_purchase_demand.is_empty() {
-            println!("Starting construction");
             let best_actions_for_ships = determine_construction_fleet_actions(
                 admiral,
                 facts,

@@ -13,7 +13,7 @@ use tracing::{event, Level};
 
 use st_domain::{
     distance_to, Construction, Data, JumpGate, MarketData, MarketEntry, RegistrationResponse, Ship, ShipTask, Shipyard, ShipyardData, StStatusResponse,
-    SupplyChain, Survey, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    SupplyChain, Survey, SurveySignature, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
 #[derive(Clone)]
@@ -881,4 +881,19 @@ where waypoint_symbol = $1
         .iter()
         .map(|db_entry| db_entry.entry.0.clone())
         .collect_vec())
+}
+
+pub(crate) async fn mark_survey_as_exhausted(pool: &Pool<Postgres>, survey_signature: SurveySignature) -> anyhow::Result<()> {
+    sqlx::query!(
+        r#"
+update surveys
+    set is_discarded = true
+where signature = $1
+        "#,
+        survey_signature.0.clone(),
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }

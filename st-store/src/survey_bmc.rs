@@ -21,6 +21,7 @@ pub struct DbSurveyBmc {
 pub trait SurveyBmcTrait: Send + Sync + Debug {
     async fn save_surveys(&self, ctx: &Ctx, surveys: Vec<Survey>) -> Result<()>;
     async fn get_all_valid_surveys_for_waypoint(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Vec<Survey>>;
+    async fn mark_survey_as_exhausted(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol, survey_signature: &SurveySignature) -> Result<()>;
 }
 
 #[async_trait]
@@ -31,6 +32,10 @@ impl SurveyBmcTrait for DbSurveyBmc {
 
     async fn get_all_valid_surveys_for_waypoint(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Vec<Survey>> {
         db::get_valid_surveys_for_waypoint(self.mm.pool(), waypoint_symbol.clone(), Utc::now()).await
+    }
+
+    async fn mark_survey_as_exhausted(&self, ctx: &Ctx, _waypoint_symbol: &WaypointSymbol, survey_signature: &SurveySignature) -> Result<()> {
+        db::mark_survey_as_exhausted(self.mm.pool(), survey_signature.clone()).await
     }
 }
 
@@ -103,6 +108,18 @@ impl SurveyBmcTrait for InMemorySurveyBmc {
             Ok(surveys_at_wp.values().cloned().collect_vec())
         } else {
             Ok(Vec::new())
+        };
+        result
+    }
+
+    async fn mark_survey_as_exhausted(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol, survey_signature: &SurveySignature) -> Result<()> {
+        let mut in_memory_surveys = self.in_memory_surveys.write().await;
+
+        let result = if let Some(surveys_at_wp) = in_memory_surveys.surveys.get_mut(waypoint_symbol) {
+            surveys_at_wp.remove(survey_signature);
+            Ok(())
+        } else {
+            Err(anyhow!("Survey not found"))
         };
         result
     }

@@ -5,8 +5,9 @@ use itertools::Itertools;
 use st_domain::budgeting::treasury_redesign::FinanceTicket;
 use st_domain::{
     CreateChartBody, CreateSurveyResponse, ExtractResourcesResponse, FleetId, FlightMode, Fuel, JettisonCargoResponse, JumpGate, MarketData, MiningOpsConfig,
-    Nav, NavAndFuelResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard,
-    SiphonResourcesResponse, SiphoningOpsConfig, SupplyConstructionSiteResponse, Survey, TradeGoodSymbol, TransferCargoResponse, TravelAction, WaypointSymbol,
+    Nav, NavAndFuelResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RawDeliveryRoute, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol,
+    ShipType, Shipyard, SiphonResourcesResponse, SiphoningOpsConfig, SupplyConstructionSiteResponse, Survey, TradeGoodSymbol, TransferCargoResponse,
+    TravelAction, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::{Deref, DerefMut, Not};
@@ -117,7 +118,7 @@ maybe_trade: {:?},
         &mut self,
         siphoning_waypoint: WaypointSymbol,
         demanded_goods: HashSet<TradeGoodSymbol>,
-        delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+        delivery_locations: HashMap<TradeGoodSymbol, RawDeliveryRoute>,
     ) {
         self.maybe_siphoning_config = Some(SiphoningOpsConfig {
             siphoning_waypoint,
@@ -130,7 +131,7 @@ maybe_trade: {:?},
         &mut self,
         mining_waypoint: WaypointSymbol,
         demanded_goods: Option<HashSet<TradeGoodSymbol>>,
-        delivery_locations: Option<HashMap<TradeGoodSymbol, WaypointSymbol>>,
+        delivery_locations: Option<HashMap<TradeGoodSymbol, RawDeliveryRoute>>,
     ) {
         self.maybe_mining_ops_config = Some(MiningOpsConfig {
             mining_waypoint,
@@ -151,6 +152,17 @@ maybe_trade: {:?},
         self.maybe_mining_ops_config
             .clone()
             .map(|cfg| cfg.mining_waypoint.clone())
+    }
+
+    pub fn get_delivery_locations(&self) -> Option<HashMap<TradeGoodSymbol, RawDeliveryRoute>> {
+        self.maybe_mining_ops_config
+            .clone()
+            .map(|cfg| cfg.delivery_locations.clone())
+            .or_else(|| {
+                self.maybe_siphoning_config
+                    .clone()
+                    .map(|cfg| cfg.delivery_locations.clone())
+            })
     }
 
     pub fn set_next_observation_time(&mut self, next_time: DateTime<Utc>) {

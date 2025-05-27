@@ -157,6 +157,16 @@ impl BlackboardOps for BmcBlackboard {
         Ok(survey_manager::pick_best_survey(available_surveys, mining_config))
     }
 
+    async fn mark_survey_as_exhausted(&self, survey: &Survey) -> anyhow::Result<()> {
+        let available_surveys = self
+            .bmc
+            .survey_bmc()
+            .mark_survey_as_exhausted(&Ctx::Anonymous, &survey.waypoint_symbol, &survey.signature)
+            .await?;
+
+        Ok(())
+    }
+
     async fn save_survey_response(&self, create_survey_response: CreateSurveyResponse) -> anyhow::Result<()> {
         let surveys = create_survey_response.data.surveys;
         Ok(self

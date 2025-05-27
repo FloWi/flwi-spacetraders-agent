@@ -26,7 +26,7 @@ impl SiphoningFleet {
                 .iter()
                 .filter_map(|route| match &route.source {
                     RawMaterialSource { trade_good, source_type, .. } if *source_type == RawMaterialSourceType::Siphoning => {
-                        Some((trade_good.clone(), route.delivery_location.clone()))
+                        Some((trade_good.clone(), route.clone()))
                     }
                     _ => None,
                 })

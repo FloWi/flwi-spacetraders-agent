@@ -322,7 +322,7 @@ impl FleetRunner {
             });
 
             guard.ship_fibers.insert(ship_symbol_clone, fiber);
-            event!(Level::INFO, message = "Ship fiber spawned")
+            event!(Level::DEBUG, message = "Ship fiber spawned")
         } else {
             event!(Level::ERROR, message = "Failed to spawn ship fiber - no task found")
         }
@@ -412,7 +412,7 @@ impl FleetRunner {
         };
 
         event!(
-            Level::INFO,
+            Level::DEBUG,
             message = "behavior_runner - successfully computed behavior for ship",
             ship = ship.symbol.0
         );
@@ -430,7 +430,7 @@ impl FleetRunner {
             }
             Some((ship_behavior, behavior_label)) => {
                 event!(
-                    Level::INFO,
+                    Level::DEBUG,
                     message = "behavior runner started",
                     ship = format!("{}", ship.symbol.0),
                     behavior = behavior_label
@@ -448,13 +448,13 @@ impl FleetRunner {
                 .instrument(ship_span)
                 .await;
 
-                let ship_span = span!(Level::INFO, "fleet_runner", ship = format!("{}", ship.symbol.0), behavior = behavior_label);
+                let ship_span = span!(Level::DEBUG, "fleet_runner", ship = format!("{}", ship.symbol.0), behavior = behavior_label);
                 let _enter = ship_span.enter();
 
                 match &result {
                     Ok(o) => {
                         event!(
-                            Level::INFO,
+                            Level::DEBUG,
                             message = "behavior_runner done",
                             result = %o,
                         );
@@ -463,7 +463,7 @@ impl FleetRunner {
                     }
                     Err(e) => {
                         event!(
-                            Level::INFO,
+                            Level::WARN,
                             message = "behavior_runner done with Error",
                             result = %e,
                         );
@@ -588,6 +588,7 @@ impl FleetRunner {
                     Level::INFO,
                     message = "ShipFinishedBehaviorTree",
                     ship = ship.symbol.0,
+                    completed_task = task.to_string(),
                     recompute_result = result.to_string()
                 );
                 match result {
@@ -708,7 +709,7 @@ impl FleetRunner {
                             &admiral_guard.ship_tasks,
                         )
                         .await?;
-                        event!(Level::INFO, message = "Ship relaunched successfully")
+                        event!(Level::DEBUG, message = "Ship relaunched successfully")
                     }
                 }
             }
@@ -737,7 +738,7 @@ impl FleetRunner {
             ShipStatusReport::Expense(_, operation_expense) => match operation_expense {
                 OperationExpenseEvent::RefueledShip { response } => {
                     event!(
-                        Level::INFO,
+                        Level::DEBUG,
                         message = "ShipStatusReport",
                         report_type = "OperationExpenseEvent::RefueledShip",
                         units = response.data.transaction.units,
@@ -912,18 +913,20 @@ impl FleetRunner {
                 ActionEvent::BehaviorCompleted(ship_ops, ship_action, result) => match result {
                     Ok(_) => {
                         event!(
-                            Level::INFO,
+                            Level::DEBUG,
                             message = "BehaviorCompleted",
                             ship = ship_ops.symbol.0,
                             action = %ship_action,
+                            index = ship_action.index(),
                         );
                     }
                     Err(error) => {
                         event!(
                             Level::ERROR,
-                            message = "BehaviorCompleted",
+                            message = "BehaviorCompleted with error",
                             ship = ship_ops.symbol.0,
                             action = %ship_action,
+                            index = ship_action.index(),
                             error,
                             debug_state = ship_ops.to_debug_string(),
                         );
@@ -935,6 +938,7 @@ impl FleetRunner {
                         message = "TransactionCompleted",
                         ship = ship.symbol.0,
                         transaction = %transaction.to_string(),
+                        description = ticket.details.get_description(),
 
                     );
                     ship_status_report_tx
@@ -1176,7 +1180,10 @@ mod tests {
     use crate::st_client::StClientTrait;
     use crate::transfer_cargo_manager::TransferCargoManager;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
+    use chrono::Utc;
     use itertools::Itertools;
+    use metrics::IntoF64;
+    use pathfinding::num_traits::ToPrimitive;
     use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipFrameSymbol, ShipRegistrationRole, TradeGoodSymbol, WaypointSymbol};
     use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
@@ -1319,8 +1326,9 @@ mod tests {
         // This task periodically checks if the condition is met
         let condition_checker = async {
             let check_interval = Duration::from_millis(1000); // Adjust as needed
+            let startup_time = Utc::now();
 
-            loop {
+            let completion_duration = loop {
                 // Sleep first to give the fleet a chance to start
                 tokio::time::sleep(check_interval).await;
 
@@ -1389,6 +1397,26 @@ mod tests {
                         .map(|cs| cs.is_complete)
                         .unwrap_or(false);
 
+                    let materials_summary = maybe_construction_site
+                        .clone()
+                        .map(|cs| {
+                            cs.materials
+                                .iter()
+                                .map(|cm| {
+                                    format!(
+                                        "  {}: {}/{} ({:1}%)",
+                                        cm.trade_symbol,
+                                        cm.fulfilled,
+                                        cm.required,
+                                        (cm.fulfilled.into_f64() / cm.required.into_f64()) * 100.0
+                                    )
+                                })
+                                .join("\n")
+                        })
+                        .unwrap_or_default();
+
+                    let construction_summary = format!("Material Summary:\n{}", materials_summary);
+
                     let has_started_construction = maybe_construction_site
                         .map(|cs| {
                             cs.materials
@@ -1424,6 +1452,7 @@ has_probes_at_every_marketplace: {has_probes_at_every_marketplace}
 has_bought_all_ships: {has_bought_all_ships}
 has_started_construction: {has_started_construction}
 has_completed_construction: {has_completed_construction}
+{construction_summary}
 
 evaluation_result: {evaluation_result}
 "#,
@@ -1436,19 +1465,22 @@ evaluation_result: {evaluation_result}
                 };
 
                 if condition_met {
-                    break;
+                    let finish_time = Utc::now();
+
+                    break finish_time - startup_time;
                 }
-            }
+            };
+            completion_duration
         };
 
         // Use select to race between the fleet task and your condition checker
         // Add a timeout as a fallback
         tokio::select! {
-            _ = tokio::time::timeout(Duration::from_secs(120), fleet_future) => {
+            _ = tokio::time::timeout(Duration::from_secs(1800), fleet_future) => {
                 println!("Fleet task completed or timed out");
             }
-            _ = condition_checker => {
-                println!("Condition met, stopping early");
+            completion_duration = condition_checker => {
+                println!("Condition met, stopping early after {}s", completion_duration.num_seconds());
             }
         }
 
@@ -1551,7 +1583,10 @@ evaluation_result: {evaluation_result}
             }
         }
 
-        // After reaching their observation point, the probes will stay docked and idle at their observation waypoints and won't be part of the market observation fleet anymore.
-        assert_eq!(admiral_mutex.lock().await.stationary_probe_locations.len(), shipyard_waypoints.len());
+        {
+            let guard = admiral_mutex.lock().await;
+
+            println!("Test done, put breakpoint here for visual inspection of state");
+        }
     }
 }

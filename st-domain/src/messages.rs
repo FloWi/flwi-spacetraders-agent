@@ -2,8 +2,9 @@ use crate::budgeting::treasury_redesign::{
     DeliverConstructionMaterialsTicketDetails, FinanceTicket, PurchaseShipTicketDetails, PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails,
 };
 use crate::{
-    Agent, Construction, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse,
-    SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol, TradeGoodSymbol, WaypointSymbol,
+    Agent, Construction, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse, PurchaseTradeGoodResponse, RawDeliveryRoute,
+    RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol,
+    TradeGoodSymbol, WaypointSymbol,
 };
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
@@ -128,7 +129,7 @@ pub enum ShipTask {
 
     HaulMiningGoods {
         mining_waypoint: WaypointSymbol,
-        delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+        delivery_locations: HashMap<TradeGoodSymbol, RawDeliveryRoute>,
         demanded_goods: HashSet<TradeGoodSymbol>,
     },
 
@@ -141,7 +142,7 @@ pub enum ShipTask {
     },
     SiphonCarboHydratesAtWaypoint {
         siphoning_waypoint: WaypointSymbol,
-        delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+        delivery_locations: HashMap<TradeGoodSymbol, RawDeliveryRoute>,
         demanded_goods: HashSet<TradeGoodSymbol>,
     },
 }
@@ -472,12 +473,12 @@ pub struct JumpGateEntry {
 pub struct SiphoningOpsConfig {
     pub siphoning_waypoint: WaypointSymbol,
     pub demanded_goods: HashSet<TradeGoodSymbol>,
-    pub delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+    pub delivery_locations: HashMap<TradeGoodSymbol, RawDeliveryRoute>,
 }
 
 #[derive(Clone, Debug)]
 pub struct MiningOpsConfig {
     pub mining_waypoint: WaypointSymbol,
     pub demanded_goods: HashSet<TradeGoodSymbol>,
-    pub delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol>,
+    pub delivery_locations: HashMap<TradeGoodSymbol, RawDeliveryRoute>,
 }

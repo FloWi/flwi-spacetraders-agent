@@ -1,8 +1,8 @@
 use crate::fleet::fleet::FleetAdmiral;
 use anyhow::anyhow;
 use st_domain::{
-    Fleet, FleetDecisionFacts, MarketObservationFleetConfig, MiningFleetConfig, RawMaterialSource, RawMaterialSourceType, Ship, ShipSymbol, ShipTask,
-    SupplyLevel, SystemSpawningFleetConfig, TradeGoodSymbol, WaypointSymbol,
+    Fleet, FleetDecisionFacts, MarketObservationFleetConfig, MiningFleetConfig, RawDeliveryRoute, RawMaterialSource, RawMaterialSourceType, Ship, ShipSymbol,
+    ShipTask, SupplyLevel, SystemSpawningFleetConfig, TradeGoodSymbol, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet};
 use tracing::event;
@@ -23,12 +23,12 @@ impl MiningFleet {
         }
 
         if let Some(msc) = &facts.materialized_supply_chain {
-            let delivery_locations: HashMap<TradeGoodSymbol, WaypointSymbol> = msc
+            let delivery_locations: HashMap<TradeGoodSymbol, RawDeliveryRoute> = msc
                 .raw_delivery_routes
                 .iter()
                 .filter_map(|route| match &route.source {
                     RawMaterialSource { trade_good, source_type, .. } if *source_type == RawMaterialSourceType::Mining => {
-                        Some((trade_good.clone(), route.delivery_location.clone()))
+                        Some((trade_good.clone(), route.clone()))
                     }
                     _ => None,
                 })
@@ -66,7 +66,7 @@ impl MiningFleet {
     fn calc_ship_task(
         s: &Ship,
         cfg: &MiningFleetConfig,
-        delivery_locations: &HashMap<TradeGoodSymbol, WaypointSymbol>,
+        delivery_locations: &HashMap<TradeGoodSymbol, RawDeliveryRoute>,
         demanded_goods: &HashSet<TradeGoodSymbol>,
     ) -> anyhow::Result<ShipTask> {
         let task = if s.is_mining_drone() {

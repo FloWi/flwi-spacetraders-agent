@@ -44,6 +44,7 @@ pub struct InMemoryUniverse {
     pub jump_gates: HashMap<WaypointSymbol, JumpGate>,
     pub supply_chain: GetSupplyChainResponse,
     pub created_surveys: HashMap<SurveySignature, (Survey, TotalExtractionYield)>,
+    pub exhausted_surveys: HashMap<SurveySignature, (Survey, TotalExtractionYield)>,
 }
 
 pub enum CheckConditionsResult {
@@ -119,7 +120,7 @@ impl InMemoryUniverse {
                 let ship = self.validate_ship(ss.clone())?;
 
                 if let Some(expiration) = ship.cooldown.expiration {
-                    if expiration < now {
+                    if expiration <= now {
                         Ok(())
                     } else {
                         anyhow::bail!("Ship is not cooled down yet")
@@ -305,23 +306,22 @@ impl InMemoryUniverse {
         trade_symbol: TradeGoodSymbol,
         units: u32,
     ) -> Result<TransferCargoResponse> {
-        let (original_provider_ship_cargo, original_receiver_ship_cargo) = if let Some((provider_ship, receiver_ship)) = self
+        if let Some((provider_ship, receiver_ship)) = self
             .ships
             .get(&provider_ship_symbol)
             .zip(self.ships.get(&receiver_ship_symbol))
         {
-            if provider_ship.is_stationary().not() {
-                anyhow::bail!("{provider_ship_symbol} is not stationary");
+            if provider_ship.is_stationary().not()
+                || receiver_ship.is_stationary().not()
+                || receiver_ship.nav.waypoint_symbol != provider_ship.nav.waypoint_symbol
+            {
+                anyhow::bail!(
+                    "Both ships ships must be stationary at the same location. receiver_ship.nav: {}; provider_ship.nav: {}",
+                    serde_json::to_string(&receiver_ship.nav).unwrap_or_default(),
+                    serde_json::to_string(&provider_ship.nav).unwrap_or_default()
+                );
             }
-            if receiver_ship.is_stationary().not() {
-                anyhow::bail!("{receiver_ship_symbol} is not stationary");
-            }
-            if receiver_ship.is_in_orbit() && provider_ship.is_in_orbit().not() {
-                anyhow::bail!("Both ships must have the same nav status");
-            }
-            if receiver_ship.is_docked() && provider_ship.is_docked().not() {
-                anyhow::bail!("Both ships must have the same nav status");
-            }
+
             if provider_ship
                 .has_trade_good_in_cargo(&trade_symbol, units)
                 .not()
@@ -484,7 +484,7 @@ impl InMemoryUniverse {
                         )),
                         Some(mtg) => {
                             if mtg.trade_volume < units as i32 {
-                                Err(anyhow!("TradeVolume is lower than requested units. Aborting purchase."))
+                                Err(anyhow!("TradeVolume is lower than requested units. Aborting sell."))
                             } else {
                                 Ok(mtg.clone())
                             }
@@ -540,6 +540,12 @@ impl InMemoryUniverse {
             CheckCondition::ShipIsAtWaypoint(ship_symbol.clone(), survey.waypoint_symbol.clone()),
         ])?;
 
+        if self.exhausted_surveys.contains_key(&survey.signature) {
+            // "name": "ShipSurveyExhaustedError"
+            // "code": 4224,
+            anyhow::bail!("ShipSurveyExhaustedError");
+        }
+
         let ship = self.ships.get(&ship_symbol).unwrap();
         let laser_strength = ship.get_yield_size_for_mining();
 
@@ -552,8 +558,12 @@ impl InMemoryUniverse {
             .ships
             .get_mut(&ship_symbol)
             .ok_or(anyhow!("Ship not found"))?;
-        if let Some((stored_survey, total_extraction_yield)) = self.created_surveys.get_mut(&survey.signature) {
-            if stored_survey != &survey {
+
+        // validate survey
+        let maybe_stored_survey = self.created_surveys.get(&survey.signature).cloned();
+
+        if let Some((stored_survey, total_extraction_yield)) = maybe_stored_survey {
+            if stored_survey != survey {
                 anyhow::bail!(
                     "content of survey changed compared to stored survey. Stored survey: {:?}",
                     serde_json::to_string(&stored_survey)?
@@ -562,9 +572,15 @@ impl InMemoryUniverse {
 
             if total_extraction_yield.current_total_extraction_yield + laser_strength > total_extraction_yield.max_extraction_yield {
                 self.created_surveys.remove(&survey.signature);
-                anyhow::bail!("Survey is exhausted");
+                self.exhausted_surveys
+                    .insert(survey.signature.clone(), (stored_survey.clone(), total_extraction_yield.clone()));
+                // "name": "ShipSurveyExhaustedError"
+                // "code": 4224,
+                anyhow::bail!("ShipSurveyExhaustedError");
             }
+        }
 
+        if let Some((_, total_extraction_yield)) = self.created_surveys.get_mut(&survey.signature) {
             let random_element = survey
                 .deposits
                 .iter()
@@ -577,7 +593,7 @@ impl InMemoryUniverse {
 
             ship.cargo
                 .with_item_added_mut(random_extraction_trade_good.clone(), laser_strength)
-                .map_err(|e| anyhow!("Cargo doesn't fit: {e:?}"))?;
+                .map_err(|e| anyhow!("Cargo doesn't fit: {e:?} - has been checked before, but let's make rustc happy"))?;
 
             ship.cooldown = Cooldown {
                 ship_symbol: ship_symbol.clone(),
@@ -703,11 +719,10 @@ impl InMemoryUniverse {
 
                     // Get a mutable reference to a specific material
                     if let Some(material) = construction_site.get_material_mut(&trade_good) {
-                        // Modify the material
                         let rest = material.required - material.fulfilled;
                         if units > rest {
                             anyhow::bail!(
-                                "Can't accept {units} units. Required are {} and fulfilled are {}. Can only accept {}",
+                                "Can't accept {units} units. Required are {} and fulfilled are {}. Can only accept {}. Be responsible: don't overspend!",
                                 material.required,
                                 material.fulfilled,
                                 rest
@@ -717,7 +732,18 @@ impl InMemoryUniverse {
                         match ship.cargo.with_units_removed(trade_good, units) {
                             Ok(updated_cargo) => {
                                 ship.cargo = updated_cargo.clone();
+
+                                // Modify the material
                                 material.fulfilled += units;
+
+                                // set whole construction site to complete if all materials fulfilled
+                                if construction_site
+                                    .materials
+                                    .iter()
+                                    .all(|mat| mat.fulfilled == mat.required)
+                                {
+                                    construction_site.is_complete = true;
+                                }
 
                                 Ok(SupplyConstructionSiteResponse {
                                     data: SupplyConstructionSiteResponseBody {
@@ -828,7 +854,7 @@ impl InMemoryUniverseClient {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TotalExtractionYield {
     pub current_total_extraction_yield: u32,
     pub max_extraction_yield: u32,

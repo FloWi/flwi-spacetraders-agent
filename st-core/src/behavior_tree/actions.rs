@@ -13,7 +13,7 @@ use itertools::Itertools;
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::{PurchaseTradeGoods, RefuelShip, SellTradeGoods};
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails};
-use st_domain::cargo_transfer::{InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoResult, TransferCargoError};
+use st_domain::cargo_transfer::{InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoToHaulerResult, TransferCargoError};
 use st_domain::TradeGoodSymbol::MOUNT_GAS_SIPHON_I;
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
@@ -91,7 +91,7 @@ impl Actionable for ShipAction {
                     if is_still_travelling {
                         let duration = arrival_time - now;
                         event!(Level::DEBUG, "Waiting for arrival for: {duration:?}");
-                        tokio::time::sleep(Duration::from_millis(u64::try_from(duration.num_milliseconds()).unwrap_or(0))).await;
+                        tokio::time::sleep(Duration::from_millis(u64::try_from(duration.num_milliseconds() + 1).unwrap_or(0))).await;
                         Ok(Success)
                     } else {
                         Ok(Success)
@@ -114,7 +114,7 @@ impl Actionable for ShipAction {
                 if is_still_cooling_down {
                     let duration = cooldown_finished_time - now;
                     event!(Level::DEBUG, "Waiting for cooldown for: {duration:?}");
-                    tokio::time::sleep(Duration::from_millis(u64::try_from(duration.num_milliseconds()).unwrap_or(0))).await;
+                    tokio::time::sleep(Duration::from_millis(u64::try_from(duration.num_milliseconds() + 1).unwrap_or(0))).await;
                     Ok(Success)
                 } else {
                     Ok(Success)
@@ -742,10 +742,10 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::CreateSellTicketsForAllCargoItems => {
-                if let Some(cfg) = state.maybe_siphoning_config.clone() {
+                if let Some(delivery_locations) = state.get_delivery_locations() {
                     let (cargo_items_with_delivery_location, cargo_items_without_delivery_location): (Vec<_>, Vec<_>) =
                         state.cargo.inventory.iter().partition_map(|inv| {
-                            if let Some(delivery_location) = cfg.delivery_locations.get(&inv.symbol) {
+                            if let Some(delivery_location) = delivery_locations.get(&inv.symbol) {
                                 itertools::Either::Left((inv.clone(), delivery_location.clone()))
                             } else {
                                 itertools::Either::Right(inv.clone())
@@ -765,24 +765,28 @@ impl Actionable for ShipAction {
                         ))
                     } else {
                         let mut sell_tickets = vec![];
-                        for (item, delivery_location) in cargo_items_with_delivery_location.into_iter() {
-                            let ticket = args.treasurer.create_sell_trade_goods_ticket(
-                                &state.my_fleet,
-                                item.symbol.clone(),
-                                delivery_location.clone(),
-                                state.symbol.clone(),
-                                item.units.clone(),
-                                Credits::default(),
-                                None,
-                            )?;
-                            sell_tickets.push(ticket);
+                        for (item, delivery_route) in cargo_items_with_delivery_location.into_iter() {
+                            let delivery_location = delivery_route.delivery_location.clone();
+                            let batches = calc_batches_based_on_trade_volume(item.units, delivery_route.delivery_market_entry.trade_volume as u32);
+                            for batch in batches {
+                                let ticket = args.treasurer.create_sell_trade_goods_ticket(
+                                    &state.my_fleet,
+                                    item.symbol.clone(),
+                                    delivery_location.clone(),
+                                    state.symbol.clone(),
+                                    batch,
+                                    Credits::default(),
+                                    None,
+                                )?;
+                                sell_tickets.push(ticket);
+                            }
                         }
 
                         state.set_trade_tickets(sell_tickets);
                         Ok(Success)
                     }
                 } else {
-                    Err(anyhow!("No siphoning config found"))
+                    Err(anyhow!("No delivery_locations found"))
                 }
             }
             ShipAction::HasCargoSpaceForMining => {
@@ -810,15 +814,29 @@ impl Actionable for ShipAction {
             }
             ShipAction::ExtractResources => {
                 if let Some(cfg) = state.maybe_mining_ops_config.clone() {
-                    let maybe_survey: Option<Survey> = args
-                        .blackboard
-                        .get_best_survey_for_current_demand(&cfg)
-                        .await?;
+                    loop {
+                        let maybe_survey: Option<Survey> = args
+                            .blackboard
+                            .get_best_survey_for_current_demand(&cfg)
+                            .await?;
 
-                    let result = state.extract_resources(maybe_survey).await?;
-                    state.cargo = result.data.cargo.clone();
-                    state.cooldown = result.data.cooldown.clone();
-                    Ok(Success)
+                        match state.extract_resources(maybe_survey.clone()).await {
+                            Ok(result) => {
+                                state.cargo = result.data.cargo.clone();
+                                state.cooldown = result.data.cooldown.clone();
+                                break Ok(Success);
+                            }
+                            Err(e) => {
+                                if e.to_string().contains("ShipSurveyExhaustedError") {
+                                    if let Some(survey) = maybe_survey {
+                                        args.blackboard.mark_survey_as_exhausted(&survey).await?;
+                                    }
+                                } else {
+                                    break Err(e);
+                                }
+                            }
+                        }
+                    }
                 } else {
                     Err(anyhow!("No mining config found"))
                 }
@@ -880,8 +898,8 @@ impl Actionable for ShipAction {
 
                 match cargo_transfer_result {
                     Ok(res) => match res {
-                        InternalTransferCargoResult::NoMatchingShipFound => {}
-                        InternalTransferCargoResult::Success {
+                        InternalTransferCargoToHaulerResult::NoMatchingShipFound => {}
+                        InternalTransferCargoToHaulerResult::Success {
                             updated_miner_cargo,
                             transfer_tasks,
                         } => {
@@ -909,7 +927,14 @@ impl Actionable for ShipAction {
 
                 match hauler_wait_result {
                     Ok(res) => {
-                        state.cargo = res;
+                        state.cargo = res.cargo.clone();
+                        event!(
+                            Level::INFO,
+                            message = "Hauler successfully received cargo",
+                            num_transfers = res.transfers.len(),
+                            total_wait_time = format!("{}s", res.total_wait_time().num_seconds())
+                        );
+
                         Ok(Success)
                     }
                     Err(err) => Err(err),
@@ -923,7 +948,7 @@ impl Actionable for ShipAction {
                     Err(anyhow!(
                         "Ship cargo is {} out of {} --> {}% <= 80%",
                         state.cargo.units,
-                        state.cargo.units,
+                        state.cargo.capacity,
                         (fill_ratio * 100.0).round() as u32
                     ))
                 }
@@ -949,6 +974,29 @@ impl Actionable for ShipAction {
 
         result
     }
+}
+
+fn calc_batches_based_on_trade_volume(number_items: u32, trade_volume: u32) -> Vec<u32> {
+    let result = if number_items <= trade_volume {
+        vec![number_items]
+    } else {
+        let mut batches = vec![];
+        let num_batches = number_items / trade_volume;
+        for i in 1..=num_batches {
+            if i < num_batches {
+                batches.push(trade_volume);
+            } else {
+                let rest = number_items - batches.iter().sum::<u32>();
+                batches.push(rest);
+            }
+        }
+        batches
+    };
+
+    let total = result.iter().sum::<u32>();
+    assert_eq!(total, number_items);
+
+    result
 }
 
 async fn wrap_transfer_cargo_request(

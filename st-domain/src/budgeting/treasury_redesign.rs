@@ -906,7 +906,8 @@ impl ImprovedTreasurer {
             TicketCreated { fleet_id, ticket_details } => {
                 let allocated_credits = ticket_details.allocated_credits;
                 if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
-                    if budget.current_capital >= allocated_credits {
+                    // we don't need to check the budget if we don't allocate any credits
+                    if allocated_credits == 0.into() || budget.current_capital >= allocated_credits {
                         budget.reserved_capital += allocated_credits;
                         self.active_tickets
                             .insert(ticket_details.ticket_id, ticket_details);
@@ -914,8 +915,11 @@ impl ImprovedTreasurer {
                         self.ledger_entries.push_back(ledger_entry);
                     } else {
                         return Err(anyhow!(
-                            "Insufficient funds. available_capital: {}; allocated_credits: {allocated_credits}",
-                            budget.current_capital
+                            "Insufficient funds for creating ticket {} for fleet #{}. available_capital: {}; allocated_credits: {}",
+                            fleet_id,
+                            ticket_details.ticket_id,
+                            budget.current_capital,
+                            allocated_credits
                         ));
                     }
                 } else {

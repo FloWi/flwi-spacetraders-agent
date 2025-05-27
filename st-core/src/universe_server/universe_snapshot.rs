@@ -105,6 +105,7 @@ impl UniverseSnapshot {
 
             supply_chain: self.supply_chain.clone(),
             created_surveys: Default::default(),
+            exhausted_surveys: Default::default(),
         }
     }
 }
