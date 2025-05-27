@@ -531,7 +531,10 @@ fn compute_all_routes(
             let candidate_export_entries = export_markets
                 .get(&candidate)
                 .ok_or(anyhow!("Supply market of {} should exist", candidate))?;
-            assert_eq!(1, candidate_export_entries.len(), "We expect only one producing market of {}", candidate);
+
+            if candidate_export_entries.len() > 1 {
+                println!("We expect only one producing market of {}", candidate);
+            }
             let (candidate_export_wps, candidate_export_mtg) = candidate_export_entries.first().cloned().unwrap();
 
             for (dep_trade_good, (dep_wps, rank)) in dependency_providers.iter() {

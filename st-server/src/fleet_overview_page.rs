@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use itertools::*;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
-use leptos_use::{use_interval, UseIntervalReturn};
+use leptos_use::{use_interval, use_interval_fn, UseIntervalReturn};
 use serde::{Deserialize, Serialize};
 use st_domain::{DeliveryRoute, FleetDecisionFacts, FleetPhase, FleetsOverview, Ship, WaypointSymbol};
 use std::collections::HashSet;
@@ -61,15 +61,10 @@ async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, FleetsOvervie
 
 #[component]
 pub fn FleetOverviewPage() -> impl IntoView {
-    let UseIntervalReturn {
-        counter,
-        reset,
-        is_active,
-        pause,
-        resume,
-    } = use_interval(5000);
+    let fleet_decision_facts_resource = Resource::new(|| {}, |_| get_fleet_decision_facts());
 
-    let fleet_decision_facts_resource = Resource::new(move || counter.get(), |count| get_fleet_decision_facts());
+    #[cfg(not(feature = "ssr"))]
+    let _handle = use_interval_fn(move || fleet_decision_facts_resource.refetch(), 5_000);
 
     view! {
         <div class="bg-blue-950 text-white flex flex-col min-h-screen">
@@ -82,21 +77,6 @@ pub fn FleetOverviewPage() -> impl IntoView {
 
                                 view! {
                                     <div class="flex flex-col gap-4 p-4">
-                                        <div class="flex flex-col gap-2">
-
-                                            <h2 class="font-bold text-xl">"Super Fleet Admiral"</h2>
-                                            <ClipboardButton
-                                                clipboard_text=serde_json::to_string_pretty(
-                                                        &fleets_overview,
-                                                    )
-                                                    .unwrap_or("---".to_string())
-                                                label="Copy to Clipboard".to_string()
-                                            />
-                                            <pre>
-                                                {serde_json::to_string_pretty(&fleets_overview)
-                                                    .unwrap_or("---".to_string())}
-                                            </pre>
-                                        </div>
                                         <div class="flex flex-row gap-4 p-4">
                                             <div class="flex flex-col gap-2">
 
@@ -182,6 +162,21 @@ pub fn FleetOverviewPage() -> impl IntoView {
                                                         .unwrap_or("---".to_string())}
                                                 </pre>
                                             </div>
+                                        </div>
+                                        <div class="flex flex-col gap-2">
+
+                                            <h2 class="font-bold text-xl">"Super Fleet Admiral"</h2>
+                                            <ClipboardButton
+                                                clipboard_text=serde_json::to_string_pretty(
+                                                        &fleets_overview,
+                                                    )
+                                                    .unwrap_or("---".to_string())
+                                                label="Copy to Clipboard".to_string()
+                                            />
+                                            <pre>
+                                                {serde_json::to_string_pretty(&fleets_overview)
+                                                    .unwrap_or("---".to_string())}
+                                            </pre>
                                         </div>
 
                                     </div>

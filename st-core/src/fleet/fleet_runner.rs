@@ -95,6 +95,15 @@ impl FleetRunner {
             let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
             let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
             FleetAdmiral::assign_ship_tasks(&mut admiral, new_ship_tasks);
+            upsert_fleets_data(
+                Arc::clone(&bmc),
+                &Ctx::Anonymous,
+                &admiral.fleets,
+                &admiral.fleet_tasks,
+                &admiral.ship_fleet_assignment,
+                &admiral.ship_tasks,
+            )
+            .await?;
         }
 
         // Clone fleet_admiral infos to avoid the lifetime issues
@@ -518,7 +527,6 @@ impl FleetRunner {
                 "fleet_runner::listen_to_ship_status_report_messages",
                 ship = format!("{}", msg.ship_symbol().0),
             );
-            let _enter = ship_span.enter();
 
             // Process the message with error handling that doesn't return from the function
             if let Err(e) = Self::process_ship_status_report(
@@ -529,6 +537,7 @@ impl FleetRunner {
                 sleep_duration,
                 messages_in_queue,
             )
+            .instrument(ship_span)
             .await
             {
                 // Log the error but continue the loop
@@ -566,13 +575,6 @@ impl FleetRunner {
         sleep_duration: Duration,
         messages_in_queue: usize,
     ) -> Result<()> {
-        let ship_span = span!(
-            Level::INFO,
-            "fleet_runner::process_ship_status_report",
-            ship = format!("{}", msg.ship_symbol().0)
-        );
-        let _enter = ship_span.enter();
-
         let mut admiral_guard = fleet_admiral.lock().await;
         admiral_guard
             .report_ship_action_completed(msg, Arc::clone(&bmc), messages_in_queue)
@@ -872,7 +874,6 @@ impl FleetRunner {
                 }
             },
         }
-        drop(_enter);
         Ok(())
     }
 
@@ -883,7 +884,7 @@ impl FleetRunner {
         while let Some(msg) = ship_action_completed_rx.recv().await {
             let ship_span = span!(
                 Level::DEBUG,
-                "fleet_runner::listen_to_ship_status_report_messages",
+                "fleet_runner::listen_to_ship_action_update_messages",
                 ship = format!("{}", msg.ship_symbol().0)
             );
             let _enter = ship_span.enter();
