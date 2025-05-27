@@ -42,17 +42,25 @@ impl TransferCargoManager {
         let summary = loop {
             let mut guard = self.waiting_haulers.lock().await;
 
-            if let Some(ships_at_waypoint) = guard.get(&waypoint_symbol) {
+            if let Some(ships_at_waypoint) = guard.get(&waypoint_symbol).cloned() {
                 if let Some(summary) = ships_at_waypoint.get(&hauler_ship_symbol) {
                     let cargo = &summary.cargo;
                     let fill_amount: f64 = cargo.units.into_f64() / cargo.capacity.into_f64();
 
                     if fill_amount > 0.8 {
+                        guard
+                            .get_mut(&waypoint_symbol)
+                            .unwrap()
+                            .remove(&hauler_ship_symbol);
                         break summary.clone();
                     }
                 }
             }
+            
+            // drop the guard immediately to prevent unnecessary waiting for other ships
             drop(guard);
+            
+            // now sleep for checking in later
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         };
 

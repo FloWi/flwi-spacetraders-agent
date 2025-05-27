@@ -316,7 +316,7 @@ impl InMemoryUniverse {
                 || receiver_ship.nav.waypoint_symbol != provider_ship.nav.waypoint_symbol
             {
                 anyhow::bail!(
-                    "Both ships ships must be stationary at the same location. receiver_ship.nav: {}; provider_ship.nav: {}",
+                    "Both ships must be stationary at the same location. receiver_ship.nav: {}; provider_ship.nav: {}",
                     serde_json::to_string(&receiver_ship.nav).unwrap_or_default(),
                     serde_json::to_string(&provider_ship.nav).unwrap_or_default()
                 );
