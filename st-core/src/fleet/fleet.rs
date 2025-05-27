@@ -1,6 +1,7 @@
 use crate::behavior_tree::ship_behaviors::ShipAction;
 use crate::fleet::construction_fleet::ConstructJumpGateFleet;
 use crate::fleet::fleet_runner::FleetRunner;
+use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
 use crate::fleet::mining_fleet::MiningFleet;
 use crate::fleet::siphoning_fleet::SiphoningFleet;
@@ -40,7 +41,6 @@ use strum::{Display, IntoEnumIterator};
 use tokio::sync::Mutex;
 use tracing::{event, Level};
 use FleetConfig::{ConstructJumpGateCfg, MarketObservationCfg, MiningCfg, SiphoningCfg, TradingCfg};
-use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum ShipStatusReport {
@@ -1925,7 +1925,7 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         .map(|db_entry| db_entry.waypoint_symbol.clone())
         .collect_vec();
     let shipyards_to_explore = find_shipyards_for_exploration(shipyards_of_interest.clone());
-    
+
     let supply_chain = bmc
         .supply_chain_bmc()
         .get_supply_chain(&Ctx::Anonymous)
@@ -1937,7 +1937,7 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         .load_agent(&Ctx::Anonymous)
         .await
         .expect("agent");
-    
+
     let headquarters_waypoint = agent.headquarters;
 
     let market_data = bmc

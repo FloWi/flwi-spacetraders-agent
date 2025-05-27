@@ -293,6 +293,7 @@ mod tests {
     use crate::bmc_blackboard::BmcBlackboard;
     use crate::fleet::fleet::collect_fleet_decision_facts;
     use crate::fleet::fleet_runner::FleetRunner;
+    use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
     use crate::fleet::supply_chain_test::{calc_trading_decisions, render_cli_table_trading_opp, TradingOppRow};
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient, InMemoryUniverseOverrides};
@@ -312,7 +313,6 @@ mod tests {
     use std::ops::Not;
     use std::sync::Arc;
     use test_log::test;
-    use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
 
     #[test(tokio::test)]
     //#[tokio::test] // for accessing runtime-infos with tokio-console

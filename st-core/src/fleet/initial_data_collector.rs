@@ -1,13 +1,13 @@
-use std::ops::Not;
-use std::sync::Arc;
+use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
+use crate::pagination::fetch_all_pages;
+use crate::st_client::StClientTrait;
 use chrono::Utc;
 use itertools::Itertools;
 use st_domain::{Ship, WaypointTraitSymbol, WaypointType};
 use st_store::bmc::Bmc;
 use st_store::Ctx;
-use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
-use crate::pagination::fetch_all_pages;
-use crate::st_client::StClientTrait;
+use std::ops::Not;
+use std::sync::Arc;
 
 pub async fn load_and_store_initial_data_in_bmcs(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>) -> anyhow::Result<()> {
     let ctx = &Ctx::Anonymous;

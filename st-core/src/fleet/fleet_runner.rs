@@ -1082,7 +1082,6 @@ impl FleetRunner {
 
         Ok(())
     }
-
 }
 
 #[cfg(test)]
@@ -1090,6 +1089,7 @@ mod tests {
     use crate::bmc_blackboard::BmcBlackboard;
     use crate::fleet::fleet::FleetAdmiral;
     use crate::fleet::fleet_runner::FleetRunner;
+    use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
     use crate::format_and_sort_collection;
     use crate::st_client::StClientTrait;
     use crate::transfer_cargo_manager::TransferCargoManager;
@@ -1114,7 +1114,6 @@ mod tests {
     use std::time::Duration;
     use test_log::test;
     use tokio::sync::Mutex;
-    use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
 
     #[test(tokio::test)]
     //#[tokio::test] // for accessing runtime-infos with tokio-console
