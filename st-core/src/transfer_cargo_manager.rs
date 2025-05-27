@@ -56,10 +56,10 @@ impl TransferCargoManager {
                     }
                 }
             }
-            
+
             // drop the guard immediately to prevent unnecessary waiting for other ships
             drop(guard);
-            
+
             // now sleep for checking in later
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         };

@@ -183,7 +183,7 @@ async fn get_materialized_supply_chain() -> Result<(MaterializedSupplyChain, Vec
         "raw_delivery_routes should not be empty"
     );
 
-    Ok((materialized_supply_chain, scored_supply_routes))
+    Ok((materialized_supply_chain, scored_supply_chain_routes))
 }
 
 #[component]

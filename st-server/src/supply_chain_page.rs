@@ -6,8 +6,8 @@ use leptos_meta::Title;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    find_complete_supply_chain, DeliveryRoute, EvaluatedTradingOpportunity, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain, SupplyChain,
-    SupplyChainNodeVecExt, TradeGoodSymbol, Waypoint, WaypointSymbol,
+    find_complete_supply_chain, Construction, DeliveryRoute, EvaluatedTradingOpportunity, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain,
+    SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, Waypoint, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -22,7 +22,7 @@ async fn get_supply_chain_data() -> Result<
     (
         SupplyChain,
         Vec<(WaypointSymbol, Vec<MarketTradeGood>)>,
-        Option<GetConstructionResponse>,
+        Option<Construction>,
         MaterializedSupplyChain,
         Vec<EvaluatedTradingOpportunity>,
         Vec<EvaluatedTradingOpportunity>,
