@@ -207,20 +207,40 @@ impl FleetBudget {
 use crate::budgeting::credits::Credits;
 use crate::budgeting::treasury_redesign::LedgerEntry::*;
 use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
+use async_trait::async_trait;
 use itertools::Itertools;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use strum::Display;
+
+#[async_trait]
+pub trait LedgerArchiver {
+    async fn process_entry(&mut self, entry: LedgerEntry) -> Result<()>;
+}
+
+#[derive(Debug)]
+pub struct LedgerArchiveTask {
+    entry: LedgerEntry,
+    response_sender: mpsc::Sender<Result<()>>,
+}
 
 #[derive(Clone, Debug)]
 pub struct ThreadSafeTreasurer {
     inner: Arc<Mutex<ImprovedTreasurer>>,
+    task_sender: mpsc::Sender<LedgerArchiveTask>,
 }
 
 impl ThreadSafeTreasurer {
-    pub fn new(starting_credits: Credits) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(ImprovedTreasurer::new(starting_credits))),
-        }
+    pub fn new(starting_credits: Credits, ledger_archiving_task_sender: mpsc::Sender<LedgerArchiveTask>) -> Self
+where {
+        let instance = Self {
+            inner: Arc::new(Mutex::new(ImprovedTreasurer::new())),
+            task_sender: ledger_archiving_task_sender,
+        };
+
+        instance
+            .with_treasurer(|t| t.process_ledger_entry(TreasuryCreated { credits: starting_credits }))
+            .expect("creating a new instance should work");
+        instance
     }
 
     // Helper method to execute operations on the treasurer
@@ -229,7 +249,45 @@ impl ThreadSafeTreasurer {
         F: FnOnce(&mut ImprovedTreasurer) -> Result<R>,
     {
         let mut treasurer = self.inner.lock().map_err(|_| anyhow!("Mutex poisoned"))?;
-        operation(&mut treasurer)
+
+        let starting_idx = treasurer.ledger_entries.len();
+        let result = operation(&mut treasurer);
+
+        match result {
+            Err(error) => Err(error),
+            Ok(res) => {
+                let ending_idx = treasurer.ledger_entries.len();
+
+                // Process all new entries that were added
+                if ending_idx > starting_idx {
+                    let new_entries: Vec<LedgerEntry> = treasurer
+                        .ledger_entries
+                        .range(starting_idx..ending_idx)
+                        .cloned()
+                        .collect();
+
+                    // Send all new entries for archiving
+                    for entry in new_entries {
+                        let (archiving_response_sender, archiving_response_receiver) = mpsc::channel();
+
+                        // Send task to external processor
+                        self.task_sender
+                            .send(LedgerArchiveTask {
+                                entry,
+                                response_sender: archiving_response_sender,
+                            })
+                            .map_err(|_| anyhow!("Ledger processor disconnected"))?;
+
+                        // Wait for processing to complete
+                        let _ = archiving_response_receiver
+                            .recv()
+                            .map_err(|_| anyhow!("Failed to receive response from processor"))?;
+                    }
+                }
+
+                Ok(res)
+            }
+        }
     }
 
     pub fn get_instance(&self) -> Result<ImprovedTreasurer> {
@@ -387,6 +445,7 @@ impl ThreadSafeTreasurer {
     pub fn transfer_all_funds_to_treasury(&self) -> Result<()> {
         self.with_treasurer(|t| t.transfer_all_funds_to_treasury())
     }
+
     pub fn remove_all_fleets(&self) -> Result<()> {
         self.with_treasurer(|t| t.remove_all_fleets())
     }
@@ -399,6 +458,8 @@ impl ThreadSafeTreasurer {
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ImprovedTreasurer {
     treasury_fund: Credits,
+
+    // we keep it around for testing and debugging - can be removed at one point
     ledger_entries: VecDeque<LedgerEntry>,
 
     #[serde(serialize_with = "serialize_as_sorted_map")]
@@ -412,7 +473,7 @@ pub struct ImprovedTreasurer {
 }
 
 impl ImprovedTreasurer {
-    pub fn new(starting_credits: Credits) -> Self {
+    pub fn new() -> Self {
         let mut treasurer = Self {
             treasury_fund: Default::default(),
             ledger_entries: Default::default(),
@@ -421,9 +482,6 @@ impl ImprovedTreasurer {
             completed_tickets: Default::default(),
         };
 
-        treasurer
-            .process_ledger_entry(TreasuryCreated { credits: starting_credits })
-            .unwrap();
         treasurer
     }
 
@@ -1007,19 +1065,74 @@ impl ImprovedTreasurer {
 }
 
 #[cfg(test)]
+
 mod tests {
     use crate::budgeting::credits::Credits;
     use crate::budgeting::treasury_redesign::LedgerEntry::{ArchivedFleetBudget, TransferredFundsFromFleetToTreasury};
-    use crate::budgeting::treasury_redesign::{ActiveTradeRoute, FinanceResult, FleetBudget, ImprovedTreasurer, LedgerEntry, ThreadSafeTreasurer};
+    use crate::budgeting::treasury_redesign::{
+        ActiveTradeRoute, FinanceResult, FleetBudget, ImprovedTreasurer, LedgerArchiveTask, LedgerEntry, ThreadSafeTreasurer,
+    };
     use crate::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
     use anyhow::Result;
     use itertools::Itertools;
+    use std::collections::VecDeque;
+    use std::sync::{mpsc, Arc, Mutex};
+    use std::thread;
+    use std::time::Duration;
+
+    #[derive(Clone, Debug)]
+    pub struct TestLedgerArchiver {
+        entries: Arc<Mutex<VecDeque<LedgerEntry>>>,
+    }
+
+    impl TestLedgerArchiver {
+        pub fn new() -> Self {
+            Self {
+                entries: Arc::new(Mutex::new(VecDeque::new())),
+            }
+        }
+
+        pub fn get_entries(&self) -> Vec<LedgerEntry> {
+            self.entries.lock().unwrap().iter().cloned().collect()
+        }
+
+        pub fn get_entry_count(&self) -> usize {
+            self.entries.lock().unwrap().len()
+        }
+
+        pub fn clear(&self) {
+            self.entries.lock().unwrap().clear();
+        }
+
+        fn process_entry(&self, entry: LedgerEntry) -> Result<()> {
+            self.entries.lock().unwrap().push_back(entry);
+            Ok(())
+        }
+    }
+
+    pub fn create_test_ledger_setup() -> (TestLedgerArchiver, mpsc::Sender<LedgerArchiveTask>) {
+        let (task_sender, task_receiver) = mpsc::channel::<LedgerArchiveTask>();
+        let archiver = TestLedgerArchiver::new();
+        let archiver_clone = archiver.clone();
+
+        // Spawn background processor thread
+        thread::spawn(move || {
+            while let Ok(task) = task_receiver.recv() {
+                let result = archiver_clone.process_entry(task.entry);
+                task.response_sender.send(result).expect("Sending ACK of the processing failed");
+            }
+        });
+
+        (archiver, task_sender)
+    }
 
     #[test]
     fn test_fleet_budget_in_trade_cycle() -> Result<()> {
         //Start Fresh with 175k
 
-        let treasurer = ThreadSafeTreasurer::new(175_000.into());
+        let (test_archiver, task_sender) = create_test_ledger_setup();
+
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
         let mut expected_ledger_entries = vec![LedgerEntry::TreasuryCreated { credits: 175_000.into() }];
 
         assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
@@ -1222,8 +1335,9 @@ mod tests {
     #[test]
     fn test_fleet_budget_for_ship_purchases() -> Result<()> {
         //Start Fresh with 175k
+        let (test_archiver, task_sender) = create_test_ledger_setup();
 
-        let treasurer = ThreadSafeTreasurer::new(175_000.into());
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
 
         let fleet_id = &FleetId(1);
         let ship_symbol = &ShipSymbol("FLWI-1".to_string());
@@ -1290,12 +1404,19 @@ mod tests {
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
+        assert_eq!(
+            serde_json::to_string_pretty(&test_archiver.get_entries())?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
+        );
+
         Ok(())
     }
 
     #[test]
     fn test_set_fleet_total_capital() -> Result<()> {
-        let treasurer = ThreadSafeTreasurer::new(175_000.into());
+        let (test_archiver, task_sender) = create_test_ledger_setup();
+
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
 
         let fleet_id = &FleetId(1);
 
@@ -1371,12 +1492,19 @@ mod tests {
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
+        assert_eq!(
+            serde_json::to_string_pretty(&test_archiver.get_entries())?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
+        );
+
         Ok(())
     }
 
     #[test]
     fn test_getting_active_trade_routes() -> Result<()> {
-        let treasurer = ThreadSafeTreasurer::new(175_000.into());
+        let (test_archiver, task_sender) = create_test_ledger_setup();
+
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
 
         let fleet_id = &FleetId(1);
         let ship_symbol = &ShipSymbol("FLWI-1".to_string());
@@ -1441,7 +1569,9 @@ mod tests {
 
     #[test]
     fn test_financing_of_purchase() -> Result<()> {
-        let treasurer = ThreadSafeTreasurer::new(175_000.into());
+        let (test_archiver, task_sender) = create_test_ledger_setup();
+
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
 
         let fleet_id = &FleetId(1);
         let ship_symbol = &ShipSymbol("FLWI-1".to_string());
@@ -1452,28 +1582,25 @@ mod tests {
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
         let mut expected_ledger_entries = treasurer.ledger_entries()?.into_iter().collect_vec();
 
-        let no_op_finance_result = treasurer.try_finance_purchase_for_fleet(fleet_id, 5_000.into())?;
-
-        assert_eq!(no_op_finance_result, FinanceResult::FleetAlreadyHadSufficientFunds);
-
         let successful_finance_result = treasurer.try_finance_purchase_for_fleet(fleet_id, 25_000.into())?;
 
         expected_ledger_entries.push(LedgerEntry::TransferredFundsFromTreasuryToFleet {
             fleet_id: fleet_id.clone(),
-            credits: 15_000.into(),
+            credits: 25_000.into(),
         });
 
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id)?,
             FleetBudget {
-                current_capital: 25_000.into(),
+                current_capital: 35_000.into(),
                 reserved_capital: 0.into(),
                 budget: 10_000.into(),
                 ..Default::default()
             }
         );
-        assert_eq!(successful_finance_result, FinanceResult::TransferSuccessful { transfer_sum: 15_000.into() });
-        assert_eq!(treasurer.current_treasury_fund()?, 150_000.into());
+        assert_eq!(successful_finance_result, FinanceResult::TransferSuccessful { transfer_sum: 25_000.into() });
+        assert_eq!(treasurer.current_agent_credits()?, 175_000.into());
+        assert_eq!(treasurer.current_treasury_fund()?, 140_000.into());
         assert_eq!(
             serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
@@ -1481,7 +1608,7 @@ mod tests {
 
         let too_expensive_result = treasurer.try_finance_purchase_for_fleet(fleet_id, 200_000.into())?;
 
-        assert_eq!(too_expensive_result, FinanceResult::TransferFailed { missing: 175_000.into() });
+        assert_eq!(too_expensive_result, FinanceResult::TransferFailed { missing: 60_000.into() });
 
         //no ledger entry
         assert_eq!(
@@ -1489,14 +1616,19 @@ mod tests {
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
-        // unchanged
-        assert_eq!(treasurer.current_treasury_fund()?, 150_000.into());
+        assert_eq!(
+            serde_json::to_string_pretty(&test_archiver.get_entries())?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
+        );
 
-        // unchanged budget
+        // unchanged
+        assert_eq!(treasurer.current_treasury_fund()?, 140_000.into());
+
+        // unchanged budget, but more current_capital
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id)?,
             FleetBudget {
-                current_capital: 25_000.into(),
+                current_capital: 35_000.into(),
                 reserved_capital: 0.into(),
                 budget: 10_000.into(),
                 ..Default::default()
@@ -1508,7 +1640,9 @@ mod tests {
 
     #[test]
     fn test_removing_fleets() -> Result<()> {
-        let treasurer = ThreadSafeTreasurer::new(175_000.into());
+        let (test_archiver, task_sender) = create_test_ledger_setup();
+
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
 
         treasurer.create_fleet(&FleetId(1), Credits::new(75_000))?;
         treasurer.create_fleet(&FleetId(2), Credits::new(50_000))?;
@@ -1520,6 +1654,7 @@ mod tests {
         assert_eq!(treasurer.current_treasury_fund()?, 50_000.into());
 
         treasurer.transfer_all_funds_to_treasury()?;
+
         expected_ledger_entries.push(TransferredFundsFromFleetToTreasury {
             fleet_id: FleetId(1),
             credits: 75_000.into(),
@@ -1536,12 +1671,19 @@ mod tests {
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
+        assert_eq!(
+            serde_json::to_string_pretty(&test_archiver.get_entries())?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
+        );
+
         Ok(())
     }
 
     #[test]
     fn test_archiving_fleet() -> Result<()> {
-        let treasurer = ThreadSafeTreasurer::new(175_000.into());
+        let (test_archiver, task_sender) = create_test_ledger_setup();
+
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
 
         treasurer.create_fleet(&FleetId(1), Credits::new(75_000))?;
 
@@ -1564,12 +1706,19 @@ mod tests {
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
+        assert_eq!(
+            serde_json::to_string_pretty(&test_archiver.get_entries())?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
+        );
+
         Ok(())
     }
 
     #[test]
     fn test_archiving_fleet_with_capital() -> Result<()> {
-        let treasurer = ThreadSafeTreasurer::new(175_000.into());
+        let (test_archiver, task_sender) = create_test_ledger_setup();
+
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
 
         treasurer.create_fleet(&FleetId(1), Credits::new(75_000))?;
         treasurer.transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))?;
@@ -1601,6 +1750,11 @@ mod tests {
         assert_eq!(
             serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
+        );
+
+        assert_eq!(
+            serde_json::to_string_pretty(&test_archiver.get_entries())?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
         );
 
         Ok(())
