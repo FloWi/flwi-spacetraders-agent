@@ -19,7 +19,7 @@ use std::ops::Not;
 pub struct ConstructJumpGateFleet;
 
 impl ConstructJumpGateFleet {
-    pub fn compute_ship_tasks(
+    pub async fn compute_ship_tasks(
         admiral: &FleetAdmiral,
         cfg: &ConstructJumpGateFleetConfig,
         fleet: &Fleet,
@@ -71,7 +71,8 @@ impl ConstructJumpGateFleet {
                 active_trade_routes,
                 fleet_budget,
                 &best_new_trading_opportunities,
-            )?;
+            )
+            .await?;
 
             best_actions_for_ships
                 .into_iter()
@@ -119,7 +120,7 @@ pub fn create_trading_tickets(trading_opportunities_within_budget: &[EvaluatedTr
     new_tasks_with_tickets
 }
 
-fn determine_construction_fleet_actions(
+async fn determine_construction_fleet_actions(
     admiral: &FleetAdmiral,
     facts: &FleetDecisionFacts,
     my_fleet_id: &FleetId,
@@ -133,7 +134,8 @@ fn determine_construction_fleet_actions(
 ) -> Result<HashMap<ShipSymbol, ConstructionFleetAction>> {
     let active_trades = admiral
         .treasurer
-        .get_fleet_tickets()?
+        .get_fleet_tickets()
+        .await?
         .get(my_fleet_id)
         .cloned()
         .unwrap_or_default();

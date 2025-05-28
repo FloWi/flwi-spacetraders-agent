@@ -242,14 +242,16 @@ impl Actionable for ShipAction {
                     data: RefuelShipResponseBody { fuel: ref new_fuel, .. },
                 } = state.refuel(false).await?;
 
-                args.treasurer.report_expense(
-                    &state.my_fleet,
-                    state.current_navigation_destination.clone(),
-                    state.maybe_trades.clone().unwrap_or_default(),
-                    TradeGoodSymbol::FUEL,
-                    response.data.transaction.units as u32,
-                    Credits::from(response.data.transaction.price_per_unit),
-                )?;
+                args.treasurer
+                    .report_expense(
+                        &state.my_fleet,
+                        state.current_navigation_destination.clone(),
+                        state.maybe_trades.clone().unwrap_or_default(),
+                        TradeGoodSymbol::FUEL,
+                        response.data.transaction.units as u32,
+                        Credits::from(response.data.transaction.price_per_unit),
+                    )
+                    .await?;
 
                 action_completed_tx
                     .send(ActionEvent::Expense(
@@ -545,7 +547,8 @@ impl Actionable for ShipAction {
                                     .purchase_trade_good(details.quantity, details.trade_good.clone())
                                     .await?;
 
-                                args.mark_purchase_as_completed(finance_ticket.clone(), &response)?;
+                                args.mark_purchase_as_completed(finance_ticket.clone(), &response)
+                                    .await?;
 
                                 action_completed_tx
                                     .send(ActionEvent::TransactionCompleted(
@@ -564,7 +567,8 @@ impl Actionable for ShipAction {
                                     .sell_trade_good(details.quantity, details.trade_good.clone())
                                     .await?;
 
-                                args.mark_sell_as_completed(finance_ticket.clone(), &response)?;
+                                args.mark_sell_as_completed(finance_ticket.clone(), &response)
+                                    .await?;
 
                                 action_completed_tx
                                     .send(ActionEvent::TransactionCompleted(
@@ -583,7 +587,8 @@ impl Actionable for ShipAction {
                                     .purchase_ship(&details.ship_type, &details.waypoint_symbol)
                                     .await?;
 
-                                args.mark_ship_purchase_as_completed(finance_ticket.clone(), &response)?;
+                                args.mark_ship_purchase_as_completed(finance_ticket.clone(), &response)
+                                    .await?;
 
                                 action_completed_tx
                                     .send(ActionEvent::TransactionCompleted(
@@ -603,7 +608,8 @@ impl Actionable for ShipAction {
                                     .supply_construction_site(details.quantity, &details.trade_good, &details.waypoint_symbol)
                                     .await?;
 
-                                args.mark_construction_delivery_as_completed(finance_ticket.clone(), &response)?;
+                                args.mark_construction_delivery_as_completed(finance_ticket.clone(), &response)
+                                    .await?;
                                 args.blackboard
                                     .update_construction_site(&response.data.construction)
                                     .await?;
@@ -680,7 +686,7 @@ impl Actionable for ShipAction {
             }
             ShipAction::CheckForShipPurchaseTicket => {
                 if state.has_trade().not() {
-                    let tickets = args.treasurer.get_active_tickets()?;
+                    let tickets = args.treasurer.get_active_tickets().await?;
                     if let Some((_, ship_purchase_ticket)) = tickets.into_iter().find(|(_, t)| match t.details {
                         PurchaseTradeGoods(_) => false,
                         SellTradeGoods(_) => false,
@@ -769,15 +775,18 @@ impl Actionable for ShipAction {
                             let delivery_location = delivery_route.delivery_location.clone();
                             let batches = calc_batches_based_on_trade_volume(item.units, delivery_route.delivery_market_entry.trade_volume as u32);
                             for batch in batches {
-                                let ticket = args.treasurer.create_sell_trade_goods_ticket(
-                                    &state.my_fleet,
-                                    item.symbol.clone(),
-                                    delivery_location.clone(),
-                                    state.symbol.clone(),
-                                    batch,
-                                    Credits::default(),
-                                    None,
-                                )?;
+                                let ticket = args
+                                    .treasurer
+                                    .create_sell_trade_goods_ticket(
+                                        &state.my_fleet,
+                                        item.symbol.clone(),
+                                        delivery_location.clone(),
+                                        state.symbol.clone(),
+                                        batch,
+                                        Credits::default(),
+                                        None,
+                                    )
+                                    .await?;
                                 sell_tickets.push(ticket);
                             }
                         }
@@ -1137,11 +1146,11 @@ mod tests {
     #[test(tokio::test)]
     async fn test_dock_if_necessary_behavior_on_docked_ship() {
         let mut mock_client = MockStClientTrait::new();
-        let (test_archiver, task_sender) = create_test_ledger_setup();
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
 
         let args = BehaviorArgs {
             blackboard: Arc::new(MockBlackboardOps::new()),
-            treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()),
+            treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()).await,
             transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
         };
 
@@ -1180,11 +1189,11 @@ mod tests {
     #[test(tokio::test)]
     async fn test_dock_if_necessary_behavior_on_orbiting_ship() {
         let mut mock_client = MockStClientTrait::new();
-        let (test_archiver, task_sender) = create_test_ledger_setup();
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
 
         let args = BehaviorArgs {
             blackboard: Arc::new(MockBlackboardOps::new()),
-            treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()),
+            treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()).await,
             transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
         };
 
@@ -1361,12 +1370,12 @@ mod tests {
         ship_behavior.update_indices();
 
         //println!("{}", ship_behavior.to_mermaid());
-        let (test_archiver, task_sender) = create_test_ledger_setup();
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client), FleetId(42));
         let args = BehaviorArgs {
             blackboard: Arc::new(mock_test_blackboard),
-            treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()),
+            treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()).await,
             transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
         };
 

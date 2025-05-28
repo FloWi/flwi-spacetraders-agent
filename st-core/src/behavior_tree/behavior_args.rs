@@ -28,30 +28,34 @@ pub struct BehaviorArgs {
 }
 
 impl BehaviorArgs {
-    pub(crate) fn mark_purchase_as_completed(&self, ticket: FinanceTicket, response: &PurchaseTradeGoodResponse) -> Result<()> {
+    pub(crate) async fn mark_purchase_as_completed(&self, ticket: FinanceTicket, response: &PurchaseTradeGoodResponse) -> Result<()> {
         self.treasurer
-            .complete_ticket(&ticket.fleet_id, &ticket, response.data.transaction.price_per_unit.into())?;
+            .complete_ticket(&ticket.fleet_id, &ticket, response.data.transaction.price_per_unit.into())
+            .await?;
 
         Ok(())
     }
 
-    pub(crate) fn mark_sell_as_completed(&self, ticket: FinanceTicket, response: &SellTradeGoodResponse) -> Result<()> {
+    pub(crate) async fn mark_sell_as_completed(&self, ticket: FinanceTicket, response: &SellTradeGoodResponse) -> Result<()> {
         self.treasurer
-            .complete_ticket(&ticket.fleet_id, &ticket, response.data.transaction.price_per_unit.into())?;
+            .complete_ticket(&ticket.fleet_id, &ticket, response.data.transaction.price_per_unit.into())
+            .await?;
 
         Ok(())
     }
 
-    pub(crate) fn mark_ship_purchase_as_completed(&self, ticket: FinanceTicket, response: &PurchaseShipResponse) -> Result<()> {
+    pub(crate) async fn mark_ship_purchase_as_completed(&self, ticket: FinanceTicket, response: &PurchaseShipResponse) -> Result<()> {
         self.treasurer
-            .complete_ticket(&ticket.fleet_id, &ticket, (response.data.transaction.price as i64).into())?;
+            .complete_ticket(&ticket.fleet_id, &ticket, (response.data.transaction.price as i64).into())
+            .await?;
 
         Ok(())
     }
 
-    pub(crate) fn mark_construction_delivery_as_completed(&self, ticket: FinanceTicket, response: &SupplyConstructionSiteResponse) -> Result<()> {
+    pub(crate) async fn mark_construction_delivery_as_completed(&self, ticket: FinanceTicket, response: &SupplyConstructionSiteResponse) -> Result<()> {
         self.treasurer
-            .complete_ticket(&ticket.fleet_id, &ticket, 0.into())?;
+            .complete_ticket(&ticket.fleet_id, &ticket, 0.into())
+            .await?;
 
         Ok(())
     }

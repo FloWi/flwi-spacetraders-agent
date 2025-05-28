@@ -209,8 +209,9 @@ use crate::budgeting::treasury_redesign::LedgerEntry::*;
 use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
 use async_trait::async_trait;
 use itertools::Itertools;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use strum::Display;
+use tokio::sync::Mutex;
 
 #[async_trait]
 pub trait LedgerArchiver {
@@ -234,7 +235,7 @@ pub struct ThreadSafeTreasurer {
 impl ThreadSafeTreasurer {
     pub async fn new(starting_credits: Credits, ledger_archiving_task_sender: LedgerArchiveTaskSender) -> Self
 where {
-        let new_instance = ImprovedTreasurer::new().await;
+        let new_instance = ImprovedTreasurer::new();
         let instance = Self {
             inner: Arc::new(Mutex::new(new_instance)),
             task_sender: ledger_archiving_task_sender,
@@ -252,7 +253,7 @@ where {
     where
         F: FnOnce(&mut ImprovedTreasurer) -> Result<R>,
     {
-        let mut treasurer = self.inner.lock().map_err(|_| anyhow!("Mutex poisoned"))?;
+        let mut treasurer = self.inner.lock().await;
 
         let starting_idx = treasurer.ledger_entries.len();
         let result = operation(&mut treasurer);
@@ -323,11 +324,11 @@ where {
         self.with_treasurer(|t| t.get_active_tickets()).await
     }
 
-    pub async fn current_agent_credits(&self) -> Result<Credits> {
+    pub async fn get_current_agent_credits(&self) -> Result<Credits> {
         self.with_treasurer(|t| Ok(t.current_agent_credits())).await
     }
 
-    pub async fn current_treasury_fund(&self) -> Result<Credits> {
+    pub async fn get_current_treasury_fund(&self) -> Result<Credits> {
         self.with_treasurer(|t| Ok(t.current_treasury_fund())).await
     }
 
@@ -460,7 +461,7 @@ where {
             .await
     }
 
-    pub async fn ledger_entries(&self) -> Result<VecDeque<LedgerEntry>> {
+    pub async fn get_ledger_entries(&self) -> Result<VecDeque<LedgerEntry>> {
         self.with_treasurer(|t| Ok(t.ledger_entries.clone())).await
     }
 
@@ -496,7 +497,7 @@ pub struct ImprovedTreasurer {
 }
 
 impl ImprovedTreasurer {
-    pub async fn new() -> Self {
+    pub fn new() -> Self {
         let mut treasurer = Self {
             treasury_fund: Default::default(),
             ledger_entries: Default::default(),
@@ -508,7 +509,7 @@ impl ImprovedTreasurer {
         treasurer
     }
 
-    pub async fn from_ledger(ledger: Vec<LedgerEntry>) -> Result<Self> {
+    pub fn from_ledger(ledger: Vec<LedgerEntry>) -> Result<Self> {
         // don't call Self::new(), because it creates a ledger_entry
         let mut treasurer: Self = Self {
             treasury_fund: Default::default(),
@@ -1109,9 +1110,9 @@ mod tests {
         let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone()).await;
         let mut expected_ledger_entries = vec![LedgerEntry::TreasuryCreated { credits: 175_000.into() }];
 
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(175_000));
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
@@ -1129,10 +1130,10 @@ mod tests {
         });
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(175_000));
 
         assert_eq!(treasurer.get_fleet_budget(fleet_id).await?.current_capital, Credits::new(0));
 
@@ -1147,10 +1148,10 @@ mod tests {
         });
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(175_000));
         assert_eq!(treasurer.get_fleet_budget(fleet_id).await?.current_capital, Credits::new(75_000));
 
         // create purchase ticket (reduces available capital of fleet)
@@ -1183,10 +1184,10 @@ mod tests {
             }
         );
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(175_000));
 
         // create sell ticket
 
@@ -1222,10 +1223,10 @@ mod tests {
         );
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(175_000));
 
         // perform purchase (we spent less than expected)
         let purchase_price_per_unit = 900.into(); // a little less than expected
@@ -1264,11 +1265,11 @@ mod tests {
         );
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(139_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(139_000));
 
         let sell_price_per_unit = 2_100.into(); // a little more than expected
         treasurer
@@ -1303,15 +1304,15 @@ mod tests {
                 ..Default::default()
             }
         );
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(223_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(223_000));
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         let current_treasurer = treasurer.get_instance().await?;
 
-        let actual_replayed_treasurer = ImprovedTreasurer::from_ledger(expected_ledger_entries).await?;
+        let actual_replayed_treasurer = ImprovedTreasurer::from_ledger(expected_ledger_entries)?;
 
         assert_eq!(
             serde_json::to_string_pretty(&actual_replayed_treasurer)?,
@@ -1339,7 +1340,11 @@ mod tests {
             .await?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
+        let mut expected_ledger_entries = treasurer
+            .get_ledger_entries()
+            .await?
+            .into_iter()
+            .collect_vec();
 
         let ship_purchase_ticket = treasurer
             .create_ship_purchase_ticket(
@@ -1367,10 +1372,10 @@ mod tests {
             ticket_details: ship_purchase_ticket.clone(),
         });
 
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(175_000));
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
@@ -1385,7 +1390,7 @@ mod tests {
             total: (-22_500).into(),
         });
 
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(152_500));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(152_500));
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
@@ -1397,13 +1402,13 @@ mod tests {
         );
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?
         );
 
         Ok(())
@@ -1424,7 +1429,7 @@ mod tests {
             .transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))
             .await?;
 
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(175_000));
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
@@ -1436,11 +1441,15 @@ mod tests {
         );
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
+        let mut expected_ledger_entries = treasurer
+            .get_ledger_entries()
+            .await?
+            .into_iter()
+            .collect_vec();
 
         treasurer.set_fleet_budget(fleet_id, 150_000.into()).await?;
 
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(175_000));
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
@@ -1457,7 +1466,7 @@ mod tests {
         });
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
         //setting total capital below current_capital
@@ -1474,7 +1483,7 @@ mod tests {
             credits: 25_000.into(),
         });
 
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(175_000));
         assert_eq!(
             treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
@@ -1485,17 +1494,17 @@ mod tests {
             }
         );
 
-        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
-        assert_eq!(treasurer.current_treasury_fund().await?, Credits::new(125_000));
+        assert_eq!(treasurer.get_current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.get_current_treasury_fund().await?, Credits::new(125_000));
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?
         );
 
         Ok(())
@@ -1599,7 +1608,11 @@ mod tests {
             .await?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
+        let mut expected_ledger_entries = treasurer
+            .get_ledger_entries()
+            .await?
+            .into_iter()
+            .collect_vec();
 
         let successful_finance_result = treasurer
             .try_finance_purchase_for_fleet(fleet_id, 25_000.into())
@@ -1620,10 +1633,10 @@ mod tests {
             }
         );
         assert_eq!(successful_finance_result, FinanceResult::TransferSuccessful { transfer_sum: 25_000.into() });
-        assert_eq!(treasurer.current_agent_credits().await?, 175_000.into());
-        assert_eq!(treasurer.current_treasury_fund().await?, 140_000.into());
+        assert_eq!(treasurer.get_current_agent_credits().await?, 175_000.into());
+        assert_eq!(treasurer.get_current_treasury_fund().await?, 140_000.into());
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
@@ -1635,17 +1648,17 @@ mod tests {
 
         //no ledger entry
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?
         );
 
         // unchanged
-        assert_eq!(treasurer.current_treasury_fund().await?, 140_000.into());
+        assert_eq!(treasurer.get_current_treasury_fund().await?, 140_000.into());
 
         // unchanged budget, but more current_capital
         assert_eq!(
@@ -1681,8 +1694,12 @@ mod tests {
             .await?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
-        assert_eq!(treasurer.current_treasury_fund().await?, 50_000.into());
+        let mut expected_ledger_entries = treasurer
+            .get_ledger_entries()
+            .await?
+            .into_iter()
+            .collect_vec();
+        assert_eq!(treasurer.get_current_treasury_fund().await?, 50_000.into());
 
         treasurer.transfer_all_funds_to_treasury().await?;
 
@@ -1696,15 +1713,15 @@ mod tests {
             credits: 50_000.into(),
         });
 
-        assert_eq!(treasurer.current_treasury_fund().await?, 175_000.into());
+        assert_eq!(treasurer.get_current_treasury_fund().await?, 175_000.into());
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?
         );
 
         Ok(())
@@ -1725,7 +1742,11 @@ mod tests {
             .await?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
+        let mut expected_ledger_entries = treasurer
+            .get_ledger_entries()
+            .await?
+            .into_iter()
+            .collect_vec();
 
         treasurer.remove_all_fleets().await?;
         expected_ledger_entries.push(ArchivedFleetBudget {
@@ -1739,13 +1760,13 @@ mod tests {
         });
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?
         );
 
         Ok(())
@@ -1765,9 +1786,13 @@ mod tests {
             .await?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
+        let mut expected_ledger_entries = treasurer
+            .get_ledger_entries()
+            .await?
+            .into_iter()
+            .collect_vec();
 
-        assert_eq!(treasurer.current_treasury_fund().await?, 100_000.into());
+        assert_eq!(treasurer.get_current_treasury_fund().await?, 100_000.into());
 
         treasurer.remove_all_fleets().await?;
 
@@ -1786,16 +1811,16 @@ mod tests {
             },
         });
 
-        assert_eq!(treasurer.current_treasury_fund().await?, 175_000.into());
+        assert_eq!(treasurer.get_current_treasury_fund().await?, 175_000.into());
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
+            serde_json::to_string_pretty(&treasurer.get_ledger_entries().await?)?
         );
 
         Ok(())

@@ -581,7 +581,7 @@ impl FleetRunner {
             .report_ship_action_completed(msg, Arc::clone(&bmc), messages_in_queue)
             .await?;
 
-        let treasurer_credits = admiral_guard.agent_info_credits().0;
+        let treasurer_credits = admiral_guard.agent_info_credits().await.0;
 
         match msg {
             ShipStatusReport::ShipFinishedBehaviorTree(ship, task) => {
@@ -607,7 +607,7 @@ impl FleetRunner {
 
                         let system_symbol = ship.nav.system_symbol.clone();
 
-                        FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle.clone())?;
+                        FleetAdmiral::dismantle_fleets(&mut admiral_guard, fleets_to_dismantle.clone()).await?;
 
                         bmc.fleet_bmc()
                             .delete_fleets(&Ctx::Anonymous, &fleets_to_dismantle)
@@ -646,7 +646,9 @@ impl FleetRunner {
                             FleetAdmiral::assign_ships(&fleet_task_list, &admiral_guard.all_ships, &admiral_guard.fleet_phase.shopping_list_in_order);
                         admiral_guard.ship_fleet_assignment = ship_fleet_assignment.clone();
 
-                        admiral_guard.redistribute_distribute_fleet_budgets(&ship_price_info, &system_symbol)?;
+                        admiral_guard
+                            .redistribute_distribute_fleet_budgets(&ship_price_info, &system_symbol)
+                            .await?;
 
                         let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral_guard, &facts, Arc::clone(&bmc)).await?;
                         FleetAdmiral::assign_ship_tasks(&mut admiral_guard, new_ship_tasks);
@@ -1222,7 +1224,7 @@ mod tests {
             Some(FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { .. })
         ));
 
-        let actual_agent_credits = fleet_admiral.agent_info_credits();
+        let actual_agent_credits = fleet_admiral.agent_info_credits().await;
         let expected_agent_credits = client.get_agent().await.expect("agent").data.credits;
         assert_eq!(expected_agent_credits, actual_agent_credits.0);
         let admiral_mutex = Arc::new(Mutex::new(fleet_admiral));
@@ -1259,7 +1261,7 @@ mod tests {
                         .iter()
                         .any(|t| matches!(t.task, FleetTask::InitialExploration { .. }));
 
-                    let fleet_budgets = admiral.treasurer.get_fleet_budgets().unwrap();
+                    let fleet_budgets = admiral.treasurer.get_fleet_budgets().await.unwrap();
                     let has_all_fleets_registered_in_treasurer = admiral
                         .fleets
                         .keys()
