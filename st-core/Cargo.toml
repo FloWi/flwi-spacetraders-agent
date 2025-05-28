@@ -7,6 +7,9 @@ exclude = [
     "src/**/test_assets/",
 ]
 
+[dev-dependencies]
+st-domain = { path = "../st-domain", features = ["test-utils"] }
+
 [dependencies]
 
 st-domain = { path = "../st-domain", default-features = false }
@@ -14,9 +17,6 @@ st-store = { path = "../st-store" }
 
 # for testing/debugging async tests
 console-subscriber = "0.4.1"  # Check for the latest version
-
-
-
 
 itertools = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }

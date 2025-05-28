@@ -45,7 +45,7 @@ async fn main() {
     let env_filter = EnvFilter::from_default_env();
 
     tracing_subscriber::registry()
-        .with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE))
+        .with(fmt::layer()) //.with_span_events(fmt::format::FmtSpan::CLOSE))
         .with(env_filter)
         .with(custom_filter)
         .try_init()

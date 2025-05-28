@@ -209,7 +209,7 @@ use crate::budgeting::treasury_redesign::LedgerEntry::*;
 use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
 use async_trait::async_trait;
 use itertools::Itertools;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use strum::Display;
 
 #[async_trait]
@@ -217,34 +217,38 @@ pub trait LedgerArchiver {
     async fn process_entry(&mut self, entry: LedgerEntry) -> Result<()>;
 }
 
+pub type LedgerArchiveTaskSender = tokio::sync::mpsc::UnboundedSender<LedgerArchiveTask>;
+
 #[derive(Debug)]
 pub struct LedgerArchiveTask {
-    entry: LedgerEntry,
-    response_sender: mpsc::Sender<Result<()>>,
+    pub entry: LedgerEntry,
+    pub response_sender: tokio::sync::mpsc::Sender<Result<()>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ThreadSafeTreasurer {
     inner: Arc<Mutex<ImprovedTreasurer>>,
-    task_sender: mpsc::Sender<LedgerArchiveTask>,
+    task_sender: LedgerArchiveTaskSender,
 }
 
 impl ThreadSafeTreasurer {
-    pub fn new(starting_credits: Credits, ledger_archiving_task_sender: mpsc::Sender<LedgerArchiveTask>) -> Self
+    pub async fn new(starting_credits: Credits, ledger_archiving_task_sender: LedgerArchiveTaskSender) -> Self
 where {
+        let new_instance = ImprovedTreasurer::new().await;
         let instance = Self {
-            inner: Arc::new(Mutex::new(ImprovedTreasurer::new())),
+            inner: Arc::new(Mutex::new(new_instance)),
             task_sender: ledger_archiving_task_sender,
         };
 
         instance
             .with_treasurer(|t| t.process_ledger_entry(TreasuryCreated { credits: starting_credits }))
+            .await
             .expect("creating a new instance should work");
         instance
     }
 
     // Helper method to execute operations on the treasurer
-    fn with_treasurer<F, R>(&self, operation: F) -> Result<R>
+    async fn with_treasurer<F, R>(&self, operation: F) -> Result<R>
     where
         F: FnOnce(&mut ImprovedTreasurer) -> Result<R>,
     {
@@ -268,8 +272,9 @@ where {
 
                     // Send all new entries for archiving
                     for entry in new_entries {
-                        let (archiving_response_sender, archiving_response_receiver) = mpsc::channel();
+                        let (archiving_response_sender, mut archiving_response_receiver) = tokio::sync::mpsc::channel(1);
 
+                        println!("with_treasurer: sending task to task_sender");
                         // Send task to external processor
                         self.task_sender
                             .send(LedgerArchiveTask {
@@ -277,11 +282,15 @@ where {
                                 response_sender: archiving_response_sender,
                             })
                             .map_err(|_| anyhow!("Ledger processor disconnected"))?;
+                        println!("with_treasurer: sent task to task_sender, waiting for archiving");
 
                         // Wait for processing to complete
                         let _ = archiving_response_receiver
                             .recv()
-                            .map_err(|_| anyhow!("Failed to receive response from processor"))?;
+                            .await
+                            .ok_or_else(|| anyhow!("Failed to receive response from processor"))?;
+
+                        println!("with_treasurer: Got ACK back on sync channel");
                     }
                 }
 
@@ -290,46 +299,49 @@ where {
         }
     }
 
-    pub fn get_instance(&self) -> Result<ImprovedTreasurer> {
-        self.with_treasurer(|t| Ok(t.clone()))
+    pub async fn get_instance(&self) -> Result<ImprovedTreasurer> {
+        self.with_treasurer(|t| Ok(t.clone())).await
     }
 
-    pub fn get_fleet_budget(&self, fleet_id: &FleetId) -> Result<FleetBudget> {
+    pub async fn get_fleet_budget(&self, fleet_id: &FleetId) -> Result<FleetBudget> {
         self.with_treasurer(|t| {
             t.fleet_budgets
                 .get(fleet_id)
                 .cloned()
                 .ok_or(anyhow!("Fleet id not found"))
         })
+        .await
     }
 
-    pub fn get_fleet_tickets(&self) -> Result<HashMap<FleetId, Vec<FinanceTicket>>> {
-        self.with_treasurer(|t| t.get_fleet_tickets())
+    pub async fn get_fleet_tickets(&self) -> Result<HashMap<FleetId, Vec<FinanceTicket>>> {
+        self.with_treasurer(|t| t.get_fleet_tickets()).await
     }
-    pub fn get_fleet_budgets(&self) -> Result<HashMap<FleetId, FleetBudget>> {
-        self.with_treasurer(|t| t.get_fleet_budgets())
+    pub async fn get_fleet_budgets(&self) -> Result<HashMap<FleetId, FleetBudget>> {
+        self.with_treasurer(|t| t.get_fleet_budgets()).await
     }
-    pub fn get_active_tickets(&self) -> Result<HashMap<TicketId, FinanceTicket>> {
-        self.with_treasurer(|t| t.get_active_tickets())
-    }
-
-    pub fn current_agent_credits(&self) -> Result<Credits> {
-        self.with_treasurer(|t| Ok(t.current_agent_credits()))
+    pub async fn get_active_tickets(&self) -> Result<HashMap<TicketId, FinanceTicket>> {
+        self.with_treasurer(|t| t.get_active_tickets()).await
     }
 
-    pub fn current_treasury_fund(&self) -> Result<Credits> {
-        self.with_treasurer(|t| Ok(t.current_treasury_fund()))
+    pub async fn current_agent_credits(&self) -> Result<Credits> {
+        self.with_treasurer(|t| Ok(t.current_agent_credits())).await
     }
 
-    pub fn create_fleet(&self, fleet_id: &FleetId, total_capital: Credits) -> Result<()> {
+    pub async fn current_treasury_fund(&self) -> Result<Credits> {
+        self.with_treasurer(|t| Ok(t.current_treasury_fund())).await
+    }
+
+    pub async fn create_fleet(&self, fleet_id: &FleetId, total_capital: Credits) -> Result<()> {
         self.with_treasurer(|t| t.create_fleet(fleet_id, total_capital))
+            .await
     }
 
-    pub fn transfer_funds_to_fleet_to_top_up_available_capital(&self, fleet_id: &FleetId) -> Result<()> {
+    pub async fn transfer_funds_to_fleet_to_top_up_available_capital(&self, fleet_id: &FleetId) -> Result<()> {
         self.with_treasurer(|t| t.transfer_funds_to_fleet_to_top_up_available_capital(fleet_id))
+            .await
     }
 
-    pub fn create_purchase_trade_goods_ticket(
+    pub async fn create_purchase_trade_goods_ticket(
         &self,
         fleet_id: &FleetId,
         trade_good_symbol: TradeGoodSymbol,
@@ -341,9 +353,10 @@ where {
         self.with_treasurer(|t| {
             t.create_purchase_trade_goods_ticket(fleet_id, trade_good_symbol, waypoint_symbol, ship_symbol, quantity, expected_price_per_unit)
         })
+        .await
     }
 
-    pub fn create_sell_trade_goods_ticket(
+    pub async fn create_sell_trade_goods_ticket(
         &self,
         fleet_id: &FleetId,
         trade_good_symbol: TradeGoodSymbol,
@@ -364,9 +377,10 @@ where {
                 maybe_matching_purchase_ticket,
             )
         })
+        .await
     }
 
-    pub fn create_delivery_construction_material_ticket(
+    pub async fn create_delivery_construction_material_ticket(
         &self,
         fleet_id: &FleetId,
         trade_good_symbol: TradeGoodSymbol,
@@ -385,9 +399,10 @@ where {
                 maybe_matching_purchase_ticket,
             )
         })
+        .await
     }
 
-    pub fn report_expense(
+    pub async fn report_expense(
         &self,
         fleet_id: &FleetId,
         current_destination: Option<WaypointSymbol>,
@@ -397,13 +412,14 @@ where {
         price_per_unit: Credits,
     ) -> Result<()> {
         self.with_treasurer(|t| t.report_expense(fleet_id, current_destination, current_tickets, trade_good_symbol, units, price_per_unit))
+            .await
     }
 
-    pub fn get_active_trade_routes(&self) -> Result<Vec<ActiveTradeRoute>> {
-        self.with_treasurer(|t| t.get_active_trade_routes())
+    pub async fn get_active_trade_routes(&self) -> Result<Vec<ActiveTradeRoute>> {
+        self.with_treasurer(|t| t.get_active_trade_routes()).await
     }
 
-    pub fn create_ship_purchase_ticket(
+    pub async fn create_ship_purchase_ticket(
         &self,
         fleet_id: &FleetId,
         ship_type: ShipType,
@@ -412,46 +428,53 @@ where {
         ship_symbol: ShipSymbol,
     ) -> Result<FinanceTicket> {
         self.with_treasurer(|t| t.create_ship_purchase_ticket(fleet_id, ship_type, expected_purchase_price, shipyard_waypoint_symbol, ship_symbol))
+            .await
     }
 
-    pub fn get_ticket(&self, ticket_id: &TicketId) -> Result<FinanceTicket> {
-        self.with_treasurer(|t| t.get_ticket(ticket_id))
+    pub async fn get_ticket(&self, ticket_id: &TicketId) -> Result<FinanceTicket> {
+        self.with_treasurer(|t| t.get_ticket(ticket_id)).await
     }
 
-    pub fn complete_ticket(&self, fleet_id: &FleetId, finance_ticket: &FinanceTicket, actual_price_per_unit: Credits) -> Result<()> {
+    pub async fn complete_ticket(&self, fleet_id: &FleetId, finance_ticket: &FinanceTicket, actual_price_per_unit: Credits) -> Result<()> {
         self.with_treasurer(|t| t.complete_ticket(fleet_id, finance_ticket, actual_price_per_unit))
+            .await
     }
 
-    pub fn transfer_excess_funds_from_fleet_to_treasury(&self, fleet_id: &FleetId) -> Result<()> {
+    pub async fn transfer_excess_funds_from_fleet_to_treasury(&self, fleet_id: &FleetId) -> Result<()> {
         self.with_treasurer(|t| t.transfer_excess_funds_from_fleet_to_treasury_if_necessary(fleet_id))
+            .await
     }
 
-    pub fn try_finance_purchase_for_fleet(&self, fleet_id: &FleetId, required_credits: Credits) -> Result<FinanceResult> {
+    pub async fn try_finance_purchase_for_fleet(&self, fleet_id: &FleetId, required_credits: Credits) -> Result<FinanceResult> {
         self.with_treasurer(|t| t.try_finance_purchase_for_fleet(fleet_id, required_credits))
+            .await
     }
 
-    pub fn set_fleet_budget(&self, fleet_id: &FleetId, new_total_capital: Credits) -> Result<()> {
+    pub async fn set_fleet_budget(&self, fleet_id: &FleetId, new_total_capital: Credits) -> Result<()> {
         self.with_treasurer(|t| t.set_fleet_total_capital(fleet_id, new_total_capital))
+            .await
     }
 
-    pub fn set_new_operating_reserve(&self, fleet_id: &FleetId, new_operating_reserve: Credits) -> Result<()> {
+    pub async fn set_new_operating_reserve(&self, fleet_id: &FleetId, new_operating_reserve: Credits) -> Result<()> {
         self.with_treasurer(|t| t.set_new_operating_reserve(fleet_id, new_operating_reserve))
+            .await
     }
 
-    pub fn ledger_entries(&self) -> Result<VecDeque<LedgerEntry>> {
-        self.with_treasurer(|t| Ok(t.ledger_entries.clone()))
+    pub async fn ledger_entries(&self) -> Result<VecDeque<LedgerEntry>> {
+        self.with_treasurer(|t| Ok(t.ledger_entries.clone())).await
     }
 
-    pub fn transfer_all_funds_to_treasury(&self) -> Result<()> {
+    pub async fn transfer_all_funds_to_treasury(&self) -> Result<()> {
         self.with_treasurer(|t| t.transfer_all_funds_to_treasury())
+            .await
     }
 
-    pub fn remove_all_fleets(&self) -> Result<()> {
-        self.with_treasurer(|t| t.remove_all_fleets())
+    pub async fn remove_all_fleets(&self) -> Result<()> {
+        self.with_treasurer(|t| t.remove_all_fleets()).await
     }
 
-    pub fn remove_fleet(&self, fleet_id: &FleetId) -> Result<()> {
-        self.with_treasurer(|t| t.remove_fleet(fleet_id))
+    pub async fn remove_fleet(&self, fleet_id: &FleetId) -> Result<()> {
+        self.with_treasurer(|t| t.remove_fleet(fleet_id)).await
     }
 }
 
@@ -473,7 +496,7 @@ pub struct ImprovedTreasurer {
 }
 
 impl ImprovedTreasurer {
-    pub fn new() -> Self {
+    pub async fn new() -> Self {
         let mut treasurer = Self {
             treasury_fund: Default::default(),
             ledger_entries: Default::default(),
@@ -485,7 +508,7 @@ impl ImprovedTreasurer {
         treasurer
     }
 
-    pub fn from_ledger(ledger: Vec<LedgerEntry>) -> Result<Self> {
+    pub async fn from_ledger(ledger: Vec<LedgerEntry>) -> Result<Self> {
         // don't call Self::new(), because it creates a ledger_entry
         let mut treasurer: Self = Self {
             treasury_fund: Default::default(),
@@ -1068,76 +1091,27 @@ impl ImprovedTreasurer {
 
 mod tests {
     use crate::budgeting::credits::Credits;
+    use crate::budgeting::test_sync_ledger::create_test_ledger_setup;
     use crate::budgeting::treasury_redesign::LedgerEntry::{ArchivedFleetBudget, TransferredFundsFromFleetToTreasury};
-    use crate::budgeting::treasury_redesign::{
-        ActiveTradeRoute, FinanceResult, FleetBudget, ImprovedTreasurer, LedgerArchiveTask, LedgerEntry, ThreadSafeTreasurer,
-    };
+    use crate::budgeting::treasury_redesign::{ActiveTradeRoute, FinanceResult, FleetBudget, ImprovedTreasurer, LedgerEntry, ThreadSafeTreasurer};
     use crate::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
     use anyhow::Result;
     use itertools::Itertools;
-    use std::collections::VecDeque;
-    use std::sync::{mpsc, Arc, Mutex};
-    use std::thread;
-    use std::time::Duration;
 
-    #[derive(Clone, Debug)]
-    pub struct TestLedgerArchiver {
-        entries: Arc<Mutex<VecDeque<LedgerEntry>>>,
-    }
-
-    impl TestLedgerArchiver {
-        pub fn new() -> Self {
-            Self {
-                entries: Arc::new(Mutex::new(VecDeque::new())),
-            }
-        }
-
-        pub fn get_entries(&self) -> Vec<LedgerEntry> {
-            self.entries.lock().unwrap().iter().cloned().collect()
-        }
-
-        pub fn get_entry_count(&self) -> usize {
-            self.entries.lock().unwrap().len()
-        }
-
-        pub fn clear(&self) {
-            self.entries.lock().unwrap().clear();
-        }
-
-        fn process_entry(&self, entry: LedgerEntry) -> Result<()> {
-            self.entries.lock().unwrap().push_back(entry);
-            Ok(())
-        }
-    }
-
-    pub fn create_test_ledger_setup() -> (TestLedgerArchiver, mpsc::Sender<LedgerArchiveTask>) {
-        let (task_sender, task_receiver) = mpsc::channel::<LedgerArchiveTask>();
-        let archiver = TestLedgerArchiver::new();
-        let archiver_clone = archiver.clone();
-
-        // Spawn background processor thread
-        thread::spawn(move || {
-            while let Ok(task) = task_receiver.recv() {
-                let result = archiver_clone.process_entry(task.entry);
-                task.response_sender.send(result).expect("Sending ACK of the processing failed");
-            }
-        });
-
-        (archiver, task_sender)
-    }
+    use tokio::test;
 
     #[test]
-    fn test_fleet_budget_in_trade_cycle() -> Result<()> {
+    async fn test_fleet_budget_in_trade_cycle() -> Result<()> {
         //Start Fresh with 175k
 
-        let (test_archiver, task_sender) = create_test_ledger_setup();
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
 
-        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone()).await;
         let mut expected_ledger_entries = vec![LedgerEntry::TreasuryCreated { credits: 175_000.into() }];
 
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
@@ -1146,55 +1120,61 @@ mod tests {
         let fleet_id = &FleetId(1);
         let ship_symbol = &ShipSymbol("FLWI-1".to_string());
 
-        treasurer.create_fleet(fleet_id, Credits::new(75_000))?;
+        treasurer
+            .create_fleet(fleet_id, Credits::new(75_000))
+            .await?;
         expected_ledger_entries.push(LedgerEntry::FleetCreated {
             fleet_id: FleetId(1),
             total_capital: 75_000.into(),
         });
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
 
-        assert_eq!(treasurer.get_fleet_budget(fleet_id)?.current_capital, Credits::new(0));
+        assert_eq!(treasurer.get_fleet_budget(fleet_id).await?.current_capital, Credits::new(0));
 
         // transfer 75k from treasurer to fleet budget
 
-        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(fleet_id)?;
+        treasurer
+            .transfer_funds_to_fleet_to_top_up_available_capital(fleet_id)
+            .await?;
         expected_ledger_entries.push(LedgerEntry::TransferredFundsFromTreasuryToFleet {
             fleet_id: FleetId(1),
             credits: 75_000.into(),
         });
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
-        assert_eq!(treasurer.get_fleet_budget(fleet_id)?.current_capital, Credits::new(75_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.get_fleet_budget(fleet_id).await?.current_capital, Credits::new(75_000));
 
         // create purchase ticket (reduces available capital of fleet)
 
-        let purchase_ticket = treasurer.create_purchase_trade_goods_ticket(
-            fleet_id,
-            TradeGoodSymbol::ADVANCED_CIRCUITRY,
-            WaypointSymbol("FROM".to_string()),
-            ship_symbol.clone(),
-            40,
-            Credits(1_000.into()),
-        )?;
+        let purchase_ticket = treasurer
+            .create_purchase_trade_goods_ticket(
+                fleet_id,
+                TradeGoodSymbol::ADVANCED_CIRCUITRY,
+                WaypointSymbol("FROM".to_string()),
+                ship_symbol.clone(),
+                40,
+                Credits(1_000.into()),
+            )
+            .await?;
 
         assert_eq!(purchase_ticket.allocated_credits, 40_000.into());
-        assert_eq!(treasurer.get_ticket(&purchase_ticket.ticket_id)?, purchase_ticket);
+        assert_eq!(treasurer.get_ticket(&purchase_ticket.ticket_id).await?, purchase_ticket);
         expected_ledger_entries.push(LedgerEntry::TicketCreated {
             fleet_id: FleetId(1),
             ticket_details: purchase_ticket.clone(),
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?,
+            treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 40_000.into(),
@@ -1203,24 +1183,26 @@ mod tests {
             }
         );
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
 
         // create sell ticket
 
-        let sell_ticket = treasurer.create_sell_trade_goods_ticket(
-            fleet_id,
-            TradeGoodSymbol::ADVANCED_CIRCUITRY,
-            WaypointSymbol("TO".to_string()),
-            ship_symbol.clone(),
-            40,
-            Credits(2_000.into()),
-            Some(purchase_ticket.ticket_id),
-        )?;
+        let sell_ticket = treasurer
+            .create_sell_trade_goods_ticket(
+                fleet_id,
+                TradeGoodSymbol::ADVANCED_CIRCUITRY,
+                WaypointSymbol("TO".to_string()),
+                ship_symbol.clone(),
+                40,
+                Credits(2_000.into()),
+                Some(purchase_ticket.ticket_id),
+            )
+            .await?;
 
-        assert_eq!(treasurer.get_ticket(&sell_ticket.ticket_id)?, sell_ticket);
+        assert_eq!(treasurer.get_ticket(&sell_ticket.ticket_id).await?, sell_ticket);
 
         assert_eq!(sell_ticket.allocated_credits, 0.into());
 
@@ -1230,7 +1212,7 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?,
+            treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 40_000.into(),
@@ -1240,16 +1222,21 @@ mod tests {
         );
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
 
         // perform purchase (we spent less than expected)
         let purchase_price_per_unit = 900.into(); // a little less than expected
-        treasurer.complete_ticket(fleet_id, &purchase_ticket, purchase_price_per_unit)?;
+        treasurer
+            .complete_ticket(fleet_id, &purchase_ticket, purchase_price_per_unit)
+            .await?;
 
-        assert!(treasurer.get_ticket(&purchase_ticket.ticket_id).is_err());
+        assert!(treasurer
+            .get_ticket(&purchase_ticket.ticket_id)
+            .await
+            .is_err());
 
         // state before purchase
         // available_capital: 75_000
@@ -1267,7 +1254,7 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?,
+            treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
                 current_capital: 39_000.into(), //75 - 36
                 reserved_capital: 0.into(),     // we clear the reservation
@@ -1277,15 +1264,17 @@ mod tests {
         );
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(139_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(139_000));
 
         let sell_price_per_unit = 2_100.into(); // a little more than expected
-        treasurer.complete_ticket(fleet_id, &sell_ticket, sell_price_per_unit)?;
-        assert!(treasurer.get_ticket(&sell_ticket.ticket_id).is_err());
+        treasurer
+            .complete_ticket(fleet_id, &sell_ticket, sell_price_per_unit)
+            .await?;
+        assert!(treasurer.get_ticket(&sell_ticket.ticket_id).await.is_err());
 
         expected_ledger_entries.push(LedgerEntry::TicketCompleted {
             fleet_id: FleetId(1),
@@ -1306,7 +1295,7 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?,
+            treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 0.into(),
@@ -1314,15 +1303,15 @@ mod tests {
                 ..Default::default()
             }
         );
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(223_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(223_000));
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
-        let current_treasurer = treasurer.get_instance()?;
+        let current_treasurer = treasurer.get_instance().await?;
 
-        let actual_replayed_treasurer = ImprovedTreasurer::from_ledger(expected_ledger_entries)?;
+        let actual_replayed_treasurer = ImprovedTreasurer::from_ledger(expected_ledger_entries).await?;
 
         assert_eq!(
             serde_json::to_string_pretty(&actual_replayed_treasurer)?,
@@ -1333,33 +1322,39 @@ mod tests {
     }
 
     #[test]
-    fn test_fleet_budget_for_ship_purchases() -> Result<()> {
+    async fn test_fleet_budget_for_ship_purchases() -> Result<()> {
         //Start Fresh with 175k
-        let (test_archiver, task_sender) = create_test_ledger_setup();
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
 
-        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone()).await;
 
         let fleet_id = &FleetId(1);
         let ship_symbol = &ShipSymbol("FLWI-1".to_string());
 
-        treasurer.create_fleet(fleet_id, Credits::new(75_000))?;
-        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))?;
+        treasurer
+            .create_fleet(fleet_id, Credits::new(75_000))
+            .await?;
+        treasurer
+            .transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))
+            .await?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries()?.into_iter().collect_vec();
+        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
 
-        let ship_purchase_ticket = treasurer.create_ship_purchase_ticket(
-            fleet_id,
-            ShipType::SHIP_PROBE,
-            25_000.into(),
-            WaypointSymbol("FROM".to_string()),
-            ship_symbol.clone(),
-        )?;
+        let ship_purchase_ticket = treasurer
+            .create_ship_purchase_ticket(
+                fleet_id,
+                ShipType::SHIP_PROBE,
+                25_000.into(),
+                WaypointSymbol("FROM".to_string()),
+                ship_symbol.clone(),
+            )
+            .await?;
 
         assert_eq!(ship_purchase_ticket.allocated_credits, 25_000.into());
 
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?,
+            treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 25_000.into(),
@@ -1372,14 +1367,16 @@ mod tests {
             ticket_details: ship_purchase_ticket.clone(),
         });
 
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
-        treasurer.complete_ticket(fleet_id, &ship_purchase_ticket, 22_500.into())?; // cheaper than expected
+        treasurer
+            .complete_ticket(fleet_id, &ship_purchase_ticket, 22_500.into())
+            .await?; // cheaper than expected
         expected_ledger_entries.push(LedgerEntry::TicketCompleted {
             fleet_id: FleetId(1),
             finance_ticket: ship_purchase_ticket.clone(),
@@ -1388,9 +1385,9 @@ mod tests {
             total: (-22_500).into(),
         });
 
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(152_500));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(152_500));
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?,
+            treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
                 current_capital: 52_500.into(),
                 reserved_capital: 0.into(),
@@ -1400,32 +1397,36 @@ mod tests {
         );
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
         );
 
         Ok(())
     }
 
     #[test]
-    fn test_set_fleet_total_capital() -> Result<()> {
-        let (test_archiver, task_sender) = create_test_ledger_setup();
+    async fn test_set_fleet_total_capital() -> Result<()> {
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
 
-        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone()).await;
 
         let fleet_id = &FleetId(1);
 
-        treasurer.create_fleet(fleet_id, Credits::new(75_000))?;
-        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))?;
+        treasurer
+            .create_fleet(fleet_id, Credits::new(75_000))
+            .await?;
+        treasurer
+            .transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))
+            .await?;
 
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?,
+            treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 0.into(),
@@ -1435,13 +1436,13 @@ mod tests {
         );
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries()?.into_iter().collect_vec();
+        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
 
-        treasurer.set_fleet_budget(fleet_id, 150_000.into())?;
+        treasurer.set_fleet_budget(fleet_id, 150_000.into()).await?;
 
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?,
+            treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
                 current_capital: 75_000.into(),
                 reserved_capital: 0.into(),
@@ -1456,11 +1457,11 @@ mod tests {
         });
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
         //setting total capital below current_capital
-        treasurer.set_fleet_budget(fleet_id, 50_000.into())?;
+        treasurer.set_fleet_budget(fleet_id, 50_000.into()).await?;
 
         // this will produce two entries in the ledger - one for the set-action and another one for the transfer of funds
         expected_ledger_entries.push(LedgerEntry::SetNewTotalCapitalForFleet {
@@ -1473,9 +1474,9 @@ mod tests {
             credits: 25_000.into(),
         });
 
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?,
+            treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
                 current_capital: 50_000.into(),
                 reserved_capital: 0.into(),
@@ -1484,78 +1485,92 @@ mod tests {
             }
         );
 
-        assert_eq!(treasurer.current_agent_credits()?, Credits::new(175_000));
-        assert_eq!(treasurer.current_treasury_fund()?, Credits::new(125_000));
+        assert_eq!(treasurer.current_agent_credits().await?, Credits::new(175_000));
+        assert_eq!(treasurer.current_treasury_fund().await?, Credits::new(125_000));
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
         );
 
         Ok(())
     }
 
     #[test]
-    fn test_getting_active_trade_routes() -> Result<()> {
-        let (test_archiver, task_sender) = create_test_ledger_setup();
+    async fn test_getting_active_trade_routes() -> Result<()> {
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
 
-        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone()).await;
 
         let fleet_id = &FleetId(1);
         let ship_symbol = &ShipSymbol("FLWI-1".to_string());
 
-        treasurer.create_fleet(fleet_id, Credits::new(75_000))?;
+        treasurer
+            .create_fleet(fleet_id, Credits::new(75_000))
+            .await?;
 
-        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(fleet_id)?;
+        treasurer
+            .transfer_funds_to_fleet_to_top_up_available_capital(fleet_id)
+            .await?;
 
         let trade_good = TradeGoodSymbol::ADVANCED_CIRCUITRY;
         let from_wps = WaypointSymbol("FROM".to_string());
         let to_wps = WaypointSymbol("TO".to_string());
-        let completed_purchase_ticket_1 =
-            treasurer.create_purchase_trade_goods_ticket(fleet_id, trade_good.clone(), from_wps.clone(), ship_symbol.clone(), 40, Credits(1_000.into()))?;
+        let completed_purchase_ticket_1 = treasurer
+            .create_purchase_trade_goods_ticket(fleet_id, trade_good.clone(), from_wps.clone(), ship_symbol.clone(), 40, Credits(1_000.into()))
+            .await?;
 
-        treasurer.complete_ticket(fleet_id, &completed_purchase_ticket_1, 1_000.into())?;
+        treasurer
+            .complete_ticket(fleet_id, &completed_purchase_ticket_1, 1_000.into())
+            .await?;
 
-        let purchase_ticket_2 =
-            treasurer.create_purchase_trade_goods_ticket(fleet_id, trade_good.clone(), from_wps.clone(), ship_symbol.clone(), 40, Credits(1_000.into()))?;
+        let purchase_ticket_2 = treasurer
+            .create_purchase_trade_goods_ticket(fleet_id, trade_good.clone(), from_wps.clone(), ship_symbol.clone(), 40, Credits(1_000.into()))
+            .await?;
 
-        let _sell_ticket_1 = treasurer.create_sell_trade_goods_ticket(
-            fleet_id,
-            trade_good.clone(),
-            to_wps.clone(),
-            ship_symbol.clone(),
-            40,
-            Credits(2_000.into()),
-            Some(completed_purchase_ticket_1.ticket_id),
-        )?;
+        let _sell_ticket_1 = treasurer
+            .create_sell_trade_goods_ticket(
+                fleet_id,
+                trade_good.clone(),
+                to_wps.clone(),
+                ship_symbol.clone(),
+                40,
+                Credits(2_000.into()),
+                Some(completed_purchase_ticket_1.ticket_id),
+            )
+            .await?;
 
-        let _sell_ticket_2 = treasurer.create_sell_trade_goods_ticket(
-            fleet_id,
-            trade_good.clone(),
-            to_wps.clone(),
-            ship_symbol.clone(),
-            40,
-            Credits(2_000.into()),
-            Some(purchase_ticket_2.ticket_id),
-        )?;
+        let _sell_ticket_2 = treasurer
+            .create_sell_trade_goods_ticket(
+                fleet_id,
+                trade_good.clone(),
+                to_wps.clone(),
+                ship_symbol.clone(),
+                40,
+                Credits(2_000.into()),
+                Some(purchase_ticket_2.ticket_id),
+            )
+            .await?;
 
-        let _unrelated_sell_ticket = treasurer.create_sell_trade_goods_ticket(
-            fleet_id,
-            trade_good.clone(),
-            to_wps.clone(),
-            ship_symbol.clone(),
-            20,
-            Credits(1_234.into()),
-            None,
-        )?;
+        let _unrelated_sell_ticket = treasurer
+            .create_sell_trade_goods_ticket(
+                fleet_id,
+                trade_good.clone(),
+                to_wps.clone(),
+                ship_symbol.clone(),
+                20,
+                Credits(1_234.into()),
+                None,
+            )
+            .await?;
 
         assert_eq!(
-            treasurer.get_active_trade_routes()?,
+            treasurer.get_active_trade_routes().await?,
             vec![ActiveTradeRoute {
                 from: from_wps,
                 to: to_wps,
@@ -1568,21 +1583,27 @@ mod tests {
     }
 
     #[test]
-    fn test_financing_of_purchase() -> Result<()> {
-        let (test_archiver, task_sender) = create_test_ledger_setup();
+    async fn test_financing_of_purchase() -> Result<()> {
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
 
-        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone()).await;
 
         let fleet_id = &FleetId(1);
         let ship_symbol = &ShipSymbol("FLWI-1".to_string());
 
-        treasurer.create_fleet(fleet_id, Credits::new(10_000))?;
-        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(fleet_id)?;
+        treasurer
+            .create_fleet(fleet_id, Credits::new(10_000))
+            .await?;
+        treasurer
+            .transfer_funds_to_fleet_to_top_up_available_capital(fleet_id)
+            .await?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries()?.into_iter().collect_vec();
+        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
 
-        let successful_finance_result = treasurer.try_finance_purchase_for_fleet(fleet_id, 25_000.into())?;
+        let successful_finance_result = treasurer
+            .try_finance_purchase_for_fleet(fleet_id, 25_000.into())
+            .await?;
 
         expected_ledger_entries.push(LedgerEntry::TransferredFundsFromTreasuryToFleet {
             fleet_id: fleet_id.clone(),
@@ -1590,7 +1611,7 @@ mod tests {
         });
 
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?,
+            treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
                 current_capital: 35_000.into(),
                 reserved_capital: 0.into(),
@@ -1599,34 +1620,36 @@ mod tests {
             }
         );
         assert_eq!(successful_finance_result, FinanceResult::TransferSuccessful { transfer_sum: 25_000.into() });
-        assert_eq!(treasurer.current_agent_credits()?, 175_000.into());
-        assert_eq!(treasurer.current_treasury_fund()?, 140_000.into());
+        assert_eq!(treasurer.current_agent_credits().await?, 175_000.into());
+        assert_eq!(treasurer.current_treasury_fund().await?, 140_000.into());
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
-        let too_expensive_result = treasurer.try_finance_purchase_for_fleet(fleet_id, 200_000.into())?;
+        let too_expensive_result = treasurer
+            .try_finance_purchase_for_fleet(fleet_id, 200_000.into())
+            .await?;
 
         assert_eq!(too_expensive_result, FinanceResult::TransferFailed { missing: 60_000.into() });
 
         //no ledger entry
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
         );
 
         // unchanged
-        assert_eq!(treasurer.current_treasury_fund()?, 140_000.into());
+        assert_eq!(treasurer.current_treasury_fund().await?, 140_000.into());
 
         // unchanged budget, but more current_capital
         assert_eq!(
-            treasurer.get_fleet_budget(fleet_id)?,
+            treasurer.get_fleet_budget(fleet_id).await?,
             FleetBudget {
                 current_capital: 35_000.into(),
                 reserved_capital: 0.into(),
@@ -1639,21 +1662,29 @@ mod tests {
     }
 
     #[test]
-    fn test_removing_fleets() -> Result<()> {
-        let (test_archiver, task_sender) = create_test_ledger_setup();
+    async fn test_removing_fleets() -> Result<()> {
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
 
-        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone()).await;
 
-        treasurer.create_fleet(&FleetId(1), Credits::new(75_000))?;
-        treasurer.create_fleet(&FleetId(2), Credits::new(50_000))?;
-        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))?;
-        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(2))?;
+        treasurer
+            .create_fleet(&FleetId(1), Credits::new(75_000))
+            .await?;
+        treasurer
+            .create_fleet(&FleetId(2), Credits::new(50_000))
+            .await?;
+        treasurer
+            .transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))
+            .await?;
+        treasurer
+            .transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(2))
+            .await?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries()?.into_iter().collect_vec();
-        assert_eq!(treasurer.current_treasury_fund()?, 50_000.into());
+        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
+        assert_eq!(treasurer.current_treasury_fund().await?, 50_000.into());
 
-        treasurer.transfer_all_funds_to_treasury()?;
+        treasurer.transfer_all_funds_to_treasury().await?;
 
         expected_ledger_entries.push(TransferredFundsFromFleetToTreasury {
             fleet_id: FleetId(1),
@@ -1665,32 +1696,38 @@ mod tests {
             credits: 50_000.into(),
         });
 
-        assert_eq!(treasurer.current_treasury_fund()?, 175_000.into());
+        assert_eq!(treasurer.current_treasury_fund().await?, 175_000.into());
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
         );
 
         Ok(())
     }
 
     #[test]
-    fn test_archiving_fleet() -> Result<()> {
-        let (test_archiver, task_sender) = create_test_ledger_setup();
+    async fn test_archiving_fleet() -> Result<()> {
+        println!("test: call create_test_ledger_setup()");
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
+        println!("test: called create_test_ledger_setup()");
 
-        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
+        println!("test: Creating ThreadSafeTreasurer");
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone()).await;
+        println!("test: Created ThreadSafeTreasurer");
 
-        treasurer.create_fleet(&FleetId(1), Credits::new(75_000))?;
+        treasurer
+            .create_fleet(&FleetId(1), Credits::new(75_000))
+            .await?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries()?.into_iter().collect_vec();
+        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
 
-        treasurer.remove_all_fleets()?;
+        treasurer.remove_all_fleets().await?;
         expected_ledger_entries.push(ArchivedFleetBudget {
             fleet_id: FleetId(1),
             budget: FleetBudget {
@@ -1702,33 +1739,37 @@ mod tests {
         });
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
         );
 
         Ok(())
     }
 
     #[test]
-    fn test_archiving_fleet_with_capital() -> Result<()> {
-        let (test_archiver, task_sender) = create_test_ledger_setup();
+    async fn test_archiving_fleet_with_capital() -> Result<()> {
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
 
-        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone());
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone()).await;
 
-        treasurer.create_fleet(&FleetId(1), Credits::new(75_000))?;
-        treasurer.transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))?;
+        treasurer
+            .create_fleet(&FleetId(1), Credits::new(75_000))
+            .await?;
+        treasurer
+            .transfer_funds_to_fleet_to_top_up_available_capital(&FleetId(1))
+            .await?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer.ledger_entries()?.into_iter().collect_vec();
+        let mut expected_ledger_entries = treasurer.ledger_entries().await?.into_iter().collect_vec();
 
-        assert_eq!(treasurer.current_treasury_fund()?, 100_000.into());
+        assert_eq!(treasurer.current_treasury_fund().await?, 100_000.into());
 
-        treasurer.remove_all_fleets()?;
+        treasurer.remove_all_fleets().await?;
 
         expected_ledger_entries.push(TransferredFundsFromFleetToTreasury {
             fleet_id: FleetId(1),
@@ -1745,16 +1786,16 @@ mod tests {
             },
         });
 
-        assert_eq!(treasurer.current_treasury_fund()?, 175_000.into());
+        assert_eq!(treasurer.current_treasury_fund().await?, 175_000.into());
 
         assert_eq!(
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?,
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?,
             serde_json::to_string_pretty(&expected_ledger_entries)?
         );
 
         assert_eq!(
             serde_json::to_string_pretty(&test_archiver.get_entries())?,
-            serde_json::to_string_pretty(&treasurer.ledger_entries()?)?
+            serde_json::to_string_pretty(&treasurer.ledger_entries().await?)?
         );
 
         Ok(())

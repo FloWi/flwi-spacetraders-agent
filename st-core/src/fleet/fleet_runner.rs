@@ -58,6 +58,7 @@ impl FleetRunner {
         bmc: Arc<dyn Bmc>,
         transfer_cargo_manager: Arc<TransferCargoManager>,
         sleep_duration: Duration,
+        treasurer_archiver_join_handle: JoinHandle<()>,
     ) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
@@ -144,7 +145,7 @@ impl FleetRunner {
             .await?;
         }
 
-        tokio::join!(msg_listeners_join_handle);
+        tokio::join!(msg_listeners_join_handle, treasurer_archiver_join_handle);
 
         Ok(())
     }
@@ -463,7 +464,7 @@ impl FleetRunner {
                 match &result {
                     Ok(o) => {
                         event!(
-                            Level::DEBUG,
+                            Level::INFO,
                             message = "behavior_runner done",
                             result = %o,
                         );
@@ -1103,6 +1104,7 @@ mod tests {
     use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
     use st_store::bmc::{Bmc, InMemoryBmc};
+    use st_store::ledger_bmc::InMemoryLedgerBmc;
     use st_store::shipyard_bmc::InMemoryShipyardBmc;
     use st_store::survey_bmc::InMemorySurveyBmc;
     use st_store::trade_bmc::InMemoryTradeBmc;
@@ -1166,6 +1168,7 @@ mod tests {
         let jump_gate_bmc = InMemoryJumpGateBmc::new();
         let supply_chain_bmc = InMemorySupplyChainBmc::new();
         let status_bmc = InMemoryStatusBmc::new();
+        let ledger_bmc = InMemoryLedgerBmc::new();
 
         let trade_bmc = Arc::new(trade_bmc);
         let market_bmc = Arc::new(market_bmc);
@@ -1182,6 +1185,7 @@ mod tests {
             in_mem_shipyard_bmc: Arc::new(shipyard_bmc),
             in_mem_supply_chain_bmc: Arc::new(supply_chain_bmc),
             in_mem_status_bmc: Arc::new(status_bmc),
+            in_mem_ledger_bmc: Arc::new(ledger_bmc),
         };
 
         let client = Arc::new(in_memory_client) as Arc<dyn StClientTrait>;
@@ -1195,7 +1199,7 @@ mod tests {
 
         println!("Creating fleet admiral");
 
-        let fleet_admiral = FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_symbol, Arc::clone(&client))
+        let (fleet_admiral, treasurer_archiver_join_handle) = FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_symbol, Arc::clone(&client))
             .await
             .expect("FleetAdmiral::load_or_create");
 
@@ -1233,6 +1237,7 @@ mod tests {
                 Arc::clone(&bmc),
                 Arc::clone(&transfer_cargo_manager),
                 Duration::from_millis(1),
+                treasurer_archiver_join_handle,
             )
             .await
             .unwrap();

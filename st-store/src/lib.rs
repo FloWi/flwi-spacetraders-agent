@@ -5,6 +5,7 @@ pub mod ctx;
 pub mod db;
 pub mod db_model_manager;
 pub mod fleet_bmc;
+pub mod ledger_bmc;
 pub mod market_bmc;
 pub mod shipyard_bmc;
 pub mod status_bmc;

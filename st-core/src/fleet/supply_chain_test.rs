@@ -303,6 +303,7 @@ mod tests {
     use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
     use st_store::bmc::{Bmc, InMemoryBmc};
+    use st_store::ledger_bmc::InMemoryLedgerBmc;
     use st_store::shipyard_bmc::InMemoryShipyardBmc;
     use st_store::survey_bmc::InMemorySurveyBmc;
     use st_store::trade_bmc::InMemoryTradeBmc;
@@ -359,6 +360,7 @@ mod tests {
         let jump_gate_bmc = InMemoryJumpGateBmc::new();
         let supply_chain_bmc = InMemorySupplyChainBmc::new();
         let status_bmc = InMemoryStatusBmc::new();
+        let ledger_bmc = InMemoryLedgerBmc::new();
 
         let trade_bmc = Arc::new(trade_bmc);
         let market_bmc = Arc::new(market_bmc);
@@ -375,6 +377,7 @@ mod tests {
             in_mem_shipyard_bmc: Arc::new(shipyard_bmc),
             in_mem_supply_chain_bmc: Arc::new(supply_chain_bmc),
             in_mem_status_bmc: Arc::new(status_bmc),
+            in_mem_ledger_bmc: Arc::new(ledger_bmc),
         };
 
         let client = Arc::new(in_memory_client) as Arc<dyn StClientTrait>;
@@ -448,6 +451,7 @@ mod tests {
         let jump_gate_bmc = InMemoryJumpGateBmc::new();
         let supply_chain_bmc = InMemorySupplyChainBmc::new();
         let status_bmc = InMemoryStatusBmc::new();
+        let ledger_bmc = InMemoryLedgerBmc::new();
 
         let trade_bmc = Arc::new(trade_bmc);
         let market_bmc = Arc::new(market_bmc);
@@ -464,6 +468,7 @@ mod tests {
             in_mem_shipyard_bmc: Arc::new(shipyard_bmc),
             in_mem_supply_chain_bmc: Arc::new(supply_chain_bmc),
             in_mem_status_bmc: Arc::new(status_bmc),
+            in_mem_ledger_bmc: Arc::new(ledger_bmc),
         };
 
         let client = Arc::new(in_memory_client) as Arc<dyn StClientTrait>;

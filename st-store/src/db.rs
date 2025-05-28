@@ -11,6 +11,8 @@ use sqlx::{ConnectOptions, Pool, Postgres};
 use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
+use crate::DbModelManager;
+use st_domain::budgeting::treasury_redesign::LedgerEntry;
 use st_domain::{
     distance_to, Construction, Data, JumpGate, MarketData, MarketEntry, RegistrationResponse, Ship, ShipTask, Shipyard, ShipyardData, StStatusResponse,
     SupplyChain, Survey, SurveySignature, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
@@ -234,6 +236,12 @@ pub struct DbSurveyEntry {
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub is_discarded: bool,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbLedgerEntry {
+    pub entry: Json<LedgerEntry>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Serialize, Clone, Debug, Deserialize)]
@@ -895,5 +903,24 @@ where signature = $1
     .execute(pool)
     .await?;
 
+    Ok(())
+}
+
+pub(crate) async fn archive_ledger_entry(pool: &Pool<Postgres>, ledger_entry: &LedgerEntry, now: DateTime<Utc>) -> anyhow::Result<()> {
+    let entry = DbLedgerEntry {
+        entry: Json(ledger_entry.clone()),
+        created_at: now,
+    };
+
+    sqlx::query!(
+        r#"
+insert into ledger_entries (entry, created_at)
+values ($1, $2)
+        "#,
+        entry.entry as _,
+        now,
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }

@@ -1050,6 +1050,7 @@ mod tests {
     use crate::test_objects::TestObjects;
     use crate::transfer_cargo_manager::TransferCargoManager;
     use st_domain::blackboard_ops::MockBlackboardOps;
+    use st_domain::budgeting::test_sync_ledger::create_test_ledger_setup;
     use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
     use test_log::test;
 
@@ -1136,10 +1137,11 @@ mod tests {
     #[test(tokio::test)]
     async fn test_dock_if_necessary_behavior_on_docked_ship() {
         let mut mock_client = MockStClientTrait::new();
+        let (test_archiver, task_sender) = create_test_ledger_setup();
 
         let args = BehaviorArgs {
             blackboard: Arc::new(MockBlackboardOps::new()),
-            treasurer: ThreadSafeTreasurer::new(0.into()),
+            treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()),
             transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
         };
 
@@ -1178,10 +1180,11 @@ mod tests {
     #[test(tokio::test)]
     async fn test_dock_if_necessary_behavior_on_orbiting_ship() {
         let mut mock_client = MockStClientTrait::new();
+        let (test_archiver, task_sender) = create_test_ledger_setup();
 
         let args = BehaviorArgs {
             blackboard: Arc::new(MockBlackboardOps::new()),
-            treasurer: ThreadSafeTreasurer::new(0.into()),
+            treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()),
             transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
         };
 
@@ -1358,11 +1361,12 @@ mod tests {
         ship_behavior.update_indices();
 
         //println!("{}", ship_behavior.to_mermaid());
+        let (test_archiver, task_sender) = create_test_ledger_setup();
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client), FleetId(42));
         let args = BehaviorArgs {
             blackboard: Arc::new(mock_test_blackboard),
-            treasurer: ThreadSafeTreasurer::new(0.into()),
+            treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()),
             transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
         };
 

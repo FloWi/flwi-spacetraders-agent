@@ -1,5 +1,6 @@
 use crate::bmc::jump_gate_bmc::{DbJumpGateBmc, InMemoryJumpGateBmc, JumpGateBmcTrait};
 use crate::bmc::ship_bmc::{DbShipBmc, InMemoryShipsBmc, ShipBmcTrait};
+use crate::ledger_bmc::{DbLedgerBmc, InMemoryLedgerBmc, LedgerBmcTrait};
 use crate::shipyard_bmc::{DbShipyardBmc, InMemoryShipyardBmc, ShipyardBmcTrait};
 use crate::survey_bmc::{DbSurveyBmc, InMemorySurveyBmc, SurveyBmcTrait};
 use crate::trade_bmc::{DbTradeBmc, InMemoryTradeBmc, TradeBmcTrait};
@@ -29,6 +30,7 @@ pub trait Bmc: Send + Sync + Debug {
     fn shipyard_bmc(&self) -> Arc<dyn ShipyardBmcTrait>;
     fn supply_chain_bmc(&self) -> Arc<dyn SupplyChainBmcTrait>;
     fn status_bmc(&self) -> Arc<dyn StatusBmcTrait>;
+    fn ledger_bmc(&self) -> Arc<dyn LedgerBmcTrait>;
 }
 
 #[derive(Debug, Clone)]
@@ -46,6 +48,7 @@ pub struct DbBmc {
     shipyard_bmc: Arc<DbShipyardBmc>,
     supply_chain_bmc: Arc<DbSupplyChainBmc>,
     status_bmc: Arc<DbStatusBmc>,
+    ledger_bmc: Arc<DbLedgerBmc>,
 }
 
 impl DbBmc {
@@ -64,6 +67,7 @@ impl DbBmc {
             shipyard_bmc: Arc::new(DbShipyardBmc { mm: mm.clone() }),
             supply_chain_bmc: Arc::new(DbSupplyChainBmc { mm: mm.clone() }),
             status_bmc: Arc::new(DbStatusBmc { mm: mm.clone() }),
+            ledger_bmc: Arc::new(DbLedgerBmc { mm: mm.clone() }),
         }
     }
 }
@@ -116,6 +120,10 @@ impl Bmc for DbBmc {
     fn status_bmc(&self) -> Arc<dyn StatusBmcTrait> {
         todo!()
     }
+
+    fn ledger_bmc(&self) -> Arc<dyn LedgerBmcTrait> {
+        self.ledger_bmc.clone() as Arc<dyn LedgerBmcTrait>
+    }
 }
 
 #[derive(Debug)]
@@ -132,6 +140,7 @@ pub struct InMemoryBmc {
     pub in_mem_shipyard_bmc: Arc<InMemoryShipyardBmc>,
     pub in_mem_supply_chain_bmc: Arc<InMemorySupplyChainBmc>,
     pub in_mem_status_bmc: Arc<InMemoryStatusBmc>,
+    pub in_mem_ledger_bmc: Arc<InMemoryLedgerBmc>,
 }
 
 impl Bmc for InMemoryBmc {
@@ -181,5 +190,9 @@ impl Bmc for InMemoryBmc {
 
     fn status_bmc(&self) -> Arc<dyn StatusBmcTrait> {
         Arc::clone(&self.in_mem_status_bmc) as Arc<dyn StatusBmcTrait>
+    }
+
+    fn ledger_bmc(&self) -> Arc<dyn LedgerBmcTrait> {
+        Arc::clone(&self.in_mem_ledger_bmc) as Arc<dyn LedgerBmcTrait>
     }
 }

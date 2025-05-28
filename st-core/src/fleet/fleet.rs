@@ -19,7 +19,9 @@ use itertools::{all, Itertools};
 use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::credits::Credits;
-use st_domain::budgeting::treasury_redesign::{ActiveTradeRoute, FinanceResult, FinanceTicket, FinanceTicketDetails, FleetBudget, ThreadSafeTreasurer};
+use st_domain::budgeting::treasury_redesign::{
+    ActiveTradeRoute, FinanceResult, FinanceTicket, FinanceTicketDetails, FleetBudget, LedgerArchiveTask, ThreadSafeTreasurer,
+};
 use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{ConstructJumpGate, InitialExploration, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably};
 use st_domain::TradeGoodSymbol::{MOUNT_GAS_SIPHON_I, MOUNT_MINING_LASER_I, MOUNT_SURVEYOR_I};
@@ -35,10 +37,11 @@ use st_store::{load_fleet_overview, upsert_fleets_data, Ctx};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::ops::Not;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 use std::time::Duration;
 use strum::{Display, IntoEnumIterator};
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use tracing::{event, Level};
 use FleetConfig::{ConstructJumpGateCfg, MarketObservationCfg, MiningCfg, SiphoningCfg, TradingCfg};
 
@@ -213,7 +216,7 @@ Fleet Budgets after rebalancing
             .fleets
             .get(fleet_id)
             .ok_or(anyhow!("Fleet id not found"))?;
-        let budget = admiral.treasurer.get_fleet_budget(fleet_id)?;
+        let budget = admiral.treasurer.get_fleet_budget(fleet_id).await?;
         let all_ships_purchased = admiral.ship_purchase_demand.is_empty();
         let ships_of_fleet = admiral.get_ships_of_fleet(fleet);
 
@@ -248,15 +251,18 @@ Fleet Budgets after rebalancing
             );
             admiral
                 .treasurer
-                .set_fleet_budget(fleet_id, new_total_capital)?;
+                .set_fleet_budget(fleet_id, new_total_capital)
+                .await?;
 
             admiral
                 .treasurer
-                .set_new_operating_reserve(fleet_id, new_operating_reserve)?;
+                .set_new_operating_reserve(fleet_id, new_operating_reserve)
+                .await?;
 
             admiral
                 .treasurer
-                .transfer_funds_to_fleet_to_top_up_available_capital(fleet_id)?;
+                .transfer_funds_to_fleet_to_top_up_available_capital(fleet_id)
+                .await?;
         }
 
         Ok(())
@@ -480,6 +486,7 @@ Fleet Budgets after rebalancing
         client: Arc<dyn StClientTrait>,
         bmc: Arc<dyn Bmc>,
         transfer_cargo_manager: Arc<TransferCargoManager>,
+        treasurer_archiver_join_handle: JoinHandle<()>,
     ) -> Result<()> {
         event!(Level::INFO, "Running fleets");
 
@@ -489,6 +496,7 @@ Fleet Budgets after rebalancing
             bmc,
             Arc::clone(&transfer_cargo_manager),
             Duration::from_secs(5),
+            treasurer_archiver_join_handle,
         )
         .await?;
 
@@ -576,7 +584,7 @@ Fleet Budgets after rebalancing
         self.fleet_tasks.get(fleet_id).cloned().unwrap_or_default()
     }
 
-    pub async fn load_or_create(bmc: Arc<dyn Bmc>, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
+    pub async fn load_or_create(bmc: Arc<dyn Bmc>, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<(Self, JoinHandle<()>)> {
         //make sure we have up-to-date agent info
         let agent = client.get_agent().await?;
         bmc.agent_bmc()
@@ -588,7 +596,7 @@ Fleet Budgets after rebalancing
                 event!(Level::INFO, "loading admiral failed - creating a new one");
                 load_and_store_initial_data_in_bmcs(Arc::clone(&client), Arc::clone(&bmc)).await?;
 
-                let admiral = Self::create(Arc::clone(&bmc), system_symbol, Arc::clone(&client)).await?;
+                let (admiral, treasurer_join_handle) = Self::create(Arc::clone(&bmc), system_symbol, Arc::clone(&client)).await?;
                 upsert_fleets_data(
                     Arc::clone(&bmc),
                     &Ctx::Anonymous,
@@ -598,19 +606,37 @@ Fleet Budgets after rebalancing
                     &admiral.ship_tasks,
                 )
                 .await?;
-                Ok(admiral)
+                Ok((admiral, treasurer_join_handle))
             }
-            Some(admiral) => Ok(admiral),
+            Some((admiral, treasurer_archiver_join_handle)) => Ok((admiral, treasurer_archiver_join_handle)),
         }
     }
 
-    pub async fn initialize_treasurer(bmc: Arc<dyn Bmc>) -> Result<ThreadSafeTreasurer> {
+    pub async fn initialize_treasurer(bmc: Arc<dyn Bmc>) -> Result<(ThreadSafeTreasurer, JoinHandle<()>)> {
         let agent_info = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?;
 
-        Ok(ThreadSafeTreasurer::new(agent_info.credits.into()))
+        let (archive_task_sender, mut task_receiver) = tokio::sync::mpsc::unbounded_channel::<LedgerArchiveTask>();
+
+        // Spawn the archiver task and return its handle
+        let archiver_handle = tokio::spawn({
+            let bmc = bmc.clone();
+            async move {
+                while let Some(task) = task_receiver.recv().await {
+                    let result = bmc
+                        .ledger_bmc()
+                        .archive_ledger_entry(&Ctx::Anonymous, &task.entry)
+                        .await;
+                    let _ = task.response_sender.send(result);
+                }
+            }
+        });
+
+        let treasurer = ThreadSafeTreasurer::new(agent_info.credits.into(), archive_task_sender).await;
+
+        Ok((treasurer, archiver_handle))
     }
 
-    async fn load_admiral(bmc: Arc<dyn Bmc>) -> Result<Option<Self>> {
+    async fn load_admiral(bmc: Arc<dyn Bmc>) -> Result<Option<(Self, JoinHandle<()>)>> {
         let overview = load_fleet_overview(Arc::clone(&bmc), &Ctx::Anonymous).await?;
 
         if overview.fleets.is_empty() || overview.all_ships.is_empty() {
@@ -651,7 +677,7 @@ Fleet Budgets after rebalancing
                 })
                 .collect();
 
-            let treasurer = Self::initialize_treasurer(bmc.clone()).await?;
+            let (treasurer, treasurer_archiver_join_handle) = Self::initialize_treasurer(bmc.clone()).await?;
             let current_ship_demands = get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
             let admiral = Self {
@@ -665,7 +691,7 @@ Fleet Budgets after rebalancing
                 //FIXME
                 active_trade_ids: Default::default(),
                 stationary_probe_locations: overview.stationary_probe_locations,
-                treasurer,
+                treasurer: treasurer.clone(),
                 ship_purchase_demand: VecDeque::from(current_ship_demands),
             };
 
@@ -689,11 +715,11 @@ Fleet Budgets after rebalancing
             )
             .await?;
 
-            Ok(Some(admiral))
+            Ok(Some((admiral, treasurer_archiver_join_handle)))
         }
     }
 
-    pub async fn create(bmc: Arc<dyn Bmc>, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<Self> {
+    pub async fn create(bmc: Arc<dyn Bmc>, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<(Self, JoinHandle<()>)> {
         let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await?;
         let stationary_probe_locations = bmc
             .ship_bmc()
@@ -751,7 +777,7 @@ Fleet Budgets after rebalancing
             .store_agent(&Ctx::Anonymous, &agent_info)
             .await?;
 
-        let treasurer = Self::initialize_treasurer(bmc.clone()).await?;
+        let (treasurer, treasurer_archiver_join_handle) = Self::initialize_treasurer(bmc.clone()).await?;
 
         let current_ship_demands = get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
@@ -786,7 +812,7 @@ Fleet Budgets after rebalancing
         )
         .await?;
 
-        Ok(admiral)
+        Ok((admiral, treasurer_archiver_join_handle))
     }
 
     pub(crate) fn pure_compute_ship_tasks(
@@ -1012,16 +1038,22 @@ Fleet Budgets after rebalancing
                     .iter()
                     .find(|(id, fleet)| matches!(fleet.cfg, ConstructJumpGateCfg(_)))
                 {
-                    if let Ok(construction_fleet_budget) = admiral.treasurer.get_fleet_budget(construction_fleet_id) {
+                    if let Ok(construction_fleet_budget) = admiral
+                        .treasurer
+                        .get_fleet_budget(construction_fleet_id)
+                        .await
+                    {
                         let budget_during_construction_phase_after_ship_purchases = 20_000_000.into();
                         if construction_fleet_budget.current_capital != budget_during_construction_phase_after_ship_purchases {
                             admiral
                                 .treasurer
-                                .set_fleet_budget(construction_fleet_id, budget_during_construction_phase_after_ship_purchases)?;
+                                .set_fleet_budget(construction_fleet_id, budget_during_construction_phase_after_ship_purchases)
+                                .await?;
 
                             admiral
                                 .treasurer
-                                .transfer_funds_to_fleet_to_top_up_available_capital(construction_fleet_id)?;
+                                .transfer_funds_to_fleet_to_top_up_available_capital(construction_fleet_id)
+                                .await?;
                         }
                     }
                 }
@@ -1035,11 +1067,12 @@ Fleet Budgets after rebalancing
         let new_tasks = {
             let active_tickets = admiral
                 .treasurer
-                .get_active_tickets()?
+                .get_active_tickets()
+                .await?
                 .values()
                 .cloned()
                 .collect_vec();
-            let active_trade_routes = admiral.treasurer.get_active_trade_routes()?;
+            let active_trade_routes = admiral.treasurer.get_active_trade_routes().await?;
 
             Self::pure_compute_ship_tasks(
                 admiral,
@@ -1365,12 +1398,12 @@ Json entries of all ledger entries after dismantling the fleets:\n{}
         shipyard_wps: &WaypointSymbol,
     ) -> Option<ShipSymbol> {
         let system_symbol = match for_fleet_task {
-            FleetTask::InitialExploration { system_symbol } => system_symbol,
-            FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { system_symbol } => system_symbol,
-            FleetTask::ConstructJumpGate { system_symbol } => system_symbol,
-            FleetTask::TradeProfitably { system_symbol } => system_symbol,
-            FleetTask::MineOres { system_symbol } => system_symbol,
-            FleetTask::SiphonGases { system_symbol } => system_symbol,
+            InitialExploration { system_symbol } => system_symbol,
+            ObserveAllWaypointsOfSystemWithStationaryProbes { system_symbol } => system_symbol,
+            ConstructJumpGate { system_symbol } => system_symbol,
+            TradeProfitably { system_symbol } => system_symbol,
+            MineOres { system_symbol } => system_symbol,
+            SiphonGases { system_symbol } => system_symbol,
         };
 
         let purchase_candidates = self
@@ -1572,19 +1605,19 @@ pub fn compute_fleet_configs(
                 .cloned()
                 .collect_vec();
             let maybe_cfg = match t {
-                FleetTask::InitialExploration { system_symbol } => Some(SystemSpawningCfg(SystemSpawningFleetConfig {
+                InitialExploration { system_symbol } => Some(SystemSpawningCfg(SystemSpawningFleetConfig {
                     system_symbol: system_symbol.clone(),
                     marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
                     shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
                     desired_fleet_config,
                 })),
-                FleetTask::ObserveAllWaypointsOfSystemWithStationaryProbes { system_symbol } => Some(MarketObservationCfg(MarketObservationFleetConfig {
+                ObserveAllWaypointsOfSystemWithStationaryProbes { system_symbol } => Some(MarketObservationCfg(MarketObservationFleetConfig {
                     system_symbol: system_symbol.clone(),
                     marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
                     shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
                     desired_fleet_config,
                 })),
-                FleetTask::ConstructJumpGate { system_symbol } => Some(ConstructJumpGateCfg(ConstructJumpGateFleetConfig {
+                ConstructJumpGate { system_symbol } => Some(ConstructJumpGateCfg(ConstructJumpGateFleetConfig {
                     system_symbol: system_symbol.clone(),
                     jump_gate_waypoint: fleet_decision_facts
                         .construction_site
@@ -1593,17 +1626,17 @@ pub fn compute_fleet_configs(
                         .symbol,
                     desired_fleet_config,
                 })),
-                FleetTask::TradeProfitably { system_symbol } => Some(TradingCfg(TradingFleetConfig {
+                TradeProfitably { system_symbol } => Some(TradingCfg(TradingFleetConfig {
                     system_symbol: system_symbol.clone(),
                     materialized_supply_chain: None,
                     desired_fleet_config,
                 })),
-                FleetTask::MineOres { system_symbol } => Some(MiningCfg(MiningFleetConfig {
+                MineOres { system_symbol } => Some(MiningCfg(MiningFleetConfig {
                     system_symbol: system_symbol.clone(),
                     mining_waypoint: fleet_decision_facts.engineered_asteroid.clone(),
                     desired_fleet_config,
                 })),
-                FleetTask::SiphonGases { system_symbol } => Some(SiphoningCfg(SiphoningFleetConfig {
+                SiphonGases { system_symbol } => Some(SiphoningCfg(SiphoningFleetConfig {
                     system_symbol: system_symbol.clone(),
                     siphoning_waypoint: fleet_decision_facts.gas_giant.clone(),
                     desired_fleet_config,

@@ -34,9 +34,9 @@ pub async fn run_agent(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>, transf
     let _running = tokio::spawn({
         let client_clone = client.clone();
         let hq_system_clone = headquarters_system_symbol.clone();
-        let admiral = Arc::new(Mutex::new(
-            FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_clone, Arc::clone(&client_clone)).await?,
-        ));
+        let (admiral, treasurer_archiver_join_handle) = FleetAdmiral::load_or_create(Arc::clone(&bmc), hq_system_clone, Arc::clone(&client_clone)).await?;
+
+        let admiral = Arc::new(Mutex::new(admiral));
 
         async move {
             if let Err(e) = FleetAdmiral::run_fleets(
@@ -44,6 +44,7 @@ pub async fn run_agent(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>, transf
                 Arc::clone(&client_clone),
                 Arc::clone(&bmc),
                 Arc::clone(&transfer_cargo_manager),
+                treasurer_archiver_join_handle,
             )
             .await
             {
