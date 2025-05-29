@@ -2050,14 +2050,19 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
 
     let materialized_supply_chain = if all_market_data_available {
         // Only create a materialized chain once we have all market-data
-        let materialized_chain = st_domain::supply_chain::materialize_supply_chain(
+        match st_domain::supply_chain::materialize_supply_chain(
             headquarters_waypoint.system_symbol(),
             &supply_chain,
             &market_data,
             &waypoint_map,
             &maybe_construction_site,
-        )?;
-        Some(materialized_chain)
+        ) {
+            Ok(materialized_chain) => Some(materialized_chain),
+            Err(err) => {
+                eprintln!("Unable to materialize supply chain. Error: {err:?}");
+                None
+            }
+        }
     } else {
         None
     };
