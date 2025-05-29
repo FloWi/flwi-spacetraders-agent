@@ -82,6 +82,10 @@ impl ConstructJumpGateFleet {
             create_trading_tickets(&best_new_trading_opportunities)
         };
 
+        if new_tasks.is_empty() {
+            println!("Hello, breakpoint. We didn't find new tasks")
+        }
+
         Ok(new_tasks)
     }
 }

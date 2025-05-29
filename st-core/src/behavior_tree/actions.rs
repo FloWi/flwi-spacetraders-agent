@@ -464,7 +464,7 @@ impl Actionable for ShipAction {
                     message = "CollectWaypointInfos",
                     waypoint = state.nav.waypoint_symbol.0.clone(),
                     exploration_tasks_for_this_waypoint = exploration_tasks.iter().map(|t| t.to_string()).join(", "),
-                    num_exploration_tasks_left = state.explore_location_queue.len() as i64 - 1,
+                    num_exploration_tasks_left = state.explore_location_queue.len() as i64,
                 );
 
                 Ok(Success)
