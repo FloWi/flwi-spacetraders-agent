@@ -441,9 +441,7 @@ impl Actionable for ShipAction {
                     exploration_tasks
                 };
 
-                event!(Level::DEBUG, "CollectWaypointInfos - exploration_tasks: {:?}", exploration_tasks);
-
-                for task in exploration_tasks {
+                for task in exploration_tasks.iter() {
                     match task {
                         ExplorationTask::CreateChart => return Err(anyhow!("Waypoint should have been charted by now")),
                         ExplorationTask::GetMarket => {
@@ -460,6 +458,15 @@ impl Actionable for ShipAction {
                         }
                     }
                 }
+
+                event!(
+                    Level::INFO,
+                    message = "CollectWaypointInfos",
+                    waypoint = state.nav.waypoint_symbol.0.clone(),
+                    exploration_tasks_for_this_waypoint = exploration_tasks.iter().map(|t| t.to_string()).join(", "),
+                    num_exploration_tasks_left = state.explore_location_queue.len() as i64 - 1,
+                );
+
                 Ok(Success)
             }
 
