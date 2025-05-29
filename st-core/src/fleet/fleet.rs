@@ -634,6 +634,11 @@ Fleet Budgets after rebalancing
     pub async fn initialize_treasurer(bmc: Arc<dyn Bmc>) -> Result<(ThreadSafeTreasurer, JoinHandle<()>)> {
         let agent_info = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?;
 
+        let replay_log = bmc
+            .ledger_bmc()
+            .get_ledger_entries_in_order(&Ctx::Anonymous)
+            .await?;
+
         let (archive_task_sender, mut task_receiver) = tokio::sync::mpsc::unbounded_channel::<LedgerArchiveTask>();
 
         // Spawn the archiver task and return its handle
@@ -653,7 +658,28 @@ Fleet Budgets after rebalancing
             }
         });
 
-        let treasurer = ThreadSafeTreasurer::new(agent_info.credits.into(), archive_task_sender).await;
+        let treasurer = if replay_log.is_empty() {
+            let treasurer = ThreadSafeTreasurer::new(agent_info.credits.into(), archive_task_sender).await;
+            event!(
+                Level::INFO,
+                message = "Created new Treasurer from agent_info",
+                agent_credits = agent_info.credits
+            );
+            treasurer
+        } else {
+            let num_ledger_entries = replay_log.len();
+            let treasurer = ThreadSafeTreasurer::from_replayed_ledger_log(replay_log, archive_task_sender);
+            let treasurer_agent_credits = treasurer.get_current_agent_credits().await?;
+            event!(
+                Level::INFO,
+                message = "Created new Treasurer from replay_log",
+                num_ledger_entries,
+                treasurer_agent_credits = treasurer_agent_credits.0,
+                agent_credits = agent_info.credits
+            );
+
+            treasurer
+        };
 
         Ok((treasurer, archiver_handle))
     }

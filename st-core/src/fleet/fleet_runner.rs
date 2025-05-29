@@ -708,7 +708,7 @@ impl FleetRunner {
                             .ship_fleet_assignment
                             .get(&ship_symbol)
                             .unwrap();
-                        Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration, fleet_id.clone()).await?;
+
                         upsert_fleets_data(
                             Arc::clone(&bmc),
                             &Ctx::Anonymous,
@@ -718,6 +718,7 @@ impl FleetRunner {
                             &admiral_guard.ship_tasks,
                         )
                         .await?;
+                        Self::relaunch_ship(runner.clone(), &ship_symbol, admiral_guard.ship_tasks.clone(), sleep_duration, fleet_id.clone()).await?;
                         event!(Level::DEBUG, message = "Ship relaunched successfully")
                     }
                 }

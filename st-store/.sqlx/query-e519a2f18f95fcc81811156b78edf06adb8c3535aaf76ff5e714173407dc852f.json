@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nselect entry as \"entry: Json<LedgerEntry>\"\n     , created_at\n\nfrom ledger_entries\norder by id\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entry: Json<LedgerEntry>",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "e519a2f18f95fcc81811156b78edf06adb8c3535aaf76ff5e714173407dc852f"
+}

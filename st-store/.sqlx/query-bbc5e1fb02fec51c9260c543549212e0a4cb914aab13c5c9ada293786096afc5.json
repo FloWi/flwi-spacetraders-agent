@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into ledger_entries (entry, created_at)\nvalues ($1, $2)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bbc5e1fb02fec51c9260c543549212e0a4cb914aab13c5c9ada293786096afc5"
+}

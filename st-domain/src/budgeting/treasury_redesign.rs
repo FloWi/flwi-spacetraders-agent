@@ -212,6 +212,7 @@ use itertools::Itertools;
 use std::sync::Arc;
 use strum::Display;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
 #[async_trait]
 pub trait LedgerArchiver {
@@ -233,6 +234,18 @@ pub struct ThreadSafeTreasurer {
 }
 
 impl ThreadSafeTreasurer {
+    pub fn from_replayed_ledger_log(ledger_entries: Vec<LedgerEntry>, ledger_archiving_task_sender: LedgerArchiveTaskSender) -> Self {
+        match ImprovedTreasurer::from_ledger(ledger_entries) {
+            Ok(instance) => Self {
+                inner: Arc::new(Mutex::new(instance)),
+                task_sender: ledger_archiving_task_sender,
+            },
+            Err(err) => {
+                panic!("Creating a new treasurer instance from replayed log should have worked. Error is: {err:?}")
+            }
+        }
+    }
+
     pub async fn new(starting_credits: Credits, ledger_archiving_task_sender: LedgerArchiveTaskSender) -> Self
 where {
         let new_instance = ImprovedTreasurer::new();

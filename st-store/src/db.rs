@@ -924,3 +924,23 @@ values ($1, $2)
     .await?;
     Ok(())
 }
+
+pub(crate) async fn get_ledger_entries_in_order(pool: &Pool<Postgres>, p1: DateTime<Utc>) -> Result<Vec<LedgerEntry>> {
+    let entries: Vec<DbLedgerEntry> = sqlx::query_as!(
+        DbLedgerEntry,
+        r#"
+select entry as "entry: Json<LedgerEntry>"
+     , created_at
+
+from ledger_entries
+order by id
+    "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(entries
+        .iter()
+        .map(|db_entry| db_entry.entry.0.clone())
+        .collect_vec())
+}

@@ -1,6 +1,7 @@
 use crate::{db, Ctx, DbModelManager};
 use async_trait::async_trait;
 use chrono::Utc;
+use itertools::Itertools;
 use mockall::automock;
 use st_domain::budgeting::treasury_redesign::{LedgerArchiveTask, LedgerEntry};
 use std::collections::VecDeque;
@@ -12,6 +13,7 @@ use tokio::sync::Mutex;
 #[async_trait]
 pub trait LedgerBmcTrait: Send + Sync + Debug {
     async fn archive_ledger_entry(&self, _ctx: &Ctx, ledger_entry: &LedgerEntry) -> anyhow::Result<()>;
+    async fn get_ledger_entries_in_order(&self, _ctx: &Ctx) -> anyhow::Result<Vec<LedgerEntry>>;
 }
 
 #[derive(Debug)]
@@ -25,6 +27,12 @@ impl LedgerBmcTrait for DbLedgerBmc {
         db::archive_ledger_entry(self.mm.pool(), ledger_entry, Utc::now()).await?;
 
         Ok(())
+    }
+
+    async fn get_ledger_entries_in_order(&self, _ctx: &Ctx) -> anyhow::Result<Vec<LedgerEntry>> {
+        let entries = db::get_ledger_entries_in_order(self.mm.pool(), Utc::now()).await?;
+
+        Ok(entries)
     }
 }
 
@@ -65,5 +73,10 @@ impl LedgerBmcTrait for InMemoryLedgerBmc {
         guard.archived.push_back(ledger_entry.clone());
 
         Ok(())
+    }
+
+    async fn get_ledger_entries_in_order(&self, _ctx: &Ctx) -> anyhow::Result<Vec<LedgerEntry>> {
+        let guard = self.in_memory_ledger.lock().await;
+        Ok(guard.archived.iter().cloned().collect_vec())
     }
 }
