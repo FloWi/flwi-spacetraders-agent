@@ -28,9 +28,9 @@ use st_domain::TradeGoodSymbol::{MOUNT_GAS_SIPHON_I, MOUNT_MINING_LASER_I, MOUNT
 use st_domain::{
     get_exploration_tasks_for_waypoint, trading, ConstructJumpGateFleetConfig, Construction, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId,
     FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MarketTradeGood,
-    MiningFleetConfig, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask, ShipType, SiphoningFleetConfig,
-    StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradingFleetConfig, TransactionActionEvent, Waypoint,
-    WaypointSymbol, WaypointType,
+    MiningFleetConfig, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask, ShipTaskCompletionAnalysis,
+    ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradingFleetConfig,
+    TransactionActionEvent, Waypoint, WaypointSymbol, WaypointType,
 };
 use st_store::bmc::Bmc;
 use st_store::{load_fleet_overview, upsert_fleets_data, Ctx};
@@ -532,36 +532,44 @@ Fleet Budgets after rebalancing
                 let maybe_ship_task = self.get_task_of_ship(&ship.symbol);
                 if let Some((fleet, ship_task)) = maybe_fleet.zip(maybe_ship_task) {
                     let fleet_decision_facts: FleetDecisionFacts = collect_fleet_decision_facts(Arc::clone(&bmc), &ship.nav.system_symbol).await?;
-                    match &fleet.cfg {
-                        SystemSpawningCfg(cfg) => {
-                            if let Some(task_complete) =
-                                SystemSpawningFleet::check_for_task_completion(ship_task, fleet, &fleet_tasks, cfg, &fleet_decision_facts)
-                            {
-                                let uncompleted_tasks = fleet_tasks
-                                    .iter()
-                                    .filter(|&ft| ft != &task_complete.task)
-                                    .cloned()
-                                    .collect_vec();
+                    match (&fleet.cfg, ship_action) {
+                        (SystemSpawningCfg(cfg), ShipAction::CollectWaypointInfos) => {
+                            match SystemSpawningFleet::check_for_task_completion(ship_task, fleet, &fleet_tasks, cfg, &fleet_decision_facts) {
+                                Some(ShipTaskCompletionAnalysis::ShipTaskNotDone(updated_ship_task)) => {
+                                    let current_ship_task = self.ship_tasks.get(&ship.symbol).clone();
+                                    event!(Level::DEBUG, message = "check_for_task_completion: ShipTaskNotDone", current_ship_task = ?current_ship_task, updated_ship_task = ?updated_ship_task);
 
-                                event!(
-                                    Level::INFO,
-                                    message = "FleetTaskCompleted",
-                                    ship = ship.symbol.0,
-                                    fleet_id = fleet.id.0,
-                                    task = task_complete.task.to_string()
-                                );
-                                self.fleet_tasks.insert(fleet.id.clone(), uncompleted_tasks);
-                                self.completed_fleet_tasks.push(task_complete.clone());
-                                bmc.fleet_bmc()
-                                    .save_completed_fleet_task(&Ctx::Anonymous, &task_complete)
-                                    .await?;
+                                    self.ship_tasks
+                                        .insert(ship.symbol.clone(), updated_ship_task);
+
+                                    bmc.ship_bmc()
+                                        .save_ship_tasks(&Ctx::Anonymous, &self.ship_tasks)
+                                        .await?;
+                                }
+                                Some(ShipTaskCompletionAnalysis::ShipTaskDone(task_complete)) => {
+                                    let uncompleted_tasks = fleet_tasks
+                                        .iter()
+                                        .filter(|&ft| ft != &task_complete.task)
+                                        .cloned()
+                                        .collect_vec();
+
+                                    event!(
+                                        Level::INFO,
+                                        message = "FleetTaskCompleted",
+                                        ship = ship.symbol.0,
+                                        fleet_id = fleet.id.0,
+                                        task = task_complete.task.to_string()
+                                    );
+                                    self.fleet_tasks.insert(fleet.id.clone(), uncompleted_tasks);
+                                    self.completed_fleet_tasks.push(task_complete.clone());
+                                    bmc.fleet_bmc()
+                                        .save_completed_fleet_task(&Ctx::Anonymous, &task_complete)
+                                        .await?;
+                                }
+                                None => {}
                             };
                         }
-                        MarketObservationCfg(_) => {}
-                        TradingCfg(_) => {}
-                        ConstructJumpGateCfg(_) => {}
-                        MiningCfg(_) => {}
-                        SiphoningCfg(_) => {}
+                        _ => {}
                     }
                     Ok(())
                 } else {

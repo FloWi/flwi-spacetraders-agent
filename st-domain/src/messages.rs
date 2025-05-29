@@ -108,7 +108,7 @@ pub enum PurchaseReason {
     ShipUpgrade,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Display)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq)]
 pub enum ShipTask {
     ObserveWaypointDetails {
         waypoint_symbol: WaypointSymbol,
@@ -206,6 +206,12 @@ impl Display for FleetId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub enum ShipTaskCompletionAnalysis {
+    ShipTaskDone(FleetTaskCompletion),
+    ShipTaskNotDone(ShipTask),
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]

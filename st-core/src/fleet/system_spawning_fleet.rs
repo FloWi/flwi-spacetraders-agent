@@ -2,7 +2,7 @@ use crate::fleet::fleet::{diff_waypoint_symbols, FleetAdmiral};
 use anyhow::*;
 use chrono::Utc;
 use itertools::Itertools;
-use st_domain::{Fleet, FleetDecisionFacts, FleetTask, FleetTaskCompletion, Ship, ShipSymbol, ShipTask, SystemSpawningFleetConfig};
+use st_domain::{Fleet, FleetDecisionFacts, FleetTask, FleetTaskCompletion, Ship, ShipSymbol, ShipTask, ShipTaskCompletionAnalysis, SystemSpawningFleetConfig};
 use std::collections::HashMap;
 use tracing::{event, span};
 use tracing_core::Level;
@@ -16,7 +16,7 @@ impl SystemSpawningFleet {
         fleet_tasks: &[FleetTask],
         cfg: &SystemSpawningFleetConfig,
         facts: &FleetDecisionFacts,
-    ) -> Option<FleetTaskCompletion> {
+    ) -> Option<ShipTaskCompletionAnalysis> {
         let ship_span = span!(
             Level::INFO,
             "SystemSpawningFleet",
@@ -27,7 +27,7 @@ impl SystemSpawningFleet {
 
         let _enter = ship_span.enter();
 
-        let result = match ship_task {
+        let result: Option<ShipTaskCompletionAnalysis> = match ship_task {
             ShipTask::ObserveAllWaypointsOnce { waypoint_symbols } => {
                 let marketplaces_to_explore = diff_waypoint_symbols(&cfg.marketplace_waypoints_of_interest, &facts.marketplaces_with_up_to_date_infos);
                 let shipyards_to_explore = diff_waypoint_symbols(&cfg.shipyard_waypoints_of_interest, &facts.shipyards_with_up_to_date_infos);
@@ -60,26 +60,42 @@ impl SystemSpawningFleet {
                     let maybe_matching_task = fleet_tasks
                         .iter()
                         .find(|ft| matches!(ft, FleetTask::InitialExploration { .. }));
-                    maybe_matching_task.map(|ft| FleetTaskCompletion {
-                        task: ft.clone(),
-                        completed_at: Utc::now(),
+                    maybe_matching_task.map(|ft| {
+                        ShipTaskCompletionAnalysis::ShipTaskDone(FleetTaskCompletion {
+                            task: ft.clone(),
+                            completed_at: Utc::now(),
+                        })
                     })
                 } else {
-                    None
+                    // Not completed
+                    let open_waypoint_symbols = marketplaces_to_explore
+                        .into_iter()
+                        .chain(shipyards_to_explore.into_iter())
+                        .unique()
+                        .collect_vec();
+                    Some(ShipTaskCompletionAnalysis::ShipTaskNotDone(ShipTask::ObserveAllWaypointsOnce {
+                        waypoint_symbols: open_waypoint_symbols,
+                    }))
                 }
             }
-            _ => None,
+            _ => {
+                // Irrelevant task for this fleet
+                None
+            }
         };
         match &result {
             None => {
                 event!(Level::DEBUG, "FleetTask not finished yet");
             }
-            Some(completed_task) => {
+            Some(ShipTaskCompletionAnalysis::ShipTaskDone(completed_task)) => {
                 event!(
                     Level::INFO,
                     message = "FleetTask completed by finishing this ShipTask",
                     fleet_task = completed_task.task.to_string()
                 );
+            }
+            Some(ShipTaskCompletionAnalysis::ShipTaskNotDone(_)) => {
+                event!(Level::INFO, message = "FleetTask not completed yet finishing this ShipTask",);
             }
         }
 
