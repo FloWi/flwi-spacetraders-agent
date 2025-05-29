@@ -246,7 +246,9 @@ impl Actionable for ShipAction {
                     .report_expense(
                         &state.my_fleet,
                         state.current_navigation_destination.clone(),
-                        state.maybe_trades.clone().unwrap_or_default(),
+                        args.treasurer
+                            .get_active_tickets_for_ship(&state.symbol)
+                            .await?,
                         TradeGoodSymbol::FUEL,
                         response.data.transaction.units as u32,
                         Credits::from(response.data.transaction.price_per_unit),
@@ -344,16 +346,18 @@ impl Actionable for ShipAction {
                 }
             }
 
-            ShipAction::HasUncompletedTrade => match &state.maybe_trades {
-                None => Err(anyhow!("No trade assigned")),
-                Some(trades) => {
-                    if trades.is_empty() {
-                        Err(anyhow!("Trades Vector is empty"))
-                    } else {
-                        Ok(Success)
-                    }
+            ShipAction::HasUncompletedTrade => {
+                if args
+                    .treasurer
+                    .get_active_tickets_for_ship(&state.symbol)
+                    .await?
+                    .is_empty()
+                {
+                    Err(anyhow!("No trade assigned"))
+                } else {
+                    Ok(Success)
                 }
-            },
+            }
 
             ShipAction::IsAtDestination => {
                 if let Some(current) = &state.current_navigation_destination {
@@ -496,10 +500,14 @@ impl Actionable for ShipAction {
                     }
                 }
             },
-            ShipAction::SetNextTradeStopAsDestination => match state.maybe_trades.clone() {
-                None => Err(anyhow!("No next trade waypoint found - state.maybe_trade is None")),
-                Some(trades) if trades.is_empty() => Err(anyhow!("No next trade waypoint found - state.maybe_trade has empty Vec<FinanceTicket>")),
-                Some(trades) => {
+            ShipAction::SetNextTradeStopAsDestination => match args
+                .treasurer
+                .get_active_tickets_for_ship(&state.symbol)
+                .await
+            {
+                Err(err) => Err(anyhow!("Error getting tickets from treasurer: {err:?}")),
+                Ok(trades) if trades.is_empty() => Err(anyhow!("No next trade waypoint found - treasurer returned empty Vec<FinanceTicket> for ship")),
+                Ok(trades) => {
                     // we can't execute all trades immediately. (e.g. can't sell _before_ you purchased the goods)
 
                     let executable_trades = trades
@@ -544,7 +552,11 @@ impl Actionable for ShipAction {
                 if state.nav.status != NavStatus::Docked {
                     println!("Hello, breakpoint. Ship should be docked by now");
                 }
-                if let Some(finance_tickets) = &state.maybe_trades.clone() {
+                if let Some(finance_tickets) = args
+                    .treasurer
+                    .get_active_tickets_for_ship(&state.symbol)
+                    .await
+                {
                     let mut completed_tickets: HashSet<FinanceTicket> = HashSet::new();
 
                     let current_location = &state.nav.waypoint_symbol.clone();
@@ -653,7 +665,11 @@ impl Actionable for ShipAction {
                 }
             }
 
-            ShipAction::HasNextTradeWaypoint => match state.maybe_trades.clone() {
+            ShipAction::HasNextTradeWaypoint => match args
+                .treasurer
+                .get_maybe_active_tickets_for_ship(&state.symbol)
+                .clone()
+            {
                 //FIXME: allow setting multiple trading stops (e.g. 1st purchase, 2nd sell)
                 None => Err(anyhow!("No next trade waypoint found - state.maybe_trade is None")),
                 Some(_) => Ok(Success),
@@ -661,7 +677,12 @@ impl Actionable for ShipAction {
             ShipAction::SleepUntilNextObservationTimeOrShipPurchaseTicketHasBeenAssigned => match state.maybe_next_observation_time {
                 None => Ok(Success),
                 Some(next_time) => loop {
-                    if state.maybe_trades.is_some() || Utc::now() > next_time {
+                    if args
+                        .treasurer
+                        .get_maybe_active_tickets_for_ship(&state.symbol)
+                        .is_some()
+                        || Utc::now() > next_time
+                    {
                         break Ok(Success);
                     } else {
                         tokio::time::sleep(sleep_duration).await;
@@ -671,7 +692,11 @@ impl Actionable for ShipAction {
             ShipAction::HasShipPurchaseTicketForWaypoint => {
                 let current_location = state.current_location();
 
-                if let Some(trades) = state.maybe_trades.clone() {
+                if let Some(trades) = args
+                    .treasurer
+                    .get_maybe_active_tickets_for_ship(&state.symbol)
+                    .clone()
+                {
                     let has_ship_ticket_at_current_waypoint = trades.iter().any(|trade| match &trade.details {
                         PurchaseTradeGoods(_) => false,
                         SellTradeGoods(_) => false,

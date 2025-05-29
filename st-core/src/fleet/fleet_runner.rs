@@ -378,7 +378,6 @@ impl FleetRunner {
                     .get_active_tickets_for_ship(&ship.symbol)
                     .await?;
                 // println!("running trading behavior for ship, successfully started ticket execution");
-                ship.set_trade_tickets(tickets.clone());
                 event!(
                     Level::INFO,
                     message = "Ship is executing trades",

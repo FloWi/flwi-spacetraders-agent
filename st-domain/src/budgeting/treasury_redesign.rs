@@ -265,6 +265,17 @@ where {
         }
     }
 
+    // compatible api for ShipAction
+    pub async fn get_maybe_active_tickets_for_ship(&self, ship_symbol: &ShipSymbol) -> Result<Option<Vec<FinanceTicket>>> {
+        let tickets = self.get_active_tickets_for_ship(ship_symbol).await?;
+
+        if tickets.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(tickets))
+        }
+    }
+
     pub async fn get_active_tickets_for_ship(&self, ship_symbol: &ShipSymbol) -> Result<Vec<FinanceTicket>> {
         let active_tickets = self.get_active_tickets().await?;
         Ok(active_tickets

@@ -22,7 +22,6 @@ pub struct ShipOperations {
     pub explore_location_queue: VecDeque<WaypointSymbol>,
     pub permanent_observation_location: Option<WaypointSymbol>,
     pub maybe_next_observation_time: Option<DateTime<Utc>>,
-    pub maybe_trades: Option<Vec<FinanceTicket>>,
     pub my_fleet: FleetId,
     pub maybe_siphoning_config: Option<SiphoningOpsConfig>,
     pub maybe_mining_ops_config: Option<MiningOpsConfig>,
@@ -44,7 +43,6 @@ current_navigation_destination: {:?},
 explore_location_queue: {:?},
 permanent_observation_location: {:?},
 maybe_next_observation_time: {:?},
-maybe_trade: {:?},
         "#,
             &self.ship,
             &self.travel_action_queue,
@@ -52,7 +50,6 @@ maybe_trade: {:?},
             &self.explore_location_queue,
             &self.permanent_observation_location,
             &self.maybe_next_observation_time,
-            &self.maybe_trades,
         )
         .trim()
         .to_string()
@@ -78,14 +75,6 @@ maybe_trade: {:?},
         self.fuel = new_fuel;
     }
 
-    pub(crate) fn has_trade(&self) -> bool {
-        if let Some(trades) = &self.maybe_trades {
-            trades.is_empty().not()
-        } else {
-            false
-        }
-    }
-
     pub fn set_route(&mut self, new_route: Vec<TravelAction>) {
         self.travel_action_queue = VecDeque::from(new_route);
     }
@@ -99,7 +88,6 @@ maybe_trade: {:?},
             explore_location_queue: VecDeque::new(),
             permanent_observation_location: None,
             maybe_next_observation_time: None,
-            maybe_trades: None,
             my_fleet,
             maybe_siphoning_config: None,
             maybe_mining_ops_config: None,
@@ -180,14 +168,6 @@ maybe_trade: {:?},
 
     pub fn set_permanent_observation_location(&mut self, waypoint_symbol: WaypointSymbol) {
         self.permanent_observation_location = Some(waypoint_symbol);
-    }
-
-    pub fn set_trade_tickets(&mut self, trade_tickets: Vec<FinanceTicket>) {
-        if trade_tickets.is_empty() {
-            self.maybe_trades = None;
-        } else {
-            self.maybe_trades = Some(trade_tickets);
-        }
     }
 
     pub async fn dock(&mut self) -> Result<Nav> {

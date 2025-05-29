@@ -257,7 +257,7 @@ pub fn ship_behaviors() -> Behaviors {
                     Behavior::new_action(ShipAction::IsLateEnoughForWaypointObservation),
                     Behavior::new_action(ShipAction::CollectWaypointInfos),
                     Behavior::new_action(ShipAction::SetNextObservationTime),
-                    // Behavior::new_action(ShipAction::SleepUntilNextObservationTimeOrShipPurchaseTicketHasBeenAssigned),
+                    Behavior::new_action(ShipAction::SleepUntilNextObservationTimeOrShipPurchaseTicketHasBeenAssigned),
                 ]),
             ]),
         ),
