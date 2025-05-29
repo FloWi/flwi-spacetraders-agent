@@ -180,17 +180,21 @@ pub fn ship_behaviors() -> Behaviors {
         ]),
     );
 
-    let mut navigate_to_destination = Behavior::new_sequence(vec![
-        Behavior::new_action(ShipAction::HasDestination),
-        wait_for_arrival_bt.clone(),
-        Behavior::new_select(vec![
-            Behavior::new_action(ShipAction::HasRouteToDestination),
-            Behavior::new_action(ShipAction::ComputePathToDestination),
-            Behavior::new_action(ShipAction::PrintTravelActions),
+    let mut navigate_to_destination = Behavior::new_select(vec![
+        Behavior::new_action(ShipAction::IsAtDestination),
+        Behavior::new_sequence(vec![
+            Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
+            Behavior::new_action(ShipAction::HasDestination),
+            wait_for_arrival_bt.clone(),
+            Behavior::new_select(vec![
+                Behavior::new_action(ShipAction::HasRouteToDestination),
+                Behavior::new_action(ShipAction::ComputePathToDestination),
+                Behavior::new_action(ShipAction::PrintTravelActions),
+            ]),
+            follow_travel_actions.clone(),
+            Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
+            Behavior::new_action(ShipAction::RemoveDestination),
         ]),
-        follow_travel_actions.clone(),
-        Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
-        Behavior::new_action(ShipAction::RemoveDestination),
     ]);
 
     let purchase_ship_if_has_ticket = Behavior::new_select(vec![

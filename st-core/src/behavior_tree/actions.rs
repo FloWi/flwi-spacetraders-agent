@@ -357,7 +357,7 @@ impl Actionable for ShipAction {
 
             ShipAction::IsAtDestination => {
                 if let Some(current) = &state.current_navigation_destination {
-                    if &state.nav.waypoint_symbol == current {
+                    if &state.nav.waypoint_symbol == current && state.is_stationary() {
                         Ok(Success)
                     } else {
                         Err(anyhow!("Not at destination"))
