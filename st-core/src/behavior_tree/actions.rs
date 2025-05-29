@@ -17,8 +17,8 @@ use st_domain::cargo_transfer::{InternalTransferCargoRequest, InternalTransferCa
 use st_domain::TradeGoodSymbol::MOUNT_GAS_SIPHON_I;
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, Survey, TradeGoodSymbol,
-    TravelAction,
+    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, ShipSymbol, Survey,
+    TradeGoodSymbol, TravelAction,
 };
 use std::collections::HashSet;
 use std::hint::unreachable_unchecked;
@@ -428,6 +428,10 @@ impl Actionable for ShipAction {
                     args.insert_waypoint(&charted_waypoint.waypoint)
                         .await
                         .map_err(|_| anyhow!("inserting waypoint failed"))?;
+                }
+
+                if state.symbol.0.ends_with("-1").not() {
+                    let foo = 1 + 41; // just for the breakpoint
                 }
 
                 let exploration_tasks = if is_uncharted {

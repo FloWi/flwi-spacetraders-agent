@@ -40,6 +40,7 @@ use std::ops::Not;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 use strum::{Display, IntoEnumIterator};
+use tokio::sync::mpsc::error::SendError;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{event, Level};
@@ -644,7 +645,10 @@ Fleet Budgets after rebalancing
                         .ledger_bmc()
                         .archive_ledger_entry(&Ctx::Anonymous, &task.entry)
                         .await;
-                    let _ = task.response_sender.send(result);
+                    let ack_response = task.response_sender.send(result).await;
+                    if let Err(e) = ack_response {
+                        eprintln!("Sending ack response failed: {e:?}");
+                    }
                 }
             }
         });
@@ -1983,6 +1987,7 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         .market_bmc()
         .get_latest_market_data_for_system(&Ctx::Anonymous, system_symbol)
         .await?;
+
     let shipyards_of_interest = bmc
         .shipyard_bmc()
         .get_latest_shipyard_entries_of_system(&Ctx::Anonymous, system_symbol)

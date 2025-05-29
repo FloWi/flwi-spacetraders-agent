@@ -241,11 +241,15 @@ where {
             task_sender: ledger_archiving_task_sender,
         };
 
-        instance
+        match instance
             .with_treasurer(|t| t.process_ledger_entry(TreasuryCreated { credits: starting_credits }))
             .await
-            .expect("creating a new instance should work");
-        instance
+        {
+            Ok(_) => instance,
+            Err(err) => {
+                panic!("Creating a new treasurer instance should have worked. Error is: {err:?}")
+            }
+        }
     }
 
     // Helper method to execute operations on the treasurer
@@ -275,7 +279,7 @@ where {
                     for entry in new_entries {
                         let (archiving_response_sender, mut archiving_response_receiver) = tokio::sync::mpsc::channel(1);
 
-                        println!("with_treasurer: sending task to task_sender");
+                        // println!("with_treasurer: sending task to task_sender");
                         // Send task to external processor
                         self.task_sender
                             .send(LedgerArchiveTask {
@@ -283,7 +287,7 @@ where {
                                 response_sender: archiving_response_sender,
                             })
                             .map_err(|_| anyhow!("Ledger processor disconnected"))?;
-                        println!("with_treasurer: sent task to task_sender, waiting for archiving");
+                        // println!("with_treasurer: sent task to task_sender, waiting for archiving");
 
                         // Wait for processing to complete
                         let _ = archiving_response_receiver
@@ -291,7 +295,7 @@ where {
                             .await
                             .ok_or_else(|| anyhow!("Failed to receive response from processor"))?;
 
-                        println!("with_treasurer: Got ACK back on sync channel");
+                        // println!("with_treasurer: Got ACK back on sync channel");
                     }
                 }
 
