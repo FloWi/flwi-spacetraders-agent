@@ -252,6 +252,15 @@ where {
         }
     }
 
+    pub async fn get_active_tickets_for_ship(&self, ship_symbol: &ShipSymbol) -> Result<Vec<FinanceTicket>> {
+        let active_tickets = self.get_active_tickets().await?;
+        Ok(active_tickets
+            .values()
+            .filter(|t| &t.ship_symbol == ship_symbol)
+            .cloned()
+            .collect_vec())
+    }
+
     // Helper method to execute operations on the treasurer
     async fn with_treasurer<F, R>(&self, operation: F) -> Result<R>
     where

@@ -887,12 +887,7 @@ Fleet Budgets after rebalancing
                             .await
                             .ok()
                         {
-                            new_ship_tasks.insert(
-                                ship.symbol.clone(),
-                                ShipTask::Trade {
-                                    tickets: vec![ship_purchase_ticket.clone()],
-                                },
-                            );
+                            new_ship_tasks.insert(ship.symbol.clone(), ShipTask::Trade);
                         }
                     }
                 }
@@ -997,7 +992,7 @@ Fleet Budgets after rebalancing
                         };
 
                         if let Some((pt, st)) = maybe_purchase_ticket.zip(maybe_sell_ticket) {
-                            new_construction_fleet_tasks.insert(potential_construction_task.ship_symbol.clone(), ShipTask::Trade { tickets: vec![pt, st] });
+                            new_construction_fleet_tasks.insert(potential_construction_task.ship_symbol.clone(), ShipTask::Trade);
                         }
                     }
 

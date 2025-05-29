@@ -133,9 +133,7 @@ pub enum ShipTask {
         demanded_goods: HashSet<TradeGoodSymbol>,
     },
 
-    Trade {
-        tickets: Vec<FinanceTicket>,
-    },
+    Trade,
 
     PrepositionShipForTrade {
         first_purchase_location: WaypointSymbol,

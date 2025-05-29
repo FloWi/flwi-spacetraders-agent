@@ -372,7 +372,11 @@ impl FleetRunner {
                 //println!("ship_loop: Ship {:?} is running explorer_behavior", ship.symbol);
                 Some((behaviors.explorer_behavior, "explorer_behavior"))
             }
-            ShipTask::Trade { tickets } => {
+            ShipTask::Trade => {
+                let tickets = args
+                    .treasurer
+                    .get_active_tickets_for_ship(&ship.symbol)
+                    .await?;
                 // println!("running trading behavior for ship, successfully started ticket execution");
                 ship.set_trade_tickets(tickets.clone());
                 event!(
