@@ -253,7 +253,7 @@ pub fn ship_behaviors() -> Behaviors {
             Behavior::new_sequence(vec![
                 Behavior::new_action(ShipAction::CheckForShipPurchaseTicket), //we might have gotten a ship_purchase ticket
                 Behavior::new_action(ShipAction::PerformTradeActionAndMarkAsCompleted), //we might have gotten a ship_purchase ticket
-                Behavior::new_select(vec![
+                Behavior::new_sequence(vec![
                     Behavior::new_action(ShipAction::IsLateEnoughForWaypointObservation),
                     Behavior::new_action(ShipAction::CollectWaypointInfos),
                     Behavior::new_action(ShipAction::SetNextObservationTime),
