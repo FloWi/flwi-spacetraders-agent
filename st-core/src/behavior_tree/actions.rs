@@ -143,14 +143,14 @@ impl Actionable for ShipAction {
 
             ShipAction::IsDocked => match state.nav.status {
                 NavStatus::Docked => Ok(Success),
-                NavStatus::InTransit => Ok(Response::Running),
-                NavStatus::InOrbit => Err(anyhow!("Failed")),
+                NavStatus::InTransit => Err(anyhow!("Failed - Ship is InTransit")),
+                NavStatus::InOrbit => Err(anyhow!("Failed - Ship is InOrbit")),
             },
 
             ShipAction::IsInOrbit => match state.nav.status {
                 NavStatus::InOrbit => Ok(Success),
-                NavStatus::InTransit => Ok(Response::Running),
-                NavStatus::Docked => Err(anyhow!("Failed")),
+                NavStatus::InTransit => Err(anyhow!("Failed - Ship is InTransit")),
+                NavStatus::Docked => Err(anyhow!("Failed - Ship is Docked")),
             },
 
             ShipAction::IsCorrectFlightMode => {

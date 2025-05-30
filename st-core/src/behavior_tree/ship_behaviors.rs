@@ -242,7 +242,6 @@ pub fn ship_behaviors() -> Behaviors {
                 Behavior::new_action(ShipAction::SetPermanentExploreLocationAsDestination),
             ]),
         ]),
-        Behavior::new_select(vec![
             Behavior::new_action(ShipAction::IsAtDestination),
             navigate_to_destination.clone(),
         ]),
