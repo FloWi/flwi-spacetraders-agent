@@ -526,10 +526,13 @@ Fleet Budgets after rebalancing
         match ship_status_report {
             ShipStatusReport::ShipActionCompleted(ship, ship_action) => {
                 let maybe_fleet = self.get_fleet_of_ship(&ship.symbol);
+
                 let fleet_tasks: Vec<FleetTask> = maybe_fleet
                     .map(|fleet_id| self.get_tasks_of_fleet(&fleet_id.id))
                     .unwrap_or_default();
+
                 let maybe_ship_task = self.get_task_of_ship(&ship.symbol);
+
                 if let Some((fleet, ship_task)) = maybe_fleet.zip(maybe_ship_task) {
                     let fleet_decision_facts: FleetDecisionFacts = collect_fleet_decision_facts(Arc::clone(&bmc), &ship.nav.system_symbol).await?;
                     match (&fleet.cfg, ship_action) {
@@ -592,6 +595,9 @@ Fleet Budgets after rebalancing
                     ship = ship.symbol.0,
                     task = task.to_string(),
                 );
+                if ship.frame.symbol == ShipFrameSymbol::FRAME_PROBE {
+                    eprintln!("A probe should never finish their behavior tree");
+                }
                 Ok(())
             }
         }
@@ -721,25 +727,13 @@ Fleet Budgets after rebalancing
 
             let agent_info = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?;
 
-            let ships = overview
-                .all_ships
-                .into_iter()
-                .filter(|(ss, ship)| {
-                    overview
-                        .stationary_probe_locations
-                        .iter()
-                        .any(|spl| ss == &spl.probe_ship_symbol)
-                        .not()
-                })
-                .collect();
-
             let (treasurer, treasurer_archiver_join_handle) = Self::initialize_treasurer(bmc.clone()).await?;
             let current_ship_demands = get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
             let admiral = Self {
                 completed_fleet_tasks: overview.completed_fleet_tasks.clone(),
                 fleets: fleet_map,
-                all_ships: ships,
+                all_ships: ship_map,
                 ship_tasks: overview.ship_tasks,
                 fleet_tasks: fleet_task_map,
                 ship_fleet_assignment,
