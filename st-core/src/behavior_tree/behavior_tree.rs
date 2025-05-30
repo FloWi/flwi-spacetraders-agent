@@ -227,7 +227,6 @@ impl<A: Display> Display for Behavior<A> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Display)]
 pub enum Response {
     Success,
-    Running,
 }
 
 // Create a common message enum that both ShipAction and Behavior<ShipAction> can use
@@ -301,7 +300,6 @@ where
                 match result {
                     Ok(r) => match r {
                         Response::Success => Err(Self::ActionError::from(anyhow!("Inverted Ok"))),
-                        Response::Running => Ok(Response::Running),
                     },
                     Err(_) => Ok(Response::Success),
                 }
@@ -313,7 +311,6 @@ where
                         .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
                         .await;
                     match result {
-                        Ok(Response::Running) => return Ok(Response::Running),
                         Ok(r) => return Ok(r),
                         Err(e) => {
                             errors.push(e);
@@ -334,7 +331,6 @@ where
                         .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
                         .await;
                     match result {
-                        Ok(Response::Running) => return Ok(Response::Running),
                         Ok(_) => continue,
                         Err(err) => {
                             let maybe_idx = b.index();
@@ -360,7 +356,7 @@ where
                                 let maybe_idx = action.index();
                                 return Err(Self::ActionError::from(anyhow!("action failedIdx: {maybe_idx:?}. Error: {err}")));
                             }
-                            Ok(Response::Running | Response::Success) => {
+                            Ok(Response::Success) => {
                                 sleep(sleep_duration).await;
                                 continue;
                             }
@@ -415,7 +411,6 @@ pub fn compute_sub_behavior_hashes<A: Display + Hash>(labelled_sub_behaviors: &H
 #[cfg(test)]
 mod tests {
     use super::{ActionEvent, Actionable, Behavior, Response};
-    use crate::behavior_tree::behavior_tree::Response::Running;
     use anyhow::anyhow;
     use async_trait::async_trait;
     use core::time::Duration;
@@ -429,7 +424,6 @@ mod tests {
         Increase,
         Decrease,
         IsLowerThan2,
-        ReturnRunning,
     }
 
     #[async_trait]
@@ -462,7 +456,6 @@ mod tests {
                         Err(anyhow!(">= 2"))
                     }
                 }
-                MyAction::ReturnRunning => Ok(Response::Running),
             }
         }
     }
@@ -507,27 +500,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_sequence_with_running_node() {
-        let bt: Behavior<MyAction> = Behavior::new_sequence(vec![
-            Behavior::new_action(MyAction::Increase),
-            Behavior::new_action(MyAction::ReturnRunning),
-            Behavior::new_action(MyAction::Decrease),
-        ]);
-
-        let mut my_state = MyState(0);
-        let (tx, rx) = mpsc::channel(32);
-        let (tx2, rx2) = mpsc::channel(32);
-
-        let result = bt
-            .run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2)
-            .await
-            .unwrap();
-        println!("{:?}", my_state);
-        assert_eq!(my_state, MyState(1));
-        assert_eq!(result, Running)
-    }
-
-    #[tokio::test]
     async fn test_while() {
         let bt: Behavior<MyAction> = Behavior::new_while(Behavior::new_action(MyAction::IsLowerThan2), Behavior::new_action(MyAction::Increase));
 
@@ -555,7 +527,7 @@ mod tests {
             .run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2)
             .await;
         println!("{:?}", my_state);
-        assert_eq!(my_state, MyState(42));
+        assert_eq!(my_state, MyState(2));
         result.is_ok();
     }
 
