@@ -1225,10 +1225,6 @@ Json entries of all ledger entries after dismantling the fleets:\n{}
         Ok(())
     }
 
-    pub(crate) fn remove_ship_from_fleet(admiral: &mut FleetAdmiral, ship_symbol: &ShipSymbol) {
-        admiral.ship_fleet_assignment.remove(ship_symbol);
-    }
-
     pub(crate) fn add_stationary_probe_location(admiral: &mut FleetAdmiral, stationary_probe_location: StationaryProbeLocation) {
         admiral
             .stationary_probe_locations

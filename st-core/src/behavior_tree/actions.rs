@@ -552,11 +552,12 @@ impl Actionable for ShipAction {
                 if state.nav.status != NavStatus::Docked {
                     println!("Hello, breakpoint. Ship should be docked by now");
                 }
-                if let Some(finance_tickets) = args
+                let maybe_tickets = args
                     .treasurer
-                    .get_active_tickets_for_ship(&state.symbol)
-                    .await
-                {
+                    .get_maybe_active_tickets_for_ship(&state.symbol)
+                    .await?;
+
+                if let Some(finance_tickets) = maybe_tickets {
                     let mut completed_tickets: HashSet<FinanceTicket> = HashSet::new();
 
                     let current_location = &state.nav.waypoint_symbol.clone();
@@ -656,7 +657,6 @@ impl Actionable for ShipAction {
                             .filter(|t| completed_tickets.contains(t).not())
                             .cloned()
                             .collect_vec();
-                        state.set_trade_tickets(still_open_tickets)
                     }
 
                     Ok(Success)
@@ -668,11 +668,11 @@ impl Actionable for ShipAction {
             ShipAction::HasNextTradeWaypoint => match args
                 .treasurer
                 .get_maybe_active_tickets_for_ship(&state.symbol)
-                .clone()
+                .await?
             {
                 //FIXME: allow setting multiple trading stops (e.g. 1st purchase, 2nd sell)
-                None => Err(anyhow!("No next trade waypoint found - state.maybe_trade is None")),
-                Some(_) => Ok(Success),
+                None => Err(anyhow!("No next trade waypoint found - treasurer.get_maybe_active_tickets_for_ship is None")),
+                Some(_trades) => Ok(Success),
             },
             ShipAction::SleepUntilNextObservationTimeOrShipPurchaseTicketHasBeenAssigned => match state.maybe_next_observation_time {
                 None => Ok(Success),
@@ -680,6 +680,7 @@ impl Actionable for ShipAction {
                     if args
                         .treasurer
                         .get_maybe_active_tickets_for_ship(&state.symbol)
+                        .await?
                         .is_some()
                         || Utc::now() > next_time
                     {
@@ -695,7 +696,7 @@ impl Actionable for ShipAction {
                 if let Some(trades) = args
                     .treasurer
                     .get_maybe_active_tickets_for_ship(&state.symbol)
-                    .clone()
+                    .await?
                 {
                     let has_ship_ticket_at_current_waypoint = trades.iter().any(|trade| match &trade.details {
                         PurchaseTradeGoods(_) => false,
@@ -718,22 +719,6 @@ impl Actionable for ShipAction {
             }
             ShipAction::RegisterProbeForPermanentObservation => {
                 // we don't need to send a specialized message
-                Ok(Success)
-            }
-            ShipAction::CheckForShipPurchaseTicket => {
-                if state.has_trade().not() {
-                    let tickets = args.treasurer.get_active_tickets().await?;
-                    if let Some((_, ship_purchase_ticket)) = tickets.into_iter().find(|(_, t)| match t.details {
-                        PurchaseTradeGoods(_) => false,
-                        SellTradeGoods(_) => false,
-                        FinanceTicketDetails::SupplyConstructionSite(_) => false,
-                        RefuelShip(_) => false,
-                        FinanceTicketDetails::PurchaseShip(_) => t.ship_symbol == state.symbol,
-                    }) {
-                        state.set_trade_tickets(vec![ship_purchase_ticket]);
-                    }
-                }
-
                 Ok(Success)
             }
             ShipAction::SiphonResources => {
@@ -827,7 +812,6 @@ impl Actionable for ShipAction {
                             }
                         }
 
-                        state.set_trade_tickets(sell_tickets);
                         Ok(Success)
                     }
                 } else {

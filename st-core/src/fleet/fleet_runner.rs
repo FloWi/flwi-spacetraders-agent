@@ -20,8 +20,8 @@ use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
 use st_domain::{
-    get_exploration_tasks_for_waypoint, FleetId, OperationExpenseEvent, Ship, ShipSymbol, ShipTask, StationaryProbeLocation, TransactionActionEvent,
-    WaypointTraitSymbol, WaypointType,
+    get_exploration_tasks_for_waypoint, FleetId, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, StationaryProbeLocation,
+    TransactionActionEvent, WaypointTraitSymbol, WaypointType,
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
 use st_store::bmc::Bmc;
@@ -110,6 +110,12 @@ impl FleetRunner {
         // Clone fleet_admiral infos to avoid the lifetime issues
         let all_ship_tasks = fleet_admiral.lock().await.ship_tasks.clone();
 
+        if all_ship_tasks
+            .contains_key(&ShipSymbol("FLWI_TEST-4".to_string()))
+            .not()
+        {
+            println!("DEBUG")
+        }
         let fleet_runner = Self {
             ship_fibers,
             ship_ops,
@@ -193,6 +199,10 @@ impl FleetRunner {
                 {
                     Ok(maybe_task_finished_result) => {
                         if let Some((ship, ship_task)) = maybe_task_finished_result {
+                            if ship.frame.symbol == ShipFrameSymbol::FRAME_PROBE {
+                                eprintln!("A probe should never finish their behavior tree");
+                            }
+
                             ship_status_report_tx_clone
                                 .send(ShipStatusReport::ShipFinishedBehaviorTree(ship, ship_task))
                                 .await?;
@@ -897,27 +907,38 @@ impl FleetRunner {
             let _enter = ship_span.enter();
 
             match msg {
-                ActionEvent::ShipActionCompleted(ship_op, ship_action, result) => match result {
-                    Ok(_) => {
+                ActionEvent::ShipActionCompleted(ship_op, ship_action, result) => {
+                    if &ship_op.symbol.0 == "FLWI_TEST-4" {
                         event!(
-                            Level::DEBUG,
-                            message = "ShipActionCompleted",
+                            Level::INFO,
+                            message = "ShipActionCompleted - CHECKING FOR FLWI-TEST-4",
                             ship = ship_op.symbol.0,
                             action = %ship_action,
                         );
-                        if ship_action == ShipAction::CollectWaypointInfos || ship_action == ShipAction::RegisterProbeForPermanentObservation {
-                            ship_status_report_tx
-                                .send(ShipStatusReport::ShipActionCompleted(ship_op.ship.clone(), ship_action))
-                                .await?;
+                    }
+
+                    match result {
+                        Ok(_) => {
+                            event!(
+                                Level::DEBUG,
+                                message = "ShipActionCompleted",
+                                ship = ship_op.symbol.0,
+                                action = %ship_action,
+                            );
+                            if ship_action == ShipAction::CollectWaypointInfos || ship_action == ShipAction::RegisterProbeForPermanentObservation {
+                                ship_status_report_tx
+                                    .send(ShipStatusReport::ShipActionCompleted(ship_op.ship.clone(), ship_action))
+                                    .await?;
+                            }
+                        }
+                        Err(err) => {
+                            event!(Level::ERROR, message = "Error completing ShipAction", error = %err,
+                                ship = ship_op.symbol.0,
+                                action = %ship_action,
+                            );
                         }
                     }
-                    Err(err) => {
-                        event!(Level::ERROR, message = "Error completing ShipAction", error = %err,
-                            ship = ship_op.symbol.0,
-                            action = %ship_action,
-                        );
-                    }
-                },
+                }
                 ActionEvent::BehaviorCompleted(ship_ops, ship_action, result) => match result {
                     Ok(_) => {
                         event!(

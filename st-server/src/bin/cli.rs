@@ -89,8 +89,8 @@ fn setup_tracing() {
     let console_layer = fmt::layer()
         .with_timer(timer.clone())
         .with_ansi(true)
-        .with_target(true)
-        .pretty();
+        .with_target(true);
+    //.pretty();
 
     // Create the JSON file layer
     let file_layer = fmt::layer()
