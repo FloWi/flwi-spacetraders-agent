@@ -488,8 +488,11 @@ Fleet Budgets after rebalancing
     }
 
     pub(crate) fn get_ship_tasks_of_fleet(&self, fleet: &Fleet) -> Vec<(ShipSymbol, ShipTask)> {
+        self.get_ship_tasks_of_fleet_id(&fleet.id)
+    }
+    pub(crate) fn get_ship_tasks_of_fleet_id(&self, fleet_id: &FleetId) -> Vec<(ShipSymbol, ShipTask)> {
         let tasks = self
-            .get_ships_of_fleet(fleet)
+            .get_ships_of_fleet_id(fleet_id)
             .iter()
             .flat_map(|ss| {
                 self.get_task_of_ship(&ss.symbol)
@@ -931,11 +934,11 @@ Fleet Budgets after rebalancing
                 .cloned()
                 .collect_vec();
 
-            let computed_new_tasks = match &fleet.cfg {
-                SystemSpawningCfg(cfg) => SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet)?,
-                MarketObservationCfg(cfg) => MarketObservationFleet::compute_ship_tasks(admiral, cfg, &unassigned_ships_of_fleet)?,
+            let either_computed_new_tasks = match &fleet.cfg {
+                SystemSpawningCfg(cfg) => SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet),
+                MarketObservationCfg(cfg) => MarketObservationFleet::compute_ship_tasks(admiral, cfg, &unassigned_ships_of_fleet, &ships_of_fleet, &fleet.id),
                 ConstructJumpGateCfg(cfg) => {
-                    let potential_trading_tasks = ConstructJumpGateFleet::compute_ship_tasks(
+                    let either_potential_trading_tasks = ConstructJumpGateFleet::compute_ship_tasks(
                         admiral,
                         cfg,
                         fleet,
@@ -947,92 +950,110 @@ Fleet Budgets after rebalancing
                         active_trade_routes,
                         &fleet_budget,
                     )
-                    .await?;
+                    .await;
 
-                    // local mutability, because you can't run async code inside iterator chains.
-                    // TODO: make this function pure again, by removing the treasurer... calls
-                    let mut new_construction_fleet_tasks = HashMap::new();
+                    match either_potential_trading_tasks {
+                        Err(err) => Err(err),
+                        Ok(potential_trading_tasks) => {
+                            // local mutability, because you can't run async code inside iterator chains.
+                            // TODO: make this function pure again, by removing the treasurer... calls
+                            let mut new_construction_fleet_tasks = HashMap::new();
 
-                    for potential_construction_task in potential_trading_tasks.iter() {
-                        let purchase_details = potential_construction_task.create_purchase_ticket_details();
+                            for potential_construction_task in potential_trading_tasks.iter() {
+                                let purchase_details = potential_construction_task.create_purchase_ticket_details();
 
-                        if let Some(ship) = admiral
-                            .all_ships
-                            .get(&potential_construction_task.ship_symbol)
-                        {
-                            if ship.cargo.capacity - ship.cargo.units < purchase_details.quantity as i32 {
-                                println!("cargo doesn't fit");
-                            }
-                        }
+                                if let Some(ship) = admiral
+                                    .all_ships
+                                    .get(&potential_construction_task.ship_symbol)
+                                {
+                                    if ship.cargo.capacity - ship.cargo.units < purchase_details.quantity as i32 {
+                                        println!("cargo doesn't fit");
+                                    }
+                                }
 
-                        let maybe_purchase_ticket = admiral
-                            .treasurer
-                            .create_purchase_trade_goods_ticket(
-                                fleet_id,
-                                purchase_details.trade_good,
-                                purchase_details.waypoint_symbol,
-                                potential_construction_task.ship_symbol.clone(),
-                                purchase_details.quantity,
-                                purchase_details.expected_price_per_unit,
-                            )
-                            .await
-                            .ok()
-                            .filter(|pt| pt.details.get_units() > 0);
-
-                        let maybe_sell_ticket = if let Some(purchase_ticket) = &maybe_purchase_ticket {
-                            // we might not have been able to afford purchasing _all_ units
-                            let affordable_units = purchase_ticket.details.get_units();
-
-                            let sell_or_delivery_details = potential_construction_task.create_sell_or_deliver_ticket_details();
-
-                            match sell_or_delivery_details {
-                                FinanceTicketDetails::RefuelShip(_) => None,
-                                FinanceTicketDetails::PurchaseShip(_) => None,
-                                FinanceTicketDetails::PurchaseTradeGoods(_) => None,
-                                FinanceTicketDetails::SellTradeGoods(d) => admiral
+                                let maybe_purchase_ticket = admiral
                                     .treasurer
-                                    .create_sell_trade_goods_ticket(
+                                    .create_purchase_trade_goods_ticket(
                                         fleet_id,
-                                        d.trade_good,
-                                        d.waypoint_symbol,
+                                        purchase_details.trade_good,
+                                        purchase_details.waypoint_symbol,
                                         potential_construction_task.ship_symbol.clone(),
-                                        affordable_units,
-                                        d.expected_price_per_unit,
-                                        Some(purchase_ticket.ticket_id),
+                                        purchase_details.quantity,
+                                        purchase_details.expected_price_per_unit,
                                     )
                                     .await
-                                    .ok(),
-                                FinanceTicketDetails::SupplyConstructionSite(d) => admiral
-                                    .treasurer
-                                    .create_delivery_construction_material_ticket(
-                                        fleet_id,
-                                        d.trade_good,
-                                        d.waypoint_symbol,
-                                        potential_construction_task.ship_symbol.clone(),
-                                        affordable_units,
-                                        Some(purchase_ticket.ticket_id),
-                                    )
-                                    .await
-                                    .ok(),
-                            }
-                        } else {
-                            None
-                        };
+                                    .ok()
+                                    .filter(|pt| pt.details.get_units() > 0);
 
-                        if let Some((pt, st)) = maybe_purchase_ticket.zip(maybe_sell_ticket) {
-                            new_construction_fleet_tasks.insert(potential_construction_task.ship_symbol.clone(), ShipTask::Trade);
+                                let maybe_sell_ticket = if let Some(purchase_ticket) = &maybe_purchase_ticket {
+                                    // we might not have been able to afford purchasing _all_ units
+                                    let affordable_units = purchase_ticket.details.get_units();
+
+                                    let sell_or_delivery_details = potential_construction_task.create_sell_or_deliver_ticket_details();
+
+                                    match sell_or_delivery_details {
+                                        FinanceTicketDetails::RefuelShip(_) => None,
+                                        FinanceTicketDetails::PurchaseShip(_) => None,
+                                        FinanceTicketDetails::PurchaseTradeGoods(_) => None,
+                                        FinanceTicketDetails::SellTradeGoods(d) => admiral
+                                            .treasurer
+                                            .create_sell_trade_goods_ticket(
+                                                fleet_id,
+                                                d.trade_good,
+                                                d.waypoint_symbol,
+                                                potential_construction_task.ship_symbol.clone(),
+                                                affordable_units,
+                                                d.expected_price_per_unit,
+                                                Some(purchase_ticket.ticket_id),
+                                            )
+                                            .await
+                                            .ok(),
+                                        FinanceTicketDetails::SupplyConstructionSite(d) => admiral
+                                            .treasurer
+                                            .create_delivery_construction_material_ticket(
+                                                fleet_id,
+                                                d.trade_good,
+                                                d.waypoint_symbol,
+                                                potential_construction_task.ship_symbol.clone(),
+                                                affordable_units,
+                                                Some(purchase_ticket.ticket_id),
+                                            )
+                                            .await
+                                            .ok(),
+                                    }
+                                } else {
+                                    None
+                                };
+
+                                if let Some((pt, st)) = maybe_purchase_ticket.zip(maybe_sell_ticket) {
+                                    new_construction_fleet_tasks.insert(potential_construction_task.ship_symbol.clone(), ShipTask::Trade);
+                                }
+                            }
+
+                            Ok(new_construction_fleet_tasks)
                         }
                     }
-
-                    new_construction_fleet_tasks
                 }
-                TradingCfg(cfg) => Default::default(),
-                MiningCfg(cfg) => MiningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet)?,
-                SiphoningCfg(cfg) => SiphoningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet)?,
+                TradingCfg(cfg) => Err(anyhow!("pure_compute_ship_tasks for TradingCfg not implemented yet")),
+                MiningCfg(cfg) => MiningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet),
+                SiphoningCfg(cfg) => SiphoningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet),
             };
 
-            for (ss, task) in computed_new_tasks {
-                new_ship_tasks.insert(ss, task);
+            match either_computed_new_tasks {
+                Ok(computed_new_tasks) => {
+                    for (ss, task) in computed_new_tasks {
+                        new_ship_tasks.insert(ss, task);
+                    }
+                }
+                Err(err) => {
+                    event!(
+                        Level::WARN,
+                        "pure_compute_ship_tasks threw error for fleet {} (#{}) error: {:?}",
+                        err,
+                        fleet.cfg.to_string(),
+                        fleet_id.0
+                    );
+                }
             }
         }
 
@@ -1531,18 +1552,8 @@ Json entries of all ledger entries after dismantling the fleets:\n{}
 
 #[derive(Serialize, Deserialize, Debug, Display)]
 pub enum NewTaskResult {
-    DismantleFleets {
-        fleets_to_dismantle: Vec<FleetId>,
-    },
-    AssignNewTaskToShip {
-        ship_symbol: ShipSymbol,
-        task: ShipTask,
-    },
-    RegisterWaypointForPermanentObservation {
-        ship_symbol: ShipSymbol,
-        waypoint_symbol: WaypointSymbol,
-        exploration_tasks: Vec<ExplorationTask>,
-    },
+    DismantleFleets { fleets_to_dismantle: Vec<FleetId> },
+    AssignNewTaskToShip { ship_symbol: ShipSymbol, task: ShipTask },
 }
 
 pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
@@ -1552,22 +1563,6 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
     bmc: Arc<dyn Bmc>,
 ) -> Result<NewTaskResult> {
     match finished_task {
-        ShipTask::ObserveWaypointDetails { waypoint_symbol } => {
-            let waypoints = bmc
-                .system_bmc()
-                .get_waypoints_of_system(&Ctx::Anonymous, &waypoint_symbol.system_symbol())
-                .await?;
-            let waypoint = waypoints
-                .iter()
-                .find(|wp| &wp.symbol == waypoint_symbol)
-                .unwrap();
-
-            Ok(NewTaskResult::RegisterWaypointForPermanentObservation {
-                ship_symbol: ship.symbol.clone(),
-                waypoint_symbol: waypoint_symbol.clone(),
-                exploration_tasks: get_exploration_tasks_for_waypoint(waypoint),
-            })
-        }
         ShipTask::ObserveAllWaypointsOnce { .. } => Ok(NewTaskResult::DismantleFleets {
             fleets_to_dismantle: vec![admiral
                 .ship_fleet_assignment
@@ -1635,6 +1630,16 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
                 task: finished_task.clone(),
             })
         }
+        ShipTask::ObserveWaypointDetails { .. } => {
+            event!(
+                Level::ERROR,
+                "The ShipTask::ObserveWaypointDetails task ended - this shouldn't happen, since it's an infinite task"
+            );
+            Ok(NewTaskResult::AssignNewTaskToShip {
+                ship_symbol: ship.symbol.clone(),
+                task: finished_task.clone(),
+            })
+        }
         ShipTask::MineMaterialsAtWaypoint { .. } => Ok(NewTaskResult::AssignNewTaskToShip {
             ship_symbol: ship.symbol.clone(),
             task: finished_task.clone(),
@@ -1662,24 +1667,16 @@ pub fn compute_fleet_configs(
     tasks
         .iter()
         .filter_map(|t| {
-            let desired_fleet_config = shopping_list_in_order
-                .iter()
-                .filter(|(st, ft)| ft == t)
-                .map(|(st, _)| st)
-                .cloned()
-                .collect_vec();
             let maybe_cfg = match t {
                 InitialExploration { system_symbol } => Some(SystemSpawningCfg(SystemSpawningFleetConfig {
                     system_symbol: system_symbol.clone(),
                     marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
                     shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
-                    desired_fleet_config,
                 })),
                 ObserveAllWaypointsOfSystemWithStationaryProbes { system_symbol } => Some(MarketObservationCfg(MarketObservationFleetConfig {
                     system_symbol: system_symbol.clone(),
                     marketplace_waypoints_of_interest: fleet_decision_facts.marketplaces_of_interest.clone(),
                     shipyard_waypoints_of_interest: fleet_decision_facts.shipyards_of_interest.clone(),
-                    desired_fleet_config,
                 })),
                 ConstructJumpGate { system_symbol } => Some(ConstructJumpGateCfg(ConstructJumpGateFleetConfig {
                     system_symbol: system_symbol.clone(),
@@ -1688,22 +1685,18 @@ pub fn compute_fleet_configs(
                         .clone()
                         .expect("construction_site")
                         .symbol,
-                    desired_fleet_config,
                 })),
                 TradeProfitably { system_symbol } => Some(TradingCfg(TradingFleetConfig {
                     system_symbol: system_symbol.clone(),
                     materialized_supply_chain: None,
-                    desired_fleet_config,
                 })),
                 MineOres { system_symbol } => Some(MiningCfg(MiningFleetConfig {
                     system_symbol: system_symbol.clone(),
                     mining_waypoint: fleet_decision_facts.engineered_asteroid.clone(),
-                    desired_fleet_config,
                 })),
                 SiphonGases { system_symbol } => Some(SiphoningCfg(SiphoningFleetConfig {
                     system_symbol: system_symbol.clone(),
                     siphoning_waypoint: fleet_decision_facts.gas_giant.clone(),
-                    desired_fleet_config,
                 })),
             };
             maybe_cfg.map(|cfg| (cfg, t.clone()))

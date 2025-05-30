@@ -689,24 +689,6 @@ impl FleetRunner {
                         )
                         .await?;
                     }
-                    NewTaskResult::RegisterWaypointForPermanentObservation {
-                        ship_symbol,
-                        waypoint_symbol,
-                        exploration_tasks,
-                    } => {
-                        let location = StationaryProbeLocation {
-                            waypoint_symbol,
-                            probe_ship_symbol: ship_symbol.clone(),
-                            exploration_tasks,
-                        };
-                        bmc.ship_bmc()
-                            .insert_stationary_probe(&Ctx::Anonymous, location.clone())
-                            .await?;
-                        FleetAdmiral::add_stationary_probe_location(&mut admiral_guard, location);
-                        // FleetAdmiral::remove_ship_from_fleet(&mut admiral_guard, &ship_symbol);
-                        // FleetAdmiral::remove_ship_task(&mut admiral_guard, &ship_symbol);
-                        // Self::stop_ship(Arc::clone(&runner), &ship_symbol).await?;
-                    }
                     NewTaskResult::AssignNewTaskToShip { ship_symbol, task } => {
                         FleetAdmiral::assign_ship_tasks(&mut admiral_guard, vec![(ship_symbol.clone(), task)]);
                         assert!(
@@ -745,13 +727,19 @@ impl FleetRunner {
                         .map(|wp| get_exploration_tasks_for_waypoint(&wp))
                         .unwrap_or_default();
 
-                    admiral_guard
-                        .stationary_probe_locations
-                        .push(StationaryProbeLocation {
-                            waypoint_symbol: ship.nav.waypoint_symbol.clone(),
-                            probe_ship_symbol: ship.symbol.clone(),
-                            exploration_tasks,
-                        })
+                    let stationary_probe_location = StationaryProbeLocation {
+                        waypoint_symbol: ship.nav.waypoint_symbol.clone(),
+                        probe_ship_symbol: ship.symbol.clone(),
+                        exploration_tasks,
+                    };
+
+                    // TODO: might be redundant - don't store if already stored
+
+                    FleetAdmiral::add_stationary_probe_location(&mut admiral_guard, stationary_probe_location.clone());
+
+                    bmc.ship_bmc()
+                        .insert_stationary_probe(&Ctx::Anonymous, stationary_probe_location)
+                        .await?;
                 }
             }
             ShipStatusReport::Expense(_, operation_expense) => match operation_expense {
