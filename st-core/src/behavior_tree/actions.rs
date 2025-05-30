@@ -665,15 +665,6 @@ impl Actionable for ShipAction {
                 }
             }
 
-            ShipAction::HasNextTradeWaypoint => match args
-                .treasurer
-                .get_maybe_active_tickets_for_ship(&state.symbol)
-                .await?
-            {
-                //FIXME: allow setting multiple trading stops (e.g. 1st purchase, 2nd sell)
-                None => Err(anyhow!("No next trade waypoint found - treasurer.get_maybe_active_tickets_for_ship is None")),
-                Some(_trades) => Ok(Success),
-            },
             ShipAction::SleepUntilNextObservationTimeOrShipPurchaseTicketHasBeenAssigned => match state.maybe_next_observation_time {
                 None => Ok(Success),
                 Some(next_time) => loop {

@@ -43,7 +43,6 @@ pub enum ShipAction {
     SetNextTradeStopAsDestination,
     PerformTradeActionAndMarkAsCompleted,
     HasShipPurchaseTicketForWaypoint,
-    HasNextTradeWaypoint,
     RegisterProbeForPermanentObservation,
     SiphonResources,
     JettisonInvaluableCarboHydrates,
@@ -233,6 +232,19 @@ pub fn ship_behaviors() -> Behaviors {
         process_explorer_queue_until_empty,
     ]);
 
+    // if it's late enough for observation: observe and set next observation time
+    // else: sleep until observation time (but wake up if we got a ship ticket)
+    let observe_waypoint_if_necessary_or_sleep = Behavior::new_select(vec![
+        Behavior::new_sequence(vec![
+            Behavior::new_action(ShipAction::IsLateEnoughForWaypointObservation),
+            Behavior::new_sequence(vec![
+                Behavior::new_action(ShipAction::CollectWaypointInfos),
+                Behavior::new_action(ShipAction::SetNextObservationTime),
+            ]),
+        ]),
+        Behavior::new_action(ShipAction::SleepUntilNextObservationTimeOrShipPurchaseTicketHasBeenAssigned),
+    ]);
+
     let mut stationary_probe_behavior = Behavior::new_sequence(vec![
         Behavior::new_select(vec![
             Behavior::new_action(ShipAction::HasDestination),
@@ -248,24 +260,13 @@ pub fn ship_behaviors() -> Behaviors {
             Behavior::new_action(ShipAction::IsAtObservationWaypoint), //this should be true, because we navigated here ==> intentional endless loop
             Behavior::new_sequence(vec![
                 Behavior::new_action(ShipAction::PerformTradeActionAndMarkAsCompleted), //we might have gotten a ship_purchase ticket
-                Behavior::new_sequence(vec![
-                    Behavior::new_action(ShipAction::IsLateEnoughForWaypointObservation),
-                    Behavior::new_action(ShipAction::CollectWaypointInfos),
-                    Behavior::new_action(ShipAction::SetNextObservationTime),
-                    Behavior::new_action(ShipAction::SleepUntilNextObservationTimeOrShipPurchaseTicketHasBeenAssigned),
-                ]),
+                observe_waypoint_if_necessary_or_sleep,
             ]),
         ),
     ]);
 
-    let while_condition_trader = Behavior::new_select(vec![
-        Behavior::new_action(ShipAction::HasUncompletedTrade),
-        Behavior::new_action(ShipAction::HasDestination),
-        Behavior::new_action(ShipAction::HasNextTradeWaypoint),
-    ]);
-
     let mut trading_behavior = Behavior::new_sequence(vec![Behavior::new_while(
-        while_condition_trader,
+        Behavior::new_action(ShipAction::HasUncompletedTrade),
         Behavior::new_sequence(vec![
             Behavior::new_action(ShipAction::SetNextTradeStopAsDestination),
             navigate_to_destination.clone(),
