@@ -695,6 +695,18 @@ Fleet Budgets after rebalancing
                 agent_credits = agent_info.credits
             );
 
+            if treasurer_agent_credits.0 != agent_info.credits {
+                event!(
+                    Level::WARN,
+                    message = "Created new Treasurer from replay_log had difference in agent credits. Resetting treasurer",
+                    treasurer_agent_credits = treasurer_agent_credits.0,
+                    agent_credits = agent_info.credits
+                );
+                treasurer
+                    .reset_treasurer_due_to_agent_credit_diff(agent_info.credits.into())
+                    .await?;
+            }
+
             treasurer
         };
 

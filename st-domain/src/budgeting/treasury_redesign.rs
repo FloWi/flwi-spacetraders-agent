@@ -183,6 +183,9 @@ pub enum LedgerEntry {
         fleet_id: FleetId,
         budget: FleetBudget,
     },
+    TreasuryReset {
+        credits: Credits,
+    },
 }
 
 #[derive(PartialEq, Debug, Default, Clone, Serialize, Deserialize)]
@@ -335,6 +338,15 @@ where {
                 Ok(res)
             }
         }
+    }
+
+    pub async fn reset_treasurer_due_to_agent_credit_diff(&self, starting_credits: Credits) -> Result<()> {
+        self.remove_all_fleets().await?;
+
+        self.with_treasurer(|t| t.process_ledger_entry(TreasuryReset { credits: starting_credits }))
+            .await?;
+
+        Ok(())
     }
 
     pub async fn get_instance(&self) -> Result<ImprovedTreasurer> {
@@ -1118,6 +1130,12 @@ impl ImprovedTreasurer {
                 } else {
                     return Err(anyhow!("Fleet {} doesn't exist", fleet_id));
                 }
+            }
+            TreasuryReset { credits } => {
+                self.active_tickets.clear();
+                self.completed_tickets.clear();
+                self.treasury_fund = credits;
+                self.ledger_entries.push_back(ledger_entry);
             }
         }
 
