@@ -45,6 +45,9 @@ rust-sugiyama = { version = "0.3.0" }
 # don't upgrade petgraph, since sugiyama depends on 0.6.4
 petgraph = "0.6.4"
 
+# needs to be built with
+# RUSTFLAGS="--cfg tokio_unstable" set in ./cargo/config.toml
+console-subscriber = { version = "0.4.1", optional = true }  # Check for the latest version
 
 
 
@@ -82,6 +85,7 @@ cli = [
     "dep:clap",
     "dep:time",
     "dep:lazy_static",
+    "dep:console-subscriber",
 ]
 
 

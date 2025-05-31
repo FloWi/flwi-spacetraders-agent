@@ -4429,6 +4429,7 @@ dependencies = [
  "axum 0.8.4",
  "chrono",
  "clap",
+ "console-subscriber",
  "console_error_panic_hook",
  "dotenv",
  "itertools 0.14.0",
