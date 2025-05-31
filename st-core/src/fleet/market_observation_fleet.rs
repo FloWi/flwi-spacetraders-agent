@@ -46,18 +46,22 @@ impl MarketObservationFleet {
 
         let non_covered_locations = all_locations_of_interest
             .iter()
-            .filter(|wps| already_assigned_without_duplicates.contains_key(wps))
+            .filter(|wps| already_assigned_without_duplicates.contains_key(wps).not())
             .cloned()
             .collect_vec();
 
-        let available_ships = all_ships_of_fleet.iter().filter_map(|ship| {
-            current_ship_assignments
-                .contains_key(&ship.symbol)
-                .not()
-                .then_some(ship.symbol.clone())
-        });
+        let available_ships = all_ships_of_fleet
+            .iter()
+            .filter_map(|ship| {
+                current_ship_assignments
+                    .contains_key(&ship.symbol)
+                    .not()
+                    .then_some(ship.symbol.clone())
+            })
+            .collect_vec();
 
         let new_ship_tasks = available_ships
+            .iter()
             .zip(non_covered_locations)
             .map(|(ss, wps)| (ss.clone(), ShipTask::ObserveWaypointDetails { waypoint_symbol: wps }))
             .collect();
