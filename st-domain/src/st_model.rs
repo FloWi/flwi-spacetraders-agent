@@ -1119,7 +1119,8 @@ pub struct CreateSurveyResponseBody {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct Extraction {
-    pub ship: ShipSymbol,
+    pub ship_symbol: ShipSymbol,
+    #[serde(rename = "yield")]
     pub extraction_yield: ExtractionYield,
 }
 

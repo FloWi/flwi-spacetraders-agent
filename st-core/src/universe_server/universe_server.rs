@@ -685,7 +685,7 @@ impl InMemoryUniverse {
         ExtractResourcesResponse {
             data: ExtractResourcesResponseBody {
                 extraction: Extraction {
-                    ship: ship_symbol.clone(),
+                    ship_symbol: ship_symbol.clone(),
                     extraction_yield: ExtractionYield {
                         symbol: random_extraction_trade_good,
                         units: laser_strength,
