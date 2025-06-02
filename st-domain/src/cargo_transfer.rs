@@ -22,6 +22,7 @@ pub struct InternalTransferCargoResponse {
 pub enum TransferCargoError {
     SendingShipDoesntExist,
     ReceiveShipDoesntExist,
+    SendingUpdateMessageFailed,
     NotEnoughItemsInSendingShipCargo,
     NotEnoughSpaceInReceivingShip,
     ServerError(anyhow::Error),

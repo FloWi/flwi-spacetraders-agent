@@ -19,7 +19,7 @@ pub async fn ship_behavior_runner(
     let ship_updated_tx_clone = ship_updated_tx.clone();
     let ship_action_completed_tx_clone = ship_action_completed_tx.clone();
     let result = behavior
-        .run(args, ship_ops, sleep_duration, &ship_updated_tx_clone, &ship_action_completed_tx_clone)
+        .run(args, ship_ops, sleep_duration, ship_updated_tx_clone, ship_action_completed_tx_clone)
         .await;
 
     match result {

@@ -927,7 +927,7 @@ pub struct Registration {
     pub role: ShipRegistrationRole,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Deserialize, Serialize, Debug, Clone, Display, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ShipRegistrationRole {
     Fabricator,

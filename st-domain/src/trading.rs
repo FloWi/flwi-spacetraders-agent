@@ -143,7 +143,7 @@ pub fn evaluate_trading_opportunities(
 
 // This is computationally expensive for many ships/routes but will find the optimal solution
 pub fn find_optimal_trading_routes_exhaustive(
-    options: &[EvaluatedTradingOpportunity],
+    trading_options: &[EvaluatedTradingOpportunity],
     active_trade_routes: &HashSet<ActiveTradeRoute>,
 ) -> Vec<EvaluatedTradingOpportunity> {
     // Create a unique identifier for each trading route
@@ -160,7 +160,7 @@ pub fn find_optimal_trading_routes_exhaustive(
     };
 
     // Group options by ship
-    let ship_options: HashMap<ShipSymbol, Vec<EvaluatedTradingOpportunity>> = options
+    let ship_options: HashMap<ShipSymbol, Vec<EvaluatedTradingOpportunity>> = trading_options
         .iter()
         .cloned()
         .into_group_map_by(|option| option.ship_symbol.clone());
@@ -222,7 +222,23 @@ pub fn find_optimal_trading_routes_exhaustive(
         }
     }
 
-    best_assignments
+    if best_assignments.is_empty() {
+        eprintln!("best_assignments should not be empty. Taking best trade per ship that's not already taken");
+
+        let alternative_best_per_ship = ship_options
+            .iter()
+            .filter_map(|(_, opportunities_of_ship)| {
+                opportunities_of_ship
+                    .iter()
+                    .max_by_key(|ev| ev.profit_per_distance_unit)
+            })
+            .cloned()
+            .collect_vec();
+
+        alternative_best_per_ship
+    } else {
+        best_assignments
+    }
 }
 
 // Function to calculate total profit across all assigned routes

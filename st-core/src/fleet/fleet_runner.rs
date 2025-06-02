@@ -170,6 +170,8 @@ impl FleetRunner {
         let mut guard = runner.lock().await;
         let fleet_id = ship_fleet_assignment.get(&ss).unwrap();
 
+        println!("DEBUG: Creating new ship_op_mutex for ship: {}", ss.0);
+
         let ship_op_mutex = Arc::new(Mutex::new(ShipOperations::new(ship.clone(), Arc::clone(&guard.client), fleet_id.clone())));
         let maybe_ship_task = all_ship_tasks.get(ss);
 
@@ -200,7 +202,11 @@ impl FleetRunner {
                     Ok(maybe_task_finished_result) => {
                         if let Some((ship, ship_task)) = maybe_task_finished_result {
                             if ship.frame.symbol == ShipFrameSymbol::FRAME_PROBE {
-                                eprintln!("A probe should never finish their behavior tree");
+                                event!(
+                                    Level::ERROR,
+                                    message = "A probe should never finish their behavior tree",
+                                    ship = ship_symbol_clone_2.clone().0
+                                );
                             }
 
                             ship_status_report_tx_clone
@@ -285,10 +291,11 @@ impl FleetRunner {
         sleep_duration: Duration,
         fleet_id: FleetId,
     ) -> Result<()> {
-        let mut guard = runner.lock().await;
+        let mut runner_guard = runner.lock().await;
 
-        let ship_op_mutex = match guard.ship_ops.get(ss) {
+        let ship_op_mutex = match runner_guard.ship_ops.get(ss) {
             None => {
+                println!("DEBUG: Reusing existing ship_op_mutex for ship: {}", ss.0);
                 event!(Level::INFO, "relaunch_ship called for {}, but it has no ship_ops entry. This is probably a probe that has been taken off the behavior-trees is just passively sitting at the observation waypoint.", ss.0.clone());
                 return Ok(());
             }
@@ -299,10 +306,10 @@ impl FleetRunner {
         if let Some(ship_task) = maybe_ship_task {
             // Clone all the values that need to be moved into the async task
             let ship_op_clone = Arc::clone(ship_op_mutex);
-            let args_clone = guard.args.clone();
-            let ship_updated_tx_clone = guard.ship_updated_tx.clone();
-            let ship_action_completed_tx_clone = guard.ship_action_completed_tx.clone();
-            let ship_status_report_tx_clone = guard.ship_status_report_tx.clone();
+            let args_clone = runner_guard.args.clone();
+            let ship_updated_tx_clone = runner_guard.ship_updated_tx.clone();
+            let ship_action_completed_tx_clone = runner_guard.ship_action_completed_tx.clone();
+            let ship_status_report_tx_clone = runner_guard.ship_status_report_tx.clone();
             let ship_task_clone = ship_task.clone();
             let ship_symbol_clone = ss.clone();
             let fleet_id_clone = fleet_id.clone();
@@ -341,7 +348,7 @@ impl FleetRunner {
                 Ok(())
             });
 
-            guard.ship_fibers.insert(ship_symbol_clone, fiber);
+            runner_guard.ship_fibers.insert(ship_symbol_clone, fiber);
             event!(Level::DEBUG, message = "Ship fiber spawned")
         } else {
             event!(Level::ERROR, message = "Failed to spawn ship fiber - no task found")
@@ -1090,12 +1097,12 @@ impl FleetRunner {
     }
 
     async fn stop_ship(fleet_runner: Arc<Mutex<FleetRunner>>, ship_symbol: &ShipSymbol) -> Result<()> {
-        let mut guard = fleet_runner.lock().await;
-        if let Some(join_handle) = guard.ship_fibers.get(ship_symbol) {
+        let mut runner_guard = fleet_runner.lock().await;
+        if let Some(join_handle) = runner_guard.ship_fibers.get(ship_symbol) {
             join_handle.abort();
         };
-        guard.ship_fibers.remove(ship_symbol);
-        guard.ship_ops.remove(ship_symbol);
+        runner_guard.ship_fibers.remove(ship_symbol);
+        runner_guard.ship_ops.remove(ship_symbol);
 
         Ok(())
     }
@@ -1115,7 +1122,9 @@ mod tests {
     use itertools::Itertools;
     use metrics::IntoF64;
     use pathfinding::num_traits::ToPrimitive;
-    use st_domain::{FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipFrameSymbol, ShipRegistrationRole, TradeGoodSymbol, WaypointSymbol};
+    use st_domain::{
+        FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, ShipTask, TradeGoodSymbol, WaypointSymbol,
+    };
     use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
     use st_store::bmc::{Bmc, InMemoryBmc};
@@ -1127,7 +1136,7 @@ mod tests {
         Ctx, FleetBmcTrait, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc,
         InMemorySystemsBmc,
     };
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
     use std::time::Duration;
     use test_log::test;
@@ -1280,6 +1289,12 @@ mod tests {
                         .keys()
                         .all(|id| fleet_budgets.contains_key(id));
 
+                    let ship_type_overview: HashMap<(ShipRegistrationRole, ShipFrameSymbol), usize> = admiral
+                        .all_ships
+                        .values()
+                        .map(|ship| (ship.registration.role.clone(), ship.frame.symbol.clone()))
+                        .counts();
+
                     let is_in_construction_phase = admiral.fleet_phase.name == FleetPhaseName::ConstructJumpGate;
                     let num_ships = admiral.all_ships.len();
                     let has_bought_ships = num_ships > 2;
@@ -1298,6 +1313,17 @@ mod tests {
                         .difference(&stationary_probe_locations)
                         .count()
                         == 0;
+
+                    let probe_task_waypoints = admiral
+                        .ship_tasks
+                        .iter()
+                        .filter_map(|(ss, t)| match t {
+                            ShipTask::ObserveWaypointDetails { waypoint_symbol } => Some(waypoint_symbol.clone()),
+                            _ => None,
+                        })
+                        .collect::<HashSet<_>>();
+
+                    let has_difference_in_probe_tasks_and_stationary_probe_locations = stationary_probe_locations != probe_task_waypoints;
 
                     let num_haulers = admiral
                         .all_ships
@@ -1332,6 +1358,10 @@ mod tests {
                         .map(|cs| cs.is_complete)
                         .unwrap_or(false);
 
+                    if has_difference_in_probe_tasks_and_stationary_probe_locations {
+                        println!("Hello, breakpoint");
+                    }
+
                     let materials_summary = maybe_construction_site
                         .clone()
                         .map(|cs| {
@@ -1351,6 +1381,13 @@ mod tests {
                         .unwrap_or_default();
 
                     let construction_summary = format!("Material Summary:\n{}", materials_summary);
+                    let ship_type_summary = format!(
+                        "Ship Types:\n{}",
+                        ship_type_overview
+                            .into_iter()
+                            .map(|((role, frame_symbol), quantity)| format!("{frame_symbol} ({role}): {quantity}x"))
+                            .join("\n")
+                    );
 
                     let has_started_construction = maybe_construction_site
                         .map(|cs| {
@@ -1384,16 +1421,23 @@ shipyard_waypoints: {}
 has_probes_at_every_shipyard: {has_probes_at_every_shipyard}
 marketplace_waypoints: {}
 has_probes_at_every_marketplace: {has_probes_at_every_marketplace}
+num_stationary_probe_locations: {}
+num_probe_task_waypoints: {}
+has_difference_in_probe_tasks_and_stationary_probe_locations: {has_difference_in_probe_tasks_and_stationary_probe_locations}
 has_bought_all_ships: {has_bought_all_ships}
 has_started_construction: {has_started_construction}
 has_completed_construction: {has_completed_construction}
 {construction_summary}
+
+{ship_type_summary}
 
 evaluation_result: {evaluation_result}
 "#,
                         format_and_sort_collection(&stationary_probe_locations),
                         format_and_sort_collection(&shipyard_waypoints),
                         format_and_sort_collection(&marketplace_waypoints),
+                        stationary_probe_locations.len(),
+                        probe_task_waypoints.len(),
                     );
 
                     evaluation_result

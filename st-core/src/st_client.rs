@@ -248,7 +248,13 @@ impl StClientTrait for StClient {
     }
 
     async fn survey(&self, ship_symbol: ShipSymbol) -> Result<CreateSurveyResponse> {
-        todo!()
+        Self::make_api_call(
+            self.client.post(
+                self.base_url
+                    .join(&format!("my/ships/{}/survey", ship_symbol.0))?,
+            ),
+        )
+        .await
     }
 
     async fn purchase_ship(&self, ship_type: ShipType, waypoint_symbol: WaypointSymbol) -> Result<PurchaseShipResponse> {

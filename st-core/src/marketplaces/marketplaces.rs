@@ -3,6 +3,17 @@ use itertools::Itertools;
 use st_domain::{MarketEntry, ShipyardData, Waypoint, WaypointSymbol, WaypointTraitSymbol};
 
 pub fn find_marketplaces_for_exploration(all_marketplaces: Vec<MarketEntry>) -> Vec<WaypointSymbol> {
+    let check_me = all_marketplaces
+        .iter()
+        .find(|me| &me.waypoint_symbol.0 == "X1-XM48-G52");
+
+    if let Some(me) = check_me {
+        let has_details = me.market_data.has_detailed_price_information();
+        let is_out_of_date = Utc::now() - me.created_at > TimeDelta::hours(3);
+
+        eprintln!("has_details: {} is_out_of_date: {}", has_details, is_out_of_date)
+    }
+
     let waypoint_symbols: Vec<_> = all_marketplaces
         .into_iter()
         .filter(|mp| !mp.market_data.has_detailed_price_information() || Utc::now() - mp.created_at > TimeDelta::hours(3))

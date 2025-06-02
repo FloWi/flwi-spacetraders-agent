@@ -451,18 +451,24 @@ Fleet Budgets after rebalancing
                 .get(ship_symbol)
                 .map(|t| t.to_string())
                 .unwrap_or("---".to_string());
-            let fleet_id = self.ship_fleet_assignment.get(ship_symbol).unwrap();
-            let fleet = self.fleets.get(fleet_id).unwrap();
 
-            table.add_row(vec![
-                fleet_id.0.to_string().as_str(),
-                fleet.cfg.to_string().as_str(),
-                ship_symbol.0.as_str(),
-                ship.frame.symbol.to_string().as_str(),
-                ship.cargo.units.to_string().as_str(),
-                ship.cargo.capacity.to_string().as_str(),
-                ship_task.as_str(),
-            ]);
+            if let Some(fleet_id) = self.ship_fleet_assignment.get(ship_symbol) {
+                if let Some(fleet) = self.fleets.get(fleet_id) {
+                    table.add_row(vec![
+                        fleet_id.0.to_string().as_str(),
+                        fleet.cfg.to_string().as_str(),
+                        ship_symbol.0.as_str(),
+                        ship.frame.symbol.to_string().as_str(),
+                        ship.cargo.units.to_string().as_str(),
+                        ship.cargo.capacity.to_string().as_str(),
+                        ship_task.as_str(),
+                    ]);
+                } else {
+                    eprintln!("Missing fleet_id {} in fleets", fleet_id);
+                }
+            } else {
+                eprintln!("Missing ship_symbol {} in ship_fleet_assignment", ship_symbol);
+            }
         }
 
         table.to_string()
@@ -599,7 +605,12 @@ Fleet Budgets after rebalancing
                     task = task.to_string(),
                 );
                 if ship.frame.symbol == ShipFrameSymbol::FRAME_PROBE {
-                    eprintln!("A probe should never finish their behavior tree");
+                    event!(
+                        Level::WARN,
+                        message = "A probe should never finish their behavior tree",
+                        ship = ship.symbol.0,
+                        task = task.to_string(),
+                    );
                 }
                 Ok(())
             }
@@ -738,11 +749,52 @@ Fleet Budgets after rebalancing
                 .map(|(fleet_id, task)| (fleet_id.clone(), vec![task.clone()]))
                 .collect();
 
-            let ship_fleet_assignment = Self::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
+            // recomputing the assignment caused some trouble. Haven't figured out why yet.
+            // Ship_map and ship_fleet_assignment differ. This should not happen
+            //  ship_map_keys: 31 entries
+            //  ship_fleet_assignment_keys: 30 entries
+            //  diff_ship_map__ship_fleet_assignment: [ShipSymbol("FLWI_TEST-18")]
+            //  diff_ship_fleet_assignment__ship_map: []
+            //let ship_fleet_assignment = Self::assign_ships(&fleet_tasks, &ship_map, &fleet_phase.shopping_list_in_order);
+
+            let ship_fleet_assignment = bmc
+                .fleet_bmc()
+                .load_ship_fleet_assignment(&Ctx::Anonymous)
+                .await?;
+
+            let ship_map_keys = ship_map.keys().cloned().collect::<HashSet<_>>();
+            let ship_fleet_assignment_keys = ship_fleet_assignment
+                .keys()
+                .cloned()
+                .collect::<HashSet<_>>();
+
+            if ship_map_keys != ship_fleet_assignment_keys {
+                let diff_ship_map__ship_fleet_assignment = ship_map_keys
+                    .difference(&ship_fleet_assignment_keys)
+                    .cloned()
+                    .map(|ss| ss.to_string())
+                    .join(", ");
+
+                let diff_ship_fleet_assignment__ship_map = ship_fleet_assignment_keys
+                    .difference(&ship_map_keys)
+                    .cloned()
+                    .map(|ss| ss.to_string())
+                    .join(", ");
+
+                event!(
+                    Level::WARN,
+                    message = "Ship_map and ship_fleet_assignment differ. This should not happen",
+                    ship_map_keys = ship_map_keys.len(),
+                    ship_fleet_assignment_keys = ship_fleet_assignment_keys.len(),
+                    diff_ship_map__ship_fleet_assignment = diff_ship_map__ship_fleet_assignment,
+                    diff_ship_fleet_assignment__ship_map = diff_ship_fleet_assignment__ship_map,
+                );
+            }
 
             let agent_info = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?;
 
             let (treasurer, treasurer_archiver_join_handle) = Self::initialize_treasurer(bmc.clone()).await?;
+
             let current_ship_demands = get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
             let admiral = Self {
@@ -1061,9 +1113,9 @@ Fleet Budgets after rebalancing
                     event!(
                         Level::WARN,
                         "pure_compute_ship_tasks threw error for fleet {} (#{}) error: {:?}",
-                        err,
                         fleet.cfg.to_string(),
-                        fleet_id.0
+                        fleet_id.0,
+                        err,
                     );
                 }
             }
@@ -1388,52 +1440,6 @@ Json entries of all ledger entries after dismantling the fleets:\n{}
             .get_fleet_executing_fleet_task(&fleet_task)
             .ok_or(anyhow!("No fleet found executing task {fleet_task:?}"))?;
 
-        let financing_result = if treasurer
-            .get_fleet_budget(&beneficiary_fleet)
-            .await?
-            .available_capital()
-            < ship_price
-        {
-            let finance_result: FinanceResult = treasurer
-                .try_finance_purchase_for_fleet(&beneficiary_fleet, ship_price)
-                .await?;
-
-            match finance_result {
-                FinanceResult::FleetAlreadyHadSufficientFunds => {
-                    event!(
-                        Level::INFO,
-                        message = "No need to transfer funds to fleet to finance purchase of ship. Already enough funds available",
-                        ship_type = ship_type.to_string(),
-                    );
-                    Ok(())
-                }
-                FinanceResult::TransferSuccessful { transfer_sum } => {
-                    event!(
-                        Level::INFO,
-                        message = "Transferred funds to fleet to finance purchase of ship",
-                        ship_type = ship_type.to_string(),
-                        transfer_sum = transfer_sum.to_string()
-                    );
-                    Ok(())
-                }
-                FinanceResult::TransferFailed { missing } => {
-                    let message = format!("Fleet has insufficient funds and we're unable to finance ship purchase. Missing: {}", missing);
-                    event!(Level::DEBUG, message, ship_type = ship_type.to_string(),);
-                    Err(anyhow!(message))
-                }
-            }
-        } else {
-            Ok(())
-        };
-
-        // if we can't finance the whole thing, we push the entry back to the front of the queue
-        if let Err(_) = financing_result {
-            self.ship_purchase_demand
-                .push_front((ship_type, fleet_task));
-
-            return Ok(());
-        }
-
         let purchasing_ship = self
             .get_ship_purchaser(&ship_type, &fleet_task, ship_prices, &shipyard_wps)
             .ok_or(anyhow!("No suitable purchasing ship found for {ship_type}"))?;
@@ -1443,15 +1449,10 @@ Json entries of all ledger entries after dismantling the fleets:\n{}
             .map(|f| f.id.clone())
             .ok_or(anyhow!("Ship {} not assigned to any fleet", purchasing_ship))?;
 
-        let create_ticket_result: Result<FinanceTicket> = {
-            let ticket: FinanceTicket = treasurer
-                .create_ship_purchase_ticket(&beneficiary_fleet, ship_type, ship_price, shipyard_wps.clone(), purchasing_ship.clone())
-                .await?;
-
-            Ok(ticket)
-        };
-
-        match create_ticket_result {
+        match treasurer
+            .create_ship_purchase_ticket_financed_from_global_treasury(&beneficiary_fleet, ship_type, ship_price, shipyard_wps.clone(), purchasing_ship.clone())
+            .await
+        {
             Ok(ticket) => {
                 event!(
                     Level::INFO,
@@ -2027,6 +2028,7 @@ pub async fn collect_fleet_decision_facts(bmc: Arc<dyn Bmc>, system_symbol: &Sys
         .iter()
         .map(|db_entry| db_entry.waypoint_symbol.clone())
         .collect_vec();
+
     let shipyards_to_explore = find_shipyards_for_exploration(shipyards_of_interest.clone());
 
     let supply_chain = bmc

@@ -17,8 +17,8 @@ use st_domain::cargo_transfer::{InternalTransferCargoRequest, InternalTransferCa
 use st_domain::TradeGoodSymbol::MOUNT_GAS_SIPHON_I;
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, ShipSymbol, Survey,
-    TradeGoodSymbol, TravelAction,
+    get_exploration_tasks_for_waypoint, Cargo, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, ShipSymbol,
+    Survey, TradeGoodSymbol, TravelAction,
 };
 use std::collections::HashSet;
 use std::hint::unreachable_unchecked;
@@ -39,8 +39,8 @@ impl Actionable for ShipAction {
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
         sleep_duration: Duration,
-        state_changed_tx: &Sender<Self::ActionState>,
-        action_completed_tx: &Sender<ActionEvent>,
+        state_changed_tx: Sender<Self::ActionState>,
+        action_completed_tx: Sender<ActionEvent>,
     ) -> Result<Response, Self::ActionError> {
         let result = match self {
             ShipAction::HasTravelActionEntry => {
@@ -785,6 +785,9 @@ impl Actionable for ShipAction {
                         let mut sell_tickets = vec![];
                         for (item, delivery_route) in cargo_items_with_delivery_location.into_iter() {
                             let delivery_location = delivery_route.delivery_location.clone();
+                            // if item.units > delivery_route.delivery_market_entry.trade_volume as u32 {
+                            //     println!("Hello, breakpoint. checking if batching inventory units into chunks of size <= trade_volume works")
+                            // }
                             let batches = calc_batches_based_on_trade_volume(item.units, delivery_route.delivery_market_entry.trade_volume as u32);
                             for batch in batches {
                                 let ticket = args
@@ -940,9 +943,30 @@ impl Actionable for ShipAction {
                 Ok(Success)
             }
             ShipAction::AnnounceHaulerReadyForPickup => {
+                let (tx, mut rx) = tokio::sync::mpsc::channel::<(ShipSymbol, Cargo)>(2);
+
+                let state_clone_for_intermediate_updates = state.clone();
+
+                tokio::spawn({
+                    async move {
+                        let mut state_clone_for_intermediate_updates = state_clone_for_intermediate_updates.clone();
+                        while let Some((_ship_symbol, updated_cargo)) = rx.recv().await {
+                            event!(
+                                Level::DEBUG,
+                                message = "Hauler got notified about cargo transfer. Sending update to state_changed_tx",
+                            );
+                            state_clone_for_intermediate_updates.cargo = updated_cargo;
+                            state_changed_tx
+                                .send(state_clone_for_intermediate_updates.clone())
+                                .await
+                                .expect("failed to send state_changed_tx msg after cargo update of hauler");
+                        }
+                    }
+                });
+
                 let hauler_wait_result = args
                     .transfer_cargo_manager
-                    .register_hauler_for_pickup_and_wait_until_full(state.nav.waypoint_symbol.clone(), state.symbol.clone(), state.cargo.clone())
+                    .register_hauler_for_pickup_and_wait_until_full(state.nav.waypoint_symbol.clone(), state.symbol.clone(), state.cargo.clone(), tx.clone())
                     .await;
 
                 match hauler_wait_result {
@@ -997,12 +1021,17 @@ impl Actionable for ShipAction {
 }
 
 fn calc_batches_based_on_trade_volume(number_items: u32, trade_volume: u32) -> Vec<u32> {
+    if number_items == 0 {
+        // inventory-entry should never quantity of 0, but you never know.
+        return vec![];
+    }
+
     let result = if number_items <= trade_volume {
         vec![number_items]
     } else {
         let mut batches = vec![];
         let num_batches = number_items / trade_volume;
-        for i in 1..=num_batches {
+        for i in 0..=num_batches {
             if i < num_batches {
                 batches.push(trade_volume);
             } else {
@@ -1067,6 +1096,7 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::mpsc::{Receiver, Sender};
 
+    use crate::behavior_tree::actions::calc_batches_based_on_trade_volume;
     use crate::test_objects::TestObjects;
     use crate::transfer_cargo_manager::TransferCargoManager;
     use st_domain::blackboard_ops::MockBlackboardOps;
@@ -1127,6 +1157,13 @@ mod tests {
             .map_err(|_| anyhow::anyhow!("Failed to receive action completed messages"))?;
 
         Ok((result?, received_action_state_messages, received_action_completed_messages))
+    }
+
+    #[test()]
+    fn test_calculating_batch_sizes_should_work() {
+        assert_eq!(calc_batches_based_on_trade_volume(63, 60), vec![60, 3]);
+        assert_eq!(calc_batches_based_on_trade_volume(59, 60), vec![59]);
+        assert_eq!(calc_batches_based_on_trade_volume(0, 60), Vec::<u32>::new());
     }
 
     #[test(tokio::test)]

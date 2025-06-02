@@ -1,0 +1,102 @@
+[
+  {
+    "TreasuryCreated": {
+      "credits": 300000
+    }
+  },
+  {
+    "FleetCreated": {
+      "fleet_id": 0,
+      "total_capital": 25000
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 25000,
+      "fleet_id": 0
+    }
+  },
+  {
+    "FleetCreated": {
+      "fleet_id": 1,
+      "total_capital": 0
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 25500,
+      "fleet_id": 1
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 1,
+      "ticket_details": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_PROBE",
+            "waypoint_symbol": "X1-ZC18-A2",
+            "assigned_fleet_id": 1,
+            "expected_purchase_price": 25500
+          }
+        },
+        "fleet_id": 1,
+        "ticket_id": "4bbd568e-65ca-4f7c-967a-f2a718a06428",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 25500
+      }
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 25000,
+      "fleet_id": 0
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 25500,
+      "fleet_id": 1
+    }
+  },
+  {
+    "ArchivedFleetBudget": {
+      "budget": {
+        "budget": 25000,
+        "current_capital": 0,
+        "reserved_capital": 0,
+        "operating_reserve": 0
+      },
+      "fleet_id": 0
+    }
+  },
+  {
+    "ArchivedFleetBudget": {
+      "budget": {
+        "budget": 0,
+        "current_capital": 0,
+        "reserved_capital": 25500,
+        "operating_reserve": 0
+      },
+      "fleet_id": 1
+    }
+  },
+  {
+    "FleetCreated": {
+      "fleet_id": 0,
+      "total_capital": 25000
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 25000,
+      "fleet_id": 0
+    }
+  },
+  {
+    "FleetCreated": {
+      "fleet_id": 1,
+      "total_capital": 0
+    }
+  }
+]

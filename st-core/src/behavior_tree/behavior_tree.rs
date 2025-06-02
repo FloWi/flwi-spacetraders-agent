@@ -260,9 +260,9 @@ pub trait Actionable: Serialize + Clone + Send + Sync {
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
         duration: Duration,
-        state_changed_tx: &Sender<Self::ActionState>,
+        state_changed_tx: Sender<Self::ActionState>,
         // Use Option to allow ignoring the sender when needed
-        action_completed_tx: &Sender<ActionEvent>,
+        action_completed_tx: Sender<ActionEvent>,
     ) -> Result<Response, Self::ActionError>;
 }
 
@@ -280,8 +280,8 @@ where
         args: &Self::ActionArgs,
         state: &mut Self::ActionState,
         sleep_duration: Duration,
-        state_changed_tx: &Sender<Self::ActionState>,
-        action_completed_tx: &Sender<ActionEvent>,
+        state_changed_tx: Sender<Self::ActionState>,
+        action_completed_tx: Sender<ActionEvent>,
     ) -> Result<Response, Self::ActionError> {
         let hash = self.calculate_hash();
 
@@ -290,12 +290,12 @@ where
 
         let result = match self {
             Behavior::Action(a, _) => {
-                a.run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                a.run(args, state, sleep_duration, state_changed_tx.clone(), action_completed_tx.clone())
                     .await
             }
             Behavior::Invert(b, _) => {
                 let result = b
-                    .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                    .run(args, state, sleep_duration, state_changed_tx.clone(), action_completed_tx.clone())
                     .await;
                 match result {
                     Ok(r) => match r {
@@ -308,7 +308,7 @@ where
                 let mut errors = vec![];
                 for b in behaviors {
                     let result = b
-                        .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                        .run(args, state, sleep_duration, state_changed_tx.clone(), action_completed_tx.clone())
                         .await;
                     match result {
                         Ok(r) => return Ok(r),
@@ -328,7 +328,7 @@ where
             Behavior::Sequence(behaviors, _) => {
                 for b in behaviors {
                     let result = b
-                        .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                        .run(args, state, sleep_duration, state_changed_tx.clone(), action_completed_tx.clone())
                         .await;
                     match result {
                         Ok(_) => continue,
@@ -342,14 +342,14 @@ where
             }
             Behavior::While { condition, action, .. } => loop {
                 let condition_result = condition
-                    .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                    .run(args, state, sleep_duration, state_changed_tx.clone(), action_completed_tx.clone())
                     .await;
 
                 match condition_result {
                     Err(_) => return Ok(Response::Success),
                     Ok(_) => {
                         let action_result = action
-                            .run(args, state, sleep_duration, state_changed_tx, action_completed_tx)
+                            .run(args, state, sleep_duration, state_changed_tx.clone(), action_completed_tx.clone())
                             .await;
                         match action_result {
                             Err(err) => {
@@ -437,8 +437,8 @@ mod tests {
             args: &Self::ActionArgs,
             state: &mut Self::ActionState,
             duration: Duration,
-            state_changed_tx: &Sender<Self::ActionState>,
-            action_completed_tx: &Sender<ActionEvent>,
+            state_changed_tx: Sender<Self::ActionState>,
+            action_completed_tx: Sender<ActionEvent>,
         ) -> Result<Response, Self::ActionError> {
             match self {
                 MyAction::Increase => {
@@ -474,7 +474,7 @@ mod tests {
         let (tx, rx) = mpsc::channel(32);
         let (tx2, rx2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2)
+        bt.run(&(), &mut my_state, Duration::from_millis(1), tx, tx2)
             .await
             .unwrap();
         println!("{:?}", my_state);
@@ -492,7 +492,7 @@ mod tests {
         let (tx, rx) = mpsc::channel(32);
         let (tx2, rx2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2)
+        bt.run(&(), &mut my_state, Duration::from_millis(1), tx, tx2)
             .await
             .unwrap();
         println!("{:?}", my_state);
@@ -507,7 +507,7 @@ mod tests {
         let (tx, rx) = mpsc::channel(32);
         let (tx2, rx2) = mpsc::channel(32);
 
-        bt.run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2)
+        bt.run(&(), &mut my_state, Duration::from_millis(1), tx, tx2)
             .await
             .unwrap();
 
@@ -524,7 +524,7 @@ mod tests {
         let (tx2, rx2) = mpsc::channel(32);
 
         let result = bt
-            .run(&(), &mut my_state, Duration::from_millis(1), &tx, &tx2)
+            .run(&(), &mut my_state, Duration::from_millis(1), tx, tx2)
             .await;
         println!("{:?}", my_state);
         assert_eq!(my_state, MyState(2));

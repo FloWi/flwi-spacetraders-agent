@@ -1,6 +1,7 @@
 use anyhow::Result;
 use itertools::Itertools;
 use metrics::IntoF64;
+use st_domain::cargo_transfer::TransferCargoError::{ReceiveShipDoesntExist, SendingUpdateMessageFailed};
 use st_domain::cargo_transfer::{
     HaulerTransferSummary, HaulerTransferSummaryEntry, InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoToHaulerResult,
     TransferCargoError,
@@ -9,11 +10,12 @@ use st_domain::{Cargo, Inventory, ShipSymbol, WaypointSymbol};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
 
 pub struct TransferCargoManager {
     // Haulers waiting at each location
-    waiting_haulers: Arc<Mutex<HashMap<WaypointSymbol, HashMap<ShipSymbol, HaulerTransferSummary>>>>,
+    waiting_haulers: Arc<Mutex<HashMap<WaypointSymbol, HashMap<ShipSymbol, (HaulerTransferSummary, Sender<(ShipSymbol, Cargo)>)>>>>,
 }
 
 impl TransferCargoManager {
@@ -28,6 +30,7 @@ impl TransferCargoManager {
         waypoint_symbol: WaypointSymbol,
         hauler_ship_symbol: ShipSymbol,
         hauler_cargo: Cargo,
+        hauler_cargo_updated_channel: Sender<(ShipSymbol, Cargo)>,
     ) -> Result<HaulerTransferSummary> {
         // we wait and semantically block for transfers until we're full enough (80%)
         // then we yield the updated cargo of the hauler
@@ -36,14 +39,14 @@ impl TransferCargoManager {
             guard
                 .entry(waypoint_symbol.clone())
                 .or_default()
-                .insert(hauler_ship_symbol.clone(), hauler_cargo.into());
+                .insert(hauler_ship_symbol.clone(), (hauler_cargo.into(), hauler_cargo_updated_channel.clone()));
         }
 
         let summary = loop {
             let mut guard = self.waiting_haulers.lock().await;
 
             if let Some(ships_at_waypoint) = guard.get(&waypoint_symbol).cloned() {
-                if let Some(summary) = ships_at_waypoint.get(&hauler_ship_symbol) {
+                if let Some((summary, _)) = ships_at_waypoint.get(&hauler_ship_symbol) {
                     let cargo = &summary.cargo;
                     let fill_amount: f64 = cargo.units.into_f64() / cargo.capacity.into_f64();
 
@@ -91,12 +94,17 @@ impl TransferCargoManager {
                 let result = execute_cargo_transfer_fn(transfer_task.clone()).await?;
 
                 updated_miner_cargo = result.sending_ship_cargo.clone();
-                ships_at_this_waypoint
-                    .entry(result.receiving_ship.clone())
-                    .and_modify(|summary| summary.update_from_event(&result, &transfer_task))
-                    .or_insert(result.receiving_ship_cargo.into());
 
-                //ships_at_this_waypoint.insert(result.receiving_ship.clone(), result.receiving_ship_cargo.clone());
+                if let Some((summary, cargo_updated_tx)) = ships_at_this_waypoint.get_mut(&result.receiving_ship) {
+                    summary.update_from_event(&result, &transfer_task);
+                    cargo_updated_tx
+                        .send((result.receiving_ship.clone(), result.receiving_ship_cargo))
+                        .await
+                        .map_err(|_| SendingUpdateMessageFailed)?
+                } else {
+                    return Err(ReceiveShipDoesntExist);
+                }
+
                 successful_tasks.push(transfer_task);
             }
             if successful_tasks.is_empty() {
@@ -114,11 +122,11 @@ impl TransferCargoManager {
 fn find_transfer_task(
     sending_ship: ShipSymbol,
     cargo_item_to_transfer: Inventory,
-    waiting_haulers: &HashMap<ShipSymbol, HaulerTransferSummary>,
+    waiting_haulers: &HashMap<ShipSymbol, (HaulerTransferSummary, Sender<(ShipSymbol, Cargo)>)>,
 ) -> Option<InternalTransferCargoRequest> {
     let scored_haulers = waiting_haulers
         .iter()
-        .map(|(ss, summary)| {
+        .map(|(ss, (summary, _sender))| {
             let hauler_cargo = &summary.cargo;
             let space_left = (hauler_cargo.capacity - hauler_cargo.units) as u32;
             let has_space_left = space_left >= cargo_item_to_transfer.units;
@@ -155,14 +163,14 @@ fn find_transfer_task(
 fn find_transfer_tasks(
     miner_ship_symbol: ShipSymbol,
     miner_cargo: Cargo,
-    waiting_haulers: &HashMap<ShipSymbol, HaulerTransferSummary>,
+    waiting_haulers: &HashMap<ShipSymbol, (HaulerTransferSummary, Sender<(ShipSymbol, Cargo)>)>,
 ) -> Vec<InternalTransferCargoRequest> {
     let mut hauler_cargos = waiting_haulers.clone();
 
     let mut tasks = vec![];
     for inventory in miner_cargo.inventory {
         if let Some(task) = find_transfer_task(miner_ship_symbol.clone(), inventory, &hauler_cargos) {
-            if let Some(summary) = hauler_cargos.get_mut(&task.receiving_ship) {
+            if let Some((summary, _sender)) = hauler_cargos.get_mut(&task.receiving_ship) {
                 match summary
                     .cargo
                     .with_item_added_mut(task.trade_good_symbol.clone(), task.units)
@@ -189,7 +197,10 @@ mod tests {
     use st_domain::{Cargo, Inventory, ShipSymbol, TradeGoodSymbol, WaypointSymbol};
     use std::collections::HashMap;
     use std::sync::Arc;
-    use tokio::sync::Mutex;
+    use std::time::Duration;
+    use tokio::sync::mpsc::Sender;
+    use tokio::sync::{mpsc, oneshot, Mutex};
+    use tokio::time::timeout;
 
     fn create_test_cargo(items: &[Inventory], capacity: u32) -> Cargo {
         let mut cargo = Cargo {
@@ -222,13 +233,18 @@ mod tests {
             .with_item_added(TradeGoodSymbol::COPPER_ORE, 20)
             .unwrap();
 
-        let waiting_haulers: HashMap<ShipSymbol, HaulerTransferSummary> = HashMap::from([
-            (ShipSymbol("HAULER_1".to_string()), create_test_cargo(&vec![], 80).into()),
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<(ShipSymbol, Cargo)>(32);
+
+        let waiting_haulers: HashMap<ShipSymbol, (HaulerTransferSummary, Sender<(ShipSymbol, Cargo)>)> = HashMap::from([
+            (ShipSymbol("HAULER_1".to_string()), (create_test_cargo(&vec![], 80).into(), tx.clone())),
             (
                 ShipSymbol("HAULER_2_WITH_IRON_ORE_AND_COPPER_ORE".to_string()),
-                mixed_cargo_iron_and_copper.into(),
+                (mixed_cargo_iron_and_copper.into(), tx.clone()),
             ),
-            (ShipSymbol("HAULER_2_WITH_IRON_ORE".to_string()), cargo_20_out_of_80_iron_ore.into()),
+            (
+                ShipSymbol("HAULER_2_WITH_IRON_ORE".to_string()),
+                (cargo_20_out_of_80_iron_ore.into(), tx.clone()),
+            ),
         ]);
 
         let iron_ore_entry_40_units = Inventory {
@@ -282,6 +298,14 @@ mod tests {
             (ShipSymbol("HAULER_2_WITH_IRON_ORE".to_string()), cargo_40_out_of_80_iron_ore),
         ];
 
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<(ShipSymbol, Cargo)>(32);
+
+        // Create cancellation channel
+        let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+
+        // Spawn the message collector
+        let message_collector = tokio::spawn(collect_messages_with_cancellation(rx, cancel_rx));
+
         let handles = ships
             .iter()
             .map(|(ss, cargo)| {
@@ -290,7 +314,10 @@ mod tests {
                 let ship_symbol = ss.clone();
                 let cargo = cargo.clone();
 
-                tokio::spawn(async move { wait_until_cargo_is_full(manager, wp, ship_symbol, cargo).await })
+                tokio::spawn({
+                    let tx_clone = tx.clone();
+                    async move { wait_until_cargo_is_full(manager, wp, ship_symbol, cargo, tx_clone.clone()).await }
+                })
             })
             .collect_vec();
 
@@ -342,6 +369,13 @@ mod tests {
         let (completed, _index, _remaining) = futures::future::select_all(handles).await;
         let (winner_name, final_cargo) = completed.unwrap().unwrap();
 
+        println!("Got transfer result {transfer_result:?} and a winner {winner_name}");
+        println!("Sending cancellation");
+        cancel_tx.send(()).unwrap(); // Send cancellation signal
+        let collected_messages = message_collector.await.unwrap();
+
+        println!("Collected {} messages", collected_messages.len());
+
         assert_eq!(winner_name, ShipSymbol("HAULER_2_WITH_IRON_ORE".to_string()));
         assert_eq!(final_cargo.transfers.len(), 1);
         assert_eq!(final_cargo.cargo.units, 80);
@@ -355,9 +389,10 @@ mod tests {
         waypoint_symbol: WaypointSymbol,
         ship_symbol: ShipSymbol,
         cargo: Cargo,
+        cargo_updated_tx: Sender<(ShipSymbol, Cargo)>,
     ) -> anyhow::Result<(ShipSymbol, HaulerTransferSummary)> {
         let updated_summary = transfer_manager
-            .register_hauler_for_pickup_and_wait_until_full(waypoint_symbol.clone(), ship_symbol.clone(), cargo.clone())
+            .register_hauler_for_pickup_and_wait_until_full(waypoint_symbol.clone(), ship_symbol.clone(), cargo.clone(), cargo_updated_tx.clone())
             .await?;
 
         Ok((ship_symbol.clone(), updated_summary))
@@ -401,5 +436,27 @@ mod tests {
             };
             Ok(response)
         }
+    }
+
+    async fn collect_messages_with_cancellation<T>(mut rx: mpsc::Receiver<T>, mut cancel_rx: oneshot::Receiver<()>) -> Vec<T> {
+        let mut messages = Vec::new();
+
+        loop {
+            tokio::select! {
+                // Try to receive a message
+                msg = rx.recv() => {
+                    match msg {
+                        Some(message) => messages.push(message),
+                        None => break, // Channel closed
+                    }
+                }
+                // Check for cancellation signal
+                _ = &mut cancel_rx => {
+                    break; // Cancellation received
+                }
+            }
+        }
+
+        messages
     }
 }

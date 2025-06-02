@@ -158,8 +158,7 @@ impl BlackboardOps for BmcBlackboard {
     }
 
     async fn mark_survey_as_exhausted(&self, survey: &Survey) -> anyhow::Result<()> {
-        let available_surveys = self
-            .bmc
+        self.bmc
             .survey_bmc()
             .mark_survey_as_exhausted(&Ctx::Anonymous, &survey.waypoint_symbol, &survey.signature)
             .await?;

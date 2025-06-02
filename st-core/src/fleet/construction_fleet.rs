@@ -2,21 +2,49 @@ use crate::fleet::construction_fleet::ConstructionFleetAction::{BoostSupplyChain
 use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::SellTradeGoods;
 use st_domain::budgeting::treasury_redesign::{
-    ActiveTradeRoute, DeliverConstructionMaterialsTicketDetails, FinanceTicketDetails, FleetBudget, PurchaseTradeGoodsTicketDetails,
-    SellTradeGoodsTicketDetails,
+    ActiveTradeRoute, DeliverConstructionMaterialsTicketDetails, FinanceTicketDetails, FleetBudget, LedgerEntry, PurchaseTradeGoodsTicketDetails,
+    SellTradeGoodsTicketDetails, ThreadSafeTreasurer,
 };
 use st_domain::{
-    calc_scored_supply_chain_routes, trading, Cargo, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, FleetId,
-    LabelledCoordinate, MarketEntry, MarketTradeGood, ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, SupplyLevel, TradeGoodSymbol,
-    TradeGoodType, Waypoint, WaypointSymbol,
+    calc_scored_supply_chain_routes, trading, Cargo, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, FleetId, FleetPhase,
+    FleetTask, FleetTaskCompletion, LabelledCoordinate, MarketEntry, MarketTradeGood, ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, ShipTask,
+    ShipType, StationaryProbeLocation, SupplyLevel, TicketId, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Not;
+use tracing::event;
+use tracing_core::Level;
 
 pub struct ConstructJumpGateFleet;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct DebugNoNewTaskFacts {
+    fleet_budget: FleetBudget,
+    active_trade_routes: HashSet<ActiveTradeRoute>,
+    waypoints: Vec<Waypoint>,
+    ship_prices: ShipPriceInfo,
+    latest_market_entries: Vec<MarketEntry>,
+    facts: FleetDecisionFacts,
+    fleet: Fleet,
+    cfg: ConstructJumpGateFleetConfig,
+    admiral_ship_purchase_demand: VecDeque<(ShipType, FleetTask)>,
+    admiral_treasurer_ledger_entries: VecDeque<LedgerEntry>,
+    admiral_stationary_probe_locations: Vec<StationaryProbeLocation>,
+    admiral_active_trade_ids: HashMap<ShipSymbol, TicketId>,
+    admiral_fleet_phase: FleetPhase,
+    admiral_ship_fleet_assignment: HashMap<ShipSymbol, FleetId>,
+    admiral_fleet_tasks: HashMap<FleetId, Vec<FleetTask>>,
+    admiral_ship_tasks: HashMap<ShipSymbol, ShipTask>,
+    admiral_all_ships: HashMap<ShipSymbol, Ship>,
+    admiral_fleets: HashMap<FleetId, Fleet>,
+    admiral_completed_fleet_tasks: Vec<FleetTaskCompletion>,
+    unassigned_ships_of_fleet: Vec<Ship>,
+    fleet_ships: Vec<Ship>,
+}
 
 impl ConstructJumpGateFleet {
     pub async fn compute_ship_tasks(
@@ -49,12 +77,10 @@ impl ConstructJumpGateFleet {
         let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(latest_market_entries);
         let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map);
 
-        let evaluated_trading_opportunities = trading::evaluate_trading_opportunities(
-            unassigned_ships_of_fleet,
-            &waypoint_map,
-            &trading_opportunities,
-            fleet_budget.available_capital().0,
-        );
+        let available_capital = fleet_budget.available_capital();
+
+        let evaluated_trading_opportunities =
+            trading::evaluate_trading_opportunities(unassigned_ships_of_fleet, &waypoint_map, &trading_opportunities, available_capital.0);
 
         let best_new_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
             trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, active_trade_routes);
@@ -82,8 +108,40 @@ impl ConstructJumpGateFleet {
             create_trading_tickets(&best_new_trading_opportunities)
         };
 
-        if new_tasks.is_empty() {
-            println!("Hello, breakpoint. We didn't find new tasks")
+        if new_tasks.is_empty() && unassigned_ships_of_fleet.is_empty().not() {
+            let debug_facts = DebugNoNewTaskFacts {
+                admiral_completed_fleet_tasks: admiral.completed_fleet_tasks.clone(),
+                admiral_fleets: admiral.fleets.clone(),
+                admiral_all_ships: admiral.all_ships.clone(),
+                admiral_ship_tasks: admiral.ship_tasks.clone(),
+                admiral_fleet_tasks: admiral.fleet_tasks.clone(),
+                admiral_ship_fleet_assignment: admiral.ship_fleet_assignment.clone(),
+                admiral_fleet_phase: admiral.fleet_phase.clone(),
+                admiral_active_trade_ids: admiral.active_trade_ids.clone(),
+                admiral_stationary_probe_locations: admiral.stationary_probe_locations.clone(),
+                admiral_treasurer_ledger_entries: admiral.treasurer.get_ledger_entries().await?,
+                admiral_ship_purchase_demand: admiral.ship_purchase_demand.clone(),
+                cfg: cfg.clone(),
+                fleet: fleet.clone(),
+                facts: facts.clone(),
+                latest_market_entries: latest_market_entries.clone(),
+                ship_prices: ship_prices.clone(),
+                waypoints: waypoints.clone(),
+                unassigned_ships_of_fleet: unassigned_ships_of_fleet
+                    .iter()
+                    .cloned()
+                    .cloned()
+                    .collect_vec(),
+                active_trade_routes: active_trade_routes.clone(),
+                fleet_budget: fleet_budget.clone(),
+                fleet_ships: fleet_ships.iter().cloned().cloned().collect_vec(),
+            };
+
+            event!(
+                Level::ERROR,
+                message = "ConstructJumpGateFleet didn't find new task.",
+                debug_facts = serde_json::to_string(&debug_facts)?
+            );
         }
 
         Ok(new_tasks)
@@ -292,7 +350,16 @@ async fn determine_construction_fleet_actions(
             find_best_combination(unassigned_ships_of_fleet, &prioritized_actions, &waypoint_map, fleet_budget)
         }
     } else {
-        HashMap::new()
+        event!(
+            Level::WARN,
+            "materialized supply chain is None - using fallback of profitable_trading_actions as new tasks"
+        );
+        find_best_combination(
+            unassigned_ships_of_fleet,
+            &profitable_trading_actions.values().cloned().collect_vec(),
+            &waypoint_map,
+            fleet_budget,
+        )
     };
 
     Ok(prioritized_actions)
@@ -645,5 +712,125 @@ impl PotentialConstructionTask {
                 SellTradeGoods(sell_details)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use st_domain::budgeting::test_sync_ledger::create_test_ledger_setup;
+    use st_domain::budgeting::treasury_redesign::ImprovedTreasurer;
+    use tokio::test;
+
+    #[test]
+    async fn test_compute_new_tasks_from_broken_runtime_state() -> Result<()> {
+        let json_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/broken-construction-fleet-details.json"));
+
+        let actual_tasks = compute_tasks_from_snapshot_file(json_str).await?;
+
+        assert!(actual_tasks.is_empty().not(), "Should have found some tasks");
+        Ok(())
+    }
+
+    #[test]
+    async fn test_compute_new_tasks_from_broken_runtime_state_2() -> Result<()> {
+        let json_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/broken-again-details.json"));
+
+        let actual_tasks = compute_tasks_from_snapshot_file(json_str).await?;
+
+        assert!(actual_tasks.is_empty().not(), "Should have found some tasks");
+        Ok(())
+    }
+
+    #[test]
+    async fn test_debug_ship_purchases() -> Result<()> {
+        let json_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/broken-again-details.json"));
+        let input = serde_json::from_str::<DebugNoNewTaskFacts>(json_str)?;
+
+        let mut treasurer = ImprovedTreasurer::new();
+
+        let construction_fleet_id = FleetId(2);
+        for entry in input.admiral_treasurer_ledger_entries.iter().cloned() {
+            let maybe_budget_before = treasurer
+                .get_fleet_budgets()?
+                .get(&construction_fleet_id)
+                .cloned();
+
+            treasurer.process_ledger_entry(entry.clone())?;
+
+            let maybe_budget_after = treasurer
+                .get_fleet_budgets()?
+                .get(&construction_fleet_id)
+                .cloned();
+
+            if let Some(budget_before) = maybe_budget_before {
+                let available_capital_before = budget_before.available_capital();
+                if let Some(budget_after) = maybe_budget_after {
+                    let available_capital_after = budget_after.available_capital();
+                    if available_capital_after < 4_000.into() {
+                        println!(
+                            r#"
+================================================================================================================
+available_capital_before {available_capital_before}.
+available_capital_after {available_capital_after} < 4_000c.
+
+
+{budget_before:?}
+
+{entry:?}
+
+{budget_after:?}
+                    "#
+                        )
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn compute_tasks_from_snapshot_file(json_str: &str) -> Result<Vec<PotentialConstructionTask>, Error> {
+        let input = serde_json::from_str::<DebugNoNewTaskFacts>(json_str)?;
+
+        let (test_ledger_archiver, ledger_archiving_task_sender) = create_test_ledger_setup().await;
+
+        let treasurer = ThreadSafeTreasurer::from_replayed_ledger_log(
+            input
+                .admiral_treasurer_ledger_entries
+                .iter()
+                .cloned()
+                .collect_vec(),
+            ledger_archiving_task_sender,
+        );
+
+        let admiral = FleetAdmiral {
+            completed_fleet_tasks: input.admiral_completed_fleet_tasks.clone(),
+            fleets: input.admiral_fleets.clone(),
+            all_ships: input.admiral_all_ships.clone(),
+            ship_tasks: input.admiral_ship_tasks.clone(),
+            fleet_tasks: input.admiral_fleet_tasks.clone(),
+            ship_fleet_assignment: input.admiral_ship_fleet_assignment.clone(),
+            fleet_phase: input.admiral_fleet_phase.clone(),
+            active_trade_ids: input.admiral_active_trade_ids.clone(),
+            stationary_probe_locations: input.admiral_stationary_probe_locations.clone(),
+            treasurer: treasurer.clone(),
+            ship_purchase_demand: input.admiral_ship_purchase_demand.clone(),
+        };
+
+        let actual_tasks = ConstructJumpGateFleet::compute_ship_tasks(
+            &admiral,
+            &input.cfg,
+            &input.fleet,
+            &input.facts,
+            &input.latest_market_entries,
+            &input.ship_prices,
+            &input.waypoints,
+            &input.unassigned_ships_of_fleet.iter().collect_vec(),
+            &input.active_trade_routes,
+            &input.fleet_budget,
+        )
+        .await?;
+        Ok(actual_tasks)
     }
 }
