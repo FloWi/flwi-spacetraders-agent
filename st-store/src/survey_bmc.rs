@@ -2,11 +2,11 @@ use crate::ctx::Ctx;
 use crate::{db, DbModelManager};
 use anyhow::*;
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use mockall::automock;
-use st_domain::{Survey, SurveySignature, WaypointSymbol};
-use std::collections::HashMap;
+use st_domain::{Extraction, Survey, SurveySignature, WaypointSymbol};
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -22,6 +22,7 @@ pub trait SurveyBmcTrait: Send + Sync + Debug {
     async fn save_surveys(&self, ctx: &Ctx, surveys: Vec<Survey>) -> Result<()>;
     async fn get_all_valid_surveys_for_waypoint(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Vec<Survey>>;
     async fn mark_survey_as_exhausted(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol, survey_signature: &SurveySignature) -> Result<()>;
+    async fn log_survey_usage(&self, ctx: &Ctx, survey_signature: &SurveySignature, extraction: &Extraction) -> Result<()>;
 }
 
 #[async_trait]
@@ -37,11 +38,16 @@ impl SurveyBmcTrait for DbSurveyBmc {
     async fn mark_survey_as_exhausted(&self, ctx: &Ctx, _waypoint_symbol: &WaypointSymbol, survey_signature: &SurveySignature) -> Result<()> {
         db::mark_survey_as_exhausted(self.mm.pool(), survey_signature.clone()).await
     }
+
+    async fn log_survey_usage(&self, ctx: &Ctx, survey_signature: &SurveySignature, extraction: &Extraction) -> Result<()> {
+        db::insert_survey_usage(self.mm.pool(), survey_signature.clone(), extraction.clone(), Utc::now()).await
+    }
 }
 
 #[derive(Debug)]
 pub struct InMemorySurveys {
     surveys: HashMap<WaypointSymbol, HashMap<SurveySignature, Survey>>,
+    survey_usages: Vec<(SurveySignature, Extraction, DateTime<Utc>)>,
 }
 
 impl Default for InMemorySurveys {
@@ -52,7 +58,10 @@ impl Default for InMemorySurveys {
 
 impl InMemorySurveys {
     pub fn new() -> Self {
-        Self { surveys: Default::default() }
+        Self {
+            surveys: Default::default(),
+            survey_usages: Default::default(),
+        }
     }
 }
 
@@ -112,7 +121,7 @@ impl SurveyBmcTrait for InMemorySurveyBmc {
         result
     }
 
-    async fn mark_survey_as_exhausted(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol, survey_signature: &SurveySignature) -> Result<()> {
+    async fn mark_survey_as_exhausted(&self, _ctx: &Ctx, waypoint_symbol: &WaypointSymbol, survey_signature: &SurveySignature) -> Result<()> {
         let mut in_memory_surveys = self.in_memory_surveys.write().await;
 
         let result = if let Some(surveys_at_wp) = in_memory_surveys.surveys.get_mut(waypoint_symbol) {
@@ -122,5 +131,15 @@ impl SurveyBmcTrait for InMemorySurveyBmc {
             Err(anyhow!("Survey not found"))
         };
         result
+    }
+
+    async fn log_survey_usage(&self, _ctx: &Ctx, survey_signature: &SurveySignature, extraction: &Extraction) -> Result<()> {
+        let mut in_memory_surveys = self.in_memory_surveys.write().await;
+
+        in_memory_surveys
+            .survey_usages
+            .push((survey_signature.clone(), extraction.clone(), Utc::now()));
+
+        Ok(())
     }
 }

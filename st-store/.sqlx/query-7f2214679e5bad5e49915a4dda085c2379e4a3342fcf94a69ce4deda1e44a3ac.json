@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\ninsert into survey_usage_log (survey_signature, extraction, created_at)\nvalues ($1, $2, $3)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7f2214679e5bad5e49915a4dda085c2379e4a3342fcf94a69ce4deda1e44a3ac"
+}

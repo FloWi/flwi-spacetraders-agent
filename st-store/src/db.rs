@@ -14,8 +14,8 @@ use tracing::{event, Level};
 use crate::DbModelManager;
 use st_domain::budgeting::treasury_redesign::LedgerEntry;
 use st_domain::{
-    distance_to, Construction, Data, JumpGate, MarketData, MarketEntry, RegistrationResponse, Ship, ShipTask, Shipyard, ShipyardData, StStatusResponse,
-    SupplyChain, Survey, SurveySignature, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
+    distance_to, Construction, Data, Extraction, JumpGate, MarketData, MarketEntry, RegistrationResponse, Ship, ShipTask, Shipyard, ShipyardData,
+    StStatusResponse, SupplyChain, Survey, SurveySignature, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
 #[derive(Clone)]
@@ -236,6 +236,13 @@ pub struct DbSurveyEntry {
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub is_discarded: bool,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbSurveyUsageEntry {
+    pub signature: String,
+    pub extraction: Json<Extraction>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Serialize, Clone, Debug, Deserialize)]
@@ -899,6 +906,43 @@ update surveys
 where signature = $1
         "#,
         survey_signature.0.clone(),
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub(crate) async fn insert_survey_usage(
+    pool: &Pool<Postgres>,
+    survey_signature: SurveySignature,
+    extraction: Extraction,
+    now: DateTime<Utc>,
+) -> anyhow::Result<()> {
+    /*
+        create table survey_usage_log
+    (
+        survey_signature text        not null,
+        extraction       jsonb       not null,
+        created_at       timestamptz not null
+    );
+
+         */
+
+    let db_entry = DbSurveyUsageEntry {
+        signature: survey_signature.0.clone(),
+        extraction: Json(extraction),
+        created_at: now,
+    };
+
+    sqlx::query!(
+        r#"
+insert into survey_usage_log (survey_signature, extraction, created_at)
+values ($1, $2, $3)
+        "#,
+        db_entry.signature,
+        db_entry.extraction as _,
+        db_entry.created_at,
     )
     .execute(pool)
     .await?;

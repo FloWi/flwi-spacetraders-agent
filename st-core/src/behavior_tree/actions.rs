@@ -847,6 +847,11 @@ impl Actionable for ShipAction {
                             Ok(result) => {
                                 state.cargo = result.data.cargo.clone();
                                 state.cooldown = result.data.cooldown.clone();
+                                if let Some(survey) = maybe_survey.clone() {
+                                    args.blackboard
+                                        .log_survey_usage(survey, result.data.extraction.clone())
+                                        .await?;
+                                }
                                 break Ok(Success);
                             }
                             Err(e) => {

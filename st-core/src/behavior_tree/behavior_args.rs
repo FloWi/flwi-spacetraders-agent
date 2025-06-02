@@ -6,11 +6,12 @@ use itertools::Itertools;
 use sqlx::{Pool, Postgres};
 use st_domain::blackboard_ops::BlackboardOps;
 
+use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
 use crate::survey_manager;
 use crate::transfer_cargo_manager::TransferCargoManager;
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, ThreadSafeTreasurer};
 use st_domain::{
-    Construction, CreateSurveyResponse, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, PurchaseShipResponse, PurchaseTradeGoodResponse,
+    Construction, CreateSurveyResponse, Extraction, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, PurchaseShipResponse, PurchaseTradeGoodResponse,
     SellTradeGoodResponse, Shipyard, SupplyConstructionSiteResponse, Survey, TravelAction, Waypoint, WaypointSymbol,
 };
 use st_store::bmc::{Bmc, DbBmc};
@@ -25,6 +26,7 @@ pub struct BehaviorArgs {
     pub blackboard: Arc<dyn BlackboardOps>,
     pub treasurer: ThreadSafeTreasurer,
     pub transfer_cargo_manager: Arc<TransferCargoManager>,
+    pub materialized_supply_chain_manager: MaterializedSupplyChainManager,
 }
 
 impl BehaviorArgs {
@@ -209,6 +211,13 @@ impl BlackboardOps for DbBlackboard {
         self.bmc
             .survey_bmc()
             .save_surveys(&Ctx::Anonymous, create_survey_response.data.surveys)
+            .await
+    }
+
+    async fn log_survey_usage(&self, survey: Survey, extraction: Extraction) -> Result<()> {
+        self.bmc
+            .survey_bmc()
+            .log_survey_usage(&Ctx::Anonymous, &survey.signature, &extraction)
             .await
     }
 

@@ -6,7 +6,8 @@ use chrono::Utc;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
-    Construction, CreateSurveyResponse, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, Shipyard, Survey, TravelAction, Waypoint, WaypointSymbol,
+    Construction, CreateSurveyResponse, Extraction, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, Shipyard, Survey, TravelAction, Waypoint,
+    WaypointSymbol,
 };
 use st_store::bmc::Bmc;
 use st_store::Ctx;
@@ -187,5 +188,14 @@ impl BlackboardOps for BmcBlackboard {
         } else {
             Ok(false)
         }
+    }
+
+    async fn log_survey_usage(&self, survey: Survey, extraction: Extraction) -> anyhow::Result<()> {
+        self.bmc
+            .survey_bmc()
+            .log_survey_usage(&Ctx::Anonymous, &survey.signature, &extraction)
+            .await?;
+
+        Ok(())
     }
 }

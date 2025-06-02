@@ -1,6 +1,6 @@
 use crate::{
-    get_exploration_tasks_for_waypoint, Construction, CreateSurveyResponse, CreateSurveyResponseBody, ExplorationTask, JumpGate, MarketData, MiningOpsConfig,
-    Shipyard, Survey, TravelAction, Waypoint, WaypointSymbol,
+    get_exploration_tasks_for_waypoint, Construction, CreateSurveyResponse, CreateSurveyResponseBody, ExplorationTask, Extraction, JumpGate, MarketData,
+    MiningOpsConfig, Shipyard, Survey, TravelAction, Waypoint, WaypointSymbol,
 };
 use async_trait::async_trait;
 use mockall::automock;
@@ -39,5 +39,6 @@ pub trait BlackboardOps: Send + Sync {
     async fn get_best_survey_for_current_demand(&self, mining_config: &MiningOpsConfig) -> anyhow::Result<Option<Survey>>;
     async fn mark_survey_as_exhausted(&self, survey: &Survey) -> anyhow::Result<()>;
     async fn save_survey_response(&self, create_survey_response: CreateSurveyResponse) -> anyhow::Result<()>;
+    async fn log_survey_usage(&self, survey: Survey, extraction: Extraction) -> anyhow::Result<()>;
     async fn is_survey_necessary(&self, maybe_mining_waypoint: Option<WaypointSymbol>) -> anyhow::Result<bool>;
 }
