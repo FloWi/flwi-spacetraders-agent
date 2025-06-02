@@ -184,7 +184,7 @@ impl BlackboardOps for BmcBlackboard {
                 .survey_bmc()
                 .get_all_valid_surveys_for_waypoint(&Ctx::Anonymous, &mining_waypoint)
                 .await?;
-            Ok(available_surveys.len() > 4)
+            Ok(available_surveys.len() < 4)
         } else {
             Ok(false)
         }
