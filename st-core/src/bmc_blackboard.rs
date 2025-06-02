@@ -6,8 +6,8 @@ use chrono::Utc;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
-    Construction, CreateSurveyResponse, Extraction, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, Shipyard, Survey, TravelAction, Waypoint,
-    WaypointSymbol,
+    Construction, CreateSurveyResponse, Extraction, JumpGate, LabelledCoordinate, MarketData, MaterializedSupplyChain, MiningOpsConfig, Shipyard, Survey,
+    TravelAction, Waypoint, WaypointSymbol,
 };
 use st_store::bmc::Bmc;
 use st_store::Ctx;
@@ -148,14 +148,20 @@ impl BlackboardOps for BmcBlackboard {
             .await?)
     }
 
-    async fn get_best_survey_for_current_demand(&self, mining_config: &MiningOpsConfig) -> anyhow::Result<Option<Survey>> {
+    async fn get_best_survey_for_current_demand(
+        &self,
+        mining_config: &MiningOpsConfig,
+        materialized_supply_chain: &MaterializedSupplyChain,
+    ) -> anyhow::Result<Option<Survey>> {
         let available_surveys = self
             .bmc
             .survey_bmc()
             .get_all_valid_surveys_for_waypoint(&Ctx::Anonymous, &mining_config.mining_waypoint)
             .await?;
 
-        Ok(survey_manager::pick_best_survey(available_surveys, mining_config))
+        let maybe_best_survey_with_score = survey_manager::pick_best_survey(available_surveys, materialized_supply_chain);
+
+        Ok(maybe_best_survey_with_score.map(|(survey, _score)| survey.clone()))
     }
 
     async fn mark_survey_as_exhausted(&self, survey: &Survey) -> anyhow::Result<()> {

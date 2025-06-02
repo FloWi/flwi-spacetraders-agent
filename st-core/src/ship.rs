@@ -12,6 +12,7 @@ use st_domain::{
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::{Deref, DerefMut, Not};
 use std::sync::Arc;
+use tracing::debug;
 
 #[derive(Clone, Debug)]
 pub struct ShipOperations {
@@ -23,8 +24,8 @@ pub struct ShipOperations {
     pub permanent_observation_location: Option<WaypointSymbol>,
     pub maybe_next_observation_time: Option<DateTime<Utc>>,
     pub my_fleet: FleetId,
-    pub maybe_siphoning_config: Option<SiphoningOpsConfig>,
-    pub maybe_mining_ops_config: Option<MiningOpsConfig>,
+    pub maybe_mining_waypoint: Option<WaypointSymbol>,
+    pub maybe_siphoning_waypoint: Option<WaypointSymbol>,
 }
 
 impl PartialEq for ShipOperations {
@@ -89,8 +90,8 @@ maybe_next_observation_time: {:?},
             permanent_observation_location: None,
             maybe_next_observation_time: None,
             my_fleet,
-            maybe_siphoning_config: None,
-            maybe_mining_ops_config: None,
+            maybe_mining_waypoint: None,
+            maybe_siphoning_waypoint: None,
         }
     }
 
@@ -102,30 +103,12 @@ maybe_next_observation_time: {:?},
         self.current_navigation_destination = Some(destination)
     }
 
-    pub fn set_siphoning_config(
-        &mut self,
-        siphoning_waypoint: WaypointSymbol,
-        demanded_goods: HashSet<TradeGoodSymbol>,
-        delivery_locations: HashMap<TradeGoodSymbol, RawDeliveryRoute>,
-    ) {
-        self.maybe_siphoning_config = Some(SiphoningOpsConfig {
-            siphoning_waypoint,
-            demanded_goods,
-            delivery_locations,
-        });
+    pub fn set_siphoning_waypoint(&mut self, siphoning_waypoint: WaypointSymbol) {
+        self.maybe_siphoning_waypoint = Some(siphoning_waypoint);
     }
 
-    pub fn set_mining_config(
-        &mut self,
-        mining_waypoint: WaypointSymbol,
-        demanded_goods: Option<HashSet<TradeGoodSymbol>>,
-        delivery_locations: Option<HashMap<TradeGoodSymbol, RawDeliveryRoute>>,
-    ) {
-        self.maybe_mining_ops_config = Some(MiningOpsConfig {
-            mining_waypoint,
-            demanded_goods: demanded_goods.unwrap_or_default(),
-            delivery_locations: delivery_locations.unwrap_or_default(),
-        });
+    pub fn set_mining_waypoint(&mut self, mining_waypoint: WaypointSymbol) {
+        self.maybe_mining_waypoint = Some(mining_waypoint);
     }
 
     pub fn is_at_mining_waypoint(&self) -> bool {
@@ -137,20 +120,7 @@ maybe_next_observation_time: {:?},
     }
 
     pub fn get_mining_site(&self) -> Option<WaypointSymbol> {
-        self.maybe_mining_ops_config
-            .clone()
-            .map(|cfg| cfg.mining_waypoint.clone())
-    }
-
-    pub fn get_delivery_locations(&self) -> Option<HashMap<TradeGoodSymbol, RawDeliveryRoute>> {
-        self.maybe_mining_ops_config
-            .clone()
-            .map(|cfg| cfg.delivery_locations.clone())
-            .or_else(|| {
-                self.maybe_siphoning_config
-                    .clone()
-                    .map(|cfg| cfg.delivery_locations.clone())
-            })
+        self.maybe_mining_waypoint.clone()
     }
 
     pub fn set_next_observation_time(&mut self, next_time: DateTime<Utc>) {
@@ -194,6 +164,8 @@ maybe_next_observation_time: {:?},
     }
 
     pub(crate) async fn jettison_everything_not_on_list(&mut self, allow_list: HashSet<TradeGoodSymbol>) -> Result<Vec<JettisonCargoResponse>> {
+        let cargo_units_before = self.cargo.units;
+
         let items_to_jettison = self
             .cargo
             .inventory
@@ -208,10 +180,33 @@ maybe_next_observation_time: {:?},
 
         let mut responses = vec![];
 
-        for item in items_to_jettison {
+        for item in items_to_jettison.iter() {
             let response = self.jettison_cargo(&item.symbol, item.units).await?;
             responses.push(response);
         }
+        let cargo_units_after = self.cargo.units;
+
+        if items_to_jettison.is_empty().not() {
+            let jettison_log_str = items_to_jettison
+                .iter()
+                .map(|inv| format!("{}x {}", inv.units, inv.symbol))
+                .join(", ");
+
+            let allow_list_str = allow_list
+                .iter()
+                .map(|tg| tg.to_string())
+                .sorted()
+                .join(", ");
+
+            debug!(
+                message = "Jettisoned items currently not in demand",
+                items = jettison_log_str,
+                cargo_units_before,
+                cargo_units_after,
+                allow_list = allow_list_str
+            );
+        }
+
         Ok(responses)
     }
 

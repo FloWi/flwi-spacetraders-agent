@@ -1,8 +1,7 @@
 use crate::supply_chain::RawMaterialSourceType::{Mining, Siphoning};
 use crate::{
-    ActivityLevel, Construction, ConstructionMaterial, GetConstructionResponse, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol,
-    SupplyChainMap, SupplyLevel, SystemSymbol, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType, MAX_ACTIVITY_LEVEL_SCORE,
-    MAX_SUPPLY_LEVEL_SCORE,
+    ActivityLevel, Construction, ConstructionMaterial, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, SupplyChainMap, SupplyLevel,
+    SystemSymbol, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType, MAX_ACTIVITY_LEVEL_SCORE, MAX_SUPPLY_LEVEL_SCORE,
 };
 use anyhow::anyhow;
 use itertools::Itertools;
@@ -99,6 +98,83 @@ pub struct MaterializedSupplyChain {
     pub goods_for_sale_not_conflicting_with_construction: HashSet<TradeGoodSymbol>,
     pub goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol>,
     pub individual_routes_of_goods_for_sale: HashMap<TradeGoodSymbol, MaterializedIndividualSupplyChain>,
+    pub source_waypoints: HashMap<RawMaterialSourceType, Vec<Waypoint>>,
+}
+
+pub struct RawMaterialDemandScore {
+    pub supply_level: SupplyLevel,
+    pub maybe_activity: Option<ActivityLevel>,
+    pub score: i32,
+    pub trade_good_symbol: TradeGoodSymbol,
+}
+
+impl MaterializedSupplyChain {
+    pub fn calc_demand_for_raw_materials(&self) -> Vec<RawMaterialDemandScore> {
+        self.raw_delivery_routes
+            .iter()
+            .map(|raw| {
+                let supply_level = raw.delivery_market_entry.supply.clone();
+                let maybe_activity = raw.delivery_market_entry.activity.clone();
+                let score: i32 = score_demand_and_activity(&supply_level, &maybe_activity);
+
+                RawMaterialDemandScore {
+                    trade_good_symbol: raw.delivery_market_entry.symbol.clone(),
+                    supply_level,
+                    maybe_activity,
+                    score,
+                }
+            })
+            .collect_vec()
+    }
+}
+
+pub fn score_demand_and_activity(supply: &SupplyLevel, maybe_activity: &Option<ActivityLevel>) -> i32 {
+    // 0 (SCARCE) - 4 (ABUNDANT)
+    // -->
+    // 0 (ABUNDANT) - 4 (SCARCE)
+
+    // 1 (RESTRICTED) - 4 (STRONG)
+    // -->
+    // 0 (STRONG) - 3 (RESTRICTED)
+
+    /*
+
+    val supplyLevelScore   = maxSupplyLevelScore - ProductionDependencies.supplyLevelScoreMapWorstToBest(level)
+    val activityLevelScore = maybeActivity.map(act => maxActivityLevelScore - ProductionDependencies.activityLevelMap(act)).getOrElse(0)
+
+    // A market becomes restricted when the supplyLevel of the export is restricted (full storage)
+    if (level == SupplyLevel.ABUNDANT && maybeActivity == Option(ActivityLevel.RESTRICTED)) 0
+    else (supplyLevelScore + activityLevelScore) * 7 // max 7 units in a survey
+
+     */
+
+    let supply_level_score_worst_to_best = match supply {
+        SupplyLevel::Scarce => 0,
+        SupplyLevel::Limited => 1,
+        SupplyLevel::Moderate => 2,
+        SupplyLevel::High => 3,
+        SupplyLevel::Abundant => 4,
+    };
+
+    let activity_score_worst_to_best = match maybe_activity {
+        None => 0,
+        Some(activity) => match activity {
+            ActivityLevel::Strong => 4,
+            ActivityLevel::Growing => 3,
+            ActivityLevel::Weak => 2,
+            ActivityLevel::Restricted => 1,
+        },
+    };
+    let supply_level_score = MAX_SUPPLY_LEVEL_SCORE.clone() - supply_level_score_worst_to_best;
+    let activity_level_score = MAX_ACTIVITY_LEVEL_SCORE.clone() - activity_score_worst_to_best;
+
+    if supply == &SupplyLevel::Abundant && maybe_activity == &Some(ActivityLevel::Restricted) {
+        // A market becomes restricted when the supplyLevel of the export is restricted (full storage)
+        0
+    } else {
+        // max 7 units in a survey
+        (supply_level_score + activity_level_score) * 7
+    }
 }
 
 pub fn get_all_goods_involved(chain: &[SupplyChainNode]) -> HashSet<TradeGoodSymbol> {
@@ -335,6 +411,8 @@ pub fn materialize_supply_chain(
         goods_for_sale_conflicting_with_construction,
     } = calc_construction_related_trade_good_overview(supply_chain, missing_construction_material_map, &goods_for_sale);
 
+    let source_waypoints: HashMap<RawMaterialSourceType, Vec<Waypoint>> = get_sourcing_waypoints(waypoint_map);
+
     Ok(MaterializedSupplyChain {
         explanation: format!(
             r#"Completion Overview:
@@ -351,6 +429,7 @@ pub fn materialize_supply_chain(
         goods_for_sale_not_conflicting_with_construction,
         goods_for_sale_conflicting_with_construction,
         individual_routes_of_goods_for_sale,
+        source_waypoints,
     })
 }
 

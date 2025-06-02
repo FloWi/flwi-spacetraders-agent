@@ -718,7 +718,10 @@ impl Actionable for ShipAction {
                 Ok(Success)
             }
             ShipAction::JettisonInvaluableCarboHydrates => {
-                if let Some(cfg) = state.maybe_siphoning_config.clone() {
+                if let Some(cfg) = args
+                    .materialized_supply_chain_manager
+                    .get_siphoning_ops_config_for_system(state.nav.system_symbol.clone())
+                {
                     let _responses = state
                         .jettison_everything_not_on_list(cfg.demanded_goods)
                         .await?;
@@ -727,22 +730,22 @@ impl Actionable for ShipAction {
                 Ok(Success)
             }
             ShipAction::IsAtSiphoningSite => {
-                if let Some(cfg) = state.maybe_siphoning_config.clone() {
-                    if state.current_location() == cfg.siphoning_waypoint && state.nav.status == NavStatus::InOrbit {
+                if let Some(siphoning_waypoint) = state.maybe_siphoning_waypoint.clone() {
+                    if state.current_location() == siphoning_waypoint && state.nav.status == NavStatus::InOrbit {
                         Ok(Success)
                     } else {
-                        Err(anyhow!("No siphoning config found"))
+                        Err(anyhow!("Not at siphoning waypoint"))
                     }
                 } else {
-                    Err(anyhow!("No siphoning config found"))
+                    Err(anyhow!("No siphoning waypoint found"))
                 }
             }
             ShipAction::SetSiphoningSiteAsDestination => {
-                if let Some(cfg) = state.maybe_siphoning_config.clone() {
-                    state.set_destination(cfg.siphoning_waypoint);
+                if let Some(siphoning_waypoint) = state.maybe_siphoning_waypoint.clone() {
+                    state.set_destination(siphoning_waypoint);
                     Ok(Success)
                 } else {
-                    Err(anyhow!("No siphoning config found"))
+                    Err(anyhow!("No siphoning waypoint found"))
                 }
             }
             ShipAction::HasCargoSpaceForSiphoning => {
@@ -760,7 +763,10 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::CreateSellTicketsForAllCargoItems => {
-                if let Some(delivery_locations) = state.get_delivery_locations() {
+                if let Ok(delivery_locations) = args
+                    .materialized_supply_chain_manager
+                    .get_raw_delivery_routes(&state.nav.system_symbol)
+                {
                     let (cargo_items_with_delivery_location, cargo_items_without_delivery_location): (Vec<_>, Vec<_>) =
                         state.cargo.inventory.iter().partition_map(|inv| {
                             if let Some(delivery_location) = delivery_locations.get(&inv.symbol) {
@@ -827,7 +833,10 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::JettisonInvaluableMinerals => {
-                if let Some(cfg) = state.maybe_mining_ops_config.clone() {
+                if let Some(cfg) = args
+                    .materialized_supply_chain_manager
+                    .get_mining_ops_config_for_system(state.nav.system_symbol.clone())
+                {
                     let _responses = state
                         .jettison_everything_not_on_list(cfg.demanded_goods)
                         .await?;
@@ -836,11 +845,18 @@ impl Actionable for ShipAction {
                 Ok(Success)
             }
             ShipAction::ExtractResources => {
-                if let Some(cfg) = state.maybe_mining_ops_config.clone() {
+                if let Some((cfg, msc)) = args
+                    .materialized_supply_chain_manager
+                    .get_mining_ops_config_for_system(state.nav.system_symbol.clone())
+                    .zip(
+                        args.materialized_supply_chain_manager
+                            .get_materialized_supply_chain_for_system(state.nav.system_symbol.clone()),
+                    )
+                {
                     loop {
                         let maybe_survey: Option<Survey> = args
                             .blackboard
-                            .get_best_survey_for_current_demand(&cfg)
+                            .get_best_survey_for_current_demand(&cfg, &msc)
                             .await?;
 
                         match state.extract_resources(maybe_survey.clone()).await {
@@ -1102,6 +1118,7 @@ mod tests {
     use tokio::sync::mpsc::{Receiver, Sender};
 
     use crate::behavior_tree::actions::calc_batches_based_on_trade_volume;
+    use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
     use crate::test_objects::TestObjects;
     use crate::transfer_cargo_manager::TransferCargoManager;
     use st_domain::blackboard_ops::MockBlackboardOps;
@@ -1205,6 +1222,7 @@ mod tests {
             blackboard: Arc::new(MockBlackboardOps::new()),
             treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()).await,
             transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
+            materialized_supply_chain_manager: MaterializedSupplyChainManager::new(),
         };
 
         let mocked_client = mock_client
@@ -1248,6 +1266,7 @@ mod tests {
             blackboard: Arc::new(MockBlackboardOps::new()),
             treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()).await,
             transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
+            materialized_supply_chain_manager: MaterializedSupplyChainManager::new(),
         };
 
         let mocked_client = mock_client
@@ -1430,6 +1449,7 @@ mod tests {
             blackboard: Arc::new(mock_test_blackboard),
             treasurer: ThreadSafeTreasurer::new(0.into(), task_sender.clone()).await,
             transfer_cargo_manager: Arc::new(TransferCargoManager::new()),
+            materialized_supply_chain_manager: MaterializedSupplyChainManager::new(),
         };
 
         let explorer_waypoint_symbols = explorer_waypoints

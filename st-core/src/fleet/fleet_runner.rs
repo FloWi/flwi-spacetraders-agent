@@ -15,6 +15,7 @@ use std::cmp::min;
 
 use crate::bmc_blackboard::BmcBlackboard;
 use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
+use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
 use crate::transfer_cargo_manager::TransferCargoManager;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
@@ -71,11 +72,17 @@ impl FleetRunner {
         let blackboard: Arc<dyn BlackboardOps> = Arc::new(blackboard) as Arc<dyn BlackboardOps>;
 
         let thread_safe_treasurer = fleet_admiral.lock().await.treasurer.clone();
+        let materialized_supply_chain_manager = fleet_admiral
+            .lock()
+            .await
+            .materialized_supply_chain_manager
+            .clone();
 
         let args: BehaviorArgs = BehaviorArgs {
             blackboard: Arc::clone(&blackboard),
             treasurer: thread_safe_treasurer.clone(),
             transfer_cargo_manager: Arc::clone(&transfer_cargo_manager),
+            materialized_supply_chain_manager,
         };
 
         let ship_fibers: HashMap<ShipSymbol, JoinHandle<Result<()>>> = HashMap::new();
@@ -93,9 +100,18 @@ impl FleetRunner {
                 .clone()
                 .nav
                 .system_symbol;
+
             let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
+
+            if let Some(msc) = &facts.materialized_supply_chain {
+                args.materialized_supply_chain_manager
+                    .register_materialized_supply_chain(system_symbol.clone(), msc.clone())?
+            }
+
             let new_ship_tasks = FleetAdmiral::compute_ship_tasks(&mut admiral, &facts, Arc::clone(&bmc)).await?;
+
             FleetAdmiral::assign_ship_tasks(&mut admiral, new_ship_tasks);
+
             upsert_fleets_data(
                 Arc::clone(&bmc),
                 &Ctx::Anonymous,
@@ -412,31 +428,20 @@ impl FleetRunner {
                 ship.set_destination(first_purchase_location);
                 Some((behaviors.navigate_to_destination, "navigate_to_destination"))
             }
-            ShipTask::SiphonCarboHydratesAtWaypoint {
-                siphoning_waypoint,
-                delivery_locations,
-                demanded_goods,
-            } => {
-                ship.set_siphoning_config(siphoning_waypoint, demanded_goods, delivery_locations);
+            ShipTask::SiphonCarboHydratesAtWaypoint { siphoning_waypoint } => {
+                ship.set_siphoning_waypoint(siphoning_waypoint);
                 Some((behaviors.siphoning_behavior, "siphoning_behavior"))
             }
             ShipTask::SurveyMiningSite { mining_waypoint } => {
-                ship.set_mining_config(mining_waypoint.clone(), None, None);
+                ship.set_mining_waypoint(mining_waypoint.clone());
                 Some((behaviors.surveyor_behavior, "surveyor_behavior"))
             }
-            ShipTask::HaulMiningGoods {
-                mining_waypoint,
-                delivery_locations,
-                demanded_goods,
-            } => {
-                ship.set_mining_config(mining_waypoint, Some(demanded_goods.clone()), Some(delivery_locations));
+            ShipTask::HaulMiningGoods { mining_waypoint } => {
+                ship.set_mining_waypoint(mining_waypoint);
                 Some((behaviors.mining_hauler_behavior, "mining_hauler_behavior"))
             }
-            ShipTask::MineMaterialsAtWaypoint {
-                mining_waypoint,
-                demanded_goods,
-            } => {
-                ship.set_mining_config(mining_waypoint, Some(demanded_goods.clone()), None);
+            ShipTask::MineMaterialsAtWaypoint { mining_waypoint } => {
+                ship.set_mining_waypoint(mining_waypoint);
                 Some((behaviors.miner_behavior, "miner_behavior"))
             }
         };
@@ -634,6 +639,8 @@ impl FleetRunner {
                             .await?;
 
                         let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &system_symbol).await?;
+                        admiral_guard.update_materialized_supply_chain(&facts.materialized_supply_chain)?;
+
                         let fleet_phase = compute_fleet_phase_with_tasks(system_symbol.clone(), &facts, &admiral_guard.completed_fleet_tasks);
                         let (fleets, fleet_tasks) = compute_fleets_with_tasks(&facts, &admiral_guard.fleets, &admiral_guard.fleet_tasks, &fleet_phase);
                         // println!("Computed new fleets after dismantling the fleets: {:?}", fleets_to_dismantle);
@@ -747,6 +754,9 @@ impl FleetRunner {
                     bmc.ship_bmc()
                         .insert_stationary_probe(&Ctx::Anonymous, stationary_probe_location)
                         .await?;
+                } else if ship_action == &ShipAction::CollectWaypointInfos {
+                    let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &ship.nav.system_symbol).await?;
+                    admiral_guard.update_materialized_supply_chain(&facts.materialized_supply_chain)?;
                 }
             }
             ShipStatusReport::Expense(_, operation_expense) => match operation_expense {

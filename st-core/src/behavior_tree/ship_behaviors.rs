@@ -200,6 +200,7 @@ pub fn ship_behaviors() -> Behaviors {
         Behavior::new_sequence(vec![
             dock_if_necessary.clone(),
             Behavior::new_action(ShipAction::PerformTradeActionAndMarkAsCompleted),
+            Behavior::new_action(ShipAction::CollectWaypointInfos),
             orbit_if_necessary.clone(),
         ]),
     ]);
@@ -259,7 +260,14 @@ pub fn ship_behaviors() -> Behaviors {
         Behavior::new_while(
             Behavior::new_action(ShipAction::IsAtObservationWaypoint), //this should be true, because we navigated here ==> intentional endless loop
             Behavior::new_sequence(vec![
-                Behavior::new_action(ShipAction::PerformTradeActionAndMarkAsCompleted), //we might have gotten a ship_purchase ticket
+                // if we have a ship purchase ticket, we perform the purchase and collect waypoint infos after that
+                Behavior::new_select(vec![
+                    Behavior::new_invert(Behavior::new_action(ShipAction::HasShipPurchaseTicketForWaypoint)),
+                    Behavior::new_sequence(vec![
+                        Behavior::new_action(ShipAction::PerformTradeActionAndMarkAsCompleted), //we might have gotten a ship_purchase ticket
+                        Behavior::new_action(ShipAction::CollectWaypointInfos),
+                    ]),
+                ]),
                 observe_waypoint_if_necessary_or_sleep,
             ]),
         ),

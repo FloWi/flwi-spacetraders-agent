@@ -110,39 +110,20 @@ pub enum PurchaseReason {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq)]
 pub enum ShipTask {
-    ObserveWaypointDetails {
-        waypoint_symbol: WaypointSymbol,
-    },
+    ObserveWaypointDetails { waypoint_symbol: WaypointSymbol },
 
-    ObserveAllWaypointsOnce {
-        waypoint_symbols: Vec<WaypointSymbol>,
-    },
+    ObserveAllWaypointsOnce { waypoint_symbols: Vec<WaypointSymbol> },
 
-    MineMaterialsAtWaypoint {
-        mining_waypoint: WaypointSymbol,
-        demanded_goods: HashSet<TradeGoodSymbol>,
-    },
+    MineMaterialsAtWaypoint { mining_waypoint: WaypointSymbol },
 
-    SurveyMiningSite {
-        mining_waypoint: WaypointSymbol,
-    },
+    SurveyMiningSite { mining_waypoint: WaypointSymbol },
 
-    HaulMiningGoods {
-        mining_waypoint: WaypointSymbol,
-        delivery_locations: HashMap<TradeGoodSymbol, RawDeliveryRoute>,
-        demanded_goods: HashSet<TradeGoodSymbol>,
-    },
+    HaulMiningGoods { mining_waypoint: WaypointSymbol },
 
     Trade,
 
-    PrepositionShipForTrade {
-        first_purchase_location: WaypointSymbol,
-    },
-    SiphonCarboHydratesAtWaypoint {
-        siphoning_waypoint: WaypointSymbol,
-        delivery_locations: HashMap<TradeGoodSymbol, RawDeliveryRoute>,
-        demanded_goods: HashSet<TradeGoodSymbol>,
-    },
+    PrepositionShipForTrade { first_purchase_location: WaypointSymbol },
+    SiphonCarboHydratesAtWaypoint { siphoning_waypoint: WaypointSymbol },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]

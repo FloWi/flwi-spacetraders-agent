@@ -10,9 +10,10 @@ use st_domain::budgeting::treasury_redesign::{
     SellTradeGoodsTicketDetails, ThreadSafeTreasurer,
 };
 use st_domain::{
-    calc_scored_supply_chain_routes, trading, Cargo, ConstructJumpGateFleetConfig, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, FleetId, FleetPhase,
-    FleetTask, FleetTaskCompletion, LabelledCoordinate, MarketEntry, MarketTradeGood, ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, ShipTask,
-    ShipType, StationaryProbeLocation, SupplyLevel, TicketId, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol,
+    calc_scored_supply_chain_routes, trading, Cargo, ConstructJumpGateFleetConfig, Construction, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts,
+    FleetId, FleetPhase, FleetTask, FleetTaskCompletion, LabelledCoordinate, MarketEntry, MarketTradeGood, MaterializedSupplyChain,
+    ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, StationaryProbeLocation, SupplyLevel, TicketId, TradeGoodSymbol,
+    TradeGoodType, Waypoint, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Not;
@@ -28,7 +29,8 @@ struct DebugNoNewTaskFacts {
     waypoints: Vec<Waypoint>,
     ship_prices: ShipPriceInfo,
     latest_market_entries: Vec<MarketEntry>,
-    facts: FleetDecisionFacts,
+    maybe_materialized_supply_chain: Option<MaterializedSupplyChain>,
+    maybe_construction_site: Option<Construction>,
     fleet: Fleet,
     cfg: ConstructJumpGateFleetConfig,
     admiral_ship_purchase_demand: VecDeque<(ShipType, FleetTask)>,
@@ -51,7 +53,7 @@ impl ConstructJumpGateFleet {
         admiral: &FleetAdmiral,
         cfg: &ConstructJumpGateFleetConfig,
         fleet: &Fleet,
-        facts: &FleetDecisionFacts,
+        maybe_construction_site: &Option<Construction>,
         latest_market_entries: &Vec<MarketEntry>,
         ship_prices: &ShipPriceInfo,
         waypoints: &Vec<Waypoint>,
@@ -85,12 +87,17 @@ impl ConstructJumpGateFleet {
         let best_new_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
             trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, active_trade_routes);
 
+        let maybe_materialized_supply_chain = admiral
+            .materialized_supply_chain_manager
+            .get_materialized_supply_chain_for_system(cfg.system_symbol.clone());
+
         let new_tasks = if admiral.ship_purchase_demand.is_empty() {
             let best_actions_for_ships = determine_construction_fleet_actions(
                 admiral,
-                facts,
                 &fleet.id,
                 latest_market_entries,
+                &maybe_materialized_supply_chain,
+                maybe_construction_site,
                 ship_prices,
                 &waypoint_map,
                 unassigned_ships_of_fleet,
@@ -123,7 +130,8 @@ impl ConstructJumpGateFleet {
                 admiral_ship_purchase_demand: admiral.ship_purchase_demand.clone(),
                 cfg: cfg.clone(),
                 fleet: fleet.clone(),
-                facts: facts.clone(),
+                maybe_materialized_supply_chain: maybe_materialized_supply_chain.clone(),
+                maybe_construction_site: maybe_construction_site.clone(),
                 latest_market_entries: latest_market_entries.clone(),
                 ship_prices: ship_prices.clone(),
                 waypoints: waypoints.clone(),
@@ -184,9 +192,10 @@ pub fn create_trading_tickets(trading_opportunities_within_budget: &[EvaluatedTr
 
 async fn determine_construction_fleet_actions(
     admiral: &FleetAdmiral,
-    facts: &FleetDecisionFacts,
     my_fleet_id: &FleetId,
     latest_market_entries: &Vec<MarketEntry>,
+    maybe_materialized_supply_chain: &Option<MaterializedSupplyChain>,
+    maybe_construction_site: &Option<Construction>,
     ship_prices: &ShipPriceInfo,
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
     unassigned_ships_of_fleet: &[&Ship],
@@ -250,9 +259,8 @@ async fn determine_construction_fleet_actions(
 
     let is_low_on_cash = fleet_budget.available_capital() < budget_required_for_trading;
 
-    let prioritized_actions = if let Some(materialized_supply_chain) = facts.materialized_supply_chain.clone() {
-        let required_construction_materials = facts
-            .construction_site
+    let prioritized_actions = if let Some(materialized_supply_chain) = maybe_materialized_supply_chain.clone() {
+        let required_construction_materials = maybe_construction_site
             .clone()
             .map(|cs| cs.missing_construction_materials())
             .unwrap_or_default();
@@ -303,7 +311,7 @@ async fn determine_construction_fleet_actions(
                 DeliverConstructionMaterials {
                     trade_good_symbol: mtg.symbol.clone(),
                     from: wps.clone(),
-                    to: facts.construction_site.clone().unwrap().symbol,
+                    to: maybe_construction_site.clone().unwrap().symbol,
                     units: volume,
                     market_trade_good: mtg.clone(),
                     estimated_costs: Credits::from(mtg.purchase_price) * volume,
@@ -718,6 +726,7 @@ impl PotentialConstructionTask {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
     use st_domain::budgeting::test_sync_ledger::create_test_ledger_setup;
     use st_domain::budgeting::treasury_redesign::ImprovedTreasurer;
     use tokio::test;
@@ -804,6 +813,10 @@ available_capital_after {available_capital_after} < 4_000c.
             ledger_archiving_task_sender,
         );
 
+        let materialized_supply_chain_manager = MaterializedSupplyChainManager::new();
+        if let Some(msc) = &input.maybe_materialized_supply_chain {
+            materialized_supply_chain_manager.register_materialized_supply_chain(msc.system_symbol.clone(), msc.clone())?;
+        }
         let admiral = FleetAdmiral {
             completed_fleet_tasks: input.admiral_completed_fleet_tasks.clone(),
             fleets: input.admiral_fleets.clone(),
@@ -815,6 +828,7 @@ available_capital_after {available_capital_after} < 4_000c.
             active_trade_ids: input.admiral_active_trade_ids.clone(),
             stationary_probe_locations: input.admiral_stationary_probe_locations.clone(),
             treasurer: treasurer.clone(),
+            materialized_supply_chain_manager,
             ship_purchase_demand: input.admiral_ship_purchase_demand.clone(),
         };
 
@@ -822,7 +836,7 @@ available_capital_after {available_capital_after} < 4_000c.
             &admiral,
             &input.cfg,
             &input.fleet,
-            &input.facts,
+            &input.maybe_construction_site,
             &input.latest_market_entries,
             &input.ship_prices,
             &input.waypoints,

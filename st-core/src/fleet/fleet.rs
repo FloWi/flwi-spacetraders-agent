@@ -8,6 +8,7 @@ use crate::fleet::siphoning_fleet::SiphoningFleet;
 use crate::fleet::supply_chain_test::format_number;
 use crate::fleet::system_spawning_fleet::SystemSpawningFleet;
 use crate::marketplaces::marketplaces::{find_marketplaces_for_exploration, find_shipyards_for_exploration};
+use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
 use crate::pagination::fetch_all_pages;
 use crate::st_client::StClientTrait;
 use crate::transfer_cargo_manager::TransferCargoManager;
@@ -28,9 +29,9 @@ use st_domain::TradeGoodSymbol::{MOUNT_GAS_SIPHON_I, MOUNT_MINING_LASER_I, MOUNT
 use st_domain::{
     get_exploration_tasks_for_waypoint, trading, ConstructJumpGateFleetConfig, Construction, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId,
     FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MarketTradeGood,
-    MiningFleetConfig, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask, ShipTaskCompletionAnalysis,
-    ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol, TradingFleetConfig,
-    TransactionActionEvent, Waypoint, WaypointSymbol, WaypointType,
+    MaterializedSupplyChain, MiningFleetConfig, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask,
+    ShipTaskCompletionAnalysis, ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol,
+    TradingFleetConfig, TransactionActionEvent, Waypoint, WaypointSymbol, WaypointType,
 };
 use st_store::bmc::Bmc;
 use st_store::{load_fleet_overview, upsert_fleets_data, Ctx};
@@ -77,6 +78,7 @@ pub struct FleetAdmiral {
     pub active_trade_ids: HashMap<ShipSymbol, TicketId>,
     pub stationary_probe_locations: Vec<StationaryProbeLocation>,
     pub treasurer: ThreadSafeTreasurer,
+    pub materialized_supply_chain_manager: MaterializedSupplyChainManager,
     pub ship_purchase_demand: VecDeque<(ShipType, FleetTask)>,
 }
 
@@ -544,6 +546,7 @@ Fleet Budgets after rebalancing
 
                 if let Some((fleet, ship_task)) = maybe_fleet.zip(maybe_ship_task) {
                     let fleet_decision_facts: FleetDecisionFacts = collect_fleet_decision_facts(Arc::clone(&bmc), &ship.nav.system_symbol).await?;
+                    self.update_materialized_supply_chain(&fleet_decision_facts.materialized_supply_chain)?;
                     match (&fleet.cfg, ship_action) {
                         (SystemSpawningCfg(cfg), ShipAction::CollectWaypointInfos) => {
                             match SystemSpawningFleet::check_for_task_completion(ship_task, fleet, &fleet_tasks, cfg, &fleet_decision_facts) {
@@ -793,6 +796,12 @@ Fleet Budgets after rebalancing
 
             let agent_info = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?;
 
+            let materialized_supply_chain_manager = MaterializedSupplyChainManager::new();
+
+            if let Some(msc) = facts.materialized_supply_chain {
+                materialized_supply_chain_manager.register_materialized_supply_chain(system_symbol.clone(), msc)?;
+            }
+
             let (treasurer, treasurer_archiver_join_handle) = Self::initialize_treasurer(bmc.clone()).await?;
 
             let current_ship_demands = get_all_next_ship_purchases(&ship_map, &fleet_phase);
@@ -809,6 +818,7 @@ Fleet Budgets after rebalancing
                 active_trade_ids: Default::default(),
                 stationary_probe_locations: overview.stationary_probe_locations,
                 treasurer: treasurer.clone(),
+                materialized_supply_chain_manager,
                 ship_purchase_demand: VecDeque::from(current_ship_demands),
             };
 
@@ -896,6 +906,12 @@ Fleet Budgets after rebalancing
             .store_agent(&Ctx::Anonymous, &agent_info)
             .await?;
 
+        let materialized_supply_chain_manager = MaterializedSupplyChainManager::new();
+
+        if let Some(msc) = facts.materialized_supply_chain {
+            materialized_supply_chain_manager.register_materialized_supply_chain(system_symbol.clone(), msc)?;
+        }
+
         let (treasurer, treasurer_archiver_join_handle) = Self::initialize_treasurer(bmc.clone()).await?;
 
         let current_ship_demands = get_all_next_ship_purchases(&ship_map, &fleet_phase);
@@ -916,6 +932,7 @@ Fleet Budgets after rebalancing
             active_trade_ids: Default::default(),
             stationary_probe_locations,
             treasurer,
+            materialized_supply_chain_manager,
             ship_purchase_demand: VecDeque::from(current_ship_demands),
         };
 
@@ -1006,7 +1023,7 @@ Fleet Budgets after rebalancing
                         admiral,
                         cfg,
                         fleet,
-                        facts,
+                        &facts.construction_site,
                         &latest_market_data,
                         &ship_prices,
                         &waypoints,
@@ -1099,8 +1116,8 @@ Fleet Budgets after rebalancing
                     }
                 }
                 TradingCfg(cfg) => Err(anyhow!("pure_compute_ship_tasks for TradingCfg not implemented yet")),
-                MiningCfg(cfg) => MiningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet),
-                SiphoningCfg(cfg) => SiphoningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet),
+                MiningCfg(cfg) => MiningFleet::compute_ship_tasks(cfg, &unassigned_ships_of_fleet),
+                SiphoningCfg(cfg) => SiphoningFleet::compute_ship_tasks(cfg, &unassigned_ships_of_fleet),
             };
 
             match either_computed_new_tasks {
@@ -1561,6 +1578,15 @@ Json entries of all ledger entries after dismantling the fleets:\n{}
     async fn mark_transaction_completed_to_treasurer(&mut self, ship_symbol: &ShipSymbol) {
         self.active_trade_ids.remove(ship_symbol);
     }
+
+    pub(crate) fn update_materialized_supply_chain(&self, maybe_materialized_supply_chain: &Option<MaterializedSupplyChain>) -> Result<()> {
+        if let Some(msc) = maybe_materialized_supply_chain.clone() {
+            self.materialized_supply_chain_manager
+                .register_materialized_supply_chain(msc.system_symbol.clone(), msc)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Display)]
@@ -1585,6 +1611,8 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
         }),
         ShipTask::Trade { .. } | ShipTask::PrepositionShipForTrade { .. } => {
             let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &ship.nav.system_symbol).await?;
+            admiral.update_materialized_supply_chain(&facts.materialized_supply_chain)?;
+
             let ship_prices = bmc
                 .shipyard_bmc()
                 .get_latest_ship_prices(&Ctx::Anonymous, &ship.nav.system_symbol)
@@ -1618,18 +1646,12 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
                 ))
             }
         }
-        ShipTask::SiphonCarboHydratesAtWaypoint {
-            siphoning_waypoint,
-            delivery_locations,
-            demanded_goods,
-        } => {
+        ShipTask::SiphonCarboHydratesAtWaypoint { siphoning_waypoint } => {
             // Keep doing, what you're doing
             Ok(NewTaskResult::AssignNewTaskToShip {
                 ship_symbol: ship.symbol.clone(),
                 task: ShipTask::SiphonCarboHydratesAtWaypoint {
                     siphoning_waypoint: siphoning_waypoint.clone(),
-                    delivery_locations: delivery_locations.clone(),
-                    demanded_goods: demanded_goods.clone(),
                 },
             })
         }
