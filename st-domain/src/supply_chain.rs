@@ -283,6 +283,15 @@ graph LR
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct MaterializeSupplyChainArgsDump {
+    system_symbol: SystemSymbol,
+    supply_chain: SupplyChain,
+    market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)>,
+    waypoint_map: HashMap<WaypointSymbol, Waypoint>,
+    maybe_construction_site: Option<Construction>,
+}
+
 pub fn materialize_supply_chain(
     system_symbol: SystemSymbol,
     supply_chain: &SupplyChain,
@@ -290,6 +299,19 @@ pub fn materialize_supply_chain(
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
     maybe_construction_site: &Option<Construction>,
 ) -> anyhow::Result<MaterializedSupplyChain> {
+    // let args_dump = MaterializeSupplyChainArgsDump {
+    //     system_symbol: system_symbol.clone(),
+    //     supply_chain: supply_chain.clone(),
+    //     market_data: market_data.iter().cloned().collect(),
+    //     waypoint_map: waypoint_map
+    //         .iter()
+    //         .map(|(wps, &wp)| (wps.clone(), wp.clone()))
+    //         .collect(),
+    //     maybe_construction_site: maybe_construction_site.clone(),
+    // };
+    //
+    // println!("materialize_supply_chain_args: {}", serde_json::to_string(&args_dump).unwrap());
+
     let missing_construction_materials: Vec<&ConstructionMaterial> = match maybe_construction_site {
         None => {
             vec![]
@@ -504,6 +526,15 @@ fn group_markets_by_type(
         .into_group_map()
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct DumpSupplyChainStateForComputeAllRoutes {
+    relevant_products: Vec<TradeGoodSymbol>,
+    raw_delivery_routes: Vec<RawDeliveryRoute>,
+    relevant_supply_chain: Vec<SupplyChainNode>,
+    waypoint_map: HashMap<WaypointSymbol, Waypoint>,
+    market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)>,
+}
+
 fn compute_all_routes(
     relevant_products: &[TradeGoodSymbol],
     raw_delivery_routes: &[RawDeliveryRoute],
@@ -612,7 +643,26 @@ fn compute_all_routes(
                 .ok_or(anyhow!("Supply market of {} should exist", candidate))?;
 
             if candidate_export_entries.len() > 1 {
+                // let debug_obj = DumpSupplyChainStateForComputeAllRoutes {
+                //     relevant_products: relevant_products.iter().cloned().collect(),
+                //     raw_delivery_routes: raw_delivery_routes.iter().cloned().collect(),
+                //     relevant_supply_chain: relevant_supply_chain.iter().cloned().collect(),
+                //     waypoint_map: waypoint_map
+                //         .iter()
+                //         .map(|(wp, &mwp)| (wp.clone(), mwp.clone()))
+                //         .collect(),
+                //     market_data: market_data.iter().cloned().collect(),
+                // };
+
+                // scenario:
+                // candidate: COPPER
+                // dependency-providers: COPPER_ORE EXCHANGE market B7
+                // candidate_export_entries:
+                //   - COPPER EXPORT at H51
+                //   - COPPER EXPORT at K82
+
                 println!("We expect only one producing market of {}", candidate);
+                //serde_json::to_string(&debug_obj)?);
             }
             let (candidate_export_wps, candidate_export_mtg) = candidate_export_entries.first().cloned().unwrap();
 
@@ -728,11 +778,13 @@ pub fn compute_raw_delivery_routes(
         .unique()
         .cloned()
         .collect::<HashSet<_>>();
+
     let outputs: HashSet<TradeGoodSymbol> = complete_supply_chain
         .iter()
         .map(|scn| scn.good.clone())
         .unique()
         .collect::<HashSet<_>>();
+
     let intermediates: HashSet<TradeGoodSymbol> = inputs
         .intersection(&outputs)
         .cloned()
@@ -752,6 +804,7 @@ pub fn compute_raw_delivery_routes(
         .filter(|t| intermediates.contains(t).not() && outputs.contains(t).not())
         .cloned()
         .collect::<HashSet<_>>();
+
     let end_products = outputs
         .iter()
         .filter(|t| intermediates.contains(t).not() && inputs.contains(t).not())
@@ -1227,4 +1280,36 @@ pub fn calc_scored_supply_chain_routes(
         .collect_vec();
 
     scored_supply_routes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_computing_materialized_supply_chain_where_COPPER_ORE_should_go_directly_to_one_of_the_COPPER_exports() -> anyhow::Result<()> {
+        let json_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/materialize_supply_chain_input_data.json"));
+
+        let test_input: MaterializeSupplyChainArgsDump = serde_json::from_str(json_str).unwrap();
+        let result = materialize_supply_chain(
+            test_input.system_symbol,
+            &test_input.supply_chain,
+            &test_input.market_data,
+            &test_input
+                .waypoint_map
+                .iter()
+                .map(|(k, v)| (k.clone(), v))
+                .collect(),
+            &test_input.maybe_construction_site,
+        )?;
+        let copper_ore_raw_route = result
+            .raw_delivery_routes
+            .iter()
+            .find(|raw| raw.delivery_market_entry.symbol == TradeGoodSymbol::COPPER_ORE)
+            .unwrap();
+
+        assert_eq!(copper_ore_raw_route.delivery_location, WaypointSymbol("X1-VF23-H51".to_string()));
+
+        Ok(())
+    }
 }
