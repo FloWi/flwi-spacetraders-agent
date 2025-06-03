@@ -1,12 +1,12 @@
 use axum::http::Extensions;
 use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 use log::{debug, error};
-use reqwest::{Client, Request, Response};
+use reqwest::{Client, Request, Response, StatusCode};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, Middleware, Next};
 use reqwest_retry::policies::ExponentialBackoff;
 use reqwest_retry::RetryTransientMiddleware;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::Sender;
 
 pub fn create_client(maybe_bearer_token: Option<String>, reset_tx: Option<Sender<ResetSignal>>) -> ClientWithMiddleware {
@@ -17,7 +17,10 @@ pub fn create_client(maybe_bearer_token: Option<String>, reset_tx: Option<Sender
 
     let rate_limiting_middleware = RateLimitingMiddleware { limiter: arc_limiter };
 
-    let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
+    // my ISP resets the connection at night. Might need a few more attempts then
+    let retry_policy = ExponentialBackoff::builder()
+        .retry_bounds(Duration::from_millis(500), Duration::from_secs(120))
+        .build_with_total_retry_duration_and_max_retries(Duration::from_secs(120));
 
     let mut client_builder = ClientBuilder::new(reqwest_client)
         .with(RetryTransientMiddleware::new_with_policy(retry_policy))
@@ -61,7 +64,11 @@ impl Middleware for ResetDetectionMiddleware {
 
         // Check for reset conditions in the response
         if let Ok(resp) = &response {
-            if resp.status().as_u16() == 401 {
+            let status_code = resp.status();
+            let status_code_u16 = status_code.as_u16();
+
+            if status_code == StatusCode::UNAUTHORIZED {
+                // 401
                 // We can't clone the response, but we can detect the reset by the status code
                 // For a more comprehensive check, you would need to buffer the response body
                 // in your ErrorLoggingMiddleware and check its content there
@@ -69,14 +76,21 @@ impl Middleware for ResetDetectionMiddleware {
                 // Typically, a 401 in SpaceTraders API after having a token usually means
                 // the token has expired due to a reset
                 let _ = self.reset_tx.send(ResetSignal::TokenExpired).await;
-            } else if resp.status().as_u16() == 503 || resp.status().as_u16() == 504 {
+            } else if status_code == StatusCode::SERVICE_UNAVAILABLE || status_code == StatusCode::GATEWAY_TIMEOUT {
+                // 503 or 504
                 // Server might be down or reset
                 let _ = self.reset_tx.send(ResetSignal::ServerReset).await;
             }
         } else if let Err(err) = &response {
             // Handle connection errors that might indicate a reset
-            if err.is_connect() || err.is_timeout() {
-                let _ = self.reset_tx.send(ResetSignal::ServerReset).await;
+            let is_connect_error = err.is_connect();
+            let is_timeout_error = err.is_timeout();
+            if is_connect_error || is_timeout_error {
+                error!(
+                    "connection related request error. This should be retried automatically. Error: {}. is_connect_error: {is_connect_error}, is_timeout_error: {is_timeout_error}",
+                    err
+                );
+                //let _ = self.reset_tx.send(ResetSignal::ServerReset).await;
             }
         }
 
