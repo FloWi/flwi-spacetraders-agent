@@ -919,17 +919,8 @@ pub fn compute_raw_delivery_routes(
             match maybe_closest_one {
                 None => None,
                 Some(closest_one) => {
-                    let maybe_best_one: Option<(MarketTradeGood, WaypointSymbol, u32)> = if closest_one.0.trade_good_type == TradeGoodType::Exchange {
-                        Some(closest_one)
-                    } else if export_markets_to_supply.len() == 1 {
-                        // only export market importing this good
-                        export_markets_to_supply.first().cloned()
-                    } else if export_markets_to_supply.len() > 1 && exchange_markets.is_empty().not() {
-                        // closest exchange market
-                        exchange_markets.iter().min_by_key(|t| t.2).cloned()
-                    } else {
-                        None
-                    };
+                    // Let's just go with the best one and see
+                    let maybe_best_one: Option<(MarketTradeGood, WaypointSymbol, u32)> = Some(closest_one);
                     let source = raw_material_sources
                         .iter()
                         .find(|rms| rms.trade_good == *raw_material)
@@ -1302,14 +1293,37 @@ mod tests {
                 .collect(),
             &test_input.maybe_construction_site,
         )?;
+
         let copper_ore_raw_route = result
             .raw_delivery_routes
             .iter()
             .find(|raw| raw.delivery_market_entry.symbol == TradeGoodSymbol::COPPER_ORE)
             .unwrap();
 
-        assert_eq!(copper_ore_raw_route.delivery_location, WaypointSymbol("X1-VF23-H51".to_string()));
+        let copper_routes = result
+            .all_routes
+            .iter()
+            .filter_map(|route| match route {
+                DeliveryRoute::Raw(_) => None,
+                DeliveryRoute::Processed { route, rank } => (route.trade_good == TradeGoodSymbol::COPPER).then_some(route.clone()),
+            })
+            .collect_vec();
 
+        let expected_copper_ore_delivery_location = WaypointSymbol("X1-VF23-H51".to_string());
+        let expected_copper_producer_location = expected_copper_ore_delivery_location.clone();
+
+        // we expect the raw material being delivered directly to the closest one of the COPPER EXPORT markets
+        assert_eq!(copper_ore_raw_route.delivery_location, expected_copper_ore_delivery_location);
+
+        // the source of COPPER is this location as well
+        assert_eq!(
+            copper_routes
+                .iter()
+                .map(|r| r.source_location.clone())
+                .unique()
+                .collect_vec(),
+            vec![expected_copper_producer_location]
+        );
         Ok(())
     }
 }
