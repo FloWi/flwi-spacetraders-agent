@@ -919,8 +919,18 @@ pub fn compute_raw_delivery_routes(
             match maybe_closest_one {
                 None => None,
                 Some(closest_one) => {
-                    // Let's just go with the best one and see
-                    let maybe_best_one: Option<(MarketTradeGood, WaypointSymbol, u32)> = Some(closest_one);
+                    let maybe_best_one: Option<(MarketTradeGood, WaypointSymbol, u32)> = if closest_one.0.trade_good_type == TradeGoodType::Exchange {
+                        Some(closest_one)
+                    } else if export_markets_to_supply.len() == 1 {
+                        // only export market importing this good
+                        export_markets_to_supply.first().cloned()
+                    } else if export_markets_to_supply.len() > 1 && exchange_markets.is_empty().not() {
+                        // closest exchange market
+                        exchange_markets.iter().min_by_key(|t| t.2).cloned()
+                    } else {
+                        None
+                    };
+
                     let source = raw_material_sources
                         .iter()
                         .find(|rms| rms.trade_good == *raw_material)
