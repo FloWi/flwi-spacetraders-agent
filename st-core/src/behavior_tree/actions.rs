@@ -871,7 +871,8 @@ impl Actionable for ShipAction {
                                 break Ok(Success);
                             }
                             Err(e) => {
-                                if e.to_string().contains("ShipSurveyExhaustedError") {
+                                if e.to_string().contains("has been exhausted") {
+                                    // actual error code is 4224 FIXME: use real error codes in api responses
                                     if let Some(survey) = maybe_survey {
                                         args.blackboard.mark_survey_as_exhausted(&survey).await?;
                                     }
