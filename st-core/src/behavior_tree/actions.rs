@@ -871,8 +871,14 @@ impl Actionable for ShipAction {
                                 break Ok(Success);
                             }
                             Err(e) => {
-                                if e.to_string().contains("has been exhausted") {
-                                    // actual error code is 4224 FIXME: use real error codes in api responses
+                                // FIXME: use real error codes in api responses
+                                if e.to_string().contains("4224") {
+                                    // has been exhausted
+                                    if let Some(survey) = maybe_survey {
+                                        args.blackboard.mark_survey_as_exhausted(&survey).await?;
+                                    }
+                                } else if e.to_string().contains("4221") {
+                                    // Ship survey failed. Target signature is no longer in range or valid
                                     if let Some(survey) = maybe_survey {
                                         args.blackboard.mark_survey_as_exhausted(&survey).await?;
                                     }

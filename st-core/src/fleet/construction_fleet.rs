@@ -17,7 +17,7 @@ use st_domain::{
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Not;
-use tracing::event;
+use tracing::{debug, event};
 use tracing_core::Level;
 
 pub struct ConstructJumpGateFleet;
@@ -169,6 +169,11 @@ pub fn create_trading_tickets(trading_opportunities_within_budget: &[EvaluatedTr
                     .sell_market_trade_good_entry
                     .trade_volume,
             ) as u32;
+
+        if volume == 0 {
+            debug!("Skipped creating a ticket for trading opportunity with a volume of 0: '{ev_opp:?}'.");
+            continue;
+        }
 
         let estimated_costs = Credits::from(
             ev_opp
@@ -752,6 +757,19 @@ mod tests {
     }
 
     #[test]
+    async fn test_compute_new_tasks_from_broken_runtime_state_3() -> Result<()> {
+        let json_str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fixtures/no-task-found-also-duplicate-tickets-for-ships.json"
+        ));
+
+        let actual_tasks = compute_tasks_from_snapshot_file(json_str).await?;
+
+        assert!(actual_tasks.is_empty().not(), "Should have found some tasks");
+        Ok(())
+    }
+
+    #[test]
     async fn test_debug_ship_purchases() -> Result<()> {
         let json_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/broken-again-details.json"));
         let input = serde_json::from_str::<DebugNoNewTaskFacts>(json_str)?;
@@ -812,6 +830,8 @@ available_capital_after {available_capital_after} < 4_000c.
                 .collect_vec(),
             ledger_archiving_task_sender,
         );
+
+        let active_tickets = treasurer.get_active_tickets().await?;
 
         let materialized_supply_chain_manager = MaterializedSupplyChainManager::new();
         if let Some(msc) = &input.maybe_materialized_supply_chain {

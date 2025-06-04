@@ -19,7 +19,7 @@ pub fn create_client(maybe_bearer_token: Option<String>, reset_tx: Option<Sender
 
     // my ISP resets the connection at night. Might need a few more attempts then
     let retry_policy = ExponentialBackoff::builder()
-        .retry_bounds(Duration::from_millis(500), Duration::from_secs(120))
+        .retry_bounds(Duration::from_millis(50), Duration::from_secs(120))
         .build_with_total_retry_duration_and_max_retries(Duration::from_secs(120));
 
     let mut client_builder = ClientBuilder::new(reqwest_client)
@@ -151,7 +151,24 @@ impl Middleware for ErrorLoggingMiddleware {
 
         match &result {
             Ok(resp) if !resp.status().is_success() => {
-                error!("Request failed: {} {} - Status: {}, Duration: {:?}", method, url, resp.status(), duration);
+                let status = resp.status();
+
+                // reduce log-spam / false-positives with these conditions
+                match status {
+                    StatusCode::BAD_REQUEST if url.path().ends_with("/extract/survey") => {
+                        debug!(
+                            "Extraction using survey failed with 400. This happens when the survey is exhausted: {} {} - Status: {}, Duration: {:?}.",
+                            method, url, status, duration
+                        );
+                    }
+                    StatusCode::TOO_MANY_REQUESTS => {
+                        debug!(
+                            "Request failed due to rate-limit {} {} - Status: {}, Duration: {:?}",
+                            method, url, status, duration
+                        )
+                    }
+                    _ => error!("Request failed: {} {} - Status: {}, Duration: {:?}", method, url, status, duration),
+                }
             }
             Err(e) => {
                 error!("Request error: {} {} - Error: {}, Duration: {:?}", method, url, e, duration);

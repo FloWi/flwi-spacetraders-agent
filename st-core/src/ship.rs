@@ -2,6 +2,7 @@ use crate::st_client::StClientTrait;
 use anyhow::*;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
+use serde::Serialize;
 use st_domain::budgeting::treasury_redesign::FinanceTicket;
 use st_domain::{
     CreateChartBody, CreateSurveyResponse, ExtractResourcesResponse, FleetId, FlightMode, Fuel, JettisonCargoResponse, JumpGate, MarketData, MiningOpsConfig,
@@ -14,9 +15,10 @@ use std::ops::{Deref, DerefMut, Not};
 use std::sync::Arc;
 use tracing::debug;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct ShipOperations {
     pub ship: Ship,
+    #[serde(skip_serializing)]
     pub client: Arc<dyn StClientTrait>,
     pub travel_action_queue: VecDeque<TravelAction>,
     pub current_navigation_destination: Option<WaypointSymbol>,
@@ -36,24 +38,7 @@ impl PartialEq for ShipOperations {
 
 impl ShipOperations {
     pub(crate) fn to_debug_string(&self) -> String {
-        format!(
-            r#"
-ship: {:?}
-travel_action_queue: {:?},
-current_navigation_destination: {:?},
-explore_location_queue: {:?},
-permanent_observation_location: {:?},
-maybe_next_observation_time: {:?},
-        "#,
-            &self.ship,
-            &self.travel_action_queue,
-            &self.current_navigation_destination,
-            &self.explore_location_queue,
-            &self.permanent_observation_location,
-            &self.maybe_next_observation_time,
-        )
-        .trim()
-        .to_string()
+        serde_json::to_string(self).unwrap_or_default()
     }
 
     pub(crate) fn current_location(&self) -> WaypointSymbol {

@@ -41,6 +41,11 @@ pub fn find_trading_opportunities_sorted_by_profit_per_distance_unit(
                     let import_wp = waypoint_map.get(import_wps).unwrap();
                     let profit_per_unit = (import_mtg.sell_price - export_mtg.purchase_price) as u64;
                     let direct_distance = import_wp.distance_to(export_wp);
+                    let direct_distance = if direct_distance < 1 {
+                        1
+                    } else {
+                        direct_distance
+                    };
                     let profit_per_unit_per_distance = profit_per_unit as f64 / direct_distance as f64;
 
                     TradingOpportunity {
@@ -97,7 +102,7 @@ pub fn evaluate_trading_opportunities(
             let ship_wp = waypoint_map.get(&ship.nav.waypoint_symbol).unwrap();
             let ship_cargo_space = (ship.cargo.capacity - ship.cargo.units) as u32;
 
-            top_trading_opps.iter().map(move |trading_opp| {
+            top_trading_opps.iter().filter_map(move |trading_opp| {
                 let purchase_wp = waypoint_map
                     .get(&trading_opp.purchase_waypoint_symbol)
                     .unwrap();
@@ -124,7 +129,7 @@ pub fn evaluate_trading_opportunities(
                 let total_profit = trading_opp.profit_per_unit * units as u64;
                 let profit_per_distance = (total_profit as f64 / total_distance as f64) as u64;
 
-                EvaluatedTradingOpportunity {
+                (units > 0).then_some(EvaluatedTradingOpportunity {
                     ship_symbol: ship.symbol.clone(),
                     distance_to_start,
                     total_distance,
@@ -132,7 +137,7 @@ pub fn evaluate_trading_opportunities(
                     profit_per_distance_unit: profit_per_distance,
                     units,
                     trading_opportunity: (*trading_opp).clone(),
-                }
+                })
             })
         })
         .sorted_by_key(|ev| -(ev.profit_per_distance_unit as i64))
