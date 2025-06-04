@@ -7,8 +7,8 @@ use leptos_meta::Title;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    find_complete_supply_chain, Construction, DeliveryRoute, EvaluatedTradingOpportunity, GetConstructionResponse, MarketTradeGood, MaterializedSupplyChain,
-    SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, Waypoint, WaypointSymbol,
+    find_complete_supply_chain, Construction, DeliveryRoute, EvaluatedTradingOpportunity, FleetConfig, GetConstructionResponse, MarketTradeGood,
+    MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, Waypoint, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -61,6 +61,12 @@ async fn get_supply_chain_data() -> Result<
             .get_latest_market_data_for_system(&Ctx::Anonymous, &headquarters_waypoint.system_symbol())
             .await?;
 
+        let fleets = bmc.fleet_bmc().load_fleets(&Ctx::Anonymous).await?;
+        let ship_fleet_assignment = bmc
+            .fleet_bmc()
+            .load_ship_fleet_assignment(&Ctx::Anonymous)
+            .await?;
+
         let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
 
         let maybe_construction_site = bmc
@@ -89,10 +95,31 @@ async fn get_supply_chain_data() -> Result<
         let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await?;
 
         let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map);
-        let cargo_capable_ships = ships.iter().filter(|s| s.cargo.capacity > 0).collect_vec();
+
+        println!("calculated {} trading_opportunities", trading_opportunities.len());
+
+        let maybe_construction_fleet = fleets
+            .iter()
+            .find(|f| matches!(f.cfg, FleetConfig::ConstructJumpGateCfg { .. }));
+
+        let trading_ships = if let Some(construction_fleet) = maybe_construction_fleet {
+            let construction_fleet_ships = ship_fleet_assignment
+                .iter()
+                .filter_map(|(ss, fleet_id)| (fleet_id == &construction_fleet.id).then_some(ss.clone()))
+                .collect::<HashSet<_>>();
+
+            ships
+                .iter()
+                .filter(|ship| construction_fleet_ships.contains(&ship.symbol))
+                .collect_vec()
+        } else {
+            vec![]
+        };
+
 
         let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
-            trading::evaluate_trading_opportunities(&cargo_capable_ships, &waypoint_map, &trading_opportunities, agent.credits);
+            trading::evaluate_trading_opportunities(&trading_ships, &waypoint_map, &trading_opportunities, agent.credits);
+
 
         let active_trades = HashSet::new();
 
@@ -165,12 +192,26 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                 .trading_opportunities
                                                 .iter()
                                                 .cloned()
+                                                .sorted_by_key(|tr_opp| tr_opp.profit_per_unit_per_distance )
+                                                .rev()
                                                 .map(TradingOpportunityRow::from)
                                                 .collect_vec();
 
                                             view! {
                                                 <div class="flex flex-col gap-4">
                                                     <div class="w-full flex flex-col gap-4">
+                                                        <h2 class="text-2xl font-bold">"Trading Opportunities"</h2>
+                                                        <div class="rounded-md overflow-clip border dark:border-gray-700 w-full"
+                                                            .to_string()>
+                                                            <table class="text-sm text-left text-gray-500 dark:text-gray-400 mb-[-1px]">
+                                                                <TableContent
+                                                                    rows=trading_opportunities_table_data
+                                                                    scroll_container="html"
+                                                                />
+
+                                                            </table>
+                                                        </div>
+
                                                         <h2 class="text-2xl font-bold">"Explanation"</h2>
                                                         <pre>{materialized_supply_chain.explanation}</pre>
                                                         <h2 class="text-2xl font-bold">"Raw Delivery Routes"</h2>
@@ -214,17 +255,6 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                                 )
                                                                 .unwrap()}
                                                         </pre>
-                                                        <h2 class="text-2xl font-bold">"Trading Opportunities"</h2>
-                                                        <div class="rounded-md overflow-clip border dark:border-gray-700 w-full"
-                                                            .to_string()>
-                                                            <table class="text-sm text-left text-gray-500 dark:text-gray-400 mb-[-1px]">
-                                                                <TableContent
-                                                                    rows=trading_opportunities_table_data
-                                                                    scroll_container="html"
-                                                                />
-
-                                                            </table>
-                                                        </div>
 
                                                         <h2 class="text-2xl font-bold">"Construction Site"</h2>
                                                         <pre>
