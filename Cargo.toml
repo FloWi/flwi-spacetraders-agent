@@ -4,7 +4,7 @@ members = ["st-core", "st-server", "st-domain", "st-store"]
 resolver = "2"
 
 [workspace.dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1" }
 rand = { version = "0.9.0" }
 itertools = "0.14.0"
 chrono = { version = "0.4.39", features = ["serde"] }
