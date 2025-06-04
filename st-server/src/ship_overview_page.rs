@@ -6,13 +6,16 @@ use leptos::{component, view, IntoView};
 use leptos_use::use_interval_fn;
 use phosphor_leptos::{Icon, CLOCK, GAS_PUMP, PACKAGE, TRUCK};
 use serde::{Deserialize, Serialize};
-use st_domain::{NavStatus, Ship, ShipSymbol, ShipTask};
+use st_domain::budgeting::treasury_redesign::{ActiveTrade, FinanceTicket, FinanceTicketDetails, FinanceTicketState, ImprovedTreasurer, LedgerEntry};
+use st_domain::{NavStatus, Ship, ShipSymbol, ShipTask, TicketId};
 use std::collections::HashMap;
+use std::ops::Not;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
     ships: Vec<Ship>,
     ship_tasks: HashMap<ShipSymbol, ShipTask>,
+    active_trades: HashMap<ShipSymbol, Vec<ActiveTrade>>,
     last_update: DateTime<Utc>,
 }
 
@@ -46,15 +49,111 @@ async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOvervie
         .await
         .expect("load_ship_tasks");
 
+    let ledger_entries = bmc
+        .ledger_bmc()
+        .get_ledger_entries_in_order(&Ctx::Anonymous)
+        .await
+        .expect("get_ledger_entries");
+    let active_trades: HashMap<ShipSymbol, Vec<ActiveTrade>> = get_active_trades_from_ledger_entries(ledger_entries);
+
     Ok(ShipsOverview {
         ships,
         ship_tasks,
+        active_trades,
         last_update: Utc::now(),
     })
 }
 
+fn get_active_trades_from_ledger_entries(ledger_entries: Vec<LedgerEntry>) -> HashMap<ShipSymbol, Vec<ActiveTrade>> {
+    let mut active_tickets: HashMap<TicketId, FinanceTicket> = HashMap::new();
+    let mut completed_tickets: HashMap<TicketId, FinanceTicket> = HashMap::new();
+    for entry in ledger_entries.iter().rev() {
+        match entry {
+            LedgerEntry::TicketCreated { ticket_details, .. } => {
+                if completed_tickets
+                    .contains_key(&ticket_details.ticket_id)
+                    .not()
+                {
+                    active_tickets.insert(ticket_details.ticket_id.clone(), ticket_details.clone());
+                }
+            }
+            LedgerEntry::TicketCompleted {
+                fleet_id,
+                finance_ticket,
+                actual_units,
+                actual_price_per_unit,
+                total,
+            } => {
+                completed_tickets.insert(finance_ticket.ticket_id.clone(), finance_ticket.clone());
+                active_tickets.remove(&finance_ticket.ticket_id);
+            }
+            _ => {}
+        }
+    }
+
+    let get_ticket_with_state = |id: &TicketId| {
+        active_tickets
+            .get(id)
+            .map(|ticket| (ticket.clone(), FinanceTicketState::Open))
+            .or_else(|| {
+                completed_tickets
+                    .get(&id)
+                    .map(|ticket| (ticket.clone(), FinanceTicketState::Completed))
+            })
+    };
+
+    let mut active_trades: HashMap<ShipSymbol, Vec<ActiveTrade>> = HashMap::new();
+
+    for ticket in active_tickets.values() {
+        let maybe_matching_purchase_ticket = match &ticket.details {
+            FinanceTicketDetails::SupplyConstructionSite(d) => d
+                .maybe_matching_purchase_ticket
+                .and_then(|purchase_ticket_id| get_ticket_with_state(&purchase_ticket_id)),
+            FinanceTicketDetails::SellTradeGoods(d) => d
+                .maybe_matching_purchase_ticket
+                .and_then(|purchase_ticket_id| get_ticket_with_state(&purchase_ticket_id)),
+            FinanceTicketDetails::PurchaseTradeGoods(_) => None,
+            FinanceTicketDetails::PurchaseShip(_) => None,
+            FinanceTicketDetails::RefuelShip(_) => None,
+        };
+
+        active_trades
+            .entry(ticket.ship_symbol.clone())
+            .or_default()
+            .push(ActiveTrade {
+                maybe_purchase: maybe_matching_purchase_ticket,
+                delivery: ticket.clone(),
+            });
+    }
+
+    active_trades
+}
+
+fn render_trades(active_trades: Vec<ActiveTrade>) -> impl IntoView {
+    active_trades
+        .iter()
+        .map(|t| {
+            if let Some((purchase_ticket, state)) = t.maybe_purchase.clone() {
+                view! {
+                    <ul>
+                        <li>{format!("{} ({state})", purchase_ticket.details.get_description())}</li>
+                        <li>{format!("{}", t.delivery.details.get_description())}</li>
+                    </ul>
+                }
+                .into_any()
+            } else {
+                view! {
+                <ul>
+                    <li>{format!("{}", t.delivery.details.get_description())}</li>
+                </ul>                }
+                .into_any()
+            }
+        })
+        .collect_view()
+}
+
 #[component]
-pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>) -> impl IntoView {
+pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, active_trades: Vec<ActiveTrade>) -> impl IntoView {
     let is_traveling = match ship.nav.status {
         NavStatus::InTransit => true,
         NavStatus::InOrbit => false,
@@ -93,6 +192,9 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>) -> im
                             .map(|t| t.to_string())
                             .unwrap_or("---".to_string())}
                     </p>
+                    <div class="text-slate-400">
+                        {move || render_trades(active_trades.clone())}
+                    </div>
                 </div>
             </div>
             <div class="flex flex-col gap-1">
@@ -154,7 +256,7 @@ pub fn ShipOverviewPage() -> impl IntoView {
                                         <p>
                                             {format!("Last Update: {:?}", ships_overview.last_update)}
                                         </p>
-                                        <div class="flex flex-wrap gap-2">
+                                        <div class="grid grid-cols-4 gap-4 p-4">
                                             {ships_overview
                                                 .ships
                                                 .iter()
@@ -163,8 +265,9 @@ pub fn ShipOverviewPage() -> impl IntoView {
                                                     let maybe_ship_task = ships_overview
                                                         .ship_tasks
                                                         .get(&ship.symbol);
+                                                let active_trades = ships_overview.active_trades.get(&ship.symbol).cloned().unwrap_or_default();
                                                     view! {
-                                                        <ShipCard ship=ship maybe_ship_task=maybe_ship_task />
+                                                        <ShipCard ship=ship maybe_ship_task=maybe_ship_task active_trades />
                                                     }
                                                 })
                                                 .collect_view()}

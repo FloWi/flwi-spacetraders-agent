@@ -81,6 +81,18 @@ pub enum FinanceTicketDetails {
     RefuelShip(RefuelShipTicketDetails),
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Display)]
+pub enum FinanceTicketState {
+    Open,
+    Completed,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ActiveTrade {
+    pub maybe_purchase: Option<(FinanceTicket, FinanceTicketState)>,
+    pub delivery: FinanceTicket,
+}
+
 impl FinanceTicketDetails {
     pub fn signum(&self) -> i64 {
         match self {
@@ -636,6 +648,17 @@ impl ImprovedTreasurer {
         } else {
             Err(anyhow!("Fleet not found {}", fleet_id))
         }
+    }
+
+    fn get_ticket_with_state(&self, ticket_id: &TicketId) -> Option<(FinanceTicket, FinanceTicketState)> {
+        self.active_tickets
+            .get(ticket_id)
+            .map(|t| (t.clone(), FinanceTicketState::Open))
+            .or_else(|| {
+                self.completed_tickets
+                    .get(ticket_id)
+                    .map(|t| (t.clone(), FinanceTicketState::Open))
+            })
     }
 
     fn get_active_trade_routes(&self) -> Result<Vec<ActiveTradeRoute>> {

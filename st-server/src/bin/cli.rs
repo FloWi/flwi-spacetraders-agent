@@ -48,6 +48,7 @@ async fn main() -> Result<()> {
         spacetraders_account_token,
         spacetraders_base_url,
         use_in_memory_agent,
+        no_agent,
     } = AppConfig::from_env().expect("cfg");
 
     //tracing_subscriber::registry().with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE)).with(EnvFilter::from_default_env()).init();
@@ -60,6 +61,7 @@ async fn main() -> Result<()> {
         spacetraders_account_token,
         spacetraders_base_url,
         use_in_memory_agent,
+        no_agent,
     };
 
     let args = Args::parse();
