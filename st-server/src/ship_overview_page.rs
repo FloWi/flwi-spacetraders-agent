@@ -4,16 +4,16 @@ use itertools::*;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use leptos_use::use_interval_fn;
-use phosphor_leptos::{Icon, CLOCK, GAS_PUMP, PACKAGE, TRUCK};
+use phosphor_leptos::{Icon, ATOM, BINOCULARS, CLOCK, COMPASS_ROSE, GAS_PUMP, HAMMER, HOURGLASS, PACKAGE, ROCKET, TRUCK};
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::treasury_redesign::{ActiveTrade, FinanceTicket, FinanceTicketDetails, FinanceTicketState, ImprovedTreasurer, LedgerEntry};
-use st_domain::{NavStatus, Ship, ShipSymbol, ShipTask, TicketId};
-use std::collections::HashMap;
+use st_domain::{Fleet, NavStatus, Ship, ShipSymbol, ShipTask, TicketId};
+use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
-    ships: Vec<Ship>,
+    grouped_ships: Vec<(Fleet, Vec<Ship>)>,
     ship_tasks: HashMap<ShipSymbol, ShipTask>,
     active_trades: HashMap<ShipSymbol, Vec<ActiveTrade>>,
     last_update: DateTime<Utc>,
@@ -56,8 +56,44 @@ async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOvervie
         .expect("get_ledger_entries");
     let active_trades: HashMap<ShipSymbol, Vec<ActiveTrade>> = get_active_trades_from_ledger_entries(ledger_entries);
 
+    let fleets = bmc
+        .fleet_bmc()
+        .load_fleets(&Ctx::Anonymous)
+        .await
+        .expect("load_fleets");
+    let ship_fleet_assignment = bmc
+        .fleet_bmc()
+        .load_ship_fleet_assignment(&Ctx::Anonymous)
+        .await
+        .expect("load_ship_fleet_assignment");
+
+    let ship_map = ships
+        .into_iter()
+        .map(|ship| (ship.symbol.clone(), ship.clone()))
+        .collect::<HashMap<_, _>>();
+
+    let grouped_ships: Vec<(Fleet, Vec<Ship>)> = fleets
+        .into_iter()
+        .sorted_by_key(|f| f.id.0)
+        .map(|f| {
+            (
+                f.clone(),
+                ship_fleet_assignment
+                    .iter()
+                    .filter_map(|(ss, fleet_id)| {
+                        if fleet_id == &f.id {
+                            ship_map.get(&ss).cloned()
+                        } else {
+                            None
+                        }
+                    })
+                    .collect_vec(),
+            )
+        })
+        .collect_vec();
+
     Ok(ShipsOverview {
-        ships,
+        grouped_ships,
         ship_tasks,
         active_trades,
         last_update: Utc::now(),
@@ -136,16 +172,19 @@ fn render_trades(active_trades: Vec<ActiveTrade>) -> impl IntoView {
             if let Some((purchase_ticket, state)) = t.maybe_purchase.clone() {
                 view! {
                     <ul>
-                        <li>{format!("{} ({state})", purchase_ticket.details.get_description())}</li>
+                        <li>
+                            {format!("{} ({state})", purchase_ticket.details.get_description())}
+                        </li>
                         <li>{format!("{}", t.delivery.details.get_description())}</li>
                     </ul>
                 }
                 .into_any()
             } else {
                 view! {
-                <ul>
-                    <li>{format!("{}", t.delivery.details.get_description())}</li>
-                </ul>                }
+                    <ul>
+                        <li>{format!("{}", t.delivery.details.get_description())}</li>
+                    </ul>
+                }
                 .into_any()
             }
         })
@@ -175,15 +214,45 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
             .and_then(|delta| (delta.num_seconds() >= 0).then_some(delta)) // ship nav status might not have been fixed after we've arrived
     };
 
+    let maybe_cooldown_expiration = ship.cooldown.expiration.clone();
+
+    let calc_cooldown_time_left = move || {
+        maybe_cooldown_expiration.and_then(|expiration_time| {
+            let now = Utc::now();
+            let delta = expiration_time - now;
+
+            (delta.num_seconds() >= 0).then_some(delta)
+        })
+    };
+
     let (maybe_travel_time_left, set_maybe_travel_time_left) = signal(calc_travel_time_left());
+    let (maybe_cooldown_time_left, set_maybe_cooldown_time_left) = signal(calc_cooldown_time_left());
+
+    let ship_icon = if let Some(ship_task) = &maybe_ship_task {
+        let icon = match ship_task {
+            ShipTask::ObserveWaypointDetails { .. } => COMPASS_ROSE,
+            ShipTask::ObserveAllWaypointsOnce { .. } => COMPASS_ROSE,
+            ShipTask::MineMaterialsAtWaypoint { .. } => HAMMER,
+            ShipTask::SurveyMiningSite { .. } => BINOCULARS,
+            ShipTask::HaulMiningGoods { .. } => TRUCK,
+            ShipTask::Trade => phosphor_leptos::MONEY_WAVY,
+            ShipTask::PrepositionShipForTrade { .. } => TRUCK,
+            ShipTask::SiphonCarboHydratesAtWaypoint { .. } => ATOM,
+        };
+        icon
+    } else {
+        ROCKET
+    };
 
     #[cfg(not(feature = "ssr"))]
     let _handle = use_interval_fn(move || set_maybe_travel_time_left.set(calc_travel_time_left()), 1_000);
+    #[cfg(not(feature = "ssr"))]
+    let _handle2 = use_interval_fn(move || set_maybe_cooldown_time_left.set(calc_cooldown_time_left()), 1_000);
 
     view! {
         <div class="p-3 border-4 border-blue-900 text-slate-400">
             <div class="flex flex-row gap-4 items-center">
-                <Icon icon=TRUCK size="3em" />
+                <Icon icon=ship_icon size="3em" />
                 <div class="flex flex-col gap-1">
                     <h3 class="text-xl text-white">{ship.symbol.0.to_string()}</h3>
                     <p class="text-slate-400">
@@ -192,9 +261,7 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
                             .map(|t| t.to_string())
                             .unwrap_or("---".to_string())}
                     </p>
-                    <div class="text-slate-400">
-                        {move || render_trades(active_trades.clone())}
-                    </div>
+                    <div class="text-slate-400">{move || render_trades(active_trades.clone())}</div>
                 </div>
             </div>
             <div class="flex flex-col gap-1">
@@ -208,6 +275,18 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
                                 view! {
                                     <>
                                         <Icon icon=CLOCK />
+                                        <p>{format_duration(&duration)}</p>
+                                    </>
+                                }
+                            })
+                    }}
+                    {move || {
+                        maybe_cooldown_time_left
+                            .get()
+                            .map(|duration| {
+                                view! {
+                                    <>
+                                        <Icon icon=HOURGLASS />
                                         <p>{format_duration(&duration)}</p>
                                     </>
                                 }
@@ -233,6 +312,36 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
 }
 
 #[component]
+pub fn FleetOverview<'a>(
+    fleet: &'a Fleet,
+    ships_of_fleet: &'a [Ship],
+    ship_tasks: &'a HashMap<ShipSymbol, ShipTask>,
+    active_trades: &'a HashMap<ShipSymbol, Vec<ActiveTrade>>,
+) -> impl IntoView {
+    view! {
+        <div class="flex flex-col gap-4 p-4">
+            <h2 class="font-bold text-xl">
+                {format!("Fleet {} with {} ships", fleet.cfg.to_string(), ships_of_fleet.len())}
+            </h2>
+        <div class="grid grid-cols-4 gap-4">
+            {ships_of_fleet
+                .iter()
+                .sorted_by_key(|s| s.symbol.0.clone())
+                .map(|ship| {
+                    let maybe_ship_task = ship_tasks.get(&ship.symbol);
+                    let active_trades = active_trades
+                        .get(&ship.symbol)
+                        .cloned()
+                        .unwrap_or_default();
+                    view! { <ShipCard ship=ship maybe_ship_task=maybe_ship_task active_trades /> }
+                })
+                .collect_view()}
+        </div>
+        </div>
+    }
+}
+
+#[component]
 pub fn ShipOverviewPage() -> impl IntoView {
     let ships_resource = Resource::new(|| {}, |_| get_ships_overview(GetShipsMode::AllShips));
 
@@ -250,24 +359,22 @@ pub fn ShipOverviewPage() -> impl IntoView {
 
                                 view! {
                                     <div class="flex flex-col gap-4 p-4">
-                                        <h2 class="font-bold text-xl">
-                                            {format!("Fleet has {} ships", ships_overview.ships.len())}
-                                        </h2>
                                         <p>
                                             {format!("Last Update: {:?}", ships_overview.last_update)}
                                         </p>
-                                        <div class="grid grid-cols-4 gap-4 p-4">
+                                        <div class="flex flex-col">
                                             {ships_overview
-                                                .ships
+                                                .grouped_ships
                                                 .iter()
-                                                .sorted_by_key(|s| s.symbol.0.clone())
-                                                .map(|ship| {
-                                                    let maybe_ship_task = ships_overview
-                                                        .ship_tasks
-                                                        .get(&ship.symbol);
-                                                let active_trades = ships_overview.active_trades.get(&ship.symbol).cloned().unwrap_or_default();
+                                                .map(|(fleet, ships_of_fleet)| {
+
                                                     view! {
-                                                        <ShipCard ship=ship maybe_ship_task=maybe_ship_task active_trades />
+                                                        <FleetOverview
+                                                            fleet
+                                                            ships_of_fleet
+                                                            ship_tasks=&ships_overview.ship_tasks
+                                                            active_trades=&ships_overview.active_trades
+                                                        />
                                                     }
                                                 })
                                                 .collect_view()}

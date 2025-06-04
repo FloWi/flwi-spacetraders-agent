@@ -192,7 +192,7 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                 .trading_opportunities
                                                 .iter()
                                                 .cloned()
-                                                .sorted_by_key(|tr_opp| tr_opp.profit_per_unit_per_distance )
+                                                .sorted_by_key(|tr_opp| tr_opp.profit_per_unit_per_distance)
                                                 .rev()
                                                 .map(TradingOpportunityRow::from)
                                                 .collect_vec();

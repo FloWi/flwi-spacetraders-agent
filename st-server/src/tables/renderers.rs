@@ -90,9 +90,7 @@ pub fn ProfitCellRenderer<F: 'static>(class: String, value: Signal<u64>, row: Rw
 pub fn FloatCellRenderer<F: 'static>(class: String, value: Signal<f64>, row: RwSignal<F>, index: usize) -> impl IntoView {
     view! {
         <td class=class>
-            <span>
-                {move || format!("{}c", format_number(value.get_untracked()))}
-            </span>
+            <span>{move || format!("{}c", format_number(value.get_untracked()))}</span>
         </td>
     }
 }
