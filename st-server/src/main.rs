@@ -29,6 +29,7 @@ async fn main() {
         spacetraders_account_token,
         spacetraders_base_url,
         use_in_memory_agent,
+        no_agent,
     } = AppConfig::from_env().expect("cfg");
 
     let custom_filter = filter_fn(|metadata| {
@@ -59,6 +60,7 @@ async fn main() {
         spacetraders_account_token,
         spacetraders_base_url,
         use_in_memory_agent,
+        no_agent,
     };
 
     // if !cfg.use_in_memory_agent {
@@ -97,8 +99,13 @@ async fn main() {
 
     // Run the agent manager in the background
     let agent_runner_handle = tokio::spawn(async move {
-        if let Err(e) = agent_manager.run().await {
-            eprintln!("Agent manager error: {}", e);
+        if no_agent {
+            println!("Skipped starting agent - no op")
+        } else {
+            panic!("Skipped starting agent - no agent");
+            if let Err(e) = agent_manager.run().await {
+                eprintln!("Agent manager error: {}", e);
+            }
         }
     });
 

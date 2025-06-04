@@ -9,6 +9,7 @@ pub struct AppConfig {
     pub spacetraders_account_token: String,
     pub spacetraders_base_url: String,
     pub use_in_memory_agent: bool,
+    pub no_agent: bool,
 }
 
 impl AppConfig {
@@ -27,6 +28,12 @@ impl AppConfig {
             spacetraders_base_url: get_env_var("SPACETRADERS_BASE_URL")?,
             use_in_memory_agent: bool::from_str(
                 get_env_var("SPACETRADERS_USE_IN_MEMORY_AGENT")
+                    .unwrap_or("false".to_string())
+                    .as_str(),
+            )
+            .unwrap_or(false),
+            no_agent: bool::from_str(
+                get_env_var("SPACETRADERS_NO_AGENT")
                     .unwrap_or("false".to_string())
                     .as_str(),
             )
