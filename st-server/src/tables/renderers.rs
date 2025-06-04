@@ -85,6 +85,36 @@ pub fn ProfitCellRenderer<F: 'static>(class: String, value: Signal<u64>, row: Rw
     }
 }
 
+// ProfitCellRenderer
+#[component]
+pub fn FloatCellRenderer<F: 'static>(class: String, value: Signal<f64>, row: RwSignal<F>, index: usize) -> impl IntoView {
+    view! {
+        <td class=class>
+            <span>
+                {move || format!("{}c", format_number(value.get_untracked()))}
+            </span>
+        </td>
+    }
+}
+
+/// Print a number with 2 decimal places and comma-separated
+pub fn format_number(value: f64) -> String {
+    // thousands will format floating point numbers just fine, but we can't
+    // format the number this way _and_ specify the precision. So we're going
+    // to separate out the fractional part and format that separately, but this
+    // means we have to count the digits in the fractional part (up to 2).
+    let fractional = ((value - value.floor()) * 100.0).round() as u64;
+    let separated = (value.floor() as i64).separate_with_commas();
+
+    // because we multiply the fractional component by only 100.0, we can only
+    // ever have up to 2 digits.
+    let num_digits = fractional.checked_ilog10().unwrap_or_default() + 1;
+    match num_digits {
+        1 => format!("{}.0{}", separated, fractional),
+        _ => format!("{}.{}", separated, fractional),
+    }
+}
+
 // PriceCellRenderer (for purchase_price and sell_price)
 #[component]
 pub fn PriceCellRenderer<F: 'static>(class: String, value: Signal<i32>, row: RwSignal<F>, index: usize) -> impl IntoView {
