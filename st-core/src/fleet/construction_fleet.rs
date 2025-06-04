@@ -48,6 +48,11 @@ struct DebugNoNewTaskFacts {
     fleet_ships: Vec<Ship>,
 }
 
+pub struct NewTasksResultForConstructionFleet {
+    pub new_potential_construction_tasks: Vec<PotentialConstructionTask>,
+    pub unassigned_ships_with_existing_tickets: HashSet<ShipSymbol>,
+}
+
 impl ConstructJumpGateFleet {
     pub async fn compute_ship_tasks(
         admiral: &FleetAdmiral,
@@ -60,7 +65,7 @@ impl ConstructJumpGateFleet {
         unassigned_ships_of_fleet: &[&Ship],
         active_trade_routes: &HashSet<ActiveTradeRoute>,
         fleet_budget: &FleetBudget,
-    ) -> Result<Vec<PotentialConstructionTask>> {
+    ) -> Result<NewTasksResultForConstructionFleet> {
         let fleet_ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
         let fleet_ship_symbols = fleet_ships.iter().map(|&s| s.symbol.clone()).collect_vec();
 
@@ -68,8 +73,36 @@ impl ConstructJumpGateFleet {
         // println!("latest_market_data: {}", serde_json::to_string(&latest_market_data)?);
 
         if unassigned_ships_of_fleet.is_empty() {
-            return Ok(vec![]);
+            return Ok(NewTasksResultForConstructionFleet {
+                new_potential_construction_tasks: vec![],
+                unassigned_ships_with_existing_tickets: Default::default(),
+            });
         }
+
+        // don't create new tickets for ships that already have tickets
+        // for some reason the execution failed. We just try again.
+        let mut unassigned_ships_with_existing_tickets: HashSet<ShipSymbol> = HashSet::new();
+        for s in unassigned_ships_of_fleet.iter() {
+            let existing_tickets = admiral
+                .treasurer
+                .get_active_tickets_for_ship(&s.symbol)
+                .await?;
+            let has_tickets = existing_tickets.is_empty().not();
+            if has_tickets {
+                unassigned_ships_with_existing_tickets.insert(s.symbol.clone());
+            }
+        }
+
+        // only check for the ships without trading ticket
+        let unassigned_ships_without_existing_tickets: Vec<&Ship> = unassigned_ships_of_fleet
+            .iter()
+            .filter(|s| {
+                unassigned_ships_with_existing_tickets
+                    .contains(&s.symbol)
+                    .not()
+            })
+            .cloned()
+            .collect_vec();
 
         let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints
             .iter()
@@ -81,8 +114,12 @@ impl ConstructJumpGateFleet {
 
         let available_capital = fleet_budget.available_capital();
 
-        let evaluated_trading_opportunities =
-            trading::evaluate_trading_opportunities(unassigned_ships_of_fleet, &waypoint_map, &trading_opportunities, available_capital.0);
+        let evaluated_trading_opportunities = trading::evaluate_trading_opportunities(
+            &unassigned_ships_without_existing_tickets,
+            &waypoint_map,
+            &trading_opportunities,
+            available_capital.0,
+        );
 
         let best_new_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
             trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, active_trade_routes);
@@ -91,7 +128,7 @@ impl ConstructJumpGateFleet {
             .materialized_supply_chain_manager
             .get_materialized_supply_chain_for_system(cfg.system_symbol.clone());
 
-        let new_tasks = if admiral.ship_purchase_demand.is_empty() {
+        let new_tasks: Vec<PotentialConstructionTask> = if admiral.ship_purchase_demand.is_empty() {
             let best_actions_for_ships = determine_construction_fleet_actions(
                 admiral,
                 &fleet.id,
@@ -100,7 +137,7 @@ impl ConstructJumpGateFleet {
                 maybe_construction_site,
                 ship_prices,
                 &waypoint_map,
-                unassigned_ships_of_fleet,
+                &unassigned_ships_without_existing_tickets,
                 active_trade_routes,
                 fleet_budget,
                 &best_new_trading_opportunities,
@@ -115,7 +152,7 @@ impl ConstructJumpGateFleet {
             create_trading_tickets(&best_new_trading_opportunities)
         };
 
-        if new_tasks.is_empty() && unassigned_ships_of_fleet.is_empty().not() {
+        if new_tasks.is_empty() && unassigned_ships_without_existing_tickets.is_empty().not() {
             let debug_facts = DebugNoNewTaskFacts {
                 admiral_completed_fleet_tasks: admiral.completed_fleet_tasks.clone(),
                 admiral_fleets: admiral.fleets.clone(),
@@ -135,7 +172,7 @@ impl ConstructJumpGateFleet {
                 latest_market_entries: latest_market_entries.clone(),
                 ship_prices: ship_prices.clone(),
                 waypoints: waypoints.clone(),
-                unassigned_ships_of_fleet: unassigned_ships_of_fleet
+                unassigned_ships_of_fleet: unassigned_ships_without_existing_tickets
                     .iter()
                     .cloned()
                     .cloned()
@@ -152,7 +189,10 @@ impl ConstructJumpGateFleet {
             );
         }
 
-        Ok(new_tasks)
+        Ok(NewTasksResultForConstructionFleet {
+            new_potential_construction_tasks: new_tasks,
+            unassigned_ships_with_existing_tickets,
+        })
     }
 }
 
@@ -740,7 +780,10 @@ mod tests {
     async fn test_compute_new_tasks_from_broken_runtime_state() -> Result<()> {
         let json_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/broken-construction-fleet-details.json"));
 
-        let actual_tasks = compute_tasks_from_snapshot_file(json_str).await?;
+        let NewTasksResultForConstructionFleet {
+            new_potential_construction_tasks: actual_tasks,
+            unassigned_ships_with_existing_tickets,
+        } = compute_tasks_from_snapshot_file(json_str).await?;
 
         assert!(actual_tasks.is_empty().not(), "Should have found some tasks");
         Ok(())
@@ -750,7 +793,10 @@ mod tests {
     async fn test_compute_new_tasks_from_broken_runtime_state_2() -> Result<()> {
         let json_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/broken-again-details.json"));
 
-        let actual_tasks = compute_tasks_from_snapshot_file(json_str).await?;
+        let NewTasksResultForConstructionFleet {
+            new_potential_construction_tasks: actual_tasks,
+            unassigned_ships_with_existing_tickets,
+        } = compute_tasks_from_snapshot_file(json_str).await?;
 
         assert!(actual_tasks.is_empty().not(), "Should have found some tasks");
         Ok(())
@@ -763,7 +809,10 @@ mod tests {
             "/fixtures/no-task-found-also-duplicate-tickets-for-ships.json"
         ));
 
-        let actual_tasks = compute_tasks_from_snapshot_file(json_str).await?;
+        let NewTasksResultForConstructionFleet {
+            new_potential_construction_tasks: actual_tasks,
+            unassigned_ships_with_existing_tickets,
+        } = compute_tasks_from_snapshot_file(json_str).await?;
 
         assert!(actual_tasks.is_empty().not(), "Should have found some tasks");
         Ok(())
@@ -817,7 +866,7 @@ available_capital_after {available_capital_after} < 4_000c.
         Ok(())
     }
 
-    async fn compute_tasks_from_snapshot_file(json_str: &str) -> Result<Vec<PotentialConstructionTask>, Error> {
+    async fn compute_tasks_from_snapshot_file(json_str: &str) -> Result<NewTasksResultForConstructionFleet, Error> {
         let input = serde_json::from_str::<DebugNoNewTaskFacts>(json_str)?;
 
         let (test_ledger_archiver, ledger_archiving_task_sender) = create_test_ledger_setup().await;

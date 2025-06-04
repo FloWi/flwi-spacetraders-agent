@@ -1,5 +1,5 @@
 use crate::behavior_tree::ship_behaviors::ShipAction;
-use crate::fleet::construction_fleet::ConstructJumpGateFleet;
+use crate::fleet::construction_fleet::{ConstructJumpGateFleet, NewTasksResultForConstructionFleet};
 use crate::fleet::fleet_runner::FleetRunner;
 use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
@@ -1019,7 +1019,7 @@ Fleet Budgets after rebalancing
                 SystemSpawningCfg(cfg) => SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet),
                 MarketObservationCfg(cfg) => MarketObservationFleet::compute_ship_tasks(admiral, cfg, &unassigned_ships_of_fleet, &ships_of_fleet, &fleet.id),
                 ConstructJumpGateCfg(cfg) => {
-                    let either_potential_trading_tasks = ConstructJumpGateFleet::compute_ship_tasks(
+                    let either_compute_task_result = ConstructJumpGateFleet::compute_ship_tasks(
                         admiral,
                         cfg,
                         fleet,
@@ -1033,14 +1033,17 @@ Fleet Budgets after rebalancing
                     )
                     .await;
 
-                    match either_potential_trading_tasks {
+                    match either_compute_task_result {
                         Err(err) => Err(err),
-                        Ok(potential_trading_tasks) => {
+                        Ok(NewTasksResultForConstructionFleet {
+                            new_potential_construction_tasks,
+                            unassigned_ships_with_existing_tickets,
+                        }) => {
                             // local mutability, because you can't run async code inside iterator chains.
                             // TODO: make this function pure again, by removing the treasurer... calls
                             let mut new_construction_fleet_tasks = HashMap::new();
 
-                            for potential_construction_task in potential_trading_tasks.iter() {
+                            for potential_construction_task in new_potential_construction_tasks.iter() {
                                 let purchase_details = potential_construction_task.create_purchase_ticket_details();
 
                                 if let Some(ship) = admiral
@@ -1109,6 +1112,10 @@ Fleet Budgets after rebalancing
                                 if let Some((pt, st)) = maybe_purchase_ticket.zip(maybe_sell_ticket) {
                                     new_construction_fleet_tasks.insert(potential_construction_task.ship_symbol.clone(), ShipTask::Trade);
                                 }
+                            }
+
+                            for ss in unassigned_ships_with_existing_tickets.iter() {
+                                new_construction_fleet_tasks.insert(ss.clone(), ShipTask::Trade);
                             }
 
                             Ok(new_construction_fleet_tasks)
