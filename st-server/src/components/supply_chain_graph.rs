@@ -28,7 +28,7 @@ pub fn SupplyChainGraph(routes: Vec<DeliveryRoute>, label: String) -> impl IntoV
 
     let x_scale = 1.5;
     let y_scale = 0.75;
-    log!("creating layout for {label}");
+    // log!("creating layout for {label}");
 
     let (layout_nodes, layout_edges) = build_supply_chain_layout(&nodes, &edges, orientation, x_scale, y_scale);
 
@@ -604,7 +604,7 @@ fn build_supply_chain_layout(
         }
     }
 
-    log!("Found {} layouts. Best one is idx #{}", built_layouts.len(), best_layout_index);
+    // log!("Found {} layouts. Best one is idx #{}", built_layouts.len(), best_layout_index);
 
     // Use the best layout instead of just the first
     if let Some((layout, width, height)) = built_layouts.get(best_layout_index) {
