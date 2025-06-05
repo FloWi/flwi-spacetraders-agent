@@ -1,0 +1,3417 @@
+[
+  {
+    "TreasuryCreated": {
+      "credits": 97175
+    }
+  },
+  {
+    "FleetCreated": {
+      "fleet_id": 2,
+      "total_capital": 75000
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 75000,
+      "fleet_id": 2
+    }
+  },
+  {
+    "SetNewOperatingReserveForFleet": {
+      "fleet_id": 2,
+      "new_operating_reserve": 1000
+    }
+  },
+  {
+    "FleetCreated": {
+      "fleet_id": 1,
+      "total_capital": 0
+    }
+  },
+  {
+    "FleetCreated": {
+      "fleet_id": 4,
+      "total_capital": 5000
+    }
+  },
+  {
+    "SetNewOperatingReserveForFleet": {
+      "fleet_id": 4,
+      "new_operating_reserve": 5000
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 5000,
+      "fleet_id": 4
+    }
+  },
+  {
+    "FleetCreated": {
+      "fleet_id": 3,
+      "total_capital": 5000
+    }
+  },
+  {
+    "SetNewOperatingReserveForFleet": {
+      "fleet_id": 3,
+      "new_operating_reserve": 5000
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 5000,
+      "fleet_id": 3
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2504,
+            "expected_total_purchase_price": 15024
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "bc99bf96-b3d2-4569-9108-02f0a0fee7b4",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15024
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6891,
+            "expected_total_sell_price": 41346,
+            "maybe_matching_purchase_ticket": "bc99bf96-b3d2-4569-9108-02f0a0fee7b4"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "b44d4885-a417-49a9-881e-d05d3faa17bd",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -15024,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2504,
+            "expected_total_purchase_price": 15024
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "bc99bf96-b3d2-4569-9108-02f0a0fee7b4",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15024
+      },
+      "actual_price_per_unit": 2504
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "b44d4885-a417-49a9-881e-d05d3faa17bd",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "b44d4885-a417-49a9-881e-d05d3faa17bd",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 41538,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6891,
+            "expected_total_sell_price": 41346,
+            "maybe_matching_purchase_ticket": "bc99bf96-b3d2-4569-9108-02f0a0fee7b4"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "b44d4885-a417-49a9-881e-d05d3faa17bd",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6923
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 26514,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 31584,
+      "fleet_id": 1
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 1,
+      "ticket_details": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_PROBE",
+            "waypoint_symbol": "X1-AM58-C38",
+            "assigned_fleet_id": 1,
+            "expected_purchase_price": 31584
+          }
+        },
+        "fleet_id": 1,
+        "ticket_id": "b96ec7d8-d92c-4502-841e-86f8e0b811c7",
+        "ship_symbol": "FLWI_2_TEST-3",
+        "allocated_credits": 31584
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "MICROPROCESSORS",
+            "waypoint_symbol": "X1-AM58-A3",
+            "expected_price_per_unit": 2613,
+            "expected_total_purchase_price": 52260
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "4a84e4c2-9d30-4ea4-9f2e-3843156d9e32",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 52260
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "MICROPROCESSORS",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 3307,
+            "expected_total_sell_price": 66140,
+            "maybe_matching_purchase_ticket": "4a84e4c2-9d30-4ea4-9f2e-3843156d9e32"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "2ba83578-2b57-4a86-bebc-4203fa4f77a2",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -30965,
+      "fleet_id": 1,
+      "actual_units": 1,
+      "finance_ticket": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_PROBE",
+            "waypoint_symbol": "X1-AM58-C38",
+            "assigned_fleet_id": 1,
+            "expected_purchase_price": 31584
+          }
+        },
+        "fleet_id": 1,
+        "ticket_id": "b96ec7d8-d92c-4502-841e-86f8e0b811c7",
+        "ship_symbol": "FLWI_2_TEST-3",
+        "allocated_credits": 31584
+      },
+      "actual_price_per_unit": 30965
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 619,
+      "fleet_id": 1
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 72,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 72,
+      "units": 1,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "4a84e4c2-9d30-4ea4-9f2e-3843156d9e32",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -52260,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "MICROPROCESSORS",
+            "waypoint_symbol": "X1-AM58-A3",
+            "expected_price_per_unit": 2613,
+            "expected_total_purchase_price": 52260
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "4a84e4c2-9d30-4ea4-9f2e-3843156d9e32",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 52260
+      },
+      "actual_price_per_unit": 2613
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "2ba83578-2b57-4a86-bebc-4203fa4f77a2",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 66140,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "MICROPROCESSORS",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 3307,
+            "expected_total_sell_price": 66140,
+            "maybe_matching_purchase_ticket": "4a84e4c2-9d30-4ea4-9f2e-3843156d9e32"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "2ba83578-2b57-4a86-bebc-4203fa4f77a2",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 3307
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 13880,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2521,
+            "expected_total_purchase_price": 15126
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "873c696c-cff3-49a8-9877-5b78bb8070a4",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15126
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 6942,
+            "expected_total_sell_price": 41652,
+            "maybe_matching_purchase_ticket": "873c696c-cff3-49a8-9877-5b78bb8070a4"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "472c086f-c40f-4110-9034-168a63585e5a",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -15126,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2521,
+            "expected_total_purchase_price": 15126
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "873c696c-cff3-49a8-9877-5b78bb8070a4",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15126
+      },
+      "actual_price_per_unit": 2521
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "472c086f-c40f-4110-9034-168a63585e5a",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 41652,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 6942,
+            "expected_total_sell_price": 41652,
+            "maybe_matching_purchase_ticket": "873c696c-cff3-49a8-9877-5b78bb8070a4"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "472c086f-c40f-4110-9034-168a63585e5a",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6942
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 26526,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 33300,
+      "fleet_id": 1
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 1,
+      "ticket_details": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_PROBE",
+            "waypoint_symbol": "X1-AM58-C38",
+            "assigned_fleet_id": 1,
+            "expected_purchase_price": 33300
+          }
+        },
+        "fleet_id": 1,
+        "ticket_id": "abeb7172-73ed-4276-b416-5120b4a15513",
+        "ship_symbol": "FLWI_2_TEST-3",
+        "allocated_credits": 33300
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "JEWELRY",
+            "waypoint_symbol": "X1-AM58-H57",
+            "expected_price_per_unit": 2327,
+            "expected_total_purchase_price": 46540
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "cac35711-c070-4025-8be4-8c5bf8c4c1ed",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 46540
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "JEWELRY",
+            "waypoint_symbol": "X1-AM58-A1",
+            "expected_price_per_unit": 3275,
+            "expected_total_sell_price": 65500,
+            "maybe_matching_purchase_ticket": "cac35711-c070-4025-8be4-8c5bf8c4c1ed"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "d544a773-1832-4d74-b118-a51ac04b6b5d",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -32648,
+      "fleet_id": 1,
+      "actual_units": 1,
+      "finance_ticket": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_PROBE",
+            "waypoint_symbol": "X1-AM58-C38",
+            "assigned_fleet_id": 1,
+            "expected_purchase_price": 33300
+          }
+        },
+        "fleet_id": 1,
+        "ticket_id": "abeb7172-73ed-4276-b416-5120b4a15513",
+        "ship_symbol": "FLWI_2_TEST-3",
+        "allocated_credits": 33300
+      },
+      "actual_price_per_unit": 32648
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 652,
+      "fleet_id": 1
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 72,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 72,
+      "units": 1,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "cac35711-c070-4025-8be4-8c5bf8c4c1ed",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -46540,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "JEWELRY",
+            "waypoint_symbol": "X1-AM58-H57",
+            "expected_price_per_unit": 2327,
+            "expected_total_purchase_price": 46540
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "cac35711-c070-4025-8be4-8c5bf8c4c1ed",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 46540
+      },
+      "actual_price_per_unit": 2327
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "d544a773-1832-4d74-b118-a51ac04b6b5d",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 65500,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "JEWELRY",
+            "waypoint_symbol": "X1-AM58-A1",
+            "expected_price_per_unit": 3275,
+            "expected_total_sell_price": 65500,
+            "maybe_matching_purchase_ticket": "cac35711-c070-4025-8be4-8c5bf8c4c1ed"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "d544a773-1832-4d74-b118-a51ac04b6b5d",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 3275
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 18960,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 40,
+            "trade_good": "FOOD",
+            "waypoint_symbol": "X1-AM58-F52",
+            "expected_price_per_unit": 1541,
+            "expected_total_purchase_price": 61640
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "15f088e1-778b-4ffb-b017-bba970d53c39",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 61640
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 40,
+            "trade_good": "FOOD",
+            "waypoint_symbol": "X1-AM58-A1",
+            "expected_price_per_unit": 2081,
+            "expected_total_sell_price": 83240,
+            "maybe_matching_purchase_ticket": "15f088e1-778b-4ffb-b017-bba970d53c39"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "87009877-1679-412d-9788-35deca13fd31",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "15f088e1-778b-4ffb-b017-bba970d53c39",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -61640,
+      "fleet_id": 2,
+      "actual_units": 40,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 40,
+            "trade_good": "FOOD",
+            "waypoint_symbol": "X1-AM58-F52",
+            "expected_price_per_unit": 1541,
+            "expected_total_purchase_price": 61640
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "15f088e1-778b-4ffb-b017-bba970d53c39",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 61640
+      },
+      "actual_price_per_unit": 1541
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "87009877-1679-412d-9788-35deca13fd31",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 83240,
+      "fleet_id": 2,
+      "actual_units": 40,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 40,
+            "trade_good": "FOOD",
+            "waypoint_symbol": "X1-AM58-A1",
+            "expected_price_per_unit": 2081,
+            "expected_total_sell_price": 83240,
+            "maybe_matching_purchase_ticket": "15f088e1-778b-4ffb-b017-bba970d53c39"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "87009877-1679-412d-9788-35deca13fd31",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 2081
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 21600,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 35206,
+      "fleet_id": 1
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 1,
+      "ticket_details": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_PROBE",
+            "waypoint_symbol": "X1-AM58-A2",
+            "assigned_fleet_id": 1,
+            "expected_purchase_price": 35206
+          }
+        },
+        "fleet_id": 1,
+        "ticket_id": "8de3a392-4e4b-4716-a9af-39a475302db0",
+        "ship_symbol": "FLWI_2_TEST-2",
+        "allocated_credits": 35206
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2543,
+            "expected_total_purchase_price": 15258
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "90b834ef-f2ca-4a6b-b44f-e67e9d2aa45f",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15258
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6713,
+            "expected_total_sell_price": 40278,
+            "maybe_matching_purchase_ticket": "90b834ef-f2ca-4a6b-b44f-e67e9d2aa45f"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "6089e679-6c58-44f4-821e-dfd4449a1785",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -34516,
+      "fleet_id": 1,
+      "actual_units": 1,
+      "finance_ticket": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_PROBE",
+            "waypoint_symbol": "X1-AM58-A2",
+            "assigned_fleet_id": 1,
+            "expected_purchase_price": 35206
+          }
+        },
+        "fleet_id": 1,
+        "ticket_id": "8de3a392-4e4b-4716-a9af-39a475302db0",
+        "ship_symbol": "FLWI_2_TEST-2",
+        "allocated_credits": 35206
+      },
+      "actual_price_per_unit": 34516
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 690,
+      "fleet_id": 1
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "90b834ef-f2ca-4a6b-b44f-e67e9d2aa45f",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -15258,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2543,
+            "expected_total_purchase_price": 15258
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "90b834ef-f2ca-4a6b-b44f-e67e9d2aa45f",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15258
+      },
+      "actual_price_per_unit": 2543
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "6089e679-6c58-44f4-821e-dfd4449a1785",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 40278,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6713,
+            "expected_total_sell_price": 40278,
+            "maybe_matching_purchase_ticket": "90b834ef-f2ca-4a6b-b44f-e67e9d2aa45f"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "6089e679-6c58-44f4-821e-dfd4449a1785",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6713
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 25020,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 35206,
+      "fleet_id": 1
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 1,
+      "ticket_details": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_PROBE",
+            "waypoint_symbol": "X1-AM58-C38",
+            "assigned_fleet_id": 1,
+            "expected_purchase_price": 35206
+          }
+        },
+        "fleet_id": 1,
+        "ticket_id": "e5e603c6-4adc-4ed9-801f-2313b37abbe0",
+        "ship_symbol": "FLWI_2_TEST-3",
+        "allocated_credits": 35206
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2569,
+            "expected_total_purchase_price": 15414
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "f82091de-2e2d-4954-becf-af1853685068",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15414
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 6675,
+            "expected_total_sell_price": 40050,
+            "maybe_matching_purchase_ticket": "f82091de-2e2d-4954-becf-af1853685068"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "f39daeaa-f780-4656-b51e-a836cec033b5",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -34516,
+      "fleet_id": 1,
+      "actual_units": 1,
+      "finance_ticket": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_PROBE",
+            "waypoint_symbol": "X1-AM58-C38",
+            "assigned_fleet_id": 1,
+            "expected_purchase_price": 35206
+          }
+        },
+        "fleet_id": 1,
+        "ticket_id": "e5e603c6-4adc-4ed9-801f-2313b37abbe0",
+        "ship_symbol": "FLWI_2_TEST-3",
+        "allocated_credits": 35206
+      },
+      "actual_price_per_unit": 34516
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 690,
+      "fleet_id": 1
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "f82091de-2e2d-4954-becf-af1853685068",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -15414,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2569,
+            "expected_total_purchase_price": 15414
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "f82091de-2e2d-4954-becf-af1853685068",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15414
+      },
+      "actual_price_per_unit": 2569
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "f39daeaa-f780-4656-b51e-a836cec033b5",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 41412,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 6675,
+            "expected_total_sell_price": 40050,
+            "maybe_matching_purchase_ticket": "f82091de-2e2d-4954-becf-af1853685068"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "f39daeaa-f780-4656-b51e-a836cec033b5",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6902
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 25998,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "JEWELRY",
+            "waypoint_symbol": "X1-AM58-H57",
+            "expected_price_per_unit": 2444,
+            "expected_total_purchase_price": 48880
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "f17e86d0-edd5-4ad8-8f46-9e63f664593d",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 48880
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "JEWELRY",
+            "waypoint_symbol": "X1-AM58-A1",
+            "expected_price_per_unit": 3093,
+            "expected_total_sell_price": 61860,
+            "maybe_matching_purchase_ticket": "f17e86d0-edd5-4ad8-8f46-9e63f664593d"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "d8213ecd-2c99-4060-8c2b-29c3546c20cc",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 72,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 72,
+      "units": 1,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "f17e86d0-edd5-4ad8-8f46-9e63f664593d",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -48880,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "JEWELRY",
+            "waypoint_symbol": "X1-AM58-H57",
+            "expected_price_per_unit": 2444,
+            "expected_total_purchase_price": 48880
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "f17e86d0-edd5-4ad8-8f46-9e63f664593d",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 48880
+      },
+      "actual_price_per_unit": 2444
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "d8213ecd-2c99-4060-8c2b-29c3546c20cc",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 61860,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "JEWELRY",
+            "waypoint_symbol": "X1-AM58-A1",
+            "expected_price_per_unit": 3093,
+            "expected_total_sell_price": 61860,
+            "maybe_matching_purchase_ticket": "f17e86d0-edd5-4ad8-8f46-9e63f664593d"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "d8213ecd-2c99-4060-8c2b-29c3546c20cc",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 3093
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 12980,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 37320,
+      "fleet_id": 1
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 1,
+      "ticket_details": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_PROBE",
+            "waypoint_symbol": "X1-AM58-A2",
+            "assigned_fleet_id": 1,
+            "expected_purchase_price": 37320
+          }
+        },
+        "fleet_id": 1,
+        "ticket_id": "1a16c241-1b74-4d09-aef6-2e32fbae255a",
+        "ship_symbol": "FLWI_2_TEST-2",
+        "allocated_credits": 37320
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3143,
+            "expected_total_purchase_price": 18858
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "55b3b48f-a46f-46a8-99ab-fdd7e3e16998",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 18858
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 7360,
+            "expected_total_sell_price": 44160,
+            "maybe_matching_purchase_ticket": "55b3b48f-a46f-46a8-99ab-fdd7e3e16998"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "b843e304-fed1-4aec-88ab-d33aa6e00da1",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -36589,
+      "fleet_id": 1,
+      "actual_units": 1,
+      "finance_ticket": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_PROBE",
+            "waypoint_symbol": "X1-AM58-A2",
+            "assigned_fleet_id": 1,
+            "expected_purchase_price": 37320
+          }
+        },
+        "fleet_id": 1,
+        "ticket_id": "1a16c241-1b74-4d09-aef6-2e32fbae255a",
+        "ship_symbol": "FLWI_2_TEST-2",
+        "allocated_credits": 37320
+      },
+      "actual_price_per_unit": 36589
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 731,
+      "fleet_id": 1
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "55b3b48f-a46f-46a8-99ab-fdd7e3e16998",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -18858,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3143,
+            "expected_total_purchase_price": 18858
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "55b3b48f-a46f-46a8-99ab-fdd7e3e16998",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 18858
+      },
+      "actual_price_per_unit": 3143
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "b843e304-fed1-4aec-88ab-d33aa6e00da1",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 44160,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 7360,
+            "expected_total_sell_price": 44160,
+            "maybe_matching_purchase_ticket": "55b3b48f-a46f-46a8-99ab-fdd7e3e16998"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "b843e304-fed1-4aec-88ab-d33aa6e00da1",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 7360
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 25302,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2601,
+            "expected_total_purchase_price": 15606
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "31928792-1b11-40cb-a2f4-a5c0dd0888cb",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15606
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 6625,
+            "expected_total_sell_price": 39750,
+            "maybe_matching_purchase_ticket": "31928792-1b11-40cb-a2f4-a5c0dd0888cb"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "6a4a7ea7-faff-4b0b-8abf-6c0de7b24328",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "31928792-1b11-40cb-a2f4-a5c0dd0888cb",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -15606,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2601,
+            "expected_total_purchase_price": 15606
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "31928792-1b11-40cb-a2f4-a5c0dd0888cb",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15606
+      },
+      "actual_price_per_unit": 2601
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "6a4a7ea7-faff-4b0b-8abf-6c0de7b24328",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 39750,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 6625,
+            "expected_total_sell_price": 39750,
+            "maybe_matching_purchase_ticket": "31928792-1b11-40cb-a2f4-a5c0dd0888cb"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "6a4a7ea7-faff-4b0b-8abf-6c0de7b24328",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6625
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 24144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "MEDICINE",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3190,
+            "expected_total_purchase_price": 63800
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "32caf334-6183-4ad4-bf22-3bc0df1f129c",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 63800
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "MEDICINE",
+            "waypoint_symbol": "X1-AM58-A1",
+            "expected_price_per_unit": 4363,
+            "expected_total_sell_price": 87260,
+            "maybe_matching_purchase_ticket": "32caf334-6183-4ad4-bf22-3bc0df1f129c"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "1748f798-6911-498a-976e-d27d03a547b0",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "32caf334-6183-4ad4-bf22-3bc0df1f129c",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -63800,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "MEDICINE",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3190,
+            "expected_total_purchase_price": 63800
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "32caf334-6183-4ad4-bf22-3bc0df1f129c",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 63800
+      },
+      "actual_price_per_unit": 3190
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "1748f798-6911-498a-976e-d27d03a547b0",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 87260,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "MEDICINE",
+            "waypoint_symbol": "X1-AM58-A1",
+            "expected_price_per_unit": 4363,
+            "expected_total_sell_price": 87260,
+            "maybe_matching_purchase_ticket": "32caf334-6183-4ad4-bf22-3bc0df1f129c"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "1748f798-6911-498a-976e-d27d03a547b0",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 4363
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 23460,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 40,
+            "trade_good": "FABRICS",
+            "waypoint_symbol": "X1-AM58-E43",
+            "expected_price_per_unit": 1724,
+            "expected_total_purchase_price": 68960
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "19e18891-6ce5-467b-a1bd-55908dfa74d3",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 68960
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 40,
+            "trade_good": "FABRICS",
+            "waypoint_symbol": "X1-AM58-K94",
+            "expected_price_per_unit": 2292,
+            "expected_total_sell_price": 91680,
+            "maybe_matching_purchase_ticket": "19e18891-6ce5-467b-a1bd-55908dfa74d3"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "de07cbc7-df6f-40f0-bdf6-0e03430f8dde",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "19e18891-6ce5-467b-a1bd-55908dfa74d3",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -68960,
+      "fleet_id": 2,
+      "actual_units": 40,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 40,
+            "trade_good": "FABRICS",
+            "waypoint_symbol": "X1-AM58-E43",
+            "expected_price_per_unit": 1724,
+            "expected_total_purchase_price": 68960
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "19e18891-6ce5-467b-a1bd-55908dfa74d3",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 68960
+      },
+      "actual_price_per_unit": 1724
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "de07cbc7-df6f-40f0-bdf6-0e03430f8dde",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 91680,
+      "fleet_id": 2,
+      "actual_units": 40,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 40,
+            "trade_good": "FABRICS",
+            "waypoint_symbol": "X1-AM58-K94",
+            "expected_price_per_unit": 2292,
+            "expected_total_sell_price": 91680,
+            "maybe_matching_purchase_ticket": "19e18891-6ce5-467b-a1bd-55908dfa74d3"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "de07cbc7-df6f-40f0-bdf6-0e03430f8dde",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 2292
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 22720,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "EQUIPMENT",
+            "waypoint_symbol": "X1-AM58-K94",
+            "expected_price_per_unit": 1846,
+            "expected_total_purchase_price": 36920
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "24d9c658-df5a-448f-a1a6-1860f46a7300",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 36920
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "EQUIPMENT",
+            "waypoint_symbol": "X1-AM58-A1",
+            "expected_price_per_unit": 3009,
+            "expected_total_sell_price": 60180,
+            "maybe_matching_purchase_ticket": "24d9c658-df5a-448f-a1a6-1860f46a7300"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "288337b0-073e-4162-8879-777e1623b66c",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -36920,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "EQUIPMENT",
+            "waypoint_symbol": "X1-AM58-K94",
+            "expected_price_per_unit": 1846,
+            "expected_total_purchase_price": 36920
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "24d9c658-df5a-448f-a1a6-1860f46a7300",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 36920
+      },
+      "actual_price_per_unit": 1846
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 216,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 216,
+      "units": 3,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "288337b0-073e-4162-8879-777e1623b66c",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 60180,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "EQUIPMENT",
+            "waypoint_symbol": "X1-AM58-A1",
+            "expected_price_per_unit": 3009,
+            "expected_total_sell_price": 60180,
+            "maybe_matching_purchase_ticket": "24d9c658-df5a-448f-a1a6-1860f46a7300"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "288337b0-073e-4162-8879-777e1623b66c",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 3009
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 23260,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3158,
+            "expected_total_purchase_price": 18948
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "62294ae6-fe0e-4a51-8b4c-235d78234852",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 18948
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 7004,
+            "expected_total_sell_price": 42024,
+            "maybe_matching_purchase_ticket": "62294ae6-fe0e-4a51-8b4c-235d78234852"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "f46357f5-5b93-485d-a8ae-03a5384fd2e9",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "62294ae6-fe0e-4a51-8b4c-235d78234852",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -18948,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3158,
+            "expected_total_purchase_price": 18948
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "62294ae6-fe0e-4a51-8b4c-235d78234852",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 18948
+      },
+      "actual_price_per_unit": 3158
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "f46357f5-5b93-485d-a8ae-03a5384fd2e9",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 42024,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 7004,
+            "expected_total_sell_price": 42024,
+            "maybe_matching_purchase_ticket": "62294ae6-fe0e-4a51-8b4c-235d78234852"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "f46357f5-5b93-485d-a8ae-03a5384fd2e9",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 7004
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 23076,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2640,
+            "expected_total_purchase_price": 15840
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "95475441-f453-4456-8867-994a64042503",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15840
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6455,
+            "expected_total_sell_price": 38730,
+            "maybe_matching_purchase_ticket": "95475441-f453-4456-8867-994a64042503"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "db208089-3c86-4d37-8d7c-25c4f5785940",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "95475441-f453-4456-8867-994a64042503",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -15840,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2640,
+            "expected_total_purchase_price": 15840
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "95475441-f453-4456-8867-994a64042503",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 15840
+      },
+      "actual_price_per_unit": 2640
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "db208089-3c86-4d37-8d7c-25c4f5785940",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 38730,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6455,
+            "expected_total_sell_price": 38730,
+            "maybe_matching_purchase_ticket": "95475441-f453-4456-8867-994a64042503"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "db208089-3c86-4d37-8d7c-25c4f5785940",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6455
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 22890,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3175,
+            "expected_total_purchase_price": 19050
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "df3db1cf-b760-4775-a9a0-2063bc96aa2e",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 19050
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 7054,
+            "expected_total_sell_price": 42324,
+            "maybe_matching_purchase_ticket": "df3db1cf-b760-4775-a9a0-2063bc96aa2e"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "59cf2544-3e22-470d-a437-9be0d39415ee",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "df3db1cf-b760-4775-a9a0-2063bc96aa2e",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -19050,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3175,
+            "expected_total_purchase_price": 19050
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "df3db1cf-b760-4775-a9a0-2063bc96aa2e",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 19050
+      },
+      "actual_price_per_unit": 3175
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "59cf2544-3e22-470d-a437-9be0d39415ee",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 42324,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 7054,
+            "expected_total_sell_price": 42324,
+            "maybe_matching_purchase_ticket": "df3db1cf-b760-4775-a9a0-2063bc96aa2e"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "59cf2544-3e22-470d-a437-9be0d39415ee",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 7054
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 23274,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3198,
+            "expected_total_purchase_price": 19188
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "0705898c-9e1f-4fda-8b03-50ccc03ce45b",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 19188
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6811,
+            "expected_total_sell_price": 40866,
+            "maybe_matching_purchase_ticket": "0705898c-9e1f-4fda-8b03-50ccc03ce45b"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "42312e17-7d4b-43cc-960a-94127de16ccd",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "0705898c-9e1f-4fda-8b03-50ccc03ce45b",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -19188,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3198,
+            "expected_total_purchase_price": 19188
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "0705898c-9e1f-4fda-8b03-50ccc03ce45b",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 19188
+      },
+      "actual_price_per_unit": 3198
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "42312e17-7d4b-43cc-960a-94127de16ccd",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 40866,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6811,
+            "expected_total_sell_price": 40866,
+            "maybe_matching_purchase_ticket": "0705898c-9e1f-4fda-8b03-50ccc03ce45b"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "42312e17-7d4b-43cc-960a-94127de16ccd",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6811
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 21678,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2689,
+            "expected_total_purchase_price": 16134
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "a15107a9-b179-4cea-b14c-503a17a7f21d",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 16134
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 6284,
+            "expected_total_sell_price": 37704,
+            "maybe_matching_purchase_ticket": "a15107a9-b179-4cea-b14c-503a17a7f21d"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "034b8017-c3c3-41c9-8971-1c824bca97e5",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "a15107a9-b179-4cea-b14c-503a17a7f21d",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -16134,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2689,
+            "expected_total_purchase_price": 16134
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "a15107a9-b179-4cea-b14c-503a17a7f21d",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 16134
+      },
+      "actual_price_per_unit": 2689
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "034b8017-c3c3-41c9-8971-1c824bca97e5",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 37704,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 6284,
+            "expected_total_sell_price": 37704,
+            "maybe_matching_purchase_ticket": "a15107a9-b179-4cea-b14c-503a17a7f21d"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "034b8017-c3c3-41c9-8971-1c824bca97e5",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6284
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 21570,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3225,
+            "expected_total_purchase_price": 19350
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "8b483d93-682c-4a7f-9e4a-01ce4ce3ab2d",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 19350
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 6679,
+            "expected_total_sell_price": 40074,
+            "maybe_matching_purchase_ticket": "8b483d93-682c-4a7f-9e4a-01ce4ce3ab2d"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "d416016e-fced-46b0-b6dc-0d45d15337dd",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "8b483d93-682c-4a7f-9e4a-01ce4ce3ab2d",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -19350,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3225,
+            "expected_total_purchase_price": 19350
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "8b483d93-682c-4a7f-9e4a-01ce4ce3ab2d",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 19350
+      },
+      "actual_price_per_unit": 3225
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "d416016e-fced-46b0-b6dc-0d45d15337dd",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 40074,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 6679,
+            "expected_total_sell_price": 40074,
+            "maybe_matching_purchase_ticket": "8b483d93-682c-4a7f-9e4a-01ce4ce3ab2d"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "d416016e-fced-46b0-b6dc-0d45d15337dd",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6679
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 20724,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2748,
+            "expected_total_purchase_price": 16488
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "a46d65ec-471f-49cb-9718-6dd2ebbf2f25",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 16488
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6138,
+            "expected_total_sell_price": 36828,
+            "maybe_matching_purchase_ticket": "a46d65ec-471f-49cb-9718-6dd2ebbf2f25"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "7860c91a-1080-4ac4-a326-a2e53d323350",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "a46d65ec-471f-49cb-9718-6dd2ebbf2f25",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -16488,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2748,
+            "expected_total_purchase_price": 16488
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "a46d65ec-471f-49cb-9718-6dd2ebbf2f25",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 16488
+      },
+      "actual_price_per_unit": 2748
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "7860c91a-1080-4ac4-a326-a2e53d323350",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 36828,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6138,
+            "expected_total_sell_price": 36828,
+            "maybe_matching_purchase_ticket": "a46d65ec-471f-49cb-9718-6dd2ebbf2f25"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "7860c91a-1080-4ac4-a326-a2e53d323350",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6138
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 20340,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3258,
+            "expected_total_purchase_price": 19548
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "2042a0ad-8b3c-47f0-8654-163cd526e5a9",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 19548
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6573,
+            "expected_total_sell_price": 39438,
+            "maybe_matching_purchase_ticket": "2042a0ad-8b3c-47f0-8654-163cd526e5a9"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "ec5c5edf-31a8-48b9-9d12-521ba600c923",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "2042a0ad-8b3c-47f0-8654-163cd526e5a9",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -19548,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3258,
+            "expected_total_purchase_price": 19548
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "2042a0ad-8b3c-47f0-8654-163cd526e5a9",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 19548
+      },
+      "actual_price_per_unit": 3258
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 144,
+      "fleet_id": 2
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "ec5c5edf-31a8-48b9-9d12-521ba600c923",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 39438,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6573,
+            "expected_total_sell_price": 39438,
+            "maybe_matching_purchase_ticket": "2042a0ad-8b3c-47f0-8654-163cd526e5a9"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "ec5c5edf-31a8-48b9-9d12-521ba600c923",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6573
+    }
+  },
+  {
+    "TransferredFundsFromFleetToTreasury": {
+      "credits": 19890,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 299787,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_LIGHT_HAULER",
+            "waypoint_symbol": "X1-AM58-A2",
+            "assigned_fleet_id": 2,
+            "expected_purchase_price": 299787
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "379c054a-173d-45c0-8b28-402d08351cd5",
+        "ship_symbol": "FLWI_2_TEST-2",
+        "allocated_credits": 299787
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "ELECTRONICS",
+            "waypoint_symbol": "X1-AM58-F49",
+            "expected_price_per_unit": 1717,
+            "expected_total_purchase_price": 34340
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "9748290f-ec91-4b5f-9062-b5b0c2c656fb",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 34340
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "ELECTRONICS",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2682,
+            "expected_total_sell_price": 53640,
+            "maybe_matching_purchase_ticket": "9748290f-ec91-4b5f-9062-b5b0c2c656fb"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "a678db35-31a4-4595-90c1-6c96bf2996f8",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -293909,
+      "fleet_id": 2,
+      "actual_units": 1,
+      "finance_ticket": {
+        "details": {
+          "PurchaseShip": {
+            "ship_type": "SHIP_LIGHT_HAULER",
+            "waypoint_symbol": "X1-AM58-A2",
+            "assigned_fleet_id": 2,
+            "expected_purchase_price": 299787
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "379c054a-173d-45c0-8b28-402d08351cd5",
+        "ship_symbol": "FLWI_2_TEST-2",
+        "allocated_credits": 299787
+      },
+      "actual_price_per_unit": 293909
+    }
+  },
+  {
+    "SetNewTotalCapitalForFleet": {
+      "fleet_id": 2,
+      "new_total_capital": 150000
+    }
+  },
+  {
+    "SetNewOperatingReserveForFleet": {
+      "fleet_id": 2,
+      "new_operating_reserve": 2000
+    }
+  },
+  {
+    "TransferredFundsFromTreasuryToFleet": {
+      "credits": 1344,
+      "fleet_id": 2
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2822,
+            "expected_total_purchase_price": 16932
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "32f8a9aa-97b9-4ec0-8ee1-b24e7a982813",
+        "ship_symbol": "FLWI_2_TEST-1D",
+        "allocated_credits": 16932
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 5864,
+            "expected_total_sell_price": 35184,
+            "maybe_matching_purchase_ticket": "32f8a9aa-97b9-4ec0-8ee1-b24e7a982813"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "2cad05ca-21ac-4c7e-befc-12ec8079a332",
+        "ship_symbol": "FLWI_2_TEST-1D",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "9748290f-ec91-4b5f-9062-b5b0c2c656fb",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -34340,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 20,
+            "trade_good": "ELECTRONICS",
+            "waypoint_symbol": "X1-AM58-F49",
+            "expected_price_per_unit": 1717,
+            "expected_total_purchase_price": 34340
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "9748290f-ec91-4b5f-9062-b5b0c2c656fb",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 34340
+      },
+      "actual_price_per_unit": 1717
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "32f8a9aa-97b9-4ec0-8ee1-b24e7a982813",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -16932,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2822,
+            "expected_total_purchase_price": 16932
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "32f8a9aa-97b9-4ec0-8ee1-b24e7a982813",
+        "ship_symbol": "FLWI_2_TEST-1D",
+        "allocated_credits": 16932
+      },
+      "actual_price_per_unit": 2822
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "a678db35-31a4-4595-90c1-6c96bf2996f8",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 53640,
+      "fleet_id": 2,
+      "actual_units": 20,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 20,
+            "trade_good": "ELECTRONICS",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2682,
+            "expected_total_sell_price": 53640,
+            "maybe_matching_purchase_ticket": "9748290f-ec91-4b5f-9062-b5b0c2c656fb"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "a678db35-31a4-4595-90c1-6c96bf2996f8",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 2682
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3299,
+            "expected_total_purchase_price": 19794
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "f454cb11-5808-4874-9807-c38e5ce33a11",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 19794
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6280,
+            "expected_total_sell_price": 37680,
+            "maybe_matching_purchase_ticket": "f454cb11-5808-4874-9807-c38e5ce33a11"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "e8487a8e-e994-42f6-9e87-d737c257cc02",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 72,
+      "units": 1,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "f454cb11-5808-4874-9807-c38e5ce33a11",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": -19794,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-D40",
+            "expected_price_per_unit": 3299,
+            "expected_total_purchase_price": 19794
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "f454cb11-5808-4874-9807-c38e5ce33a11",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 19794
+      },
+      "actual_price_per_unit": 3299
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "2cad05ca-21ac-4c7e-befc-12ec8079a332",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 35184,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-H55",
+            "expected_price_per_unit": 5864,
+            "expected_total_sell_price": 35184,
+            "maybe_matching_purchase_ticket": "32f8a9aa-97b9-4ec0-8ee1-b24e7a982813"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "2cad05ca-21ac-4c7e-befc-12ec8079a332",
+        "ship_symbol": "FLWI_2_TEST-1D",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 5864
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 54,
+            "trade_good": "FABRICS",
+            "waypoint_symbol": "X1-AM58-E43",
+            "expected_price_per_unit": 1788,
+            "expected_total_purchase_price": 96552
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "e38f5a61-270b-4294-a2a5-1d7636bc95aa",
+        "ship_symbol": "FLWI_2_TEST-1D",
+        "allocated_credits": 96552
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 54,
+            "trade_good": "FABRICS",
+            "waypoint_symbol": "X1-AM58-K94",
+            "expected_price_per_unit": 2231,
+            "expected_total_sell_price": 120474,
+            "maybe_matching_purchase_ticket": "e38f5a61-270b-4294-a2a5-1d7636bc95aa"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "315d92dc-175a-4b1b-b0d3-015df6693845",
+        "ship_symbol": "FLWI_2_TEST-1D",
+        "allocated_credits": 0
+      }
+    }
+  },
+  {
+    "ExpenseLogged": {
+      "total": 144,
+      "units": 2,
+      "fleet_id": 2,
+      "price_per_unit": 72,
+      "maybe_ticket_id": "e8487a8e-e994-42f6-9e87-d737c257cc02",
+      "trade_good_symbol": "FUEL"
+    }
+  },
+  {
+    "TicketCompleted": {
+      "total": 37680,
+      "fleet_id": 2,
+      "actual_units": 6,
+      "finance_ticket": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PARTS",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 6280,
+            "expected_total_sell_price": 37680,
+            "maybe_matching_purchase_ticket": "f454cb11-5808-4874-9807-c38e5ce33a11"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "e8487a8e-e994-42f6-9e87-d737c257cc02",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      },
+      "actual_price_per_unit": 6280
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "PurchaseTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-D41",
+            "expected_price_per_unit": 2912,
+            "expected_total_purchase_price": 17472
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "d9f22fb0-28c1-43e0-9788-44f3a6b43c26",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 17472
+      }
+    }
+  },
+  {
+    "TicketCreated": {
+      "fleet_id": 2,
+      "ticket_details": {
+        "details": {
+          "SellTradeGoods": {
+            "quantity": 6,
+            "trade_good": "SHIP_PLATING",
+            "waypoint_symbol": "X1-AM58-A2",
+            "expected_price_per_unit": 5746,
+            "expected_total_sell_price": 34476,
+            "maybe_matching_purchase_ticket": "d9f22fb0-28c1-43e0-9788-44f3a6b43c26"
+          }
+        },
+        "fleet_id": 2,
+        "ticket_id": "4c6e447f-d600-4bb4-adfb-1ce5aaa57089",
+        "ship_symbol": "FLWI_2_TEST-1",
+        "allocated_credits": 0
+      }
+    }
+  }
+]
