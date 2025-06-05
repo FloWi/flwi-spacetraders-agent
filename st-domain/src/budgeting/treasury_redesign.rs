@@ -198,6 +198,10 @@ pub enum LedgerEntry {
     TreasuryReset {
         credits: Credits,
     },
+    BrokenTicketDeleted {
+        fleet_id: FleetId,
+        finance_ticket: FinanceTicket,
+    },
 }
 
 #[derive(PartialEq, Debug, Default, Clone, Serialize, Deserialize)]
@@ -349,6 +353,13 @@ where {
                 Ok(res)
             }
         }
+    }
+
+    pub async fn remove_tickets_with_0_units(&self) -> Result<()> {
+        self.with_treasurer(|t| t.remove_tickets_with_0_units())
+            .await?;
+
+        Ok(())
     }
 
     pub async fn reset_treasurer_due_to_agent_credit_diff(&self, starting_credits: Credits) -> Result<()> {
@@ -704,6 +715,40 @@ impl ImprovedTreasurer {
                 number_ongoing_trades,
             })
             .collect_vec())
+    }
+
+    pub(crate) fn remove_tickets_with_0_units(&mut self) -> Result<()> {
+        let mut broken_tickets = Vec::new();
+        for ticket in self.active_tickets.values() {
+            match &ticket.details {
+                FinanceTicketDetails::PurchaseTradeGoods(d) => {
+                    if d.quantity == 0 {
+                        broken_tickets.push(ticket.clone());
+                    }
+                }
+                FinanceTicketDetails::SellTradeGoods(d) => {
+                    if d.quantity == 0 {
+                        broken_tickets.push(ticket.clone());
+                    }
+                }
+                FinanceTicketDetails::SupplyConstructionSite(d) => {
+                    if d.quantity == 0 {
+                        broken_tickets.push(ticket.clone());
+                    }
+                }
+                FinanceTicketDetails::PurchaseShip(_) => {}
+                FinanceTicketDetails::RefuelShip(_) => {}
+            }
+        }
+
+        for ticket in broken_tickets {
+            self.process_ledger_entry(LedgerEntry::BrokenTicketDeleted {
+                fleet_id: ticket.fleet_id.clone(),
+                finance_ticket: ticket.clone(),
+            })?
+        }
+
+        Ok(())
     }
 
     pub fn create_purchase_trade_goods_ticket(
@@ -1161,6 +1206,21 @@ impl ImprovedTreasurer {
                 self.completed_tickets.clear();
                 self.treasury_fund = credits;
                 self.ledger_entries.push_back(ledger_entry);
+            }
+            LedgerEntry::BrokenTicketDeleted { fleet_id, finance_ticket } => {
+                if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
+                    if finance_ticket.allocated_credits.is_positive() {
+                        // clear the reservation
+                        budget.reserved_capital -= finance_ticket.allocated_credits;
+                    }
+
+                    budget.current_capital += finance_ticket.allocated_credits;
+                    self.active_tickets.remove(&finance_ticket.ticket_id);
+
+                    self.ledger_entries.push_back(ledger_entry);
+                } else {
+                    return Err(anyhow!("Fleet {} doesn't exist", fleet_id));
+                }
             }
         }
 

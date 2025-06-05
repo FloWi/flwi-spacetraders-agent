@@ -804,6 +804,8 @@ Fleet Budgets after rebalancing
 
             let (treasurer, treasurer_archiver_join_handle) = Self::initialize_treasurer(bmc.clone()).await?;
 
+            treasurer.remove_tickets_with_0_units().await?;
+
             let current_ship_demands = get_all_next_ship_purchases(&ship_map, &fleet_phase);
 
             let admiral = Self {
