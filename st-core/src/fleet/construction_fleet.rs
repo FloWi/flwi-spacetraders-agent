@@ -1,7 +1,9 @@
+use crate::calc_batches_based_on_trade_volume;
 use crate::fleet::construction_fleet::ConstructionFleetAction::{BoostSupplyChain, DeliverConstructionMaterials, TradeProfitably};
 use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
+use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::SellTradeGoods;
@@ -11,13 +13,13 @@ use st_domain::budgeting::treasury_redesign::{
 };
 use st_domain::{
     calc_scored_supply_chain_routes, trading, Cargo, ConstructJumpGateFleetConfig, Construction, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts,
-    FleetId, FleetPhase, FleetTask, FleetTaskCompletion, LabelledCoordinate, MarketEntry, MarketTradeGood, MaterializedSupplyChain,
+    FleetId, FleetPhase, FleetTask, FleetTaskCompletion, Inventory, LabelledCoordinate, MarketEntry, MarketTradeGood, MaterializedSupplyChain,
     ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, StationaryProbeLocation, SupplyLevel, TicketId, TradeGoodSymbol,
     TradeGoodType, Waypoint, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Not;
-use tracing::{debug, event};
+use tracing::{debug, error, event};
 use tracing_core::Level;
 
 pub struct ConstructJumpGateFleet;
@@ -51,6 +53,7 @@ struct DebugNoNewTaskFacts {
 pub struct NewTasksResultForConstructionFleet {
     pub new_potential_construction_tasks: Vec<PotentialConstructionTask>,
     pub unassigned_ships_with_existing_tickets: HashSet<ShipSymbol>,
+    pub deliver_tasks_from_existing_cargo: HashMap<ShipSymbol, Vec<CargoDeliveryAction>>,
 }
 
 impl ConstructJumpGateFleet {
@@ -76,6 +79,7 @@ impl ConstructJumpGateFleet {
             return Ok(NewTasksResultForConstructionFleet {
                 new_potential_construction_tasks: vec![],
                 unassigned_ships_with_existing_tickets: Default::default(),
+                deliver_tasks_from_existing_cargo: Default::default(),
             });
         }
 
@@ -104,6 +108,24 @@ impl ConstructJumpGateFleet {
             .cloned()
             .collect_vec();
 
+        let ships_without_ticket_that_have_cargo = unassigned_ships_without_existing_tickets
+            .iter()
+            .filter(|s| s.cargo.units > 0)
+            .cloned()
+            .collect_vec();
+
+        // only check for the ships without trading ticket
+        let unassigned_ships_to_check: Vec<&Ship> = unassigned_ships_without_existing_tickets
+            .iter()
+            .filter(|s| {
+                ships_without_ticket_that_have_cargo
+                    .iter()
+                    .any(|ship_with_cargo| s.symbol == ship_with_cargo.symbol)
+                    .not()
+            })
+            .cloned()
+            .collect_vec();
+
         let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints
             .iter()
             .map(|wp| (wp.symbol.clone(), wp))
@@ -114,12 +136,8 @@ impl ConstructJumpGateFleet {
 
         let available_capital = fleet_budget.available_capital();
 
-        let evaluated_trading_opportunities = trading::evaluate_trading_opportunities(
-            &unassigned_ships_without_existing_tickets,
-            &waypoint_map,
-            &trading_opportunities,
-            available_capital.0,
-        );
+        let evaluated_trading_opportunities =
+            trading::evaluate_trading_opportunities(&unassigned_ships_to_check, &waypoint_map, &trading_opportunities, available_capital.0);
 
         let best_new_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
             trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, active_trade_routes);
@@ -128,31 +146,11 @@ impl ConstructJumpGateFleet {
             .materialized_supply_chain_manager
             .get_materialized_supply_chain_for_system(cfg.system_symbol.clone());
 
-        let new_tasks: Vec<PotentialConstructionTask> = if admiral.ship_purchase_demand.is_empty() {
-            let best_actions_for_ships = determine_construction_fleet_actions(
-                admiral,
-                &fleet.id,
-                latest_market_entries,
-                &maybe_materialized_supply_chain,
-                maybe_construction_site,
-                ship_prices,
-                &waypoint_map,
-                &unassigned_ships_without_existing_tickets,
-                active_trade_routes,
-                fleet_budget,
-                &best_new_trading_opportunities,
-            )
-            .await?;
+        if ships_without_ticket_that_have_cargo.is_empty().not() {
+            println!("We found {} ships without ticket, but with cargo", ships_without_ticket_that_have_cargo.len());
 
-            best_actions_for_ships
-                .into_iter()
-                .map(|(ship_symbol, task)| PotentialConstructionTask { ship_symbol, task })
-                .collect()
-        } else {
-            create_trading_tickets(&best_new_trading_opportunities)
-        };
-
-        if new_tasks.is_empty() && unassigned_ships_without_existing_tickets.is_empty().not() {
+            // print debug facts for local testing
+            /*
             let debug_facts = DebugNoNewTaskFacts {
                 admiral_completed_fleet_tasks: admiral.completed_fleet_tasks.clone(),
                 admiral_fleets: admiral.fleets.clone(),
@@ -184,16 +182,103 @@ impl ConstructJumpGateFleet {
 
             event!(
                 Level::ERROR,
+                message = "ships_without_ticket_but_have_cargo is not empty",
+                debug_facts = serde_json::to_string(&debug_facts)?
+            );
+            */
+        }
+
+        let new_tasks: Vec<PotentialConstructionTask> = if admiral.ship_purchase_demand.is_empty() {
+            let best_actions_for_ships = determine_construction_fleet_actions(
+                admiral,
+                &fleet.id,
+                latest_market_entries,
+                &maybe_materialized_supply_chain,
+                maybe_construction_site,
+                ship_prices,
+                &waypoint_map,
+                &unassigned_ships_to_check,
+                active_trade_routes,
+                fleet_budget,
+                &best_new_trading_opportunities,
+            )
+            .await?;
+
+            best_actions_for_ships
+                .into_iter()
+                .map(|(ship_symbol, task)| PotentialConstructionTask { ship_symbol, task })
+                .collect()
+        } else {
+            create_trading_tickets(&best_new_trading_opportunities)
+        };
+
+        if new_tasks.is_empty() && unassigned_ships_to_check.is_empty().not() {
+            let debug_facts = DebugNoNewTaskFacts {
+                admiral_completed_fleet_tasks: admiral.completed_fleet_tasks.clone(),
+                admiral_fleets: admiral.fleets.clone(),
+                admiral_all_ships: admiral.all_ships.clone(),
+                admiral_ship_tasks: admiral.ship_tasks.clone(),
+                admiral_fleet_tasks: admiral.fleet_tasks.clone(),
+                admiral_ship_fleet_assignment: admiral.ship_fleet_assignment.clone(),
+                admiral_fleet_phase: admiral.fleet_phase.clone(),
+                admiral_active_trade_ids: admiral.active_trade_ids.clone(),
+                admiral_stationary_probe_locations: admiral.stationary_probe_locations.clone(),
+                admiral_treasurer_ledger_entries: admiral.treasurer.get_ledger_entries().await?,
+                admiral_ship_purchase_demand: admiral.ship_purchase_demand.clone(),
+                cfg: cfg.clone(),
+                fleet: fleet.clone(),
+                maybe_materialized_supply_chain: maybe_materialized_supply_chain.clone(),
+                maybe_construction_site: maybe_construction_site.clone(),
+                latest_market_entries: latest_market_entries.clone(),
+                ship_prices: ship_prices.clone(),
+                waypoints: waypoints.clone(),
+                unassigned_ships_of_fleet: unassigned_ships_to_check
+                    .iter()
+                    .cloned()
+                    .cloned()
+                    .collect_vec(),
+                active_trade_routes: active_trade_routes.clone(),
+                fleet_budget: fleet_budget.clone(),
+                fleet_ships: fleet_ships.iter().cloned().cloned().collect_vec(),
+            };
+
+            event!(
+                Level::ERROR,
                 message = "ConstructJumpGateFleet didn't find new task.",
                 debug_facts = serde_json::to_string(&debug_facts)?
             );
         }
 
+        let deliver_cargo_tasks_of_ships_without_ticket = create_tasks_for_ships_with_cargo(
+            &ships_without_ticket_that_have_cargo,
+            latest_market_entries,
+            &waypoint_map,
+            maybe_construction_site,
+        );
+
         Ok(NewTasksResultForConstructionFleet {
             new_potential_construction_tasks: new_tasks,
             unassigned_ships_with_existing_tickets,
+            deliver_tasks_from_existing_cargo: deliver_cargo_tasks_of_ships_without_ticket,
         })
     }
+}
+
+fn create_tasks_for_ships_with_cargo(
+    ships_with_cargo: &Vec<&Ship>,
+    latest_market_entries: &Vec<MarketEntry>,
+    waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
+    maybe_construction_site: &Option<Construction>,
+) -> HashMap<ShipSymbol, Vec<CargoDeliveryAction>> {
+    ships_with_cargo
+        .iter()
+        .map(|ship| {
+            (
+                ship.symbol.clone(),
+                create_delivery_tasks_for_ship_with_cargo(ship.clone(), latest_market_entries, waypoint_map, maybe_construction_site),
+            )
+        })
+        .collect()
 }
 
 pub fn create_trading_tickets(trading_opportunities_within_budget: &[EvaluatedTradingOpportunity]) -> Vec<PotentialConstructionTask> {
@@ -558,6 +643,21 @@ pub enum ConstructionFleetAction {
     },
 }
 
+#[derive(Clone)]
+pub enum CargoDeliveryAction {
+    SellOffCargoInventory {
+        trade_good_symbol: TradeGoodSymbol,
+        units: u32,
+        to: WaypointSymbol,
+        delivery_market_entry: MarketTradeGood,
+    },
+    DeliverConstructionMaterialsFromCargo {
+        trade_good_symbol: TradeGoodSymbol,
+        units: u32,
+        to: WaypointSymbol,
+    },
+}
+
 impl ConstructionFleetAction {
     pub(crate) fn adjusted_for_cargo_space(&self, ship: &Ship) -> Self {
         let available_cargo_space = (ship.cargo.capacity - ship.cargo.units) as u32;
@@ -768,6 +868,83 @@ impl PotentialConstructionTask {
     }
 }
 
+fn create_delivery_tasks_for_ship_with_cargo(
+    ship_with_cargo: &Ship,
+    latest_market_entries: &Vec<MarketEntry>,
+    waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
+    maybe_construction_site: &Option<Construction>,
+) -> Vec<CargoDeliveryAction> {
+    let construction_site = maybe_construction_site.clone().unwrap();
+    let missing_construction_materials = construction_site.missing_construction_materials();
+
+    let mut actions: Vec<CargoDeliveryAction> = Vec::new();
+    for inventory_entry in ship_with_cargo.cargo.inventory.clone() {
+        match missing_construction_materials.get(&inventory_entry.symbol) {
+            // inventory entry is construction material
+            Some(required_units_for_construction) => {
+                let units_to_deliver = *required_units_for_construction.min(&inventory_entry.units);
+                actions.push(CargoDeliveryAction::DeliverConstructionMaterialsFromCargo {
+                    trade_good_symbol: inventory_entry.symbol.clone(),
+                    units: units_to_deliver,
+                    to: construction_site.symbol.clone(),
+                })
+            }
+            None => {
+                // inventory entry is just normal trading cargo
+                if let Some((selling_location_wps, selling_market_entry)) =
+                    find_best_selling_location_for_inventory_entry(&inventory_entry, &ship_with_cargo.nav.waypoint_symbol, latest_market_entries, waypoint_map)
+                {
+                    let batches = calc_batches_based_on_trade_volume(inventory_entry.units, selling_market_entry.trade_volume as u32);
+                    for batch in batches {
+                        actions.push(CargoDeliveryAction::SellOffCargoInventory {
+                            trade_good_symbol: inventory_entry.symbol.clone(),
+                            units: batch,
+                            to: selling_location_wps.clone(),
+                            delivery_market_entry: selling_market_entry.clone(),
+                        })
+                    }
+                } else {
+                    error!("No selling location found for inventory_entry {inventory_entry:?}");
+                }
+            }
+        }
+    }
+
+    actions
+}
+
+fn find_best_selling_location_for_inventory_entry(
+    inventory_entry: &Inventory,
+    ship_location: &WaypointSymbol,
+    latest_market_entries: &Vec<MarketEntry>,
+    waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
+) -> Option<(WaypointSymbol, MarketTradeGood)> {
+    let ship_location_waypoint = waypoint_map.get(ship_location).unwrap();
+
+    let maybe_best = trading::to_trade_goods_with_locations(latest_market_entries)
+        .into_iter()
+        .flat_map(|(wps, entries_for_waypoint)| {
+            let market_waypoint = waypoint_map.get(&wps).unwrap();
+            entries_for_waypoint
+                .iter()
+                .cloned()
+                .filter(|mtg| {
+                    mtg.symbol == inventory_entry.symbol && (mtg.trade_good_type == TradeGoodType::Import || mtg.trade_good_type == TradeGoodType::Exchange)
+                })
+                .map(|mtg| {
+                    let distance = ship_location_waypoint.distance_to(market_waypoint);
+                    let distance = distance.clamp(1, distance);
+                    let profit_per_distance_unit = OrderedFloat(mtg.purchase_price as f64 * inventory_entry.units as f64 / distance as f64);
+                    (wps.clone(), mtg, profit_per_distance_unit)
+                })
+                .collect_vec()
+        })
+        .max_by_key(|(_, _, profit_per_distance_unit)| profit_per_distance_unit.clone())
+        .map(|(sell_wps, mtg, _)| (sell_wps, mtg.clone()));
+
+    maybe_best
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -783,6 +960,7 @@ mod tests {
         let NewTasksResultForConstructionFleet {
             new_potential_construction_tasks: actual_tasks,
             unassigned_ships_with_existing_tickets,
+            ..
         } = compute_tasks_from_snapshot_file(json_str).await?;
 
         assert!(actual_tasks.is_empty().not(), "Should have found some tasks");
@@ -796,6 +974,7 @@ mod tests {
         let NewTasksResultForConstructionFleet {
             new_potential_construction_tasks: actual_tasks,
             unassigned_ships_with_existing_tickets,
+            ..
         } = compute_tasks_from_snapshot_file(json_str).await?;
 
         assert!(actual_tasks.is_empty().not(), "Should have found some tasks");
@@ -812,6 +991,7 @@ mod tests {
         let NewTasksResultForConstructionFleet {
             new_potential_construction_tasks: actual_tasks,
             unassigned_ships_with_existing_tickets,
+            ..
         } = compute_tasks_from_snapshot_file(json_str).await?;
 
         assert!(actual_tasks.is_empty().not(), "Should have found some tasks");

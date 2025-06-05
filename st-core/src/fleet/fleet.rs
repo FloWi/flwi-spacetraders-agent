@@ -1,5 +1,5 @@
 use crate::behavior_tree::ship_behaviors::ShipAction;
-use crate::fleet::construction_fleet::{ConstructJumpGateFleet, NewTasksResultForConstructionFleet};
+use crate::fleet::construction_fleet::{CargoDeliveryAction, ConstructJumpGateFleet, NewTasksResultForConstructionFleet};
 use crate::fleet::fleet_runner::FleetRunner;
 use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
@@ -28,7 +28,7 @@ use st_domain::FleetTask::{ConstructJumpGate, InitialExploration, MineOres, Obse
 use st_domain::TradeGoodSymbol::{MOUNT_GAS_SIPHON_I, MOUNT_MINING_LASER_I, MOUNT_SURVEYOR_I};
 use st_domain::{
     get_exploration_tasks_for_waypoint, trading, ConstructJumpGateFleetConfig, Construction, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId,
-    FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, MarketEntry, MarketObservationFleetConfig, MarketTradeGood,
+    FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, Inventory, MarketEntry, MarketObservationFleetConfig, MarketTradeGood,
     MaterializedSupplyChain, MiningFleetConfig, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask,
     ShipTaskCompletionAnalysis, ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol,
     TradingFleetConfig, TransactionActionEvent, Waypoint, WaypointSymbol, WaypointType,
@@ -44,7 +44,7 @@ use strum::{Display, IntoEnumIterator};
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tracing::{event, Level};
+use tracing::{error, event, Level};
 use FleetConfig::{ConstructJumpGateCfg, MarketObservationCfg, MiningCfg, SiphoningCfg, TradingCfg};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -1038,10 +1038,47 @@ Fleet Budgets after rebalancing
                         Ok(NewTasksResultForConstructionFleet {
                             new_potential_construction_tasks,
                             unassigned_ships_with_existing_tickets,
+                            deliver_tasks_from_existing_cargo,
                         }) => {
                             // local mutability, because you can't run async code inside iterator chains.
                             // TODO: make this function pure again, by removing the treasurer... calls
                             let mut new_construction_fleet_tasks = HashMap::new();
+
+                            for (ship_symbol, deliver_from_cargo_tasks) in deliver_tasks_from_existing_cargo.clone() {
+                                let mut new_finance_tickets = Vec::new();
+                                for task in deliver_from_cargo_tasks {
+                                    let maybe_new_delivery_ticket = match task {
+                                        CargoDeliveryAction::SellOffCargoInventory {
+                                            trade_good_symbol,
+                                            units,
+                                            to,
+                                            delivery_market_entry,
+                                        } => admiral
+                                            .treasurer
+                                            .create_sell_trade_goods_ticket(
+                                                fleet_id,
+                                                trade_good_symbol,
+                                                to,
+                                                ship_symbol.clone(),
+                                                units,
+                                                delivery_market_entry.sell_price.into(),
+                                                None,
+                                            )
+                                            .await
+                                            .ok(),
+                                        CargoDeliveryAction::DeliverConstructionMaterialsFromCargo { trade_good_symbol, units, to } => admiral
+                                            .treasurer
+                                            .create_delivery_construction_material_ticket(fleet_id, trade_good_symbol, to, ship_symbol.clone(), units, None)
+                                            .await
+                                            .ok(),
+                                    };
+                                    if let Some(new_delivery_ticket) = maybe_new_delivery_ticket {
+                                        new_finance_tickets.push(new_delivery_ticket);
+                                    } else {
+                                        error!("Unable to create delivery ticket for deliver_tasks_from_existing_cargo for ship")
+                                    }
+                                }
+                            }
 
                             for potential_construction_task in new_potential_construction_tasks.iter() {
                                 let purchase_details = potential_construction_task.create_purchase_ticket_details();
@@ -1115,6 +1152,10 @@ Fleet Budgets after rebalancing
                             }
 
                             for ss in unassigned_ships_with_existing_tickets.iter() {
+                                new_construction_fleet_tasks.insert(ss.clone(), ShipTask::Trade);
+                            }
+
+                            for ss in deliver_tasks_from_existing_cargo.keys() {
                                 new_construction_fleet_tasks.insert(ss.clone(), ShipTask::Trade);
                             }
 
