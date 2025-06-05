@@ -933,7 +933,7 @@ fn find_best_selling_location_for_inventory_entry(
                 })
                 .map(|mtg| {
                     let distance = ship_location_waypoint.distance_to(market_waypoint);
-                    let distance = distance.clamp(1, distance);
+                    let distance = if distance < 1 { 1 } else { distance };
                     let profit_per_distance_unit = OrderedFloat(mtg.purchase_price as f64 * inventory_entry.units as f64 / distance as f64);
                     (wps.clone(), mtg, profit_per_distance_unit)
                 })
