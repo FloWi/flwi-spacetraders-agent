@@ -693,6 +693,7 @@ impl InMemoryUniverse {
                 },
                 cooldown,
                 cargo: updated_ship_cargo,
+                modifiers: None,
             },
         }
     }

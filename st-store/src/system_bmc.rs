@@ -1,10 +1,11 @@
 use crate::ctx::Ctx;
-use crate::{db, DbModelManager};
+use crate::{db, DbModelManager, DbWaypointEntry};
 use anyhow::*;
 use async_trait::async_trait;
 use chrono::Utc;
 use itertools::Itertools;
 use mockall::automock;
+use sqlx::types::Json;
 use st_domain::{SystemSymbol, Waypoint, WaypointSymbol};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -20,6 +21,7 @@ pub struct DbSystemBmc {
 #[async_trait]
 pub trait SystemBmcTrait: Send + Sync + Debug {
     async fn get_waypoints_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<Waypoint>>;
+    async fn get_waypoint(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Waypoint>;
     async fn save_waypoints_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol, waypoints: Vec<Waypoint>) -> Result<()>;
     async fn upsert_waypoint(&self, ctx: &Ctx, waypoint: Waypoint) -> Result<()>;
 
@@ -68,6 +70,28 @@ select count(*) as count
         row.count
             .ok_or_else(|| anyhow::anyhow!("COUNT(*) returned NULL"))
     }
+
+    async fn get_waypoint(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Waypoint> {
+        let maybe_waypoint_entry: Option<DbWaypointEntry> = sqlx::query_as!(
+            DbWaypointEntry,
+            r#"
+select system_symbol
+     , waypoint_symbol
+     , entry as "entry: Json<Waypoint>"
+     , created_at
+     , updated_at
+from waypoints
+where waypoints.waypoint_symbol = $1
+    "#,
+            waypoint_symbol.0.clone()
+        )
+        .fetch_optional(self.mm.pool())
+        .await?;
+
+        maybe_waypoint_entry
+            .map(|wp_entry| wp_entry.entry.0.clone())
+            .ok_or(anyhow!("Waypoint {} not found", waypoint_symbol.0.clone()))
+    }
 }
 
 #[derive(Debug)]
@@ -112,6 +136,21 @@ impl SystemBmcTrait for InMemorySystemsBmc {
             .collect_vec())
     }
 
+    async fn get_waypoint(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Waypoint> {
+        let waypoints = self
+            .in_memory_systems
+            .read()
+            .await
+            .waypoints_per_system
+            .get(&waypoint_symbol.system_symbol())
+            .cloned()
+            .unwrap_or_default();
+        waypoints
+            .get(waypoint_symbol)
+            .cloned()
+            .ok_or(anyhow!("Waypoint {} not found", waypoint_symbol))
+    }
+
     async fn save_waypoints_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol, waypoints: Vec<Waypoint>) -> Result<()> {
         let waypoint_map = waypoints
             .into_iter()
@@ -150,7 +189,9 @@ impl SystemBmcTrait for InMemorySystemsBmc {
             .in_memory_systems
             .read()
             .await
-            .waypoints_per_system.values().map(|waypoints| waypoints.len() as i64)
+            .waypoints_per_system
+            .values()
+            .map(|waypoints| waypoints.len() as i64)
             .sum();
         Ok(result)
     }

@@ -7,7 +7,7 @@ use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
     Construction, CreateSurveyResponse, Extraction, JumpGate, LabelledCoordinate, MarketData, MaterializedSupplyChain, MiningOpsConfig, Shipyard, Survey,
-    TravelAction, Waypoint, WaypointSymbol,
+    TravelAction, Waypoint, WaypointModifier, WaypointSymbol,
 };
 use st_store::bmc::Bmc;
 use st_store::Ctx;
@@ -203,5 +203,30 @@ impl BlackboardOps for BmcBlackboard {
             .await?;
 
         Ok(())
+    }
+
+    async fn mark_asteroid_has_reached_critical_limit(&self, mining_waypoint: &WaypointSymbol, waypoint_modifier: &WaypointModifier) -> anyhow::Result<()> {
+        if let Ok(waypoint) = self
+            .bmc
+            .system_bmc()
+            .get_waypoint(&Ctx::Anonymous, mining_waypoint)
+            .await
+        {
+            if waypoint.has_reached_critical_limit() {
+                Ok(())
+            } else {
+                let mut updated = waypoint.clone();
+                updated.modifiers.push(waypoint_modifier.clone());
+
+                self.bmc
+                    .system_bmc()
+                    .upsert_waypoint(&Ctx::Anonymous, updated)
+                    .await?;
+
+                Ok(())
+            }
+        } else {
+            anyhow::bail!("Waypoint {} not found in system_bmc", mining_waypoint);
+        }
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
     get_exploration_tasks_for_waypoint, Construction, CreateSurveyResponse, CreateSurveyResponseBody, ExplorationTask, Extraction, JumpGate, MarketData,
-    MaterializedSupplyChain, MiningOpsConfig, Shipyard, Survey, TravelAction, Waypoint, WaypointSymbol,
+    MaterializedSupplyChain, MiningOpsConfig, Shipyard, Survey, TravelAction, Waypoint, WaypointModifier, WaypointSymbol,
 };
 use async_trait::async_trait;
 use mockall::automock;
@@ -46,4 +46,5 @@ pub trait BlackboardOps: Send + Sync {
     async fn save_survey_response(&self, create_survey_response: CreateSurveyResponse) -> anyhow::Result<()>;
     async fn log_survey_usage(&self, survey: Survey, extraction: Extraction) -> anyhow::Result<()>;
     async fn is_survey_necessary(&self, maybe_mining_waypoint: Option<WaypointSymbol>) -> anyhow::Result<bool>;
+    async fn mark_asteroid_has_reached_critical_limit(&self, mining_waypoint: &WaypointSymbol, waypoint_modifier: &WaypointModifier) -> anyhow::Result<()>;
 }

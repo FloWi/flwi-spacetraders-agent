@@ -62,6 +62,8 @@ pub enum ShipAction {
     AttemptCargoTransfer,
     AnnounceHaulerReadyForPickup,
     IsHaulerFilledEnoughForDelivery,
+    HasAsteroidReachedCriticalLimit,
+    SleepForNextWaypointCriticalLimitCheck,
 }
 
 pub struct Behaviors {
@@ -370,6 +372,13 @@ pub fn ship_behaviors() -> Behaviors {
         Behavior::new_while(
             Behavior::new_invert(Behavior::new_action(ShipAction::HasCargoSpaceForMining)),
             Behavior::new_action(ShipAction::AttemptCargoTransfer),
+        ),
+        Behavior::new_while(
+            Behavior::new_action(ShipAction::HasAsteroidReachedCriticalLimit),
+            Behavior::new_sequence(vec![
+                Behavior::new_action(ShipAction::SleepForNextWaypointCriticalLimitCheck),
+                Behavior::new_action(ShipAction::CollectWaypointInfos),
+            ]),
         ),
         mine_if_necessary.clone(),
     ]);

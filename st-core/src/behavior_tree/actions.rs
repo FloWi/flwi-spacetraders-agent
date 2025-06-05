@@ -18,14 +18,14 @@ use st_domain::TradeGoodSymbol::MOUNT_GAS_SIPHON_I;
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
     get_exploration_tasks_for_waypoint, Cargo, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, ShipSymbol,
-    Survey, TradeGoodSymbol, TravelAction,
+    Survey, TradeGoodSymbol, TravelAction, WaypointModifierSymbol,
 };
 use std::collections::HashSet;
 use std::hint::unreachable_unchecked;
 use std::ops::{Add, Not};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tracing::event;
+use tracing::{event, info};
 use tracing_core::Level;
 
 #[async_trait]
@@ -868,6 +868,21 @@ impl Actionable for ShipAction {
                                         .log_survey_usage(survey, result.data.extraction.clone())
                                         .await?;
                                 }
+                                if let Some(critical_limit_modifier) = result
+                                    .data
+                                    .modifiers
+                                    .unwrap_or_default()
+                                    .iter()
+                                    .find(|wp_modifier| wp_modifier.symbol == WaypointModifierSymbol::CRITICAL_LIMIT)
+                                {
+                                    info!(
+                                        message = "Asteroid has reached critical limit.",
+                                        asteroid_waypoint_symbol = &state.nav.waypoint_symbol.0
+                                    );
+                                    args.blackboard
+                                        .mark_asteroid_has_reached_critical_limit(&state.nav.waypoint_symbol, &critical_limit_modifier)
+                                        .await?;
+                                }
                                 break Ok(Success);
                             }
                             Err(e) => {
@@ -1024,6 +1039,33 @@ impl Actionable for ShipAction {
                         (fill_ratio * 100.0).round() as u32
                     ))
                 }
+            }
+
+            ShipAction::HasAsteroidReachedCriticalLimit => {
+                if let Some(mining_site_wps) = state.get_mining_site() {
+                    if let Ok(waypoint) = args.blackboard.get_waypoint(&mining_site_wps).await {
+                        if waypoint
+                            .modifiers
+                            .iter()
+                            .any(|wp_modifier| wp_modifier.symbol == WaypointModifierSymbol::CRITICAL_LIMIT)
+                        {
+                            Ok(Success)
+                        } else {
+                            Err(anyhow!("Asteroid has not reached CRITICAL_LIMIT"))
+                        }
+                    } else {
+                        Err(anyhow!("Waypoint not found"))
+                    }
+                } else {
+                    Err(anyhow!("Mining site not found"))
+                }
+            }
+            ShipAction::SleepForNextWaypointCriticalLimitCheck => {
+                // default sleep duration is 5s
+                // let's wait 60s but not hardcode it here
+                // in the test we can still tweak the sleep_duration
+                tokio::time::sleep(sleep_duration * 12).await;
+                Ok(Success)
             }
         };
 

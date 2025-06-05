@@ -189,11 +189,11 @@ values ($1, $2)
 
 #[derive(Serialize, Clone, Debug, Deserialize)]
 pub struct DbWaypointEntry {
-    system_symbol: String,
-    waypoint_symbol: String,
+    pub system_symbol: String,
+    pub waypoint_symbol: String,
     pub entry: Json<Waypoint>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Serialize, Clone, Debug, Deserialize)]

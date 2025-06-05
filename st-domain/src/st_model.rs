@@ -247,8 +247,16 @@ pub struct WaypointTrait {
     pub description: String,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct WaypointModifierSymbol(pub String);
+#[derive(Deserialize, Serialize, Debug, Display, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[allow(non_camel_case_types)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+pub enum WaypointModifierSymbol {
+    STRIPPED,
+    UNSTABLE,
+    RADIATION_LEAK,
+    CRITICAL_LIMIT,
+    CIVIL_UNREST,
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
@@ -437,6 +445,14 @@ pub struct Waypoint {
     pub modifiers: Vec<WaypointModifier>,
     pub chart: Option<Chart>,
     pub is_under_construction: bool,
+}
+
+impl Waypoint {
+    pub fn has_reached_critical_limit(&self) -> bool {
+        self.modifiers
+            .iter()
+            .any(|wp_modifier| wp_modifier.symbol == WaypointModifierSymbol::CRITICAL_LIMIT)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -1137,6 +1153,7 @@ pub struct ExtractResourcesResponseBody {
     pub extraction: Extraction,
     pub cooldown: Cooldown,
     pub cargo: Cargo,
+    pub modifiers: Option<Vec<WaypointModifier>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
