@@ -68,3 +68,31 @@ where
         .sorted()
         .join(", ")
 }
+
+fn calc_batches_based_on_trade_volume(number_items: u32, trade_volume: u32) -> Vec<u32> {
+    if number_items == 0 {
+        // inventory-entry should never quantity of 0, but you never know.
+        return vec![];
+    }
+
+    let result = if number_items <= trade_volume {
+        vec![number_items]
+    } else {
+        let mut batches = vec![];
+        let num_batches = number_items / trade_volume;
+        for i in 0..=num_batches {
+            if i < num_batches {
+                batches.push(trade_volume);
+            } else {
+                let rest = number_items - batches.iter().sum::<u32>();
+                batches.push(rest);
+            }
+        }
+        batches
+    };
+
+    let total = result.iter().sum::<u32>();
+    assert_eq!(total, number_items);
+
+    result
+}
