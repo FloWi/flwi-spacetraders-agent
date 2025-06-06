@@ -451,6 +451,7 @@ async fn determine_construction_fleet_actions(
 
         let boosted_trade_routes = scored_supply_chain_routes
             .into_iter()
+            .filter(|r| r.score > 0)
             .filter(|r| {
                 active_trade_routes
                     .iter()
