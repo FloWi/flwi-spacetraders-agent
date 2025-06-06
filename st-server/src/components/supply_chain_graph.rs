@@ -347,13 +347,7 @@ fn generate_edge_label_svg(x: f64, y: f64, edge: &TechEdge, direction_x: f64, di
         ColoredLabel::new(format!("p: {}c", cost.separate_with_commas()), normal_text_class.0.clone()),
     ];
 
-    let sign = if profit.signum() < 0 {
-        "-"
-    } else if profit.signum() > 0 {
-        "+"
-    } else {
-        ""
-    };
+    let sign = if profit.signum() > 0 { "+" } else { "" }; // add a + sign to indicate positive profit more clearly
     let right_text_lines = vec![
         edge.maybe_activity_text()
             .unwrap_or(ColoredLabel::new("---".to_string(), normal_text_class.0.clone())),
