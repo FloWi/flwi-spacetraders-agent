@@ -1,4 +1,5 @@
 use crate::format_duration;
+use crate::tables::renderers::format_number;
 use chrono::{DateTime, Utc};
 use itertools::*;
 use leptos::prelude::*;
@@ -9,9 +10,10 @@ use serde::{Deserialize, Serialize};
 use st_domain::budgeting::treasury_redesign::{
     compute_active_trades_from_ledger_entries, ActiveTrade, FinanceTicket, FinanceTicketDetails, FinanceTicketState, ImprovedTreasurer, LedgerEntry,
 };
-use st_domain::{Fleet, NavStatus, Ship, ShipSymbol, ShipTask, TicketId};
+use st_domain::{Fleet, NavStatus, Ship, ShipSymbol, ShipTask, TicketId, TradeGoodSymbol};
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
+use thousands::Separable;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
@@ -103,41 +105,87 @@ async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOvervie
     })
 }
 
+fn render_active_trade(trade: ActiveTrade) -> impl IntoView {
+    /*
+    **Trading 20 units of DRUGS for a profit of 33,160c**
+    Purchase: X1-AM58-J61 (62,600c total for 3,130c/unit) ☑️
+    Delivery: X1-AM58-H54 (95,760c total for 4,788c/unit)
+         */
+
+    let sell_total = trade.delivery.allocated_credits.clone();
+    let sell_waypoint = trade.delivery.details.get_waypoint();
+    let sell_price_per_unit = trade.delivery.details.get_price_per_unit();
+
+    let (delivery_label, sell_total, trade_good_str) = match &trade.delivery.details {
+        FinanceTicketDetails::PurchaseTradeGoods(d) => ("Purchase", 0.into(), d.trade_good.to_string()),
+        FinanceTicketDetails::SellTradeGoods(s) => ("Sell", s.expected_total_sell_price.clone(), s.trade_good.to_string()),
+        FinanceTicketDetails::SupplyConstructionSite(d) => ("Supply", 0.into(), d.trade_good.to_string()),
+        FinanceTicketDetails::PurchaseShip(d) => ("PurchaseShip", 0.into(), d.ship_type.to_string()),
+        FinanceTicketDetails::RefuelShip(d) => ("Refuel", 0.into(), TradeGoodSymbol::FUEL.to_string()),
+    };
+
+    let delivery_summary = format!(
+        "{}: {} ({}c total for {}c/unit)",
+        delivery_label,
+        trade.delivery.details.get_waypoint(),
+        sell_total.0.separate_with_commas(),
+        sell_price_per_unit.0.separate_with_commas()
+    );
+
+    // complete trade (purchase & sell)
+    if let Some((purchase_ticket, state)) = trade.maybe_purchase.clone() {
+        let purchase_total = purchase_ticket.allocated_credits.clone();
+        let purchase_waypoint = purchase_ticket.details.get_waypoint();
+        let purchase_price_per_unit = purchase_ticket.details.get_price_per_unit();
+        let units = purchase_ticket.details.get_units();
+
+        let profit = sell_total - purchase_total;
+        let trade_summary = format!(
+            "Trading {} units of {} for a profit of {}c",
+            units,
+            trade_good_str,
+            profit.0.separate_with_commas()
+        );
+
+        let purchase_completed_checked_icon = if state == FinanceTicketState::Completed {
+            " ☑️"
+        } else {
+            ""
+        };
+        let purchase_summary = format!(
+            "Purchase: {} ({}c total for {}c/unit){}",
+            purchase_waypoint,
+            purchase_total.0.separate_with_commas(),
+            purchase_price_per_unit.0.separate_with_commas(),
+            purchase_completed_checked_icon
+        );
+
+        view! {
+            <div>
+                <p class="font-bold">{trade_summary}</p>
+                <p class="">{purchase_summary}</p>
+                <p class="">{delivery_summary}</p>
+            </div>
+        }
+        .into_any()
+    } else {
+        // single trade action
+        let trade_summary = trade.delivery.details.get_description();
+
+        view! {
+            <div>
+                <p class="font-bold">{trade_summary}</p>
+                <p class="">{delivery_summary}</p>
+            </div>
+        }
+        .into_any()
+    }
+}
+
 fn render_trades(active_trades: Vec<ActiveTrade>) -> impl IntoView {
     active_trades
         .iter()
-        .map(|t| {
-            if let Some((purchase_ticket, state)) = t.maybe_purchase.clone() {
-                view! {
-                    <ul>
-                        <li>
-                            <span>
-                                {format!("{} ({state})", purchase_ticket.details.get_description())}
-                            </span>
-                            <span>
-                                <em class="text-sm">{format!(" {}", purchase_ticket.ticket_id.to_string())}</em>
-                            </span>
-                        </li>
-                        <li>{format!("{}", t.delivery.details.get_description())}</li>
-                    </ul>
-                }
-                .into_any()
-            } else {
-                view! {
-                    <ul>
-                        <li>
-                            <span>
-                                {format!("{}", t.delivery.details.get_description())}
-                            </span>
-                            <span>
-                                <em class="text-sm">{format!(" {}",t.delivery.ticket_id.to_string())}</em>
-                            </span>
-                        </li>
-                    </ul>
-                }
-                .into_any()
-            }
-        })
+        .map(|t| render_active_trade(t.clone()))
         .collect_view()
 }
 
@@ -268,23 +316,28 @@ pub fn FleetOverview<'a>(
     ship_tasks: &'a HashMap<ShipSymbol, ShipTask>,
     active_trades: &'a HashMap<ShipSymbol, Vec<ActiveTrade>>,
 ) -> impl IntoView {
+    let ships_with_tasks = ships_of_fleet
+        .iter()
+        .map(|ship| (ship.clone(), ship_tasks.get(&ship.symbol)))
+        .collect_vec();
+
     view! {
         <div class="flex flex-col gap-4 p-4">
             <h2 class="font-bold text-xl">
                 {format!("Fleet {} with {} ships", fleet.cfg.to_string(), ships_of_fleet.len())}
             </h2>
             <div class="grid grid-cols-4 gap-4">
-                {ships_of_fleet
+                {ships_with_tasks
                     .iter()
-                    .sorted_by_key(|s| s.symbol.0.clone())
-                    .map(|ship| {
-                        let maybe_ship_task = ship_tasks.get(&ship.symbol);
+                    .sorted_by_key(|(ship, maybe_ship_task)| format!("{}-{}", maybe_ship_task.clone().map(|st| st.to_string()).unwrap_or("None".to_string()),  ship.symbol.0.clone()))
+                    .map(|(ship, maybe_ship_task)| {
+
                         let active_trades = active_trades
                             .get(&ship.symbol)
                             .cloned()
                             .unwrap_or_default();
                         view! {
-                            <ShipCard ship=ship maybe_ship_task=maybe_ship_task active_trades />
+                            <ShipCard ship=ship maybe_ship_task={maybe_ship_task.clone()} active_trades />
                         }
                     })
                     .collect_view()}
