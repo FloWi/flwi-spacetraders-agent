@@ -1,7 +1,7 @@
 use crate::supply_chain::RawMaterialSourceType::{Mining, Siphoning};
 use crate::{
-    ActivityLevel, Construction, ConstructionMaterial, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, SupplyChainMap, SupplyLevel,
-    SystemSymbol, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType, MAX_ACTIVITY_LEVEL_SCORE, MAX_SUPPLY_LEVEL_SCORE,
+    trading, ActivityLevel, Construction, ConstructionMaterial, GetSupplyChainResponse, LabelledCoordinate, MarketTradeGood, ShipSymbol, SupplyChainMap,
+    SupplyLevel, SystemSymbol, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol, WaypointType, MAX_ACTIVITY_LEVEL_SCORE, MAX_SUPPLY_LEVEL_SCORE,
 };
 use anyhow::anyhow;
 use itertools::Itertools;
@@ -511,21 +511,6 @@ fn calc_construction_related_trade_good_overview(
     }
 }
 
-fn group_markets_by_type(
-    market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
-    trade_good_type: TradeGoodType,
-) -> HashMap<TradeGoodSymbol, Vec<(WaypointSymbol, MarketTradeGood)>> {
-    market_data
-        .iter()
-        .flat_map(|(wps, entries)| {
-            entries
-                .iter()
-                .filter(|mtg| mtg.trade_good_type == trade_good_type)
-                .map(|mtg| (mtg.symbol.clone(), (wps.clone(), mtg.clone())))
-        })
-        .into_group_map()
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct DumpSupplyChainStateForComputeAllRoutes {
     relevant_products: Vec<TradeGoodSymbol>,
@@ -573,14 +558,14 @@ fn compute_all_routes(
         })
         .collect_vec();
 
-    let export_markets: HashMap<TradeGoodSymbol, Vec<(WaypointSymbol, MarketTradeGood)>> = group_markets_by_type(&relevant_market_data, TradeGoodType::Export);
-    let import_markets = group_markets_by_type(&relevant_market_data, TradeGoodType::Import);
+    let export_markets: HashMap<TradeGoodSymbol, Vec<(WaypointSymbol, MarketTradeGood)>> =
+        trading::group_markets_by_type(&relevant_market_data, TradeGoodType::Export);
+    let import_markets = trading::group_markets_by_type(&relevant_market_data, TradeGoodType::Import);
     let exchange_markets: HashMap<TradeGoodSymbol, Vec<(WaypointSymbol, MarketTradeGood)>> =
-        group_markets_by_type(&relevant_market_data, TradeGoodType::Exchange);
+        trading::group_markets_by_type(&relevant_market_data, TradeGoodType::Exchange);
 
-    // Then use it like this:
-    let supply_markets = combine_maps(&export_markets, &exchange_markets);
-    let consume_markets = combine_maps(&import_markets, &exchange_markets);
+    let supply_markets = crate::combine_maps(&export_markets, &exchange_markets);
+    let consume_markets = crate::combine_maps(&import_markets, &exchange_markets);
 
     // Note that we deliver some of the ores directly to the smelting location (e.g. COPPER_ORE --> COPPER), which means that we don't have provider-market of COPPER_ORE
     let mut input_sources: HashMap<TradeGoodSymbol, (WaypointSymbol, u32)> = raw_delivery_routes
@@ -748,20 +733,6 @@ fn compute_all_routes(
     // println!("all_routes: {}", serde_json::to_string(&all_routes).unwrap());
 
     Ok(all_routes)
-}
-
-fn combine_maps<K, V>(map1: &HashMap<K, Vec<V>>, map2: &HashMap<K, Vec<V>>) -> HashMap<K, Vec<V>>
-where
-    K: Clone + Eq + Hash,
-    V: Clone,
-{
-    map1.iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .chain(map2.iter().map(|(k, v)| (k.clone(), v.clone())))
-        .fold(HashMap::new(), |mut acc, (k, vs)| {
-            acc.entry(k).or_default().extend(vs);
-            acc
-        })
 }
 
 pub fn compute_raw_delivery_routes(

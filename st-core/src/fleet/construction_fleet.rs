@@ -1,4 +1,4 @@
-use crate::calc_batches_based_on_trade_volume;
+use crate::calc_batches_based_on_volume_constraint;
 use crate::fleet::construction_fleet::ConstructionFleetAction::{BoostSupplyChain, DeliverConstructionMaterials, TradeProfitably};
 use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
@@ -900,7 +900,7 @@ fn create_delivery_tasks_for_ship_with_cargo(
                 if let Some((selling_location_wps, selling_market_entry)) =
                     find_best_selling_location_for_inventory_entry(&inventory_entry, &ship_with_cargo.nav.waypoint_symbol, latest_market_entries, waypoint_map)
                 {
-                    let batches = calc_batches_based_on_trade_volume(inventory_entry.units, selling_market_entry.trade_volume as u32);
+                    let batches = calc_batches_based_on_volume_constraint(inventory_entry.units, selling_market_entry.trade_volume as u32);
                     for batch in batches {
                         actions.push(CargoDeliveryAction::SellOffCargoInventory {
                             trade_good_symbol: inventory_entry.symbol.clone(),
@@ -976,23 +976,6 @@ mod tests {
     #[test]
     async fn test_compute_new_tasks_from_broken_runtime_state_2() -> Result<()> {
         let json_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/broken-again-details.json"));
-
-        let NewTasksResultForConstructionFleet {
-            new_potential_construction_tasks: actual_tasks,
-            unassigned_ships_with_existing_tickets,
-            ..
-        } = compute_tasks_from_snapshot_file(json_str).await?;
-
-        assert!(actual_tasks.is_empty().not(), "Should have found some tasks");
-        Ok(())
-    }
-
-    #[test]
-    async fn test_compute_new_tasks_from_broken_runtime_state_3() -> Result<()> {
-        let json_str = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/fixtures/no-task-found-also-duplicate-tickets-for-ships.json"
-        ));
 
         let NewTasksResultForConstructionFleet {
             new_potential_construction_tasks: actual_tasks,

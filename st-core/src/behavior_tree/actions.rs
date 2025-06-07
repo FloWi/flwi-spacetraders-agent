@@ -794,7 +794,7 @@ impl Actionable for ShipAction {
                             // if item.units > delivery_route.delivery_market_entry.trade_volume as u32 {
                             //     println!("Hello, breakpoint. checking if batching inventory units into chunks of size <= trade_volume works")
                             // }
-                            let batches = crate::calc_batches_based_on_trade_volume(item.units, delivery_route.delivery_market_entry.trade_volume as u32);
+                            let batches = crate::calc_batches_based_on_volume_constraint(item.units, delivery_route.delivery_market_entry.trade_volume as u32);
                             for batch in batches {
                                 let ticket = args
                                     .treasurer
@@ -1138,7 +1138,7 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::mpsc::{Receiver, Sender};
 
-    use crate::calc_batches_based_on_trade_volume;
+    use crate::calc_batches_based_on_volume_constraint;
     use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
     use crate::test_objects::TestObjects;
     use crate::transfer_cargo_manager::TransferCargoManager;
@@ -1204,9 +1204,9 @@ mod tests {
 
     #[test()]
     fn test_calculating_batch_sizes_should_work() {
-        assert_eq!(calc_batches_based_on_trade_volume(63, 60), vec![60, 3]);
-        assert_eq!(calc_batches_based_on_trade_volume(59, 60), vec![59]);
-        assert_eq!(calc_batches_based_on_trade_volume(0, 60), Vec::<u32>::new());
+        assert_eq!(calc_batches_based_on_volume_constraint(63, 60), vec![60, 3]);
+        assert_eq!(calc_batches_based_on_volume_constraint(59, 60), vec![59]);
+        assert_eq!(calc_batches_based_on_volume_constraint(0, 60), Vec::<u32>::new());
     }
 
     #[test(tokio::test)]

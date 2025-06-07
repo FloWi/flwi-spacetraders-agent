@@ -21,6 +21,7 @@ pub mod marketplaces;
 pub mod pathfinder;
 pub mod universe_server;
 
+mod contract_manager;
 mod materialized_supply_chain_manager;
 mod survey_manager;
 #[cfg(test)]
@@ -69,7 +70,7 @@ where
         .join(", ")
 }
 
-fn calc_batches_based_on_trade_volume(number_items: u32, trade_volume: u32) -> Vec<u32> {
+fn calc_batches_based_on_volume_constraint(number_items: u32, trade_volume: u32) -> Vec<u32> {
     if number_items == 0 {
         // inventory-entry should never quantity of 0, but you never know.
         return vec![];

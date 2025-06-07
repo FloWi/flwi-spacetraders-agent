@@ -61,3 +61,17 @@ where
     }
     map_ser.end()
 }
+
+pub fn combine_maps<K, V>(map1: &HashMap<K, Vec<V>>, map2: &HashMap<K, Vec<V>>) -> HashMap<K, Vec<V>>
+where
+    K: Clone + Eq + Hash,
+    V: Clone,
+{
+    map1.iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .chain(map2.iter().map(|(k, v)| (k.clone(), v.clone())))
+        .fold(HashMap::new(), |mut acc, (k, vs)| {
+            acc.entry(k).or_default().extend(vs);
+            acc
+        })
+}

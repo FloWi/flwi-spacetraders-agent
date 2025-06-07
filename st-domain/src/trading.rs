@@ -66,7 +66,7 @@ pub fn find_trading_opportunities_sorted_by_profit_per_distance_unit(
     trades_by_profit
 }
 
-pub fn to_trade_goods_with_locations(market_data: &Vec<MarketEntry>) -> Vec<(WaypointSymbol, Vec<MarketTradeGood>)> {
+pub fn to_trade_goods_with_locations(market_data: &[MarketEntry]) -> Vec<(WaypointSymbol, Vec<MarketTradeGood>)> {
     market_data
         .iter()
         .filter_map(|md| {
@@ -252,4 +252,19 @@ fn calculate_total_profit(assignments: &[EvaluatedTradingOpportunity]) -> u64 {
         .iter()
         .map(|option| option.profit_per_distance_unit)
         .sum()
+}
+
+pub fn group_markets_by_type(
+    market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
+    trade_good_type: TradeGoodType,
+) -> HashMap<TradeGoodSymbol, Vec<(WaypointSymbol, MarketTradeGood)>> {
+    market_data
+        .iter()
+        .flat_map(|(wps, entries)| {
+            entries
+                .iter()
+                .filter(|mtg| mtg.trade_good_type == trade_good_type)
+                .map(|mtg| (mtg.symbol.clone(), (wps.clone(), mtg.clone())))
+        })
+        .into_group_map()
 }
