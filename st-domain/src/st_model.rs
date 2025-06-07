@@ -765,10 +765,10 @@ pub struct Payment {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct Delivery {
-    pub trade_symbol: String,
-    pub destination_symbol: String,
-    pub units_required: i32,
-    pub units_fulfilled: i32,
+    pub trade_symbol: TradeGoodSymbol,
+    pub destination_symbol: WaypointSymbol,
+    pub units_required: u32,
+    pub units_fulfilled: u32,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]

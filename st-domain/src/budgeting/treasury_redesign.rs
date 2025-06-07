@@ -25,6 +25,13 @@ pub struct PurchaseTradeGoodsTicketDetails {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
+pub struct DeliverCargoContractTicketDetails {
+    pub waypoint_symbol: WaypointSymbol,
+    pub trade_good: TradeGoodSymbol,
+    pub quantity: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub struct SellTradeGoodsTicketDetails {
     pub waypoint_symbol: WaypointSymbol,
     pub trade_good: TradeGoodSymbol,
