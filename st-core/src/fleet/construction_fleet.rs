@@ -422,17 +422,22 @@ async fn determine_construction_fleet_actions(
             .collect_vec();
 
         // if the supply-level of the construction materials is sufficiently high, we prioritise them
-        let construction_material_deliveries: Vec<ConstructionFleetAction> = flattened_market_data
+        let export_markets_of_construction_materials = flattened_market_data
             .iter()
             .filter_map(|(mtg, wps)| match required_construction_materials.get(&mtg.symbol) {
                 None => None,
-                Some(qty_missing) => (mtg.trade_good_type == TradeGoodType::Export && mtg.supply >= SupplyLevel::High).then_some((mtg, wps, qty_missing)),
+                Some(qty_missing) => (mtg.trade_good_type == TradeGoodType::Export).then_some((mtg.clone(), wps.clone(), *qty_missing)),
             })
+            .collect_vec();
+
+        let construction_material_deliveries: Vec<ConstructionFleetAction> = export_markets_of_construction_materials
+            .iter()
             .filter(|(mtg, wps, _)| {
-                active_trade_routes
-                    .iter()
-                    .any(|atr| atr.from == **wps && atr.trade_good == mtg.symbol)
-                    .not()
+                mtg.supply >= SupplyLevel::High
+                    && active_trade_routes
+                        .iter()
+                        .any(|atr| atr.from == *wps && atr.trade_good == mtg.symbol)
+                        .not()
             })
             .map(|(mtg, wps, qty_missing)| {
                 // Don't deliver more than necessary
