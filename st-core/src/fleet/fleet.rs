@@ -1950,22 +1950,21 @@ pub fn create_construction_fleet_phase(system_symbol: &SystemSymbol, num_shipyar
     ];
 
     let shipyard_probes = [ShipType::SHIP_PROBE].repeat(num_shipyards_of_interest);
-    let construction_fleet = [vec![ShipType::SHIP_COMMAND_FRIGATE], [ShipType::SHIP_LIGHT_HAULER].repeat(4)].concat();
+    let construction_fleet = [vec![ShipType::SHIP_COMMAND_FRIGATE], [ShipType::SHIP_LIGHT_HAULER].repeat(3)].concat();
 
-    let mining_fleet = [
+    let mining_squad = [
         vec![ShipType::SHIP_MINING_DRONE],
-        [
+        vec![
             ShipType::SHIP_LIGHT_HAULER,
-            ShipType::SHIP_MINING_DRONE,
-            ShipType::SHIP_MINING_DRONE,
-            ShipType::SHIP_MINING_DRONE,
             ShipType::SHIP_SURVEYOR,
-        ]
-        .repeat(2),
+            ShipType::SHIP_MINING_DRONE,
+            ShipType::SHIP_MINING_DRONE,
+            ShipType::SHIP_MINING_DRONE,
+        ],
     ]
     .concat();
 
-    let siphoning_fleet = [ShipType::SHIP_SIPHON_DRONE].repeat(5);
+    let siphoning_fleet = [ShipType::SHIP_SIPHON_DRONE].repeat(3);
 
     let other_probes = [ShipType::SHIP_PROBE].repeat(num_marketplaces_ex_shipyards);
 
@@ -1976,28 +1975,34 @@ pub fn create_construction_fleet_phase(system_symbol: &SystemSymbol, num_shipyar
     let siphoning_task = tasks[3].clone();
 
     let shopping_list_in_order = shipyard_probes
-        .into_iter()
+        .iter()
         .map(|ship_type| (ship_type, probe_observation_task.clone()))
         .chain(
             other_probes
-                .into_iter()
+                .iter()
                 .map(|ship_type| (ship_type, probe_observation_task.clone())),
         )
         .chain(
             construction_fleet
-                .into_iter()
+                .iter()
                 .map(|ship_type| (ship_type, construct_jump_gate_task.clone())),
         )
         .chain(
-            mining_fleet
-                .into_iter()
+            mining_squad
+                .iter()
                 .map(|ship_type| (ship_type, mining_task.clone())),
         )
         .chain(
             siphoning_fleet
-                .into_iter()
+                .iter()
                 .map(|ship_type| (ship_type, siphoning_task.clone())),
         )
+        .chain(
+            mining_squad
+                .iter()
+                .map(|ship_type| (ship_type, mining_task.clone())),
+        )
+        .cloned()
         .collect_vec();
 
     FleetPhase {
