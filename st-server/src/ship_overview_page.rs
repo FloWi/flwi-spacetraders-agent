@@ -302,7 +302,28 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
                         <Icon icon=PACKAGE />
                         <p>{cargo_str}</p>
                     </div>
-
+                </div>
+                <div class="flex flex-row items-center gap-2 mt-2">
+                    <ul>
+                        {ship
+                            .cargo
+                            .inventory
+                            .iter()
+                            .sorted_by_key(|i| i.units)
+                            .rev()
+                            .map(|inventory_entry| {
+                                view! {
+                                    <li>
+                                        {format!(
+                                            "{} {}",
+                                            inventory_entry.units,
+                                            inventory_entry.symbol.to_string(),
+                                        )}
+                                    </li>
+                                }
+                            })
+                            .collect_view()}
+                    </ul>
                 </div>
             </div>
         </div>
@@ -329,15 +350,28 @@ pub fn FleetOverview<'a>(
             <div class="grid grid-cols-4 gap-4">
                 {ships_with_tasks
                     .iter()
-                    .sorted_by_key(|(ship, maybe_ship_task)| format!("{}-{}", maybe_ship_task.clone().map(|st| st.to_string()).unwrap_or("None".to_string()),  ship.symbol.0.clone()))
+                    .sorted_by_key(|(ship, maybe_ship_task)| {
+                        format!(
+                            "{}-{}",
+                            maybe_ship_task
+                                .clone()
+                                .map(|st| st.to_string())
+                                .unwrap_or("None".to_string()),
+                            ship.symbol.0.clone(),
+                        )
+                    })
                     .map(|(ship, maybe_ship_task)| {
-
                         let active_trades = active_trades
                             .get(&ship.symbol)
                             .cloned()
                             .unwrap_or_default();
+
                         view! {
-                            <ShipCard ship=ship maybe_ship_task={maybe_ship_task.clone()} active_trades />
+                            <ShipCard
+                                ship=ship
+                                maybe_ship_task=maybe_ship_task.clone()
+                                active_trades
+                            />
                         }
                     })
                     .collect_view()}
