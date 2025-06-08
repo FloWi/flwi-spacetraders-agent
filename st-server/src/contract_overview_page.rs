@@ -17,8 +17,8 @@ async fn get_contract() -> Result<Option<ContractEvaluationResult>, ServerFnErro
         let agent_info = bmc.agent_bmc().get_initial_agent(&Ctx::Anonymous).await?;
 
         let maybe_contract = bmc
-            .agent_bmc()
-            .get_initial_contract(&Ctx::Anonymous)
+            .contract_bmc()
+            .get_youngest_contract(&Ctx::Anonymous, &agent_info.headquarters.system_symbol())
             .await?;
 
         let latest_market_entries = bmc
