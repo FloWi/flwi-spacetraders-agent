@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::{DeliverCargoContractTicketDetails, PurchaseTradeGoodsTicketDetails};
 use st_domain::trading::group_markets_by_type;
-use st_domain::{combine_maps, trading, Contract, MarketEntry, MarketTradeGood, TradeGoodSymbol, TradeGoodType, WaypointSymbol};
+use st_domain::{combine_maps, trading, Contract, ContractEvaluationResult, MarketEntry, MarketTradeGood, TradeGoodSymbol, TradeGoodType, WaypointSymbol};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -22,30 +22,9 @@ impl ContractManager {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ContractEvaluationResult {
-    purchase_tickets: Vec<PurchaseTradeGoodsTicketDetails>,
-    delivery_tickets: Vec<DeliverCargoContractTicketDetails>,
-    contract: Contract,
-}
-
-impl ContractEvaluationResult {
-    fn required_capital(&self) -> Credits {
-        self.estimated_purchase_costs() - self.contract.terms.payment.on_accepted
-    }
-
-    fn estimated_purchase_costs(&self) -> Credits {
-        self.purchase_tickets
-            .iter()
-            .map(|t| t.expected_total_purchase_price.0)
-            .sum::<i64>()
-            .into()
-    }
-}
-
-fn calculate_necessary_purchase_tickets_for_contract(
+pub fn calculate_necessary_purchase_tickets_for_contract(
     ship_cargo_size: u32,
-    contract: Contract,
+    contract: &Contract,
     latest_market_entries: &[MarketEntry],
 ) -> Result<ContractEvaluationResult> {
     let trading_entries = trading::to_trade_goods_with_locations(latest_market_entries);
@@ -101,7 +80,7 @@ fn calculate_necessary_purchase_tickets_for_contract(
     Ok(ContractEvaluationResult {
         purchase_tickets,
         delivery_tickets,
-        contract: contract,
+        contract: contract.clone(),
     })
 }
 
@@ -159,7 +138,7 @@ mod tests {
         let test_market_entries = create_test_market_entries();
         let test_contract = create_test_contract();
 
-        let result = calculate_necessary_purchase_tickets_for_contract(40, test_contract, &test_market_entries).unwrap();
+        let result = calculate_necessary_purchase_tickets_for_contract(40, &test_contract, &test_market_entries).unwrap();
         let ContractEvaluationResult {
             purchase_tickets,
             delivery_tickets,

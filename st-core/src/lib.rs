@@ -21,9 +21,10 @@ pub mod marketplaces;
 pub mod pathfinder;
 pub mod universe_server;
 
-mod contract_manager;
-mod materialized_supply_chain_manager;
-mod survey_manager;
+pub mod contract_manager;
+pub mod materialized_supply_chain_manager;
+pub mod survey_manager;
+
 #[cfg(test)]
 pub mod test_objects;
 mod transfer_cargo_manager;

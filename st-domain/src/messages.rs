@@ -1,10 +1,12 @@
+use crate::budgeting::credits::Credits;
 use crate::budgeting::treasury_redesign::{
-    DeliverConstructionMaterialsTicketDetails, FinanceTicket, PurchaseShipTicketDetails, PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails,
+    DeliverCargoContractTicketDetails, DeliverConstructionMaterialsTicketDetails, FinanceTicket, PurchaseShipTicketDetails, PurchaseTradeGoodsTicketDetails,
+    SellTradeGoodsTicketDetails,
 };
 use crate::{
-    Agent, Construction, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse, PurchaseTradeGoodResponse, RawDeliveryRoute,
-    RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse, SystemSymbol,
-    TradeGoodSymbol, WaypointSymbol,
+    Agent, Construction, Contract, FlightMode, JumpGate, MarketData, MaterializedSupplyChain, PurchaseShipResponse, PurchaseTradeGoodResponse,
+    RawDeliveryRoute, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol, ShipType, Shipyard, ShipyardShip, SupplyConstructionSiteResponse,
+    SystemSymbol, TradeGoodSymbol, WaypointSymbol,
 };
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
@@ -460,4 +462,25 @@ pub struct MiningOpsConfig {
     pub mining_waypoint: WaypointSymbol,
     pub demanded_goods: HashSet<TradeGoodSymbol>,
     pub delivery_locations: HashMap<TradeGoodSymbol, RawDeliveryRoute>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContractEvaluationResult {
+    pub purchase_tickets: Vec<PurchaseTradeGoodsTicketDetails>,
+    pub delivery_tickets: Vec<DeliverCargoContractTicketDetails>,
+    pub contract: Contract,
+}
+
+impl ContractEvaluationResult {
+    pub fn required_capital(&self) -> Credits {
+        self.estimated_purchase_costs() - self.contract.terms.payment.on_accepted
+    }
+
+    pub fn estimated_purchase_costs(&self) -> Credits {
+        self.purchase_tickets
+            .iter()
+            .map(|t| t.expected_total_purchase_price.0)
+            .sum::<i64>()
+            .into()
+    }
 }

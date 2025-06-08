@@ -9,6 +9,7 @@ pub mod supply_chain_page;
 #[cfg(feature = "ssr")]
 pub mod cli_args;
 pub mod components;
+mod contract_overview_page;
 mod petgraph_example_page;
 pub mod ship_overview_page;
 pub mod tables;

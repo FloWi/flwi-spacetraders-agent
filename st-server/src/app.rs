@@ -1,4 +1,5 @@
 use crate::behavior_tree_page::BehaviorTreePage;
+use crate::contract_overview_page::ContractOverviewPage;
 use crate::db_overview_page::*;
 use crate::fleet_overview_page::*;
 use crate::petgraph_example_page::TechTreePetgraph;
@@ -54,6 +55,7 @@ pub fn App() -> impl IntoView {
                         <Route path=StaticSegment("fleet-overview") view=FleetOverviewPage />
                         <Route path=StaticSegment("behavior-overview") view=BehaviorTreePage />
                         <Route path=StaticSegment("petgraph-example") view=TechTreePetgraph />
+                        <Route path=StaticSegment("contract-overview") view=ContractOverviewPage />
                     </Routes>
                 </main>
             </Router>
