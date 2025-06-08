@@ -5,7 +5,7 @@ use itertools::*;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use leptos_use::use_interval_fn;
-use phosphor_leptos::{Icon, ATOM, BINOCULARS, CLOCK, COMPASS_ROSE, GAS_PUMP, HAMMER, HOURGLASS, PACKAGE, ROCKET, TRUCK};
+use phosphor_leptos::{Icon, ATOM, BINOCULARS, BRIEFCASE, CLOCK, COMPASS_ROSE, GAS_PUMP, HAMMER, HOURGLASS, MONEY_WAVY, PACKAGE, ROCKET, SUITCASE, TRUCK};
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::treasury_redesign::{
     compute_active_trades_from_ledger_entries, ActiveTrade, FinanceTicket, FinanceTicketDetails, FinanceTicketState, ImprovedTreasurer, LedgerEntry,
@@ -122,6 +122,7 @@ fn render_active_trade(trade: ActiveTrade) -> impl IntoView {
         FinanceTicketDetails::SupplyConstructionSite(d) => ("Supply", 0.into(), d.trade_good.to_string()),
         FinanceTicketDetails::PurchaseShip(d) => ("PurchaseShip", 0.into(), d.ship_type.to_string()),
         FinanceTicketDetails::RefuelShip(d) => ("Refuel", 0.into(), TradeGoodSymbol::FUEL.to_string()),
+        FinanceTicketDetails::DeliverContractCargo(d) => ("Deliver Contract Cargo", 0.into(), d.trade_good.to_string()),
     };
 
     let delivery_summary = format!(
@@ -233,9 +234,10 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
             ShipTask::MineMaterialsAtWaypoint { .. } => HAMMER,
             ShipTask::SurveyMiningSite { .. } => BINOCULARS,
             ShipTask::HaulMiningGoods { .. } => TRUCK,
-            ShipTask::Trade => phosphor_leptos::MONEY_WAVY,
+            ShipTask::Trade => MONEY_WAVY,
             ShipTask::PrepositionShipForTrade { .. } => TRUCK,
             ShipTask::SiphonCarboHydratesAtWaypoint { .. } => ATOM,
+            ShipTask::ExecuteContracts => BRIEFCASE,
         };
         icon
     } else {

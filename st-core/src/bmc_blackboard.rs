@@ -6,8 +6,8 @@ use chrono::Utc;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
-    Construction, CreateSurveyResponse, Extraction, JumpGate, LabelledCoordinate, MarketData, MaterializedSupplyChain, MiningOpsConfig, Shipyard, Survey,
-    TravelAction, Waypoint, WaypointModifier, WaypointSymbol,
+    Construction, Contract, CreateSurveyResponse, Extraction, FleetId, JumpGate, LabelledCoordinate, MarketData, MarketEntry, MaterializedSupplyChain,
+    MiningOpsConfig, Shipyard, Survey, SystemSymbol, TravelAction, Waypoint, WaypointModifier, WaypointSymbol,
 };
 use st_store::bmc::Bmc;
 use st_store::Ctx;
@@ -228,5 +228,26 @@ impl BlackboardOps for BmcBlackboard {
         } else {
             anyhow::bail!("Waypoint {} not found in system_bmc", mining_waypoint);
         }
+    }
+
+    async fn upsert_contract(&self, system_symbol: &SystemSymbol, contract: &Contract) -> anyhow::Result<()> {
+        self.bmc
+            .contract_bmc()
+            .upsert_contract(&Ctx::Anonymous, system_symbol, contract.clone(), Utc::now())
+            .await
+    }
+
+    async fn get_latest_market_entries(&self, system_symbol: &SystemSymbol) -> anyhow::Result<Vec<MarketEntry>> {
+        self.bmc
+            .market_bmc()
+            .get_latest_market_data_for_system(&Ctx::Anonymous, system_symbol)
+            .await
+    }
+
+    async fn get_youngest_contract(&self, system_symbol: &SystemSymbol) -> anyhow::Result<Option<Contract>> {
+        self.bmc
+            .contract_bmc()
+            .get_youngest_contract(&Ctx::Anonymous, system_symbol)
+            .await
     }
 }

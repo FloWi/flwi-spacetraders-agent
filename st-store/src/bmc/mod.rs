@@ -1,3 +1,4 @@
+use crate::bmc::contract_bmc::{ContractBmcTrait, DbContractBmc, InMemoryContractBmc};
 use crate::bmc::jump_gate_bmc::{DbJumpGateBmc, InMemoryJumpGateBmc, JumpGateBmcTrait};
 use crate::bmc::ship_bmc::{DbShipBmc, InMemoryShipsBmc, ShipBmcTrait};
 use crate::ledger_bmc::{DbLedgerBmc, InMemoryLedgerBmc, LedgerBmcTrait};
@@ -13,6 +14,7 @@ use mockall::automock;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+pub mod contract_bmc;
 pub mod jump_gate_bmc;
 pub mod ship_bmc;
 
@@ -31,6 +33,7 @@ pub trait Bmc: Send + Sync + Debug {
     fn supply_chain_bmc(&self) -> Arc<dyn SupplyChainBmcTrait>;
     fn status_bmc(&self) -> Arc<dyn StatusBmcTrait>;
     fn ledger_bmc(&self) -> Arc<dyn LedgerBmcTrait>;
+    fn contract_bmc(&self) -> Arc<dyn ContractBmcTrait>;
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +52,7 @@ pub struct DbBmc {
     supply_chain_bmc: Arc<DbSupplyChainBmc>,
     status_bmc: Arc<DbStatusBmc>,
     ledger_bmc: Arc<DbLedgerBmc>,
+    contract_bmc: Arc<DbContractBmc>,
 }
 
 impl DbBmc {
@@ -68,6 +72,7 @@ impl DbBmc {
             supply_chain_bmc: Arc::new(DbSupplyChainBmc { mm: mm.clone() }),
             status_bmc: Arc::new(DbStatusBmc { mm: mm.clone() }),
             ledger_bmc: Arc::new(DbLedgerBmc { mm: mm.clone() }),
+            contract_bmc: Arc::new(DbContractBmc { mm: mm.clone() }),
         }
     }
 }
@@ -124,6 +129,10 @@ impl Bmc for DbBmc {
     fn ledger_bmc(&self) -> Arc<dyn LedgerBmcTrait> {
         self.ledger_bmc.clone() as Arc<dyn LedgerBmcTrait>
     }
+
+    fn contract_bmc(&self) -> Arc<dyn ContractBmcTrait> {
+        self.contract_bmc.clone() as Arc<dyn ContractBmcTrait>
+    }
 }
 
 #[derive(Debug)]
@@ -141,6 +150,7 @@ pub struct InMemoryBmc {
     pub in_mem_supply_chain_bmc: Arc<InMemorySupplyChainBmc>,
     pub in_mem_status_bmc: Arc<InMemoryStatusBmc>,
     pub in_mem_ledger_bmc: Arc<InMemoryLedgerBmc>,
+    pub in_mem_contract_bmc: Arc<InMemoryContractBmc>,
 }
 
 impl Bmc for InMemoryBmc {
@@ -194,5 +204,9 @@ impl Bmc for InMemoryBmc {
 
     fn ledger_bmc(&self) -> Arc<dyn LedgerBmcTrait> {
         Arc::clone(&self.in_mem_ledger_bmc) as Arc<dyn LedgerBmcTrait>
+    }
+
+    fn contract_bmc(&self) -> Arc<dyn ContractBmcTrait> {
+        Arc::clone(&self.in_mem_contract_bmc) as Arc<dyn ContractBmcTrait>
     }
 }

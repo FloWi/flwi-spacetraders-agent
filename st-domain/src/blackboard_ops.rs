@@ -1,6 +1,7 @@
 use crate::{
-    get_exploration_tasks_for_waypoint, Construction, CreateSurveyResponse, CreateSurveyResponseBody, ExplorationTask, Extraction, JumpGate, MarketData,
-    MaterializedSupplyChain, MiningOpsConfig, Shipyard, Survey, TravelAction, Waypoint, WaypointModifier, WaypointSymbol,
+    get_exploration_tasks_for_waypoint, Construction, Contract, CreateSurveyResponse, CreateSurveyResponseBody, ExplorationTask, Extraction, FleetId, JumpGate,
+    MarketData, MarketEntry, MaterializedSupplyChain, MiningOpsConfig, Shipyard, Survey, SystemSymbol, TravelAction, Waypoint, WaypointModifier,
+    WaypointSymbol,
 };
 use async_trait::async_trait;
 use mockall::automock;
@@ -18,6 +19,9 @@ pub trait BlackboardOps: Send + Sync {
     ) -> anyhow::Result<Vec<TravelAction>>;
     async fn insert_waypoint(&self, waypoint: &Waypoint) -> anyhow::Result<()>;
     async fn insert_market(&self, market_data: MarketData) -> anyhow::Result<()>;
+
+    async fn get_latest_market_entries(&self, system_symbol: &SystemSymbol) -> anyhow::Result<Vec<MarketEntry>>;
+
     async fn insert_jump_gate(&self, jump_gate: JumpGate) -> anyhow::Result<()>;
     async fn insert_shipyard(&self, shipyard: Shipyard) -> anyhow::Result<()>;
     async fn get_closest_waypoint(&self, current_waypoint: &WaypointSymbol, candidates: &[WaypointSymbol]) -> anyhow::Result<Option<WaypointSymbol>>;
@@ -47,4 +51,6 @@ pub trait BlackboardOps: Send + Sync {
     async fn log_survey_usage(&self, survey: Survey, extraction: Extraction) -> anyhow::Result<()>;
     async fn is_survey_necessary(&self, maybe_mining_waypoint: Option<WaypointSymbol>) -> anyhow::Result<bool>;
     async fn mark_asteroid_has_reached_critical_limit(&self, mining_waypoint: &WaypointSymbol, waypoint_modifier: &WaypointModifier) -> anyhow::Result<()>;
+    async fn upsert_contract(&self, system_symbol: &SystemSymbol, contract: &Contract) -> anyhow::Result<()>;
+    async fn get_youngest_contract(&self, system_symbol: &SystemSymbol) -> anyhow::Result<Option<Contract>>;
 }

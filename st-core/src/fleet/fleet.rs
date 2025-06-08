@@ -1,5 +1,6 @@
 use crate::behavior_tree::ship_behaviors::ShipAction;
-use crate::fleet::construction_fleet::{CargoDeliveryAction, ConstructJumpGateFleet, NewTasksResultForConstructionFleet};
+use crate::contract_manager;
+use crate::fleet::construction_fleet::{CargoDeliveryAction, ConstructJumpGateFleet, NewTasksResultForConstructionFleet, PotentialConstructionTask};
 use crate::fleet::fleet_runner::FleetRunner;
 use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
 use crate::fleet::market_observation_fleet::MarketObservationFleet;
@@ -27,11 +28,11 @@ use st_domain::FleetConfig::SystemSpawningCfg;
 use st_domain::FleetTask::{ConstructJumpGate, InitialExploration, MineOres, ObserveAllWaypointsOfSystemWithStationaryProbes, SiphonGases, TradeProfitably};
 use st_domain::TradeGoodSymbol::{MOUNT_GAS_SIPHON_I, MOUNT_MINING_LASER_I, MOUNT_SURVEYOR_I};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, trading, ConstructJumpGateFleetConfig, Construction, ExplorationTask, Fleet, FleetConfig, FleetDecisionFacts, FleetId,
-    FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, Inventory, MarketEntry, MarketObservationFleetConfig, MarketTradeGood,
-    MaterializedSupplyChain, MiningFleetConfig, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo, ShipRegistrationRole, ShipSymbol, ShipTask,
-    ShipTaskCompletionAnalysis, ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig, SystemSymbol, TicketId, TradeGoodSymbol,
-    TradingFleetConfig, TransactionActionEvent, Waypoint, WaypointSymbol, WaypointType,
+    get_exploration_tasks_for_waypoint, trading, ConstructJumpGateFleetConfig, Construction, Contract, ContractEvaluationResult, ExplorationTask, Fleet,
+    FleetConfig, FleetDecisionFacts, FleetId, FleetPhase, FleetPhaseName, FleetTask, FleetTaskCompletion, GetConstructionResponse, Inventory, MarketEntry,
+    MarketObservationFleetConfig, MarketTradeGood, MaterializedSupplyChain, MiningFleetConfig, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipPriceInfo,
+    ShipRegistrationRole, ShipSymbol, ShipTask, ShipTaskCompletionAnalysis, ShipType, SiphoningFleetConfig, StationaryProbeLocation, SystemSpawningFleetConfig,
+    SystemSymbol, TicketId, TradeGoodSymbol, TradingFleetConfig, TransactionActionEvent, Waypoint, WaypointSymbol, WaypointType,
 };
 use st_store::bmc::Bmc;
 use st_store::{load_fleet_overview, upsert_fleets_data, Ctx};
@@ -752,6 +753,8 @@ Fleet Budgets after rebalancing
                 .map(|(fleet_id, task)| (fleet_id.clone(), vec![task.clone()]))
                 .collect();
 
+            Self::upsert_initial_contract_if_necessary(&bmc, &system_symbol).await?;
+
             // recomputing the assignment caused some trouble. Haven't figured out why yet.
             // Ship_map and ship_fleet_assignment differ. This should not happen
             //  ship_map_keys: 31 entries
@@ -850,6 +853,26 @@ Fleet Budgets after rebalancing
         }
     }
 
+    async fn upsert_initial_contract_if_necessary(bmc: &Arc<dyn Bmc>, system_symbol: &SystemSymbol) -> Result<()> {
+        let maybe_youngest_contract = bmc
+            .contract_bmc()
+            .get_youngest_contract(&Ctx::Anonymous, &system_symbol)
+            .await?;
+
+        if maybe_youngest_contract.is_none() {
+            let maybe_initial_contract = bmc
+                .agent_bmc()
+                .get_initial_contract(&Ctx::Anonymous)
+                .await?;
+            if let Some(initial_contract) = maybe_initial_contract {
+                bmc.contract_bmc()
+                    .upsert_contract(&Ctx::Anonymous, &system_symbol, initial_contract, Utc::now())
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn create(bmc: Arc<dyn Bmc>, system_symbol: SystemSymbol, client: Arc<dyn StClientTrait>) -> Result<(Self, JoinHandle<()>)> {
         let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await?;
         let stationary_probe_locations = bmc
@@ -908,6 +931,8 @@ Fleet Budgets after rebalancing
             .store_agent(&Ctx::Anonymous, &agent_info)
             .await?;
 
+        Self::upsert_initial_contract_if_necessary(&bmc, &system_symbol).await?;
+
         let materialized_supply_chain_manager = MaterializedSupplyChainManager::new();
 
         if let Some(msc) = facts.materialized_supply_chain {
@@ -964,6 +989,7 @@ Fleet Budgets after rebalancing
         active_tickets: &[FinanceTicket],
         fleet_budgets: &HashMap<FleetId, FleetBudget>,
         active_trade_routes: &HashSet<ActiveTradeRoute>,
+        maybe_current_contract: &Option<Contract>,
     ) -> Result<Vec<(ShipSymbol, ShipTask)>> {
         let mut new_ship_tasks: HashMap<ShipSymbol, ShipTask> = HashMap::new();
 
@@ -975,6 +1001,7 @@ Fleet Budgets after rebalancing
                 FinanceTicketDetails::SellTradeGoods(_) => None,
                 FinanceTicketDetails::RefuelShip(_) => None,
                 FinanceTicketDetails::SupplyConstructionSite(_) => None,
+                FinanceTicketDetails::DeliverContractCargo(_) => None,
             })
             .collect();
 
@@ -1021,6 +1048,23 @@ Fleet Budgets after rebalancing
                 SystemSpawningCfg(cfg) => SystemSpawningFleet::compute_ship_tasks(admiral, cfg, fleet, facts, &unassigned_ships_of_fleet),
                 MarketObservationCfg(cfg) => MarketObservationFleet::compute_ship_tasks(admiral, cfg, &unassigned_ships_of_fleet, &ships_of_fleet, &fleet.id),
                 ConstructJumpGateCfg(cfg) => {
+                    let mut new_construction_fleet_tasks: HashMap<ShipSymbol, ShipTask> = HashMap::new();
+
+                    let (unassigned_ships_of_fleet, blocked_budget) = if let Some((command_ship, required_budget_for_contracts)) =
+                        potentially_assign_contracting_to_command_ship(&unassigned_ships_of_fleet, &maybe_current_contract, &fleet_budget, &latest_market_data)?
+                    {
+                        new_construction_fleet_tasks.insert(command_ship.clone(), ShipTask::ExecuteContracts);
+
+                        let other_ships = unassigned_ships_of_fleet
+                            .iter()
+                            .filter(|s| s.symbol != command_ship)
+                            .cloned()
+                            .collect_vec();
+                        (other_ships, required_budget_for_contracts)
+                    } else {
+                        (unassigned_ships_of_fleet, 0.into())
+                    };
+
                     let either_compute_task_result = ConstructJumpGateFleet::compute_ship_tasks(
                         admiral,
                         cfg,
@@ -1032,6 +1076,7 @@ Fleet Budgets after rebalancing
                         &unassigned_ships_of_fleet,
                         active_trade_routes,
                         &fleet_budget,
+                        blocked_budget,
                     )
                     .await;
 
@@ -1044,7 +1089,6 @@ Fleet Budgets after rebalancing
                         }) => {
                             // local mutability, because you can't run async code inside iterator chains.
                             // TODO: make this function pure again, by removing the treasurer... calls
-                            let mut new_construction_fleet_tasks = HashMap::new();
 
                             for (ship_symbol, deliver_from_cargo_tasks) in deliver_tasks_from_existing_cargo.clone() {
                                 let mut new_finance_tickets = Vec::new();
@@ -1103,6 +1147,7 @@ Fleet Budgets after rebalancing
                                         potential_construction_task.ship_symbol.clone(),
                                         purchase_details.quantity,
                                         purchase_details.expected_price_per_unit,
+                                        purchase_details.purchase_cargo_reason,
                                     )
                                     .await
                                     .ok()
@@ -1143,6 +1188,7 @@ Fleet Budgets after rebalancing
                                             )
                                             .await
                                             .ok(),
+                                        FinanceTicketDetails::DeliverContractCargo(_) => None,
                                     }
                                 } else {
                                     None
@@ -1243,6 +1289,11 @@ Fleet Budgets after rebalancing
             .get_latest_market_data_for_system(&Ctx::Anonymous, &system_symbol)
             .await?;
 
+        let maybe_youngest_contract = bmc
+            .contract_bmc()
+            .get_youngest_contract(&Ctx::Anonymous, &system_symbol)
+            .await?;
+
         // increase construction budget to 20M after all ships have been purchased
         if admiral.ship_purchase_demand.is_empty() {
             if admiral.fleet_phase.name == FleetPhaseName::ConstructJumpGate {
@@ -1297,6 +1348,7 @@ Fleet Budgets after rebalancing
                 &active_tickets,
                 &fleet_budgets,
                 &HashSet::from_iter(active_trade_routes.iter().cloned()),
+                &maybe_youngest_contract,
             )
             .await?
         };
@@ -1659,7 +1711,7 @@ pub async fn recompute_tasks_after_ship_finishing_behavior_tree(
                 .unwrap()
                 .clone()],
         }),
-        ShipTask::Trade { .. } | ShipTask::PrepositionShipForTrade { .. } => {
+        ShipTask::Trade { .. } | ShipTask::PrepositionShipForTrade { .. } | ShipTask::ExecuteContracts => {
             let facts = collect_fleet_decision_facts(Arc::clone(&bmc), &ship.nav.system_symbol).await?;
             admiral.update_materialized_supply_chain(&facts.materialized_supply_chain)?;
 
@@ -2323,4 +2375,76 @@ pub fn get_all_next_ship_purchases(ship_map: &HashMap<ShipSymbol, Ship>, fleet_p
     }
 
     purchases
+}
+
+enum ContractorEvaluationResult {
+    CanAffordContract { evaluation_result: ContractEvaluationResult },
+    CannotAffordContractCurrently,
+    ContractAlreadyAccepted,
+    ContractAlreadyFulfilled,
+    NoActiveContractFound,
+}
+
+fn should_command_ship_do_contracts(
+    unassigned_command_ship: &Ship,
+    maybe_current_contract: &Option<Contract>,
+    fleet_budget: &FleetBudget,
+    latest_market_entries: &Vec<MarketEntry>,
+) -> Result<ContractorEvaluationResult> {
+    use ContractorEvaluationResult::*;
+    if let Some(contract) = maybe_current_contract {
+        if contract.accepted {
+            anyhow::Ok(ContractAlreadyAccepted)
+        } else if contract.fulfilled {
+            anyhow::Ok(ContractAlreadyFulfilled)
+        } else {
+            let evaluation_result = contract_manager::calculate_necessary_purchase_tickets_for_contract(
+                unassigned_command_ship.cargo.capacity as u32,
+                contract,
+                latest_market_entries,
+            )?;
+
+            let required_capital = evaluation_result.required_capital();
+            let available_fleet_capital = fleet_budget.available_capital();
+            if required_capital > available_fleet_capital {
+                anyhow::Ok(CannotAffordContractCurrently)
+            } else {
+                anyhow::Ok(CanAffordContract { evaluation_result })
+            }
+        }
+    } else {
+        // we don't have an active contract, let's try and get a new one
+        anyhow::Ok(NoActiveContractFound)
+    }
+}
+
+fn potentially_assign_contracting_to_command_ship(
+    unassigned_ships_of_fleet: &[&Ship],
+    maybe_current_contract: &Option<Contract>,
+    fleet_budget: &FleetBudget,
+    latest_market_entries: &Vec<MarketEntry>,
+) -> Result<Option<(ShipSymbol, Credits)>> {
+    let result: Option<(ShipSymbol, Credits)> = if let Some(command_ship) = unassigned_ships_of_fleet
+        .iter()
+        .find(|ship| ship.is_command_ship())
+    {
+        let command_ship_evaluation_result = should_command_ship_do_contracts(command_ship, maybe_current_contract, fleet_budget, latest_market_entries)?;
+
+        use ContractorEvaluationResult::*;
+        match command_ship_evaluation_result {
+            NoActiveContractFound | ContractAlreadyAccepted | ContractAlreadyFulfilled => {
+                // contract is already ongoing or
+                // no active contract found - so we don't know if we can afford to execute it.
+                // Let's try
+
+                Some((command_ship.symbol.clone(), 0.into()))
+            }
+            CanAffordContract { evaluation_result } => Some((command_ship.symbol.clone(), evaluation_result.required_capital())),
+            CannotAffordContractCurrently => None,
+        }
+    } else {
+        None
+    };
+
+    Ok(result)
 }

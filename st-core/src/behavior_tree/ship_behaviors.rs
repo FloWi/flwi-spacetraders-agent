@@ -64,6 +64,14 @@ pub enum ShipAction {
     IsHaulerFilledEnoughForDelivery,
     HasAsteroidReachedCriticalLimit,
     SleepForNextWaypointCriticalLimitCheck,
+    NegotiateContract,
+    AcceptContract,
+    CanAffordContract,
+    HasAcceptedContract,
+    HasActiveContract,
+    FulfilContract,
+    IsContractDeliveryComplete,
+    CreateContractTickets,
 }
 
 pub struct Behaviors {
@@ -79,6 +87,7 @@ pub struct Behaviors {
     pub siphoning_behavior: Behavior<ShipAction>,
     pub mining_hauler_behavior: Behavior<ShipAction>,
     pub miner_behavior: Behavior<ShipAction>,
+    pub contractor_behavior: Behavior<ShipAction>,
     pub surveyor_behavior: Behavior<ShipAction>,
 }
 
@@ -287,6 +296,52 @@ pub fn ship_behaviors() -> Behaviors {
         ]),
     )]);
 
+    /*
+     fulfillContractIfPossibleNode,
+     negotiateContractIfNecessaryNode,
+     acceptContractIfNecessaryNode,
+    */
+
+    let fulfill_contract_if_possible = Behavior::new_select(vec![
+        Behavior::new_invert(Behavior::new_action(ShipAction::IsContractDeliveryComplete)),
+        Behavior::new_action(ShipAction::FulfilContract),
+    ]);
+
+    let accept_contract_if_necessary_and_within_budget = Behavior::new_sequence(vec![
+        Behavior::new_action(ShipAction::HasActiveContract),
+        Behavior::new_action(ShipAction::HasAcceptedContract),
+        Behavior::new_action(ShipAction::CanAffordContract),
+        Behavior::new_action(ShipAction::AcceptContract),
+        Behavior::new_action(ShipAction::CreateContractTickets),
+    ]);
+
+    // if we have no contract, stop at any waypoint and negotiate a new one
+    let negotiate_contract_if_necessary = Behavior::new_select(vec![
+        Behavior::new_action(ShipAction::HasActiveContract),
+        Behavior::new_sequence(vec![wait_for_arrival_bt.clone(), Behavior::new_action(ShipAction::NegotiateContract)]),
+    ]);
+
+    let purchase_and_deliver_contract_materials = Behavior::new_while(
+        Behavior::new_action(ShipAction::HasUncompletedTrade), // contract deliveries are handled the same as normal trades
+        Behavior::new_sequence(vec![
+            Behavior::new_action(ShipAction::SetNextTradeStopAsDestination),
+            navigate_to_destination.clone(),
+            wait_for_arrival_bt.clone(),
+            dock_if_necessary.clone(),
+            Behavior::new_action(ShipAction::PerformTradeActionAndMarkAsCompleted),
+            Behavior::new_action(ShipAction::CollectWaypointInfos),
+            fulfill_contract_if_possible.clone(),
+        ]),
+    );
+
+    let mut contractor_behavior = Behavior::new_sequence(vec![
+        Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
+        fulfill_contract_if_possible,
+        negotiate_contract_if_necessary,
+        accept_contract_if_necessary_and_within_budget,
+        purchase_and_deliver_contract_materials,
+    ]);
+
     let go_to_siphoning_site_if_necessary = Behavior::new_select(vec![
         Behavior::new_sequence(vec![
             Behavior::new_action(ShipAction::FixNavStatusIfNecessary),
@@ -406,6 +461,7 @@ pub fn ship_behaviors() -> Behaviors {
         siphoning_behavior: siphoning_behavior.update_indices().clone(),
         mining_hauler_behavior: mining_hauler_behavior.update_indices().clone(),
         miner_behavior: miner_behavior.update_indices().clone(),
+        contractor_behavior: contractor_behavior.update_indices().clone(),
         surveyor_behavior: surveyor_behavior.update_indices().clone(),
     }
 }

@@ -1,23 +1,13 @@
-use crate::pathfinder::pathfinder;
-use anyhow::{anyhow, Result};
-use async_trait::async_trait;
-use chrono::Local;
-use itertools::Itertools;
-use sqlx::{Pool, Postgres};
+use anyhow::Result;
 use st_domain::blackboard_ops::BlackboardOps;
 
+use crate::contract_manager;
 use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
-use crate::survey_manager;
 use crate::transfer_cargo_manager::TransferCargoManager;
-use st_domain::budgeting::treasury_redesign::{FinanceTicket, ThreadSafeTreasurer};
+use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails, ThreadSafeTreasurer};
 use st_domain::{
-    Construction, CreateSurveyResponse, Extraction, JumpGate, LabelledCoordinate, MarketData, MiningOpsConfig, PurchaseShipResponse, PurchaseTradeGoodResponse,
-    SellTradeGoodResponse, Shipyard, SupplyConstructionSiteResponse, Survey, TravelAction, Waypoint, WaypointSymbol,
-};
-use st_store::bmc::{Bmc, DbBmc};
-use st_store::{
-    insert_jump_gates, insert_market_data, insert_shipyards, select_latest_marketplace_entry_of_system, select_waypoints_of_system, upsert_waypoints, Ctx,
-    DbModelManager,
+    Contract, FleetId, MarketEntry, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, ShipSymbol, SupplyConstructionSiteResponse,
+    SystemSymbol,
 };
 use std::sync::Arc;
 
@@ -60,6 +50,73 @@ impl BehaviorArgs {
             .await?;
 
         Ok(())
+    }
+
+    // async fn check_contract_affordability(&self, contract: &Contract, cargo_capacity: u32, fleet_id: &FleetId) -> anyhow::Result<bool>
+
+    pub(crate) async fn check_contract_affordability(
+        &self,
+        system_symbol: &SystemSymbol,
+        contract: &Contract,
+        cargo_capacity: u32,
+        fleet_id: &FleetId,
+    ) -> Result<bool> {
+        let latest_market_entries: Vec<MarketEntry> = self
+            .blackboard
+            .get_latest_market_entries(system_symbol)
+            .await?;
+
+        let result = contract_manager::calculate_necessary_purchase_tickets_for_contract(cargo_capacity, contract, &latest_market_entries)?;
+
+        let required_capital = result.required_capital();
+
+        let budget = self.treasurer.get_fleet_budget(fleet_id).await?;
+
+        if budget.available_capital() > required_capital {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    pub(crate) async fn create_contract_tickets(
+        &self,
+        ship_symbol: &ShipSymbol,
+        system_symbol: &SystemSymbol,
+        contract: &Contract,
+        cargo_capacity: u32,
+        fleet_id: &FleetId,
+    ) -> Result<bool> {
+        let latest_market_entries: Vec<MarketEntry> = self
+            .blackboard
+            .get_latest_market_entries(system_symbol)
+            .await?;
+
+        let result = contract_manager::calculate_necessary_purchase_tickets_for_contract(cargo_capacity, contract, &latest_market_entries)?;
+
+        let required_capital = result.required_capital();
+
+        let mut all_details: Vec<FinanceTicketDetails> = Vec::new();
+
+        for purchase_ticket_details in result.purchase_tickets {
+            all_details.push(FinanceTicketDetails::PurchaseTradeGoods(purchase_ticket_details))
+        }
+
+        for delivery_ticket_details in result.delivery_tickets {
+            all_details.push(FinanceTicketDetails::DeliverContractCargo(delivery_ticket_details))
+        }
+
+        self.treasurer
+            .create_multiple_tickets(ship_symbol, fleet_id, all_details)
+            .await?;
+
+        let budget = self.treasurer.get_fleet_budget(fleet_id).await?;
+
+        if budget.available_capital() > required_capital {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 

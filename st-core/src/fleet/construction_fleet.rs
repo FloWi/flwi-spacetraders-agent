@@ -1,6 +1,6 @@
-use crate::calc_batches_based_on_volume_constraint;
 use crate::fleet::construction_fleet::ConstructionFleetAction::{BoostSupplyChain, DeliverConstructionMaterials, TradeProfitably};
 use crate::fleet::fleet::FleetAdmiral;
+use crate::{calc_batches_based_on_volume_constraint, contract_manager};
 use anyhow::*;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
@@ -8,14 +8,14 @@ use serde::{Deserialize, Serialize};
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::SellTradeGoods;
 use st_domain::budgeting::treasury_redesign::{
-    ActiveTradeRoute, DeliverConstructionMaterialsTicketDetails, FinanceTicketDetails, FleetBudget, LedgerEntry, PurchaseTradeGoodsTicketDetails,
-    SellTradeGoodsTicketDetails, ThreadSafeTreasurer,
+    ActiveTradeRoute, DeliverConstructionMaterialsTicketDetails, FinanceTicketDetails, FleetBudget, LedgerEntry, PurchaseCargoReason,
+    PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails, ThreadSafeTreasurer,
 };
 use st_domain::{
-    calc_scored_supply_chain_routes, trading, Cargo, ConstructJumpGateFleetConfig, Construction, EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts,
-    FleetId, FleetPhase, FleetTask, FleetTaskCompletion, Inventory, LabelledCoordinate, MarketEntry, MarketTradeGood, MaterializedSupplyChain,
-    ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, StationaryProbeLocation, SupplyLevel, TicketId, TradeGoodSymbol,
-    TradeGoodType, Waypoint, WaypointSymbol,
+    calc_scored_supply_chain_routes, trading, Cargo, ConstructJumpGateFleetConfig, Construction, Contract, ContractEvaluationResult,
+    EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetTask, FleetTaskCompletion, Inventory, LabelledCoordinate, MarketEntry,
+    MarketTradeGood, MaterializedSupplyChain, ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, StationaryProbeLocation,
+    SupplyLevel, TicketId, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Not;
@@ -68,6 +68,7 @@ impl ConstructJumpGateFleet {
         unassigned_ships_of_fleet: &[&Ship],
         active_trade_routes: &HashSet<ActiveTradeRoute>,
         fleet_budget: &FleetBudget,
+        blocked_budget_for_contracts: Credits,
     ) -> Result<NewTasksResultForConstructionFleet> {
         let fleet_ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
         let fleet_ship_symbols = fleet_ships.iter().map(|&s| s.symbol.clone()).collect_vec();
@@ -134,7 +135,7 @@ impl ConstructJumpGateFleet {
         let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(latest_market_entries);
         let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map);
 
-        let available_capital = fleet_budget.available_capital();
+        let available_capital = fleet_budget.available_capital() - blocked_budget_for_contracts;
 
         let evaluated_trading_opportunities =
             trading::evaluate_trading_opportunities(&unassigned_ships_to_check, &waypoint_map, &trading_opportunities, available_capital.0);
@@ -768,6 +769,7 @@ impl PotentialConstructionTask {
                 expected_price_per_unit: market_trade_good.purchase_price.into(),
                 quantity: *units,
                 expected_total_purchase_price: *estimated_costs,
+                purchase_cargo_reason: Some(PurchaseCargoReason::Construction),
             },
             BoostSupplyChain {
                 trade_good_symbol,
@@ -782,6 +784,7 @@ impl PotentialConstructionTask {
                 expected_price_per_unit: scored_supply_chain_support_route.purchase_price.into(),
                 quantity: *units,
                 expected_total_purchase_price: *estimated_costs,
+                purchase_cargo_reason: Some(PurchaseCargoReason::BoostSupplyChain),
             },
             TradeProfitably {
                 evaluated_trading_opportunity: e,
@@ -801,6 +804,7 @@ impl PotentialConstructionTask {
                     .into(),
                 quantity: e.units,
                 expected_total_purchase_price: *estimated_costs,
+                purchase_cargo_reason: Some(PurchaseCargoReason::TradeProfitably),
             },
         }
     }

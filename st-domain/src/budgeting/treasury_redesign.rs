@@ -1,4 +1,4 @@
-use crate::serialize_as_sorted_map;
+use crate::{serialize_as_sorted_map, ContractId};
 use anyhow::anyhow;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -16,12 +16,21 @@ pub struct FinanceTicket {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
+pub enum PurchaseCargoReason {
+    Contract(ContractId),
+    BoostSupplyChain,
+    TradeProfitably,
+    Construction,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub struct PurchaseTradeGoodsTicketDetails {
     pub waypoint_symbol: WaypointSymbol,
     pub trade_good: TradeGoodSymbol,
     pub expected_price_per_unit: Credits,
     pub quantity: u32,
     pub expected_total_purchase_price: Credits,
+    pub purchase_cargo_reason: Option<PurchaseCargoReason>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
@@ -29,6 +38,7 @@ pub struct DeliverCargoContractTicketDetails {
     pub waypoint_symbol: WaypointSymbol,
     pub trade_good: TradeGoodSymbol,
     pub quantity: u32,
+    pub contract_id: ContractId,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
@@ -87,9 +97,10 @@ pub enum FinanceTicketDetails {
     SupplyConstructionSite(DeliverConstructionMaterialsTicketDetails),
     PurchaseShip(PurchaseShipTicketDetails),
     RefuelShip(RefuelShipTicketDetails),
+    DeliverContractCargo(DeliverCargoContractTicketDetails),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Display)]
+#[derive(Serialize, Deserialize, Debug, Clone, Display, PartialEq)]
 pub enum FinanceTicketState {
     Open,
     Completed,
@@ -109,6 +120,7 @@ impl FinanceTicketDetails {
             FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails { .. }) => -1,
             FinanceTicketDetails::RefuelShip(RefuelShipTicketDetails { .. }) => -1,
             FinanceTicketDetails::SupplyConstructionSite(_) => 0,
+            FinanceTicketDetails::DeliverContractCargo(_) => 0,
         }
     }
 
@@ -131,6 +143,7 @@ impl FinanceTicketDetails {
                 d.num_fuel_barrels, d.expected_price_per_unit, d.waypoint_symbol, d.expected_total_purchase_price
             ),
             FinanceTicketDetails::SupplyConstructionSite(d) => format!("Delivering of {} units of {} to {}", d.quantity, d.trade_good, d.waypoint_symbol),
+            FinanceTicketDetails::DeliverContractCargo(d) => format!("Delivering of {} for contract {} to {}", d.trade_good, d.contract_id, d.waypoint_symbol),
         }
     }
 
@@ -141,6 +154,18 @@ impl FinanceTicketDetails {
             FinanceTicketDetails::PurchaseShip(_) => 1,
             FinanceTicketDetails::RefuelShip(d) => d.num_fuel_barrels,
             FinanceTicketDetails::SupplyConstructionSite(d) => d.quantity,
+            FinanceTicketDetails::DeliverContractCargo(d) => d.quantity,
+        }
+    }
+
+    pub fn get_price_per_unit(&self) -> Credits {
+        match self {
+            FinanceTicketDetails::PurchaseTradeGoods(d) => d.expected_price_per_unit,
+            FinanceTicketDetails::SellTradeGoods(d) => d.expected_price_per_unit,
+            FinanceTicketDetails::PurchaseShip(d) => d.expected_purchase_price,
+            FinanceTicketDetails::RefuelShip(d) => d.expected_price_per_unit,
+            FinanceTicketDetails::SupplyConstructionSite(_) => 0.into(),
+            FinanceTicketDetails::DeliverContractCargo(_) => 0.into(),
         }
     }
 
@@ -151,8 +176,15 @@ impl FinanceTicketDetails {
             FinanceTicketDetails::PurchaseShip(d) => d.waypoint_symbol.clone(),
             FinanceTicketDetails::RefuelShip(d) => d.waypoint_symbol.clone(),
             FinanceTicketDetails::SupplyConstructionSite(d) => d.waypoint_symbol.clone(),
+            FinanceTicketDetails::DeliverContractCargo(d) => d.waypoint_symbol.clone(),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Income {
+    ContractAccepted { contract_id: ContractId, accepted_reward: Credits },
+    ContractFulfilled { contract_id: ContractId, fulfilled_reward: Credits },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -182,6 +214,10 @@ pub enum LedgerEntry {
         units: u32,
         price_per_unit: Credits,
         total: Credits,
+    },
+    IncomeLogged {
+        fleet_id: FleetId,
+        income: Income,
     },
     TransferredFundsFromFleetToTreasury {
         fleet_id: FleetId,
@@ -429,11 +465,30 @@ where {
         ship_symbol: ShipSymbol,
         quantity: u32,
         expected_price_per_unit: Credits,
+        maybe_purchase_cargo_reason: Option<PurchaseCargoReason>,
     ) -> Result<FinanceTicket> {
         self.with_treasurer(|t| {
-            t.create_purchase_trade_goods_ticket(fleet_id, trade_good_symbol, waypoint_symbol, ship_symbol, quantity, expected_price_per_unit)
+            t.create_purchase_trade_goods_ticket(
+                fleet_id,
+                trade_good_symbol,
+                waypoint_symbol,
+                ship_symbol,
+                quantity,
+                expected_price_per_unit,
+                maybe_purchase_cargo_reason,
+            )
         })
         .await
+    }
+
+    pub async fn create_multiple_tickets(
+        &self,
+        ship_symbol: &ShipSymbol,
+        fleet_id: &FleetId,
+        tickets: Vec<FinanceTicketDetails>,
+    ) -> Result<Vec<FinanceTicket>> {
+        self.with_treasurer(|t| t.create_multiple_tickets(ship_symbol, fleet_id, tickets))
+            .await
     }
 
     pub async fn create_sell_trade_goods_ticket(
@@ -480,6 +535,11 @@ where {
             )
         })
         .await
+    }
+
+    pub async fn report_income(&self, fleet_id: &FleetId, income: Income) -> Result<()> {
+        self.with_treasurer(|t| t.report_income(fleet_id, income))
+            .await
     }
 
     pub async fn report_expense(
@@ -610,12 +670,14 @@ pub fn compute_active_trades_from_ledger_entries(ledger_entries: Vec<LedgerEntry
             FinanceTicketDetails::PurchaseTradeGoods(_) => None,
             FinanceTicketDetails::PurchaseShip(_) => None,
             FinanceTicketDetails::RefuelShip(_) => None,
+            FinanceTicketDetails::DeliverContractCargo(_) => None,
         };
 
         let is_trade_closing_ticket = match &ticket.details {
             FinanceTicketDetails::SellTradeGoods(_) => true,
             FinanceTicketDetails::SupplyConstructionSite(_) => true,
             FinanceTicketDetails::PurchaseShip(_) => true,
+            FinanceTicketDetails::DeliverContractCargo(_) => true,
             FinanceTicketDetails::RefuelShip(_) => true,
             FinanceTicketDetails::PurchaseTradeGoods(_) => false,
         };
@@ -777,6 +839,7 @@ impl ImprovedTreasurer {
                 FinanceTicketDetails::PurchaseTradeGoods(_) => None,
                 FinanceTicketDetails::PurchaseShip(_) => None,
                 FinanceTicketDetails::RefuelShip(_) => None,
+                FinanceTicketDetails::DeliverContractCargo(d) => Some((d.waypoint_symbol.clone(), d.trade_good.clone(), None)),
             })
         {
             if let Some(purchase_ticket_id) = maybe_matching_purchase_ticket {
@@ -828,6 +891,11 @@ impl ImprovedTreasurer {
                 }
                 FinanceTicketDetails::PurchaseShip(_) => {}
                 FinanceTicketDetails::RefuelShip(_) => {}
+                FinanceTicketDetails::DeliverContractCargo(d) => {
+                    if d.quantity == 0 {
+                        broken_tickets.push(ticket.clone());
+                    }
+                }
             }
         }
 
@@ -841,6 +909,51 @@ impl ImprovedTreasurer {
         Ok(())
     }
 
+    pub fn create_multiple_tickets(
+        &mut self,
+        ship_symbol: &ShipSymbol,
+        fleet_id: &FleetId,
+        ticket_details: Vec<FinanceTicketDetails>,
+    ) -> Result<Vec<FinanceTicket>> {
+        if let Some(fleet_budget) = self.fleet_budgets.get(fleet_id) {
+            let required_budget: Credits = ticket_details
+                .iter()
+                .map(|details| (details.get_price_per_unit() * details.get_units()).0)
+                .sum::<i64>()
+                .into();
+
+            let available_capital = fleet_budget.available_capital();
+            if available_capital < required_budget {
+                Err(anyhow!(
+                    "Insufficient budget for fleet #{}. Required: {}c, available: {}c",
+                    fleet_id,
+                    required_budget,
+                    available_capital
+                ))?
+            } else {
+                let mut tickets = Vec::new();
+                for details in ticket_details {
+                    let total = details.get_price_per_unit() * details.get_units();
+                    let ticket = FinanceTicket {
+                        ticket_id: Default::default(),
+                        fleet_id: fleet_id.clone(),
+                        ship_symbol: ship_symbol.clone(),
+                        details,
+                        allocated_credits: total,
+                    };
+                    self.process_ledger_entry(TicketCreated {
+                        fleet_id: fleet_id.clone(),
+                        ticket_details: ticket.clone(),
+                    })?;
+                    tickets.push(ticket);
+                }
+                Ok(tickets)
+            }
+        } else {
+            Err(anyhow!("Fleet not found {}", fleet_id))
+        }
+    }
+
     pub fn create_purchase_trade_goods_ticket(
         &mut self,
         fleet_id: &FleetId,
@@ -849,6 +962,7 @@ impl ImprovedTreasurer {
         ship_symbol: ShipSymbol,
         quantity: u32,
         expected_price_per_unit: Credits,
+        maybe_purchase_cargo_reason: Option<PurchaseCargoReason>,
     ) -> Result<FinanceTicket> {
         if let Some(fleet_budget) = self.fleet_budgets.get(fleet_id) {
             let affordable_units: u32 = (fleet_budget.available_capital().0 / expected_price_per_unit.0) as u32;
@@ -864,6 +978,7 @@ impl ImprovedTreasurer {
                     expected_total_purchase_price: total,
                     quantity,
                     expected_price_per_unit,
+                    purchase_cargo_reason: maybe_purchase_cargo_reason,
                 }),
                 allocated_credits: total,
             };
@@ -975,6 +1090,15 @@ impl ImprovedTreasurer {
         Ok(ticket)
     }
 
+    pub fn report_income(&mut self, fleet_id: &FleetId, income: Income) -> Result<()> {
+        self.process_ledger_entry(IncomeLogged {
+            fleet_id: fleet_id.clone(),
+            income,
+        })?;
+
+        Ok(())
+    }
+
     pub(crate) fn report_expense(
         &mut self,
         fleet_id: &FleetId,
@@ -1016,13 +1140,7 @@ impl ImprovedTreasurer {
     }
 
     pub fn complete_ticket(&mut self, fleet_id: &FleetId, finance_ticket: &FinanceTicket, actual_price_per_unit: Credits) -> Result<()> {
-        let quantity: u32 = match finance_ticket.details {
-            FinanceTicketDetails::PurchaseTradeGoods(PurchaseTradeGoodsTicketDetails { quantity, .. }) => quantity,
-            FinanceTicketDetails::SellTradeGoods(SellTradeGoodsTicketDetails { quantity, .. }) => quantity,
-            FinanceTicketDetails::PurchaseShip(PurchaseShipTicketDetails { .. }) => 1,
-            FinanceTicketDetails::RefuelShip(RefuelShipTicketDetails { num_fuel_barrels, .. }) => num_fuel_barrels,
-            FinanceTicketDetails::SupplyConstructionSite(DeliverConstructionMaterialsTicketDetails { quantity, .. }) => quantity,
-        };
+        let quantity: u32 = finance_ticket.details.get_units();
 
         self.process_ledger_entry(TicketCompleted {
             fleet_id: fleet_id.clone(),
@@ -1307,6 +1425,21 @@ impl ImprovedTreasurer {
                     budget.current_capital += finance_ticket.allocated_credits;
                     self.active_tickets.remove(&finance_ticket.ticket_id);
 
+                    self.ledger_entries.push_back(ledger_entry);
+                } else {
+                    return Err(anyhow!("Fleet {} doesn't exist", fleet_id));
+                }
+            }
+            LedgerEntry::IncomeLogged { fleet_id, income } => {
+                if let Some(budget) = self.fleet_budgets.get_mut(&fleet_id) {
+                    match income {
+                        Income::ContractAccepted { accepted_reward, .. } => {
+                            budget.current_capital += accepted_reward;
+                        }
+                        Income::ContractFulfilled { fulfilled_reward, .. } => {
+                            budget.current_capital += fulfilled_reward;
+                        }
+                    }
                     self.ledger_entries.push_back(ledger_entry);
                 } else {
                     return Err(anyhow!("Fleet {} doesn't exist", fleet_id));

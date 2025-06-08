@@ -126,6 +126,7 @@ pub enum ShipTask {
 
     PrepositionShipForTrade { first_purchase_location: WaypointSymbol },
     SiphonCarboHydratesAtWaypoint { siphoning_waypoint: WaypointSymbol },
+    ExecuteContracts,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]

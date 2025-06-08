@@ -52,7 +52,10 @@ async fn get_supply_chain_data() -> Result<
             .unwrap()
             .unwrap();
 
+        println!("loaded supply_chain");
+
         let agent = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?;
+        println!("loaded agent");
 
         let headquarters_waypoint = agent.headquarters;
 
@@ -68,6 +71,7 @@ async fn get_supply_chain_data() -> Result<
             .await?;
 
         let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
+        println!("loaded market_data");
 
         let maybe_construction_site = bmc
             .construction_bmc()
@@ -94,6 +98,8 @@ async fn get_supply_chain_data() -> Result<
 
         let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await?;
 
+        println!("loaded ships");
+
         let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map);
 
         println!("calculated {} trading_opportunities", trading_opportunities.len());
@@ -116,14 +122,18 @@ async fn get_supply_chain_data() -> Result<
             vec![]
         };
 
+        println!("found {} ships in construction_fleet", trading_ships.len());
 
         let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
             trading::evaluate_trading_opportunities(&trading_ships, &waypoint_map, &trading_opportunities, agent.credits);
 
+        println!("calculated {} evaluated_trading_opportunities", evaluated_trading_opportunities.len());
 
         let active_trades = HashSet::new();
 
         let trading_decision = trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trades);
+
+        println!("calculated {} trading_decision(s)", trading_decision.len());
 
         Ok((
             supply_chain,

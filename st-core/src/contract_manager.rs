@@ -3,9 +3,11 @@ use anyhow::{anyhow, Result};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::credits::Credits;
-use st_domain::budgeting::treasury_redesign::{DeliverCargoContractTicketDetails, PurchaseTradeGoodsTicketDetails};
+use st_domain::budgeting::treasury_redesign::{DeliverCargoContractTicketDetails, PurchaseCargoReason, PurchaseTradeGoodsTicketDetails};
 use st_domain::trading::group_markets_by_type;
-use st_domain::{combine_maps, trading, Contract, ContractEvaluationResult, MarketEntry, MarketTradeGood, TradeGoodSymbol, TradeGoodType, WaypointSymbol};
+use st_domain::{
+    combine_maps, trading, Contract, ContractEvaluationResult, ContractId, MarketEntry, MarketTradeGood, TradeGoodSymbol, TradeGoodType, WaypointSymbol,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -64,6 +66,7 @@ pub fn calculate_necessary_purchase_tickets_for_contract(
                 expected_price_per_unit: expected_batch_price_per_unit,
                 quantity: *purchase_batch,
                 expected_total_purchase_price: total_batch_price,
+                purchase_cargo_reason: Some(PurchaseCargoReason::Contract(contract.id.clone())),
             })
         }
 
@@ -73,6 +76,7 @@ pub fn calculate_necessary_purchase_tickets_for_contract(
                 waypoint_symbol: deliver.destination_symbol.clone(),
                 trade_good: deliver.trade_symbol.clone(),
                 quantity: delivery_batch,
+                contract_id: contract.id.clone(),
             })
         }
     }
@@ -84,47 +88,10 @@ pub fn calculate_necessary_purchase_tickets_for_contract(
     })
 }
 
-fn calc_delivery_batches(
-    purchase_tickets: &[PurchaseTradeGoodsTicketDetails],
-    ship_cargo_size: u32,
-    contract: &Contract,
-) -> Vec<DeliverCargoContractTicketDetails> {
-    /*
-    purchases
-
-    TradeGoodSymbol::IRON, 20
-    TradeGoodSymbol::IRON, 20
-    TradeGoodSymbol::IRON, 5
-    TradeGoodSymbol::COPPER, 35
-
-    correct deliveries:
-    TradeGoodSymbol::IRON, 40
-    TradeGoodSymbol::IRON, 5
-    TradeGoodSymbol::COPPER, 35
-     */
-
-    contract
-        .terms
-        .deliver
-        .iter()
-        .flat_map(|deliver| {
-            let quantity = deliver.units_required - deliver.units_fulfilled;
-            let delivery_batches = calc_batches_based_on_volume_constraint(quantity, ship_cargo_size);
-            delivery_batches
-                .into_iter()
-                .map(|batch| DeliverCargoContractTicketDetails {
-                    waypoint_symbol: deliver.destination_symbol.clone(),
-                    trade_good: deliver.trade_symbol.clone(),
-                    quantity: batch,
-                })
-        })
-        .collect_vec()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use st_domain::{ActivityLevel, ContractTerms, Delivery, MarketData, Payment, SupplyLevel, TradeGood};
+    use st_domain::{ActivityLevel, ContractId, ContractTerms, Delivery, MarketData, Payment, SupplyLevel, TradeGood};
 
     #[test]
     fn test_calculate_necessary_purchase_tickets_for_contract() {
@@ -206,7 +173,7 @@ mod tests {
 
     fn create_test_contract() -> Contract {
         Contract {
-            id: "contract-id-foo".to_string(),
+            id: ContractId("contract-id-foo".to_string()),
             faction_symbol: "LORDS".to_string(),
             contract_type: "contract_type".to_string(),
             terms: ContractTerms {

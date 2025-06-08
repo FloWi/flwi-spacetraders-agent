@@ -5,8 +5,9 @@ use itertools::Itertools;
 use serde::Serialize;
 use st_domain::budgeting::treasury_redesign::FinanceTicket;
 use st_domain::{
-    CreateChartBody, CreateSurveyResponse, ExtractResourcesResponse, FleetId, FlightMode, Fuel, JettisonCargoResponse, JumpGate, MarketData, MiningOpsConfig,
-    Nav, NavAndFuelResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RawDeliveryRoute, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol,
+    AcceptContractResponse, Contract, ContractId, CreateChartBody, CreateSurveyResponse, DeliverCargoToContractResponse, ExtractResourcesResponse, FleetId,
+    FlightMode, Fuel, FulfillContractResponse, JettisonCargoResponse, JumpGate, MarketData, MiningOpsConfig, Nav, NavAndFuelResponse,
+    NegotiateContractResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RawDeliveryRoute, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol,
     ShipType, Shipyard, SiphonResourcesResponse, SiphoningOpsConfig, SupplyConstructionSiteResponse, Survey, TradeGoodSymbol, TransferCargoResponse,
     TravelAction, WaypointSymbol,
 };
@@ -28,6 +29,7 @@ pub struct ShipOperations {
     pub my_fleet: FleetId,
     pub maybe_mining_waypoint: Option<WaypointSymbol>,
     pub maybe_siphoning_waypoint: Option<WaypointSymbol>,
+    pub maybe_contract: Option<Contract>,
 }
 
 impl PartialEq for ShipOperations {
@@ -57,6 +59,10 @@ impl ShipOperations {
         self.nav = new_nav;
     }
 
+    pub(crate) fn set_contract(&mut self, contract: Contract) {
+        self.maybe_contract = Some(contract);
+    }
+
     pub(crate) fn set_fuel(&mut self, new_fuel: Fuel) {
         self.fuel = new_fuel;
     }
@@ -77,6 +83,7 @@ impl ShipOperations {
             my_fleet,
             maybe_mining_waypoint: None,
             maybe_siphoning_waypoint: None,
+            maybe_contract: None,
         }
     }
 
@@ -133,6 +140,24 @@ impl ShipOperations {
     pub async fn perform_survey(&mut self) -> Result<CreateSurveyResponse> {
         let response = self.client.survey(self.ship.symbol.clone()).await?;
         self.cooldown = response.data.cooldown.clone();
+        Ok(response)
+    }
+
+    pub async fn perform_negotiate_contract(&mut self) -> Result<NegotiateContractResponse> {
+        let response = self
+            .client
+            .negotiate_contract(self.ship.symbol.clone())
+            .await?;
+        Ok(response)
+    }
+
+    pub async fn perform_accept_contract(&mut self, contract_id: &ContractId) -> Result<AcceptContractResponse> {
+        let response = self.client.accept_contract(contract_id.clone()).await?;
+        Ok(response)
+    }
+
+    pub async fn perform_fulfill_contract(&mut self, contract_id: &ContractId) -> Result<FulfillContractResponse> {
+        let response = self.client.fulfill_contract(contract_id.clone()).await?;
         Ok(response)
     }
 
@@ -305,6 +330,21 @@ impl ShipOperations {
         let response = self
             .client
             .supply_construction_site(self.symbol.clone(), quantity, trade_good.clone(), construction_site_waypoint_symbol.clone())
+            .await?;
+        self.cargo = response.data.cargo.clone();
+
+        Ok(response)
+    }
+
+    pub async fn deliver_cargo_to_contract(
+        &mut self,
+        contract_id: &ContractId,
+        quantity: u32,
+        trade_good: &TradeGoodSymbol,
+    ) -> Result<DeliverCargoToContractResponse> {
+        let response = self
+            .client
+            .deliver_cargo_to_contract(self.symbol.clone(), contract_id.clone(), quantity, trade_good.clone())
             .await?;
         self.cargo = response.data.cargo.clone();
 

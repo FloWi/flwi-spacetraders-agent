@@ -2,6 +2,7 @@ use crate::behavior_tree::behavior_args::BehaviorArgs;
 use crate::behavior_tree::behavior_tree::Response::Success;
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
+use crate::contract_manager;
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
 use anyhow::Result;
@@ -12,13 +13,13 @@ use core::time::Duration;
 use itertools::Itertools;
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::{PurchaseTradeGoods, RefuelShip, SellTradeGoods};
-use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails};
+use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails, Income};
 use st_domain::cargo_transfer::{InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoToHaulerResult, TransferCargoError};
 use st_domain::TradeGoodSymbol::MOUNT_GAS_SIPHON_I;
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
-    get_exploration_tasks_for_waypoint, Cargo, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody, ShipSymbol,
-    Survey, TradeGoodSymbol, TravelAction, WaypointModifierSymbol,
+    get_exploration_tasks_for_waypoint, Cargo, Contract, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody,
+    ShipSymbol, Survey, TradeGoodSymbol, TravelAction, WaypointModifierSymbol,
 };
 use std::collections::HashSet;
 use std::hint::unreachable_unchecked;
@@ -525,9 +526,14 @@ impl Actionable for ShipAction {
                                     .iter()
                                     .any(|t| t.ticket_id == related_purchase_ticket),
                             },
-                            PurchaseTradeGoods(_) => true,
+                            PurchaseTradeGoods(d) => state.cargo.available_cargo_space() >= d.quantity,
                             FinanceTicketDetails::PurchaseShip(_) => true,
                             RefuelShip(_) => true,
+                            FinanceTicketDetails::DeliverContractCargo(d) => state
+                                .cargo
+                                .inventory
+                                .iter()
+                                .any(|inventory_entry| inventory_entry.symbol == d.trade_good && inventory_entry.units >= d.quantity),
                         })
                         .collect_vec();
 
@@ -650,6 +656,11 @@ impl Actionable for ShipAction {
                                     ))
                                     .await?;
                             }
+                            FinanceTicketDetails::DeliverContractCargo(details) => {
+                                let response = state
+                                    .deliver_cargo_to_contract(&details.contract_id, details.quantity, &details.trade_good)
+                                    .await?;
+                            }
                         }
                         completed_tickets.insert(finance_ticket.clone());
                         let still_open_tickets = finance_tickets
@@ -694,6 +705,7 @@ impl Actionable for ShipAction {
                         SellTradeGoods(_) => false,
                         RefuelShip(_) => false,
                         FinanceTicketDetails::SupplyConstructionSite(_) => false,
+                        FinanceTicketDetails::DeliverContractCargo(_) => false,
                         FinanceTicketDetails::PurchaseShip(details) => {
                             let shipyard_wp = details.waypoint_symbol.clone();
                             shipyard_wp == current_location
@@ -1066,6 +1078,167 @@ impl Actionable for ShipAction {
                 // in the test we can still tweak the sleep_duration
                 tokio::time::sleep(sleep_duration * 12).await;
                 Ok(Success)
+            }
+            ShipAction::NegotiateContract => match state.perform_negotiate_contract().await {
+                Err(e) => Err(anyhow!("Error negotiating contract: {}", e)),
+                Ok(negotiate_contract_response) => {
+                    state.set_contract(negotiate_contract_response.data.clone());
+                    match args
+                        .blackboard
+                        .upsert_contract(&state.nav.system_symbol, &negotiate_contract_response.data)
+                        .await
+                    {
+                        Ok(_) => Ok(Success),
+                        Err(e) => Err(anyhow!(
+                            "Error upserting contract: {}. Contract: {}",
+                            e,
+                            serde_json::to_string_pretty(&negotiate_contract_response).unwrap()
+                        )),
+                    }
+                }
+            },
+            ShipAction::AcceptContract => {
+                if let Some(contract) = state.maybe_contract.clone() {
+                    match state.perform_accept_contract(&contract.id).await {
+                        Err(e) => Err(anyhow!("Error accepting contract: {}", e)),
+                        Ok(accept_contract_response) => {
+                            let contract: &Contract = &accept_contract_response.data.contract;
+                            state.set_contract(contract.clone());
+                            args.treasurer
+                                .report_income(
+                                    &state.my_fleet,
+                                    Income::ContractAccepted {
+                                        contract_id: contract.id.clone(),
+                                        accepted_reward: contract.terms.payment.on_accepted.into(),
+                                    },
+                                )
+                                .await?;
+
+                            match args
+                                .blackboard
+                                .upsert_contract(&state.nav.system_symbol, &accept_contract_response.data.contract)
+                                .await
+                            {
+                                Ok(_) => Ok(Success),
+                                Err(e) => Err(anyhow!(
+                                    "Error upserting contract: {}. Contract: {}",
+                                    e,
+                                    serde_json::to_string_pretty(&contract)?
+                                )),
+                            }
+                        }
+                    }
+                } else {
+                    Err(anyhow!("No contract found"))
+                }
+            }
+            ShipAction::CanAffordContract => {
+                if let Some(contract) = state.maybe_contract.clone() {
+                    match args
+                        .check_contract_affordability(&state.nav.system_symbol, &contract, state.cargo.capacity as u32, &state.my_fleet)
+                        .await
+                    {
+                        Ok(is_affordable) => {
+                            if is_affordable {
+                                Ok(Success)
+                            } else {
+                                Err(anyhow!("can't afford contract right now"))
+                            }
+                        }
+                        Err(e) => Err(anyhow!("Error check_contract_affordability: {e:?}")),
+                    }
+                } else {
+                    Err(anyhow!("No contract found"))
+                }
+            }
+            ShipAction::HasAcceptedContract => {
+                if let Some(contract) = state.maybe_contract.clone() {
+                    if contract.accepted {
+                        Ok(Success)
+                    } else {
+                        Err(anyhow!("Contract not accepted yet"))
+                    }
+                } else {
+                    Err(anyhow!("No contract found"))
+                }
+            }
+            ShipAction::HasActiveContract => {
+                if let Some(_contract) = state.maybe_contract.clone() {
+                    Ok(Success)
+                } else {
+                    Err(anyhow!("No contract found"))
+                }
+            }
+            ShipAction::FulfilContract => {
+                if let Some(contract) = state.maybe_contract.clone() {
+                    match state.perform_fulfill_contract(&contract.id).await {
+                        Err(e) => Err(anyhow!("Error fulfilling contract: {}", e)),
+                        Ok(fulfil_contract_response) => {
+                            let contract: &Contract = &fulfil_contract_response.data.contract;
+                            state.set_contract(contract.clone());
+                            args.treasurer
+                                .report_income(
+                                    &state.my_fleet,
+                                    Income::ContractFulfilled {
+                                        contract_id: contract.id.clone(),
+                                        fulfilled_reward: contract.terms.payment.on_fulfilled.into(),
+                                    },
+                                )
+                                .await?;
+
+                            match args
+                                .blackboard
+                                .upsert_contract(&state.nav.system_symbol, &fulfil_contract_response.data.contract)
+                                .await
+                            {
+                                Ok(_) => Ok(Success),
+                                Err(e) => Err(anyhow!(
+                                    "Error upserting contract: {}. Contract: {}",
+                                    e,
+                                    serde_json::to_string_pretty(&contract)?
+                                )),
+                            }
+                        }
+                    }
+                } else {
+                    Err(anyhow!("No contract found"))
+                }
+            }
+            ShipAction::IsContractDeliveryComplete => {
+                if let Some(contract) = state.maybe_contract.clone() {
+                    let is_complete = contract.fulfilled
+                        || contract
+                            .terms
+                            .deliver
+                            .iter()
+                            .all(|delivery| delivery.units_required == delivery.units_fulfilled);
+                    if is_complete {
+                        Ok(Success)
+                    } else {
+                        Err(anyhow!("Contract neither fulfilled nor all delivery entries are fulfilled"))
+                    }
+                } else {
+                    Err(anyhow!("No contract found"))
+                }
+            }
+            ShipAction::CreateContractTickets => {
+                if let Some(contract) = state.maybe_contract.clone() {
+                    match args
+                        .create_contract_tickets(&state.symbol, &state.nav.system_symbol, &contract, state.cargo.capacity as u32, &state.my_fleet)
+                        .await
+                    {
+                        Ok(is_affordable) => {
+                            if is_affordable {
+                                Ok(Success)
+                            } else {
+                                Err(anyhow!("can't afford contract right now"))
+                            }
+                        }
+                        Err(e) => Err(anyhow!("Error create_contract_tickets: {e:?}")),
+                    }
+                } else {
+                    Err(anyhow!("No contract found"))
+                }
             }
         };
 

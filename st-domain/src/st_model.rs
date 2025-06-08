@@ -18,6 +18,15 @@ pub struct Data<T> {
 pub struct AgentSymbol(pub String);
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct ContractId(pub String);
+
+impl Display for ContractId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct SystemSymbol(pub String);
 
 impl SystemSymbol {
@@ -737,7 +746,7 @@ pub struct Agent {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct Contract {
-    pub id: String,
+    pub id: ContractId,
     pub faction_symbol: String,
     #[serde(rename = "type")]
     pub contract_type: String,
@@ -846,6 +855,10 @@ impl Ship {
             ShipFrameSymbol::FRAME_HEAVY_FREIGHTER => true,
             _ => false,
         }
+    }
+
+    pub fn is_command_ship(&self) -> bool {
+        self.frame.symbol == ShipFrameSymbol::FRAME_FRIGATE
     }
 
     pub fn is_siphoner(&self) -> bool {
@@ -1096,6 +1109,34 @@ pub type PurchaseShipResponse = Data<PurchaseShipResponseBody>;
 pub type ExtractResourcesResponse = Data<ExtractResourcesResponseBody>;
 
 pub type CreateSurveyResponse = Data<CreateSurveyResponseBody>;
+
+pub type NegotiateContractResponse = Data<Contract>;
+
+pub type AcceptContractResponse = Data<ContractWithAgentResponseBody>;
+
+pub type FulfillContractResponse = Data<ContractWithAgentResponseBody>;
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliverCargoToContractRequest {
+    pub ship_symbol: ShipSymbol,
+    pub trade_symbol: TradeGoodSymbol,
+    pub units: u32,
+}
+
+pub type DeliverCargoToContractResponse = Data<DeliverCargoToContractResponseBody>;
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct ContractWithAgentResponseBody {
+    pub contract: Contract,
+    pub agent: Agent,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct DeliverCargoToContractResponseBody {
+    pub contract: Contract,
+    pub cargo: Cargo,
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct SurveySignature(pub String);
@@ -1414,8 +1455,13 @@ pub struct Cargo {
 }
 
 impl Cargo {
-    pub fn with_item_added_mut(&mut self, new_item: TradeGoodSymbol, units: u32) -> Result<(), NotEnoughSpaceError> {
+    pub fn available_cargo_space(&self) -> u32 {
         let available_space = (self.capacity - self.units) as u32;
+        available_space
+    }
+
+    pub fn with_item_added_mut(&mut self, new_item: TradeGoodSymbol, units: u32) -> Result<(), NotEnoughSpaceError> {
+        let available_space = self.available_cargo_space();
 
         if available_space < units {
             return Err(NotEnoughSpaceError {

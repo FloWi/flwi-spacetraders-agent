@@ -9,10 +9,11 @@ use reqwest_middleware::ClientWithMiddleware;
 use reqwest_middleware::RequestBuilder;
 use serde::de::DeserializeOwned;
 use st_domain::{
-    extract_system_symbol, AgentResponse, AgentSymbol, CreateChartResponse, CreateSurveyResponse, Data, DockShipResponse, ExtractResourcesResponse, FlightMode,
+    extract_system_symbol, AcceptContractResponse, AgentResponse, AgentSymbol, ContractId, CreateChartResponse, CreateSurveyResponse, Data,
+    DeliverCargoToContractRequest, DeliverCargoToContractResponse, DockShipResponse, ExtractResourcesResponse, FlightMode, FulfillContractResponse,
     GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, JettisonCargoRequest,
-    JettisonCargoResponse, ListAgentsResponse, NavigateShipRequest, NavigateShipResponse, OrbitShipResponse, PatchShipNavRequest, PurchaseShipRequest,
-    PurchaseShipResponse, PurchaseTradeGoodRequest, PurchaseTradeGoodResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest,
+    JettisonCargoResponse, ListAgentsResponse, NavigateShipRequest, NavigateShipResponse, NegotiateContractResponse, OrbitShipResponse, PatchShipNavRequest,
+    PurchaseShipRequest, PurchaseShipResponse, PurchaseTradeGoodRequest, PurchaseTradeGoodResponse, RefuelShipRequest, RefuelShipResponse, RegistrationRequest,
     RegistrationResponse, SellTradeGoodRequest, SellTradeGoodResponse, SetFlightModeResponse, Ship, ShipSymbol, ShipType, SiphonResourcesResponse,
     StStatusResponse, SupplyConstructionSiteRequest, SupplyConstructionSiteResponse, Survey, SystemSymbol, SystemsPageData, TradeGoodSymbol,
     TransferCargoRequest, TransferCargoResponse, Waypoint, WaypointSymbol,
@@ -421,6 +422,54 @@ impl StClientTrait for StClient {
 
         Self::make_api_call(request).await
     }
+
+    async fn negotiate_contract(&self, ship_symbol: ShipSymbol) -> Result<NegotiateContractResponse> {
+        let request = self.client.post(
+            self.base_url
+                .join(&format!("my/ships/{}/negotiate/contract", ship_symbol.0))?,
+        );
+
+        Self::make_api_call(request).await
+    }
+
+    async fn accept_contract(&self, contract_id: ContractId) -> Result<AcceptContractResponse> {
+        let request = self.client.post(
+            self.base_url
+                .join(&format!("my/contracts/{}/accept", contract_id.0))?,
+        );
+
+        Self::make_api_call(request).await
+    }
+
+    async fn fulfill_contract(&self, contract_id: ContractId) -> Result<FulfillContractResponse> {
+        let request = self.client.post(
+            self.base_url
+                .join(&format!("my/contracts/{}/fulfill", contract_id.0))?,
+        );
+
+        Self::make_api_call(request).await
+    }
+    async fn deliver_cargo_to_contract(
+        &self,
+        ship_symbol: ShipSymbol,
+        contract_id: ContractId,
+        units: u32,
+        trade_symbol: TradeGoodSymbol,
+    ) -> Result<DeliverCargoToContractResponse> {
+        let request = self
+            .client
+            .post(
+                self.base_url
+                    .join(&format!("my/contracts/{}/deliver", contract_id.0))?,
+            )
+            .json(&DeliverCargoToContractRequest {
+                ship_symbol,
+                trade_symbol,
+                units,
+            });
+
+        Self::make_api_call(request).await
+    }
 }
 #[automock]
 #[async_trait]
@@ -498,6 +547,20 @@ pub trait StClientTrait: Send + Sync + Debug {
     async fn list_agents_page(&self, pagination_input: PaginationInput) -> Result<ListAgentsResponse>;
 
     async fn get_status(&self) -> Result<StStatusResponse>;
+
+    async fn negotiate_contract(&self, ship_symbol: ShipSymbol) -> Result<NegotiateContractResponse>;
+
+    async fn accept_contract(&self, contract_id: ContractId) -> Result<AcceptContractResponse>;
+
+    async fn fulfill_contract(&self, contract_id: ContractId) -> Result<FulfillContractResponse>;
+
+    async fn deliver_cargo_to_contract(
+        &self,
+        ship_symbol: ShipSymbol,
+        contract_id: ContractId,
+        units: u32,
+        trade_symbol: TradeGoodSymbol,
+    ) -> Result<DeliverCargoToContractResponse>;
 }
 
 #[cfg(test)]
@@ -523,7 +586,7 @@ mod test {
 
         assert_eq!(registration.agent.account_id, Some("clzsskbz7ih38s60ci1xwiau1".to_string()));
 
-        assert_eq!(registration.contract.id, "clzsskc1rih3as60c14qqqqf5");
+        assert_eq!(registration.contract.id.0.as_str(), "clzsskc1rih3as60c14qqqqf5");
 
         assert_eq!(registration.faction.symbol, "ASTRO");
 

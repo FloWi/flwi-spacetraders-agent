@@ -14,7 +14,7 @@ use tracing::{event, Level};
 use crate::DbModelManager;
 use st_domain::budgeting::treasury_redesign::LedgerEntry;
 use st_domain::{
-    distance_to, Construction, Data, Extraction, JumpGate, MarketData, MarketEntry, RegistrationResponse, Ship, ShipTask, Shipyard, ShipyardData,
+    distance_to, Construction, Contract, Data, Extraction, JumpGate, MarketData, MarketEntry, RegistrationResponse, Ship, ShipTask, Shipyard, ShipyardData,
     StStatusResponse, SupplyChain, Survey, SurveySignature, SystemSymbol, SystemsPageData, Waypoint, WaypointSymbol, WaypointTraitSymbol,
 };
 
@@ -248,6 +248,12 @@ pub struct DbSurveyUsageEntry {
 #[derive(Serialize, Clone, Debug, Deserialize)]
 pub struct DbLedgerEntry {
     pub entry: Json<LedgerEntry>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+pub struct DbContractEntry {
+    pub entry: Json<Contract>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -987,4 +993,40 @@ order by id
         .iter()
         .map(|db_entry| db_entry.entry.0.clone())
         .collect_vec())
+}
+
+pub(crate) async fn upsert_contract(pool: &Pool<Postgres>, system_symbol: &SystemSymbol, contract: &Contract, now: DateTime<Utc>) -> Result<()> {
+    sqlx::query!(
+        r#"
+insert into contracts (id, system_symbol, entry, created_at, updated_at)
+values ($1, $2, $3, $4, $5)
+on conflict (id) do UPDATE set entry = excluded.entry, updated_at = excluded.updated_at
+        "#,
+        contract.id.0.clone(),
+        system_symbol.0.clone(),
+        Json(contract.clone()) as _,
+        now,
+        now
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub(crate) async fn get_youngest_contract(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Option<Contract>> {
+    let maybe_result = sqlx::query_as!(
+        DbContractEntry,
+        r#"
+select entry as "entry: Json<Contract>",
+       created_at
+  from contracts
+  order by created_at desc
+  limit 1
+        "#,
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(maybe_result.map(|db_entry| db_entry.entry.0))
 }

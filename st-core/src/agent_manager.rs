@@ -152,6 +152,7 @@ impl AgentManager {
             in_mem_supply_chain_bmc: Arc::new(supply_chain_bmc),
             in_mem_status_bmc: Arc::new(status_bmc),
             in_mem_ledger_bmc: Arc::new(Default::default()),
+            in_mem_contract_bmc: Arc::new(Default::default()),
         };
 
         let bmc = Arc::new(bmc) as Arc<dyn Bmc>;

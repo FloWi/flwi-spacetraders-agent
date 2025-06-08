@@ -10,11 +10,12 @@ use itertools::Itertools;
 use rand::prelude::IteratorRandom;
 use rand::{thread_rng, Rng};
 use st_domain::{
-    Agent, AgentResponse, AgentSymbol, Cargo, CargoOnlyResponse, Construction, Cooldown, CreateChartResponse, CreateSurveyResponse, CreateSurveyResponseBody,
-    Crew, Data, DockShipResponse, ExtractResourcesResponse, ExtractResourcesResponseBody, Extraction, ExtractionYield, FactionSymbol, FlightMode, Fuel,
-    FuelConsumed, GetConstructionResponse, GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse,
-    JettisonCargoResponse, JumpGate, LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Mount, Nav, NavAndFuelResponse, NavOnlyResponse,
-    NavRouteWaypoint, NavStatus, NavigateShipResponse, NotEnoughItemsInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody,
+    AcceptContractResponse, Agent, AgentResponse, AgentSymbol, Cargo, CargoOnlyResponse, Construction, ContractId, Cooldown, CreateChartResponse,
+    CreateSurveyResponse, CreateSurveyResponseBody, Crew, Data, DeliverCargoToContractResponse, DockShipResponse, ExtractResourcesResponse,
+    ExtractResourcesResponseBody, Extraction, ExtractionYield, FactionSymbol, FlightMode, Fuel, FuelConsumed, FulfillContractResponse, GetConstructionResponse,
+    GetJumpGateResponse, GetMarketResponse, GetShipyardResponse, GetSupplyChainResponse, GetSystemResponse, JettisonCargoResponse, JumpGate,
+    LabelledCoordinate, ListAgentsResponse, MarketData, Meta, ModuleType, Mount, Nav, NavAndFuelResponse, NavOnlyResponse, NavRouteWaypoint, NavStatus,
+    NavigateShipResponse, NegotiateContractResponse, NotEnoughItemsInCargoError, OrbitShipResponse, PurchaseShipResponse, PurchaseShipResponseBody,
     PurchaseTradeGoodResponse, PurchaseTradeGoodResponseBody, RefuelShipResponse, RefuelShipResponseBody, Registration, RegistrationRequest,
     RegistrationResponse, Route, SellTradeGoodResponse, SellTradeGoodResponseBody, SetFlightModeResponse, Ship, ShipMountSymbol, ShipPurchaseTransaction,
     ShipRegistrationRole, ShipSymbol, ShipTransaction, ShipType, Shipyard, ShipyardShip, Siphon, SiphonResourcesResponse, SiphonResourcesResponseBody,
@@ -1502,6 +1503,28 @@ impl StClientTrait for InMemoryUniverseClient {
     }
 
     async fn get_status(&self) -> anyhow::Result<StStatusResponse> {
+        todo!()
+    }
+
+    async fn negotiate_contract(&self, ship_symbol: ShipSymbol) -> Result<NegotiateContractResponse> {
+        todo!()
+    }
+
+    async fn accept_contract(&self, contract_id: ContractId) -> Result<AcceptContractResponse> {
+        todo!()
+    }
+
+    async fn fulfill_contract(&self, contract_id: ContractId) -> Result<FulfillContractResponse> {
+        todo!()
+    }
+
+    async fn deliver_cargo_to_contract(
+        &self,
+        ship_symbol: ShipSymbol,
+        contract_id: ContractId,
+        units: u32,
+        trade_symbol: TradeGoodSymbol,
+    ) -> Result<DeliverCargoToContractResponse> {
         todo!()
     }
 }

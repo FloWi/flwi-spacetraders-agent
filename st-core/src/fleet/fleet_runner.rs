@@ -445,6 +445,16 @@ impl FleetRunner {
                 ship.set_mining_waypoint(mining_waypoint);
                 Some((behaviors.miner_behavior, "miner_behavior"))
             }
+            ShipTask::ExecuteContracts => {
+                if let Some(contract) = args
+                    .blackboard
+                    .get_youngest_contract(&ship.nav.system_symbol)
+                    .await?
+                {
+                    ship.set_contract(contract);
+                }
+                Some((behaviors.contractor_behavior, "contractor_behavior"))
+            }
         };
 
         event!(
