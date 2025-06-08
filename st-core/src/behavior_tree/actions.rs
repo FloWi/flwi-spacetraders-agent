@@ -640,6 +640,9 @@ impl Actionable for ShipAction {
 
                                 args.mark_construction_delivery_as_completed(finance_ticket.clone(), &response)
                                     .await?;
+
+                                state.cargo = response.data.cargo.clone();
+
                                 args.blackboard
                                     .update_construction_site(&response.data.construction)
                                     .await?;
@@ -660,6 +663,15 @@ impl Actionable for ShipAction {
                                 let response = state
                                     .deliver_cargo_to_contract(&details.contract_id, details.quantity, &details.trade_good)
                                     .await?;
+
+                                args.blackboard
+                                    .upsert_contract(&state.nav.system_symbol, &response.data.contract)
+                                    .await?;
+
+                                args.mark_deliver_contract_cargo_completed(finance_ticket.clone(), &response)
+                                    .await?;
+
+                                state.cargo = response.data.cargo;
                             }
                         }
                         completed_tickets.insert(finance_ticket.clone());
@@ -1221,20 +1233,29 @@ impl Actionable for ShipAction {
                     Err(anyhow!("No contract found"))
                 }
             }
-            ShipAction::CreateContractTickets => {
+            ShipAction::CreateContractTicketsIfNecessary => {
                 if let Some(contract) = state.maybe_contract.clone() {
-                    match args
-                        .create_contract_tickets(&state.symbol, &state.nav.system_symbol, &contract, state.cargo.capacity as u32, &state.my_fleet)
-                        .await
-                    {
-                        Ok(is_affordable) => {
-                            if is_affordable {
-                                Ok(Success)
-                            } else {
-                                Err(anyhow!("can't afford contract right now"))
+                    let active_tickets = args
+                        .treasurer
+                        .get_active_tickets_for_ship(&state.symbol)
+                        .await?;
+                    if active_tickets.is_empty().not() {
+                        // no need to create new tickets
+                        Ok(Success)
+                    } else {
+                        match args
+                            .create_contract_tickets(&state.symbol, &state.nav.system_symbol, &contract, state.cargo.capacity as u32, &state.my_fleet)
+                            .await
+                        {
+                            Ok(is_affordable) => {
+                                if is_affordable {
+                                    Ok(Success)
+                                } else {
+                                    Err(anyhow!("can't afford contract right now"))
+                                }
                             }
+                            Err(e) => Err(anyhow!("Error create_contract_tickets: {e:?}")),
                         }
-                        Err(e) => Err(anyhow!("Error create_contract_tickets: {e:?}")),
                     }
                 } else {
                     Err(anyhow!("No contract found"))

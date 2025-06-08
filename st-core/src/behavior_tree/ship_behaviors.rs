@@ -71,7 +71,7 @@ pub enum ShipAction {
     HasActiveContract,
     FulfilContract,
     IsContractDeliveryComplete,
-    CreateContractTickets,
+    CreateContractTicketsIfNecessary,
 }
 
 pub struct Behaviors {
@@ -309,10 +309,14 @@ pub fn ship_behaviors() -> Behaviors {
 
     let accept_contract_if_necessary_and_within_budget = Behavior::new_sequence(vec![
         Behavior::new_action(ShipAction::HasActiveContract),
-        Behavior::new_action(ShipAction::HasAcceptedContract),
-        Behavior::new_action(ShipAction::CanAffordContract),
-        Behavior::new_action(ShipAction::AcceptContract),
-        Behavior::new_action(ShipAction::CreateContractTickets),
+        Behavior::new_select(vec![
+            Behavior::new_action(ShipAction::HasAcceptedContract),
+            Behavior::new_invert(Behavior::new_action(ShipAction::CanAffordContract)),
+            Behavior::new_sequence(vec![
+                Behavior::new_action(ShipAction::AcceptContract),
+                Behavior::new_action(ShipAction::CreateContractTicketsIfNecessary),
+            ]),
+        ]),
     ]);
 
     // if we have no contract, stop at any waypoint and negotiate a new one
@@ -339,6 +343,7 @@ pub fn ship_behaviors() -> Behaviors {
         fulfill_contract_if_possible,
         negotiate_contract_if_necessary,
         accept_contract_if_necessary_and_within_budget,
+        Behavior::new_action(ShipAction::CreateContractTicketsIfNecessary),
         purchase_and_deliver_contract_materials,
     ]);
 

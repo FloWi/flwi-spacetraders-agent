@@ -2383,6 +2383,7 @@ enum ContractorEvaluationResult {
     ContractAlreadyAccepted,
     ContractAlreadyFulfilled,
     NoActiveContractFound,
+    ShipHasNonContractRelatedCargo,
 }
 
 fn should_command_ship_do_contracts(
@@ -2392,11 +2393,26 @@ fn should_command_ship_do_contracts(
     latest_market_entries: &Vec<MarketEntry>,
 ) -> Result<ContractorEvaluationResult> {
     use ContractorEvaluationResult::*;
+
+    let ship_has_cargo = unassigned_command_ship.cargo.units > 0;
+
     if let Some(contract) = maybe_current_contract {
+        let ship_has_non_contract_related_cargo = unassigned_command_ship
+            .cargo
+            .inventory
+            .iter()
+            .any(|inventory_entry| {
+                contract.terms.deliver.iter().any(|delivery_entry| {
+                    delivery_entry.trade_symbol != inventory_entry.symbol && delivery_entry.units_fulfilled < delivery_entry.units_required
+                })
+            });
+
         if contract.accepted {
-            anyhow::Ok(ContractAlreadyAccepted)
+            Ok(ContractAlreadyAccepted)
         } else if contract.fulfilled {
-            anyhow::Ok(ContractAlreadyFulfilled)
+            Ok(ContractAlreadyFulfilled)
+        } else if ship_has_non_contract_related_cargo {
+            Ok(ShipHasNonContractRelatedCargo)
         } else {
             let evaluation_result = contract_manager::calculate_necessary_purchase_tickets_for_contract(
                 unassigned_command_ship.cargo.capacity as u32,
@@ -2407,14 +2423,18 @@ fn should_command_ship_do_contracts(
             let required_capital = evaluation_result.required_capital();
             let available_fleet_capital = fleet_budget.available_capital();
             if required_capital > available_fleet_capital {
-                anyhow::Ok(CannotAffordContractCurrently)
+                Ok(CannotAffordContractCurrently)
             } else {
-                anyhow::Ok(CanAffordContract { evaluation_result })
+                Ok(CanAffordContract { evaluation_result })
             }
         }
     } else {
-        // we don't have an active contract, let's try and get a new one
-        anyhow::Ok(NoActiveContractFound)
+        if ship_has_cargo {
+            Ok(ShipHasNonContractRelatedCargo)
+        } else {
+            // we don't have an active contract, let's try and get a new one
+            Ok(NoActiveContractFound)
+        }
     }
 }
 
@@ -2441,6 +2461,7 @@ fn potentially_assign_contracting_to_command_ship(
             }
             CanAffordContract { evaluation_result } => Some((command_ship.symbol.clone(), evaluation_result.required_capital())),
             CannotAffordContractCurrently => None,
+            ShipHasNonContractRelatedCargo => None,
         }
     } else {
         None

@@ -142,8 +142,14 @@ impl FinanceTicketDetails {
                 "Refueling of {} fuel-barrels à {} at {} for a total of {}",
                 d.num_fuel_barrels, d.expected_price_per_unit, d.waypoint_symbol, d.expected_total_purchase_price
             ),
-            FinanceTicketDetails::SupplyConstructionSite(d) => format!("Delivering of {} units of {} to {}", d.quantity, d.trade_good, d.waypoint_symbol),
-            FinanceTicketDetails::DeliverContractCargo(d) => format!("Delivering of {} for contract {} to {}", d.trade_good, d.contract_id, d.waypoint_symbol),
+            FinanceTicketDetails::SupplyConstructionSite(d) => format!(
+                "Delivering of {} units of {} for construction to {}",
+                d.quantity, d.trade_good, d.waypoint_symbol
+            ),
+            FinanceTicketDetails::DeliverContractCargo(d) => format!(
+                "Delivering of {} units of {} for contract {} to {}",
+                d.quantity, d.trade_good, d.contract_id, d.waypoint_symbol
+            ),
         }
     }
 
