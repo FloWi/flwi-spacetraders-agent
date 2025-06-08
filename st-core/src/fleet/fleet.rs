@@ -1539,7 +1539,7 @@ Json entries of all ledger entries after dismantling the fleets:\n{}
                 self.ship_purchase_demand
                     .push_front((ship_type, fleet_task));
                 event!(
-                    Level::INFO,
+                    Level::DEBUG,
                     message = "Unable to create ship purchase ticket - this can be switched to DEBUG once everything's working",
                     error = err.to_string(),
                     ship_type = ship_type.to_string(),
@@ -1976,33 +1976,38 @@ pub fn create_construction_fleet_phase(system_symbol: &SystemSymbol, num_shipyar
 
     let shopping_list_in_order = shipyard_probes
         .iter()
+        .cloned()
         .map(|ship_type| (ship_type, probe_observation_task.clone()))
         .chain(
             other_probes
                 .iter()
+                .cloned()
                 .map(|ship_type| (ship_type, probe_observation_task.clone())),
         )
         .chain(
             construction_fleet
                 .iter()
+                .cloned()
                 .map(|ship_type| (ship_type, construct_jump_gate_task.clone())),
         )
         .chain(
             mining_squad
                 .iter()
+                .cloned()
                 .map(|ship_type| (ship_type, mining_task.clone())),
         )
         .chain(
             siphoning_fleet
                 .iter()
+                .cloned()
                 .map(|ship_type| (ship_type, siphoning_task.clone())),
         )
         .chain(
             mining_squad
                 .iter()
+                .cloned()
                 .map(|ship_type| (ship_type, mining_task.clone())),
         )
-        .cloned()
         .collect_vec();
 
     FleetPhase {

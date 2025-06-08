@@ -265,6 +265,7 @@ impl FleetRunner {
                 .filter_map(|(ss, ship_fiber)| ship_fiber.is_finished().then_some(ss))
                 .cloned()
                 .collect::<HashSet<_>>();
+
             let running_fibers = runner_guard
                 .ship_fibers
                 .iter()
@@ -619,6 +620,9 @@ impl FleetRunner {
                     completed_task = task.to_string(),
                     recompute_result = result.to_string()
                 );
+                bmc.ship_bmc()
+                    .save_ship_tasks(&Ctx::Anonymous, &admiral_guard.ship_tasks)
+                    .await?;
                 match result {
                     NewTaskResult::DismantleFleets { fleets_to_dismantle } => {
                         event!(
@@ -1018,6 +1022,9 @@ impl FleetRunner {
         let fleet_admiral_for_status = Arc::clone(&fleet_admiral);
         let runner_for_status = Arc::clone(&runner);
 
+        let fleet_admiral_for_restart_ships = Arc::clone(&fleet_admiral);
+        let runner_for_restart_ships = Arc::clone(&runner);
+
         // Spawn tasks with error handling
         let ship_updated_listener_join_handle = tokio::spawn(async move {
             let result = tokio::select! {
@@ -1085,11 +1092,33 @@ impl FleetRunner {
             result
         });
 
+        let restart_idle_ships_join_handle = tokio::spawn(async move {
+            let res = loop {
+                let admiral = fleet_admiral_for_restart_ships.clone();
+                let runner = runner_for_restart_ships.clone();
+                let (all_ships, ship_tasks, sleep_duration, ship_fleet_assignment) = {
+                    let admiral_guard = admiral.lock().await;
+                    let all_ships = admiral_guard.all_ships.keys().cloned().collect();
+                    let ship_tasks = admiral_guard.ship_tasks.clone();
+                    let sleep_duration = sleep_duration.clone();
+                    let ship_fleet_assignment = admiral_guard.ship_fleet_assignment.clone();
+                    (all_ships, ship_tasks, sleep_duration, ship_fleet_assignment)
+                };
+                let res = Self::launch_ship_fibers_of_idle_or_new_ships(runner, all_ships, ship_tasks, sleep_duration, &ship_fleet_assignment).await;
+                if let Err(e) = res {
+                    break e;
+                }
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            };
+            res
+        });
+
         // Wait for all tasks and handle errors
-        let (updated_result, action_result, status_result) = tokio::join!(
+        let (updated_result, action_result, status_result, restart_idle_ships_result) = tokio::join!(
             ship_updated_listener_join_handle,
             ship_action_update_listener_join_handle,
-            ship_status_report_listener_join_handle
+            ship_status_report_listener_join_handle,
+            restart_idle_ships_join_handle
         );
 
         // Log any join errors
@@ -1101,6 +1130,9 @@ impl FleetRunner {
         }
         if let Err(e) = status_result {
             event!(Level::ERROR, "Ship status report listener join error: {}", e);
+        }
+        if let Err(e) = restart_idle_ships_result {
+            event!(Level::ERROR, "restart_idle_ships_result join error: {}", e);
         }
 
         event!(Level::WARN, "All listeners have exited, fleet runner will no longer process messages");
@@ -1131,7 +1163,6 @@ mod tests {
     use chrono::Utc;
     use itertools::Itertools;
     use metrics::IntoF64;
-    use pathfinding::num_traits::ToPrimitive;
     use st_domain::{
         FleetConfig, FleetId, FleetPhaseName, FleetTask, ShipFrameSymbol, ShipRegistrationRole, ShipSymbol, ShipTask, TradeGoodSymbol, WaypointSymbol,
     };
