@@ -1177,8 +1177,12 @@ impl Actionable for ShipAction {
                 }
             }
             ShipAction::HasActiveContract => {
-                if let Some(_contract) = state.maybe_contract.clone() {
-                    Ok(Success)
+                if let Some(contract) = state.maybe_contract.clone() {
+                    if contract.fulfilled {
+                        Err(anyhow!("Contract already fulfilled"))
+                    } else {
+                        Ok(Success)
+                    }
                 } else {
                     Err(anyhow!("No contract found"))
                 }
