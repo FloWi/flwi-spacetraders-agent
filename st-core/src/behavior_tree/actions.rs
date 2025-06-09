@@ -566,11 +566,9 @@ impl Actionable for ShipAction {
                 if let Some(finance_tickets) = maybe_tickets {
                     let mut completed_tickets: HashSet<FinanceTicket> = HashSet::new();
 
-                    let current_location = &state.nav.waypoint_symbol.clone();
-                    for finance_ticket in finance_tickets
-                        .iter()
-                        .filter(|t| &t.details.get_waypoint() == current_location)
-                    {
+                    let completable_tickets: Vec<FinanceTicket> = find_completable_tickets_based_on_ship_state(&state, &finance_tickets);
+
+                    for finance_ticket in completable_tickets {
                         match &finance_ticket.details {
                             PurchaseTradeGoods(details) => {
                                 let response = state
@@ -1282,6 +1280,34 @@ impl Actionable for ShipAction {
 
         result
     }
+}
+
+fn find_completable_tickets_based_on_ship_state(ship_state: &ShipOperations, finance_tickets: &[FinanceTicket]) -> Vec<FinanceTicket> {
+    finance_tickets
+        .iter()
+        .filter(|t| t.details.get_waypoint() == ship_state.nav.waypoint_symbol)
+        .filter(|t| match t.details.clone() {
+            PurchaseTradeGoods(d) => ship_state.cargo.available_cargo_space() >= d.quantity,
+            SellTradeGoods(d) => ship_state
+                .cargo
+                .inventory
+                .iter()
+                .any(|inventory_entry| inventory_entry.symbol == d.trade_good && inventory_entry.units >= d.quantity),
+            FinanceTicketDetails::DeliverContractCargo(d) => ship_state
+                .cargo
+                .inventory
+                .iter()
+                .any(|inventory_entry| inventory_entry.symbol == d.trade_good && inventory_entry.units >= d.quantity),
+            FinanceTicketDetails::SupplyConstructionSite(d) => ship_state
+                .cargo
+                .inventory
+                .iter()
+                .any(|inventory_entry| inventory_entry.symbol == d.trade_good && inventory_entry.units >= d.quantity),
+            FinanceTicketDetails::PurchaseShip(_) => true,
+            RefuelShip(_) => true,
+        })
+        .cloned()
+        .collect_vec()
 }
 
 async fn wrap_transfer_cargo_request(
