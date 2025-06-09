@@ -1110,11 +1110,17 @@ pub type ExtractResourcesResponse = Data<ExtractResourcesResponseBody>;
 
 pub type CreateSurveyResponse = Data<CreateSurveyResponseBody>;
 
-pub type NegotiateContractResponse = Data<Contract>;
+pub type NegotiateContractResponse = Data<NegotiateContractResponseBody>;
 
 pub type AcceptContractResponse = Data<ContractWithAgentResponseBody>;
 
 pub type FulfillContractResponse = Data<ContractWithAgentResponseBody>;
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(rename_all = "camelCase")]
+pub struct NegotiateContractResponseBody {
+    pub contract: Contract,
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
