@@ -26,6 +26,7 @@ pub trait BlackboardOps: Send + Sync {
     async fn insert_shipyard(&self, shipyard: Shipyard) -> anyhow::Result<()>;
     async fn get_closest_waypoint(&self, current_waypoint: &WaypointSymbol, candidates: &[WaypointSymbol]) -> anyhow::Result<Option<WaypointSymbol>>;
     async fn get_waypoint(&self, waypoint_symbol: &WaypointSymbol) -> anyhow::Result<Waypoint>;
+    async fn get_waypoints_of_system(&self, system_symbol: &SystemSymbol) -> anyhow::Result<Vec<Waypoint>>;
     async fn get_available_agent_credits(&self) -> anyhow::Result<i64>;
 
     // async fn report_purchase(&self, ticket_id: &TicketId, transaction_id: &TransactionTicketId, response: &PurchaseTradeGoodResponse) -> Result<()>;

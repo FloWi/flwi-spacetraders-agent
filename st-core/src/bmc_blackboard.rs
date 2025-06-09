@@ -131,6 +131,16 @@ impl BlackboardOps for BmcBlackboard {
             .ok_or(anyhow!("Waypoint not found"))
     }
 
+    async fn get_waypoints_of_system(&self, system_symbol: &SystemSymbol) -> anyhow::Result<Vec<Waypoint>> {
+        let waypoints: Vec<Waypoint> = self
+            .bmc
+            .system_bmc()
+            .get_waypoints_of_system(&Ctx::Anonymous, &system_symbol)
+            .await?;
+
+        Ok(waypoints)
+    }
+
     async fn get_available_agent_credits(&self) -> anyhow::Result<i64> {
         Ok(self
             .bmc

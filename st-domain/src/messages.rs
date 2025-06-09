@@ -469,6 +469,7 @@ pub struct MiningOpsConfig {
 pub struct ContractEvaluationResult {
     pub purchase_tickets: Vec<PurchaseTradeGoodsTicketDetails>,
     pub delivery_tickets: Vec<DeliverCargoContractTicketDetails>,
+    pub sell_excess_cargo_tickets: Vec<SellTradeGoodsTicketDetails>,
     pub contract: Contract,
 }
 

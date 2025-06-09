@@ -21,12 +21,12 @@ use st_domain::{
     get_exploration_tasks_for_waypoint, Cargo, Contract, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody,
     ShipSymbol, Survey, TradeGoodSymbol, TravelAction, WaypointModifierSymbol,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::hint::unreachable_unchecked;
 use std::ops::{Add, Not};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tracing::{event, info};
+use tracing::{error, event, info};
 use tracing_core::Level;
 
 #[async_trait]
@@ -566,9 +566,7 @@ impl Actionable for ShipAction {
                 if let Some(finance_tickets) = maybe_tickets {
                     let mut completed_tickets: HashSet<FinanceTicket> = HashSet::new();
 
-                    let completable_tickets: Vec<FinanceTicket> = find_completable_tickets_based_on_ship_state(&state, &finance_tickets);
-
-                    for finance_ticket in completable_tickets {
+                    while let Some(finance_ticket) = find_completable_tickets_based_on_ship_state(&state, &finance_tickets).first() {
                         match &finance_ticket.details {
                             PurchaseTradeGoods(details) => {
                                 let response = state
@@ -1149,7 +1147,7 @@ impl Actionable for ShipAction {
             ShipAction::CanAffordContract => {
                 if let Some(contract) = state.maybe_contract.clone() {
                     match args
-                        .check_contract_affordability(&state.nav.system_symbol, &contract, state.cargo.capacity as u32, &state.my_fleet)
+                        .check_contract_affordability(&state.cargo, &state.nav.waypoint_symbol, &contract, &state.my_fleet)
                         .await
                     {
                         Ok(is_affordable) => {
@@ -1250,7 +1248,7 @@ impl Actionable for ShipAction {
                         Ok(Success)
                     } else {
                         match args
-                            .create_contract_tickets(&state.symbol, &state.nav.system_symbol, &contract, state.cargo.capacity as u32, &state.my_fleet)
+                            .create_contract_tickets(&state.symbol, &state.cargo, &state.nav.waypoint_symbol, &contract, &state.my_fleet)
                             .await
                         {
                             Ok(is_affordable) => {

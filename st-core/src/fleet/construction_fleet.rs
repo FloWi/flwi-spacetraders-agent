@@ -1093,6 +1093,7 @@ available_capital_after {available_capital_after} < 4_000c.
             &input.unassigned_ships_of_fleet.iter().collect_vec(),
             &input.active_trade_routes,
             &input.fleet_budget,
+            0.into(),
         )
         .await?;
         Ok(actual_tasks)

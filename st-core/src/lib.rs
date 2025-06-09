@@ -7,7 +7,8 @@ pub mod st_client;
 
 use chrono::TimeDelta;
 use itertools::Itertools;
-use st_domain::FlightMode;
+use st_domain::{FlightMode, LabelledCoordinate, Waypoint, WaypointSymbol};
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
 pub mod agent;
@@ -97,4 +98,18 @@ fn calc_batches_based_on_volume_constraint(number_items: u32, trade_volume: u32)
     assert_eq!(total, number_items);
 
     result
+}
+
+fn get_closest_waypoint<'a>(
+    location: &'a WaypointSymbol,
+    waypoint_map: &'a HashMap<WaypointSymbol, &Waypoint>,
+    filter_list: HashSet<WaypointSymbol>,
+) -> Option<&'a Waypoint> {
+    let own_location = waypoint_map.get(location)?;
+    waypoint_map
+        .iter()
+        .filter(|(wps, _)| filter_list.contains(wps))
+        .map(|(_, wp)| (wp, wp.distance_to(own_location)))
+        .min_by_key(|(_wp, distance)| *distance)
+        .map(|(wp, _)| wp.clone())
 }

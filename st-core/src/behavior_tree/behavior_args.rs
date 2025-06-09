@@ -1,13 +1,22 @@
 use anyhow::Result;
 use st_domain::blackboard_ops::BlackboardOps;
+use std::collections::{HashMap, HashSet};
 
 use crate::contract_manager;
+use crate::contract_manager::calculate_necessary_tickets_for_contract;
 use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
 use crate::transfer_cargo_manager::TransferCargoManager;
-use st_domain::budgeting::treasury_redesign::{DeliverConstructionMaterialsTicketDetails, FinanceTicket, FinanceTicketDetails, ThreadSafeTreasurer};
+use st_domain::budgeting::credits::Credits;
+use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::SellTradeGoods;
+use st_domain::budgeting::treasury_redesign::{
+    DeliverCargoContractTicketDetails, DeliverConstructionMaterialsTicketDetails, FinanceTicket, FinanceTicketDetails, SellTradeGoodsTicketDetails,
+    ThreadSafeTreasurer,
+};
+use st_domain::trading::group_markets_by_type;
 use st_domain::{
-    Contract, DeliverCargoToContractResponse, FleetId, MarketEntry, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, ShipSymbol,
-    SupplyConstructionSiteResponse, SystemSymbol,
+    combine_maps, trading, Cargo, Contract, DeliverCargoToContractResponse, FleetId, Inventory, LabelledCoordinate, MarketEntry, MarketTradeGood,
+    PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, ShipSymbol, SupplyConstructionSiteResponse, SystemSymbol, TradeGoodSymbol,
+    TradeGoodType, Waypoint, WaypointSymbol,
 };
 use std::sync::Arc;
 
@@ -64,17 +73,22 @@ impl BehaviorArgs {
 
     pub(crate) async fn check_contract_affordability(
         &self,
-        system_symbol: &SystemSymbol,
+        cargo: &Cargo,
+        ship_location: &WaypointSymbol,
         contract: &Contract,
-        cargo_capacity: u32,
         fleet_id: &FleetId,
     ) -> Result<bool> {
         let latest_market_entries: Vec<MarketEntry> = self
             .blackboard
-            .get_latest_market_entries(system_symbol)
+            .get_latest_market_entries(&ship_location.system_symbol())
             .await?;
 
-        let result = contract_manager::calculate_necessary_purchase_tickets_for_contract(cargo_capacity, contract, &latest_market_entries)?;
+        let waypoints_of_system = self
+            .blackboard
+            .get_waypoints_of_system(&ship_location.system_symbol())
+            .await?;
+
+        let result = contract_manager::calculate_necessary_tickets_for_contract(cargo, ship_location, contract, &latest_market_entries, &waypoints_of_system)?;
 
         let required_capital = result.required_capital();
 
@@ -90,32 +104,40 @@ impl BehaviorArgs {
     pub(crate) async fn create_contract_tickets(
         &self,
         ship_symbol: &ShipSymbol,
-        system_symbol: &SystemSymbol,
+        ship_cargo: &Cargo,
+        ship_location: &WaypointSymbol,
         contract: &Contract,
-        cargo_capacity: u32,
         fleet_id: &FleetId,
     ) -> Result<bool> {
         let latest_market_entries: Vec<MarketEntry> = self
             .blackboard
-            .get_latest_market_entries(system_symbol)
+            .get_latest_market_entries(&ship_location.system_symbol())
             .await?;
 
-        let result = contract_manager::calculate_necessary_purchase_tickets_for_contract(cargo_capacity, contract, &latest_market_entries)?;
+        let waypoints_of_system = self
+            .blackboard
+            .get_waypoints_of_system(&ship_location.system_symbol())
+            .await?;
+
+        let result = calculate_necessary_tickets_for_contract(&ship_cargo, ship_location, contract, &latest_market_entries, &waypoints_of_system)?;
 
         let required_capital = result.required_capital();
 
-        let mut all_details: Vec<FinanceTicketDetails> = Vec::new();
+        let mut all_ticket_details: Vec<FinanceTicketDetails> = Vec::new();
 
         for purchase_ticket_details in result.purchase_tickets {
-            all_details.push(FinanceTicketDetails::PurchaseTradeGoods(purchase_ticket_details))
+            all_ticket_details.push(FinanceTicketDetails::PurchaseTradeGoods(purchase_ticket_details))
         }
 
         for delivery_ticket_details in result.delivery_tickets {
-            all_details.push(FinanceTicketDetails::DeliverContractCargo(delivery_ticket_details))
+            all_ticket_details.push(FinanceTicketDetails::DeliverContractCargo(delivery_ticket_details))
+        }
+        for sell_excess_cargo_ticket in result.sell_excess_cargo_tickets {
+            all_ticket_details.push(FinanceTicketDetails::SellTradeGoods(sell_excess_cargo_ticket))
         }
 
         self.treasurer
-            .create_multiple_tickets(ship_symbol, fleet_id, all_details)
+            .create_multiple_tickets(ship_symbol, fleet_id, all_ticket_details)
             .await?;
 
         let budget = self.treasurer.get_fleet_budget(fleet_id).await?;

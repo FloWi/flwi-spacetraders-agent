@@ -1,16 +1,17 @@
+use crate::ship_overview_page::ShipCard;
 use anyhow::{anyhow, Result};
 use leptos::html::*;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
-use st_domain::{Contract, ContractEvaluationResult, ShipFrameSymbol, ShipRegistrationRole};
+use st_domain::{Contract, ContractEvaluationResult, Ship, ShipFrameSymbol, ShipRegistrationRole};
 
 #[server]
-async fn get_contract() -> Result<Option<ContractEvaluationResult>, ServerFnError> {
+async fn get_contract() -> Result<(Option<ContractEvaluationResult>, Ship), ServerFnError> {
     use st_core::contract_manager;
     use st_store::bmc::Bmc;
     use st_store::Ctx;
 
-    async fn anyhow_fn() -> anyhow::Result<Option<ContractEvaluationResult>> {
+    async fn anyhow_fn() -> anyhow::Result<(Option<ContractEvaluationResult>, Ship)> {
         let state = expect_context::<crate::app::AppState>();
         let bmc = state.bmc;
 
@@ -33,18 +34,28 @@ async fn get_contract() -> Result<Option<ContractEvaluationResult>, ServerFnErro
             .find(|s| s.registration.role == ShipRegistrationRole::Command)
             .ok_or(anyhow!("Command ship not found"))?;
 
+        let waypoints_of_system = bmc
+            .system_bmc()
+            .get_waypoints_of_system(&Ctx::Anonymous, &command_ship.nav.system_symbol)
+            .await?;
+
         let maybe_contract_result: Option<ContractEvaluationResult> = if let Some(contract) = maybe_contract.clone() {
-            let contract_result =
-                contract_manager::calculate_necessary_purchase_tickets_for_contract(command_ship.cargo.capacity as u32, &contract, &latest_market_entries)?;
+            let contract_result = contract_manager::calculate_necessary_tickets_for_contract(
+                &command_ship.cargo,
+                &command_ship.nav.waypoint_symbol,
+                &contract,
+                &latest_market_entries,
+                &waypoints_of_system,
+            )?;
             Some(contract_result)
         } else {
             None
         };
-        Ok(maybe_contract_result)
+        Ok((maybe_contract_result, command_ship.clone()))
     }
 
     match anyhow_fn().await {
-        Ok(maybe_contract_result) => Ok(maybe_contract_result),
+        Ok(res) => Ok(res),
         Err(err) => Err(ServerFnError::ServerError(err.to_string())),
     }
 }
@@ -66,9 +77,10 @@ pub fn ContractOverviewPage() -> impl IntoView {
                                 .get()
                                 .map(|result| {
                                     match result {
-                                        Ok(Some(contract_evaluation_result)) => {
+                                        Ok((Some(contract_evaluation_result), command_ship)) => {
 
                                             view! {
+                                                <div class="flex flex-col gap-4">
                                                 <div class="flex flex-row gap-4">
                                                     <div class="flex flex-col gap-2">
                                                         <h2 class="text-xl font-bold">"Contract"</h2>
@@ -96,12 +108,21 @@ pub fn ContractOverviewPage() -> impl IntoView {
                                                                 )
                                                                 .unwrap()}
                                                         </pre>
+                                                        <h2 class="text-xl font-bold">"Sell Excess Cargo Tickets"</h2>
+                                                        <pre>
+                                                            {serde_json::to_string_pretty(
+                                                                    &contract_evaluation_result.sell_excess_cargo_tickets,
+                                                                )
+                                                                .unwrap()}
+                                                        </pre>
                                                     </div>
+                                                    </div>
+                                                    <ShipCard ship=&command_ship maybe_ship_task=None active_trades=vec![] />
                                                 </div>
                                             }
                                                 .into_any()
                                         }
-                                        Ok(None) => {
+                                        Ok((None, command_ship)) => {
                                             view! { <p>{"no contract found"}</p> }.into_any()
                                         }
                                         Err(error) => {

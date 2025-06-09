@@ -1051,8 +1051,13 @@ Fleet Budgets after rebalancing
                     let mut new_construction_fleet_tasks: HashMap<ShipSymbol, ShipTask> = HashMap::new();
 
                     let (unassigned_ships_of_fleet, blocked_budget) = if let Some((command_ship, required_budget_for_contracts)) =
-                        potentially_assign_contracting_to_command_ship(&unassigned_ships_of_fleet, &maybe_current_contract, &fleet_budget, &latest_market_data)?
-                    {
+                        potentially_assign_contracting_to_command_ship(
+                            &unassigned_ships_of_fleet,
+                            &maybe_current_contract,
+                            &fleet_budget,
+                            &latest_market_data,
+                            &waypoints,
+                        )? {
                         new_construction_fleet_tasks.insert(command_ship.clone(), ShipTask::ExecuteContracts);
 
                         let other_ships = unassigned_ships_of_fleet
@@ -2390,7 +2395,8 @@ fn should_command_ship_do_contracts(
     unassigned_command_ship: &Ship,
     maybe_current_contract: &Option<Contract>,
     fleet_budget: &FleetBudget,
-    latest_market_entries: &Vec<MarketEntry>,
+    latest_market_entries: &[MarketEntry],
+    waypoints_of_system: &[Waypoint],
 ) -> Result<ContractorEvaluationResult> {
     use ContractorEvaluationResult::*;
 
@@ -2414,10 +2420,12 @@ fn should_command_ship_do_contracts(
         } else if ship_has_non_contract_related_cargo {
             Ok(ShipHasNonContractRelatedCargo)
         } else {
-            let evaluation_result = contract_manager::calculate_necessary_purchase_tickets_for_contract(
-                unassigned_command_ship.cargo.capacity as u32,
-                contract,
+            let evaluation_result = contract_manager::calculate_necessary_tickets_for_contract(
+                &unassigned_command_ship.cargo,
+                &unassigned_command_ship.nav.waypoint_symbol,
+                &contract,
                 latest_market_entries,
+                waypoints_of_system,
             )?;
 
             let required_capital = evaluation_result.required_capital();
@@ -2442,13 +2450,15 @@ fn potentially_assign_contracting_to_command_ship(
     unassigned_ships_of_fleet: &[&Ship],
     maybe_current_contract: &Option<Contract>,
     fleet_budget: &FleetBudget,
-    latest_market_entries: &Vec<MarketEntry>,
+    latest_market_entries: &[MarketEntry],
+    waypoints_of_system: &[Waypoint],
 ) -> Result<Option<(ShipSymbol, Credits)>> {
     let result: Option<(ShipSymbol, Credits)> = if let Some(command_ship) = unassigned_ships_of_fleet
         .iter()
         .find(|ship| ship.is_command_ship())
     {
-        let command_ship_evaluation_result = should_command_ship_do_contracts(command_ship, maybe_current_contract, fleet_budget, latest_market_entries)?;
+        let command_ship_evaluation_result =
+            should_command_ship_do_contracts(command_ship, maybe_current_contract, fleet_budget, latest_market_entries, waypoints_of_system)?;
 
         use ContractorEvaluationResult::*;
         match command_ship_evaluation_result {
