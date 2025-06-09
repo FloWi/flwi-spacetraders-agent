@@ -566,7 +566,16 @@ impl Actionable for ShipAction {
                 if let Some(finance_tickets) = maybe_tickets {
                     let mut completed_tickets: HashSet<FinanceTicket> = HashSet::new();
 
-                    while let Some(finance_ticket) = find_completable_tickets_based_on_ship_state(&state, &finance_tickets).first() {
+                    while let Some(finance_ticket) = find_completable_tickets_based_on_ship_state(
+                        &state,
+                        &finance_tickets
+                            .iter()
+                            .filter(|t| completed_tickets.contains(t).not())
+                            .cloned()
+                            .collect_vec(),
+                    )
+                    .first()
+                    {
                         match &finance_ticket.details {
                             PurchaseTradeGoods(details) => {
                                 let response = state
