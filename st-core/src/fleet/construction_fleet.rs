@@ -396,6 +396,8 @@ async fn determine_construction_fleet_actions(
             .map(|cs| cs.missing_construction_materials())
             .unwrap_or_default();
 
+        let priority_map_of_construction_materials = HashMap::from([(TradeGoodSymbol::FAB_MATS, 1), (TradeGoodSymbol::ADVANCED_CIRCUITRY, 2)]);
+
         let goods_of_interest: Vec<TradeGoodSymbol> = vec![
             //TradeGoodSymbol::ADVANCED_CIRCUITRY,
             //TradeGoodSymbol::FAB_MATS,
@@ -408,6 +410,12 @@ async fn determine_construction_fleet_actions(
         let goods_of_interest_in_order = required_construction_materials
             .keys()
             .cloned()
+            .sorted_by_key(|trade_good_symbol| {
+                priority_map_of_construction_materials
+                    .get(&trade_good_symbol)
+                    .cloned()
+                    .unwrap_or_default()
+            })
             .chain(goods_of_interest)
             .collect_vec();
 
