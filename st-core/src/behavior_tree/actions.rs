@@ -575,6 +575,8 @@ impl Actionable for ShipAction {
                                     .purchase_trade_good(details.quantity, details.trade_good.clone())
                                     .await?;
 
+                                state.cargo = response.data.cargo.clone();
+
                                 args.mark_purchase_as_completed(finance_ticket.clone(), &response)
                                     .await?;
 
@@ -594,6 +596,8 @@ impl Actionable for ShipAction {
                                 let response = state
                                     .sell_trade_good(details.quantity, details.trade_good.clone())
                                     .await?;
+
+                                state.cargo = response.data.cargo.clone();
 
                                 args.mark_sell_as_completed(finance_ticket.clone(), &response)
                                     .await?;
@@ -1092,10 +1096,10 @@ impl Actionable for ShipAction {
             ShipAction::NegotiateContract => match state.perform_negotiate_contract().await {
                 Err(e) => Err(anyhow!("Error negotiating contract: {}", e)),
                 Ok(negotiate_contract_response) => {
-                    state.set_contract(negotiate_contract_response.data.clone());
+                    state.set_contract(negotiate_contract_response.data.contract.clone());
                     match args
                         .blackboard
-                        .upsert_contract(&state.nav.system_symbol, &negotiate_contract_response.data)
+                        .upsert_contract(&state.nav.system_symbol, &negotiate_contract_response.data.contract)
                         .await
                     {
                         Ok(_) => Ok(Success),
