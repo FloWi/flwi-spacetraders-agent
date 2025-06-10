@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 pub fn find_trading_opportunities_sorted_by_profit_per_distance_unit(
     market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
+    no_go_trades: &HashSet<(TradeGoodSymbol, TradeGoodSymbol)>,
 ) -> Vec<TradingOpportunity> {
     let denormalized_trade_goods_with_wp_symbols = market_data
         .iter()
@@ -19,10 +20,12 @@ pub fn find_trading_opportunities_sorted_by_profit_per_distance_unit(
                 .map(|mtg| (wp_symbol.clone(), mtg.clone()))
         })
         .collect_vec();
+
     let exports = denormalized_trade_goods_with_wp_symbols
         .iter()
         .filter(|(wp_sym, mtg)| mtg.trade_good_type == TradeGoodType::Export || mtg.trade_good_type == TradeGoodType::Exchange)
         .collect_vec();
+
     let imports = denormalized_trade_goods_with_wp_symbols
         .iter()
         .filter(|(wp_sym, mtg)| mtg.trade_good_type == TradeGoodType::Import || mtg.trade_good_type == TradeGoodType::Exchange)
@@ -37,6 +40,7 @@ pub fn find_trading_opportunities_sorted_by_profit_per_distance_unit(
                 .filter(move |(import_wps, import_mtg)| {
                     export_wps != import_wps && export_mtg.symbol == import_mtg.symbol && import_mtg.sell_price > export_mtg.purchase_price
                 })
+                .filter(move |(import_wps, import_mtg)| !no_go_trades.contains(&(export_mtg.symbol.clone(), import_mtg.symbol.clone())))
                 .map(|(import_wps, import_mtg)| {
                     let import_wp = waypoint_map.get(import_wps).unwrap();
                     let profit_per_unit = (import_mtg.sell_price - export_mtg.purchase_price) as u64;

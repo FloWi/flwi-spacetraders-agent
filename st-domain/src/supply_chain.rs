@@ -465,7 +465,7 @@ pub fn materialize_supply_chain(
 
     let all_routes = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data)?;
 
-    let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map);
+    let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map, &no_go_trades);
 
     let source_waypoints: HashMap<RawMaterialSourceType, Vec<Waypoint>> = get_sourcing_waypoints(waypoint_map);
 

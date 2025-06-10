@@ -262,7 +262,8 @@ fn calc_trading_decisions(
         materialized_supply_chain.goods_for_sale_conflicting_with_construction,
     );
 
-    let trading_opportunities = find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map);
+    let trading_opportunities =
+        find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map, &materialized_supply_chain.no_go_trades);
     //evaluate_trading_opportunities()
 
     println!("found {} trading opportunities", trading_opportunities.len());

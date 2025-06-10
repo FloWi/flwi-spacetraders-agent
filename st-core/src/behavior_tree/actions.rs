@@ -700,13 +700,11 @@ impl Actionable for ShipAction {
             ShipAction::SleepUntilNextObservationTimeOrShipPurchaseTicketHasBeenAssigned => match state.maybe_next_observation_time {
                 None => Ok(Success),
                 Some(next_time) => loop {
-                    if args
+                    let my_ship_tickets = args
                         .treasurer
                         .get_maybe_active_tickets_for_ship(&state.symbol)
-                        .await?
-                        .is_some()
-                        || Utc::now() > next_time
-                    {
+                        .await?;
+                    if my_ship_tickets.is_some() || Utc::now() > next_time {
                         break Ok(Success);
                     } else {
                         tokio::time::sleep(sleep_duration).await;

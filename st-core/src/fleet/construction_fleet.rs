@@ -132,8 +132,17 @@ impl ConstructJumpGateFleet {
             .map(|wp| (wp.symbol.clone(), wp))
             .collect::<HashMap<_, _>>();
 
+        let maybe_materialized_supply_chain = admiral
+            .materialized_supply_chain_manager
+            .get_materialized_supply_chain_for_system(cfg.system_symbol.clone());
+
+        let no_go_trades = maybe_materialized_supply_chain
+            .clone()
+            .map(|msc| msc.no_go_trades)
+            .unwrap_or_default();
+
         let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(latest_market_entries);
-        let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map);
+        let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map, &no_go_trades);
 
         let available_capital = fleet_budget.available_capital() - blocked_budget_for_contracts;
 
@@ -142,10 +151,6 @@ impl ConstructJumpGateFleet {
 
         let best_new_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
             trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, active_trade_routes);
-
-        let maybe_materialized_supply_chain = admiral
-            .materialized_supply_chain_manager
-            .get_materialized_supply_chain_for_system(cfg.system_symbol.clone());
 
         if ships_without_ticket_that_have_cargo.is_empty().not() {
             println!("We found {} ships without ticket, but with cargo", ships_without_ticket_that_have_cargo.len());

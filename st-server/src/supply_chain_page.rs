@@ -100,7 +100,8 @@ async fn get_supply_chain_data() -> Result<
 
         println!("loaded ships");
 
-        let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map);
+        let trading_opportunities =
+            trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map, &materialized_supply_chain.no_go_trades);
 
         println!("calculated {} trading_opportunities", trading_opportunities.len());
 
