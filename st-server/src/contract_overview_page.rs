@@ -81,43 +81,49 @@ pub fn ContractOverviewPage() -> impl IntoView {
 
                                             view! {
                                                 <div class="flex flex-col gap-4">
-                                                <div class="flex flex-row gap-4">
-                                                    <div class="flex flex-col gap-2">
-                                                        <h2 class="text-xl font-bold">"Contract"</h2>
-                                                        <pre>
-                                                            {serde_json::to_string_pretty(
-                                                                    &contract_evaluation_result.contract,
-                                                                )
-                                                                .unwrap()}
-                                                        </pre>
+                                                    <div class="flex flex-row gap-4">
+                                                        <div class="flex flex-col gap-2">
+                                                            <h2 class="text-xl font-bold">"Contract"</h2>
+                                                            <pre>
+                                                                {serde_json::to_string_pretty(
+                                                                        &contract_evaluation_result.contract,
+                                                                    )
+                                                                    .unwrap()}
+                                                            </pre>
+                                                        </div>
+                                                        <div class="flex flex-col gap-2">
+                                                            <h2 class="text-xl font-bold">"Purchase Tickets"</h2>
+                                                            <pre>
+                                                                {serde_json::to_string_pretty(
+                                                                        &contract_evaluation_result.purchase_tickets,
+                                                                    )
+                                                                    .unwrap()}
+                                                            </pre>
+                                                        </div>
+                                                        <div class="flex flex-col gap-2">
+                                                            <h2 class="text-xl font-bold">"Delivery Tickets"</h2>
+                                                            <pre>
+                                                                {serde_json::to_string_pretty(
+                                                                        &contract_evaluation_result.delivery_tickets,
+                                                                    )
+                                                                    .unwrap()}
+                                                            </pre>
+                                                            <h2 class="text-xl font-bold">
+                                                                "Sell Excess Cargo Tickets"
+                                                            </h2>
+                                                            <pre>
+                                                                {serde_json::to_string_pretty(
+                                                                        &contract_evaluation_result.sell_excess_cargo_tickets,
+                                                                    )
+                                                                    .unwrap()}
+                                                            </pre>
+                                                        </div>
                                                     </div>
-                                                    <div class="flex flex-col gap-2">
-                                                        <h2 class="text-xl font-bold">"Purchase Tickets"</h2>
-                                                        <pre>
-                                                            {serde_json::to_string_pretty(
-                                                                    &contract_evaluation_result.purchase_tickets,
-                                                                )
-                                                                .unwrap()}
-                                                        </pre>
-                                                    </div>
-                                                    <div class="flex flex-col gap-2">
-                                                        <h2 class="text-xl font-bold">"Delivery Tickets"</h2>
-                                                        <pre>
-                                                            {serde_json::to_string_pretty(
-                                                                    &contract_evaluation_result.delivery_tickets,
-                                                                )
-                                                                .unwrap()}
-                                                        </pre>
-                                                        <h2 class="text-xl font-bold">"Sell Excess Cargo Tickets"</h2>
-                                                        <pre>
-                                                            {serde_json::to_string_pretty(
-                                                                    &contract_evaluation_result.sell_excess_cargo_tickets,
-                                                                )
-                                                                .unwrap()}
-                                                        </pre>
-                                                    </div>
-                                                    </div>
-                                                    <ShipCard ship=&command_ship maybe_ship_task=None active_trades=vec![] />
+                                                    <ShipCard
+                                                        ship=&command_ship
+                                                        maybe_ship_task=None
+                                                        active_trades=vec![]
+                                                    />
                                                 </div>
                                             }
                                                 .into_any()
