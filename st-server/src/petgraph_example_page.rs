@@ -5,6 +5,7 @@ use st_domain::{
     calc_scored_supply_chain_routes, ActivityLevel, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource,
     ScoredSupplyChainSupportRoute, SupplyLevel, TradeGoodSymbol, WaypointSymbol,
 };
+use std::collections::HashSet;
 
 use crate::components::supply_chain_graph::{get_activity_fill_color, get_supply_fill_color, SupplyChainGraph};
 use crate::tables::scored_supply_chain_route_table::ScoredSupplyChainRouteRow;
@@ -341,13 +342,82 @@ fn render_overview_of_trade_goods(materialized_supply_chain: &MaterializedSupply
                 .goods_for_sale_conflicting_with_construction
                 .iter(),
         ),
+        TradeGoodsOverviewRow::new(
+            "Goods With Export Market".to_string(),
+            materialized_supply_chain.goods_with_export_market.iter(),
+        ),
+        TradeGoodsOverviewRow::new(
+            "Goods With Exchange Market".to_string(),
+            materialized_supply_chain.goods_with_exchange_market.iter(),
+        ),
+        TradeGoodsOverviewRow::new(
+            "Goods With Import Market".to_string(),
+            materialized_supply_chain.goods_with_import_market.iter(),
+        ),
+        TradeGoodsOverviewRow::new(
+            "Goods With Supply Market".to_string(),
+            materialized_supply_chain.goods_with_supply_market.iter(),
+        ),
+        TradeGoodsOverviewRow::new(
+            "Goods With Supply Market And Import Market".to_string(),
+            materialized_supply_chain
+                .goods_with_supply_market_and_import_market
+                .iter(),
+        ),
     ];
 
+    let trade_pairs_for_construction_materials_str = materialized_supply_chain
+        .trade_pairs_for_construction_materials
+        .iter()
+        .map(|(from, to)| format!("{from} --> {to}"))
+        .sorted()
+        .join("\n");
+
+    let trade_pairs_for_goods_for_sale_conflicting_with_construction_str = materialized_supply_chain
+        .trade_pairs_for_goods_for_sale_conflicting_with_construction
+        .iter()
+        .map(|(from, to)| format!("{from} --> {to}"))
+        .sorted()
+        .join("\n");
+
+    let trade_pairs_for_goods_for_sale_not_conflicting_with_construction_str = materialized_supply_chain
+        .trade_pairs_for_goods_for_sale_not_conflicting_with_construction
+        .iter()
+        .map(|(from, to)| format!("{from} --> {to}"))
+        .sorted()
+        .join("\n");
+
+    let no_go_trades_str = materialized_supply_chain
+        .no_go_trades
+        .iter()
+        .map(|(from, to)| format!("{from} --> {to}"))
+        .sorted()
+        .join("\n");
+
     view! {
-        <div class="rounded-md overflow-clip border dark:border-gray-700 w-1/3 mt-4".to_string()>
-            <table class="text-sm text-left mb-[-1px]">
-                <TableContent rows=description_rows scroll_container="html" />
-            </table>
+        <div class="flex flex-row gap-4">
+            <div class="rounded-md overflow-clip border dark:border-gray-700 w-1/3 mt-4"
+                .to_string()>
+                <table class="text-sm text-left mb-[-1px]">
+                    <TableContent rows=description_rows scroll_container="html" />
+                </table>
+            </div>
+            <div>
+                <h3 class="text-xl font-bold">"Trade Pairs For Construction Materials"</h3>
+                <pre>{trade_pairs_for_construction_materials_str}</pre>
+            </div>
+            <div>
+                <h3 class="text-xl font-bold">"Trade Pairs For Goods For Sale Not Conflicting With Construction"</h3>
+                <pre>{trade_pairs_for_goods_for_sale_not_conflicting_with_construction_str}</pre>
+            </div>
+            <div>
+                <h3 class="text-xl font-bold">"Trade Pairs For Goods For Sale Conflicting With Construction"</h3>
+                <pre>{trade_pairs_for_goods_for_sale_conflicting_with_construction_str}</pre>
+            </div>
+            <div>
+                <h3 class="text-xl font-bold">"No Go Trades"</h3>
+                <pre>{no_go_trades_str}</pre>
+            </div>
         </div>
     }
 }

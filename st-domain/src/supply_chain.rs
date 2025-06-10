@@ -94,11 +94,19 @@ pub struct MaterializedSupplyChain {
     pub relevant_supply_chain: Vec<SupplyChainNode>,
     pub all_routes: Vec<DeliveryRoute>,
     pub goods_of_interest: Vec<TradeGoodSymbol>,
-    pub goods_for_sale: HashSet<TradeGoodSymbol>,
+    pub goods_with_export_market: HashSet<TradeGoodSymbol>,
+    pub goods_with_supply_market_and_import_market: HashSet<TradeGoodSymbol>,
     pub goods_for_sale_not_conflicting_with_construction: HashSet<TradeGoodSymbol>,
     pub goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol>,
     pub individual_routes_of_goods_for_sale: HashMap<TradeGoodSymbol, MaterializedIndividualSupplyChain>,
     pub source_waypoints: HashMap<RawMaterialSourceType, Vec<Waypoint>>,
+    pub goods_with_exchange_market: HashSet<TradeGoodSymbol>,
+    pub goods_with_import_market: HashSet<TradeGoodSymbol>,
+    pub goods_with_supply_market: HashSet<TradeGoodSymbol>,
+    pub trade_pairs_for_construction_materials: HashSet<(TradeGoodSymbol, TradeGoodSymbol)>,
+    pub trade_pairs_for_goods_for_sale_conflicting_with_construction: HashSet<(TradeGoodSymbol, TradeGoodSymbol)>,
+    pub trade_pairs_for_goods_for_sale_not_conflicting_with_construction: HashSet<(TradeGoodSymbol, TradeGoodSymbol)>,
+    pub no_go_trades: HashSet<(TradeGoodSymbol, TradeGoodSymbol)>,
 }
 
 pub struct RawMaterialDemandScore {
@@ -339,9 +347,10 @@ pub fn materialize_supply_chain(
         TradeGoodSymbol::SHIP_PARTS,
         TradeGoodSymbol::MICROPROCESSORS,
         TradeGoodSymbol::CLOTHING,
+        TradeGoodSymbol::MEDICINE,
     ];
 
-    let goods_for_sale: HashSet<TradeGoodSymbol> = market_data
+    let goods_with_export_market: HashSet<TradeGoodSymbol> = market_data
         .iter()
         .flat_map(|(_, entries)| {
             entries
@@ -350,11 +359,39 @@ pub fn materialize_supply_chain(
         })
         .collect();
 
+    let goods_with_exchange_market: HashSet<TradeGoodSymbol> = market_data
+        .iter()
+        .flat_map(|(_, entries)| {
+            entries
+                .iter()
+                .filter_map(|mtg| (mtg.trade_good_type == TradeGoodType::Exchange).then_some(mtg.symbol.clone()))
+        })
+        .collect();
+
+    let goods_with_import_market: HashSet<TradeGoodSymbol> = market_data
+        .iter()
+        .flat_map(|(_, entries)| {
+            entries
+                .iter()
+                .filter_map(|mtg| (mtg.trade_good_type == TradeGoodType::Import).then_some(mtg.symbol.clone()))
+        })
+        .collect();
+
+    let goods_with_supply_market: HashSet<_> = goods_with_exchange_market
+        .union(&goods_with_export_market)
+        .cloned()
+        .collect();
+
+    let goods_with_supply_market_and_import_market: HashSet<TradeGoodSymbol> = goods_with_supply_market
+        .intersection(&goods_with_import_market)
+        .cloned()
+        .collect();
+
     let raw_materials = get_raw_material_source();
 
     let mut individual_routes_of_goods_for_sale = HashMap::new();
 
-    for p in goods_for_sale
+    for p in goods_with_export_market
         .iter()
         .filter(|tg| raw_materials.contains_key(tg).not())
     {
@@ -398,31 +435,6 @@ pub fn materialize_supply_chain(
 
     let raw_delivery_routes = compute_raw_delivery_routes(market_data, waypoint_map, &goods_of_interest, supply_chain);
 
-    let relevant_products = goods_of_interest
-        .iter()
-        .cloned()
-        .chain(
-            missing_construction_materials
-                .iter()
-                .map(|cm| cm.trade_symbol.clone()),
-        )
-        .unique()
-        .collect_vec();
-
-    let relevant_supply_chain = find_complete_supply_chain(&relevant_products, &supply_chain.trade_map);
-
-    let all_routes = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data)?;
-
-    let trading_opportunities = crate::trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map);
-
-    // println!("\n\nTop 10 trading opportunities");
-    // trading_opportunities.iter().take(10).for_each(|to| {
-    //     println!(
-    //         "{}; Profit: {}; Profit per distance: {}",
-    //         to.sell_market_trade_good_entry.symbol, to.profit_per_unit, to.profit_per_unit_per_distance
-    //     );
-    // });
-
     let missing_construction_material_map = maybe_construction_site
         .clone()
         .map(|cs| cs.missing_construction_materials())
@@ -431,7 +443,29 @@ pub fn materialize_supply_chain(
     let ConstructionRelatedTradeGoodsOverview {
         goods_for_sale_not_conflicting_with_construction,
         goods_for_sale_conflicting_with_construction,
-    } = calc_construction_related_trade_good_overview(supply_chain, missing_construction_material_map, &goods_for_sale);
+        trade_pairs_for_construction_materials,
+        trade_pairs_for_goods_for_sale_conflicting_with_construction,
+        trade_pairs_for_goods_for_sale_not_conflicting_with_construction,
+        no_go_trades,
+    } = calc_construction_related_trade_good_overview(supply_chain, missing_construction_material_map, &goods_with_export_market);
+
+    let relevant_products = goods_of_interest
+        .iter()
+        .cloned()
+        .chain(
+            missing_construction_materials
+                .iter()
+                .map(|cm| cm.trade_symbol.clone()),
+        )
+        .filter(|tg| !goods_for_sale_conflicting_with_construction.contains(tg))
+        .unique()
+        .collect_vec();
+
+    let relevant_supply_chain = find_complete_supply_chain(&relevant_products, &supply_chain.trade_map);
+
+    let all_routes = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data)?;
+
+    let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map);
 
     let source_waypoints: HashMap<RawMaterialSourceType, Vec<Waypoint>> = get_sourcing_waypoints(waypoint_map);
 
@@ -447,17 +481,29 @@ pub fn materialize_supply_chain(
         raw_delivery_routes,
         all_routes,
         goods_of_interest,
-        goods_for_sale,
+        goods_with_export_market,
+        goods_with_exchange_market,
+        goods_with_import_market,
+        goods_with_supply_market,
+        goods_with_supply_market_and_import_market,
         goods_for_sale_not_conflicting_with_construction,
         goods_for_sale_conflicting_with_construction,
+        trade_pairs_for_construction_materials,
+        trade_pairs_for_goods_for_sale_conflicting_with_construction,
+        trade_pairs_for_goods_for_sale_not_conflicting_with_construction,
         individual_routes_of_goods_for_sale,
         source_waypoints,
+        no_go_trades,
     })
 }
 
 struct ConstructionRelatedTradeGoodsOverview {
     goods_for_sale_not_conflicting_with_construction: HashSet<TradeGoodSymbol>,
     goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol>,
+    trade_pairs_for_construction_materials: HashSet<(TradeGoodSymbol, TradeGoodSymbol)>,
+    trade_pairs_for_goods_for_sale_conflicting_with_construction: HashSet<(TradeGoodSymbol, TradeGoodSymbol)>,
+    trade_pairs_for_goods_for_sale_not_conflicting_with_construction: HashSet<(TradeGoodSymbol, TradeGoodSymbol)>,
+    no_go_trades: HashSet<(TradeGoodSymbol, TradeGoodSymbol)>,
 }
 
 fn calc_construction_related_trade_good_overview(
@@ -465,6 +511,11 @@ fn calc_construction_related_trade_good_overview(
     missing_construction_material: HashMap<TradeGoodSymbol, u32>,
     products_for_sale: &HashSet<TradeGoodSymbol>,
 ) -> ConstructionRelatedTradeGoodsOverview {
+    let products_for_sale_ex_construction_material: HashSet<_> = products_for_sale
+        .difference(&missing_construction_material.keys().cloned().collect())
+        .cloned()
+        .collect();
+
     let construction_material_chains: HashMap<TradeGoodSymbol, HashSet<TradeGoodSymbol>> = missing_construction_material
         .keys()
         .filter_map(|construction_material| {
@@ -475,9 +526,8 @@ fn calc_construction_related_trade_good_overview(
         })
         .collect();
 
-    let goods_for_sale_not_conflicting_with_construction: HashSet<TradeGoodSymbol> = products_for_sale
+    let goods_for_sale_not_conflicting_with_construction: HashSet<TradeGoodSymbol> = products_for_sale_ex_construction_material
         .iter()
-        .filter(|tg| missing_construction_material.contains_key(tg).not())
         .filter(|&trade_symbol| {
             let products_involved = supply_chain
                 .individual_supply_chains
@@ -500,14 +550,106 @@ fn calc_construction_related_trade_good_overview(
         .cloned()
         .collect();
 
-    let goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol> = products_for_sale
+    let goods_for_sale_conflicting_with_construction: HashSet<TradeGoodSymbol> = products_for_sale_ex_construction_material
         .difference(&goods_for_sale_not_conflicting_with_construction)
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    let trade_pairs_for_construction_materials: HashSet<(TradeGoodSymbol, TradeGoodSymbol)> = missing_construction_material
+        .keys()
+        .flat_map(|construction_material| {
+            let (supply_chain_nodes, _all_materials_involved) = supply_chain
+                .individual_supply_chains
+                .get(construction_material)
+                .cloned()
+                .unwrap();
+
+            supply_chain_nodes
+                .iter()
+                .flat_map(|scn| {
+                    scn.dependencies
+                        .iter()
+                        .map(|input| (input.clone(), scn.good.clone()))
+                })
+                .collect_vec()
+        })
+        .collect();
+
+    let trade_pairs_for_goods_for_sale_not_conflicting_with_construction: HashSet<(TradeGoodSymbol, TradeGoodSymbol)> =
+        goods_for_sale_not_conflicting_with_construction
+            .iter()
+            .flat_map(|trade_good| {
+                let (supply_chain_nodes, _all_materials_involved) = supply_chain
+                    .individual_supply_chains
+                    .get(trade_good)
+                    .cloned()
+                    .unwrap();
+
+                supply_chain_nodes
+                    .iter()
+                    .flat_map(|scn| {
+                        scn.dependencies
+                            .iter()
+                            .map(|input| (input.clone(), scn.good.clone()))
+                    })
+                    .collect_vec()
+            })
+            .collect();
+
+    let trade_pairs_for_goods_for_sale_conflicting_with_construction: HashSet<(TradeGoodSymbol, TradeGoodSymbol)> =
+        goods_for_sale_conflicting_with_construction
+            .iter()
+            .flat_map(|trade_good| {
+                let (supply_chain_nodes, _all_materials_involved) = supply_chain
+                    .individual_supply_chains
+                    .get(trade_good)
+                    .cloned()
+                    .unwrap();
+
+                supply_chain_nodes
+                    .iter()
+                    .flat_map(|scn| {
+                        scn.dependencies
+                            .iter()
+                            .map(|input| (input.clone(), scn.good.clone()))
+                    })
+                    .collect_vec()
+            })
+            .collect();
+
+    // Problem scenario
+    // we need FAB_MATS
+    // IRON --> FAB_MATS
+    // conflicts with
+    // IRON --> MACHINERY --> SHIP_PLATING
+    // So, we find all trades, where any end of the trade contains one of the goods included in the construction
+    let all_producing_goods_inside_construction_chain = trade_pairs_for_construction_materials
+        .iter()
+        .map(|(from, to)| to.clone())
+        .collect::<HashSet<_>>();
+
+    let allowed_trade_pairs: HashSet<(TradeGoodSymbol, TradeGoodSymbol)> = trade_pairs_for_construction_materials
+        .union(&trade_pairs_for_goods_for_sale_not_conflicting_with_construction)
+        .cloned()
+        .collect();
+
+    let no_go_trades: HashSet<(TradeGoodSymbol, TradeGoodSymbol)> = trade_pairs_for_goods_for_sale_conflicting_with_construction
+        .iter()
+        .filter(|(from, to)| all_producing_goods_inside_construction_chain.contains(from))
+        .filter(|no_go_tuple| {
+            // this will also catch e.g. IRON_ORE -> IRON, but we don't want this listed as a no-go-trade, so we filter it out
+            !allowed_trade_pairs.contains(no_go_tuple)
+        })
         .cloned()
         .collect::<HashSet<_>>();
 
     ConstructionRelatedTradeGoodsOverview {
         goods_for_sale_not_conflicting_with_construction,
         goods_for_sale_conflicting_with_construction,
+        trade_pairs_for_construction_materials,
+        trade_pairs_for_goods_for_sale_conflicting_with_construction,
+        trade_pairs_for_goods_for_sale_not_conflicting_with_construction,
+        no_go_trades,
     }
 }
 

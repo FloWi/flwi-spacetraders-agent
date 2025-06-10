@@ -257,7 +257,7 @@ fn calc_trading_decisions(
     println!(
         "Found {} out of {} trade goods for sale that don't conflict with the supply chains of the construction materials:\nnon conflicting goods: {:?}\n    conflicting_goods: {:?}",
         materialized_supply_chain.goods_for_sale_not_conflicting_with_construction.len(),
-        materialized_supply_chain.goods_for_sale.len(),
+        materialized_supply_chain.goods_with_export_market.len(),
         materialized_supply_chain.goods_for_sale_not_conflicting_with_construction,
         materialized_supply_chain.goods_for_sale_conflicting_with_construction,
     );
