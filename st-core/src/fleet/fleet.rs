@@ -2016,7 +2016,6 @@ pub fn create_construction_fleet_phase(system_symbol: &SystemSymbol, num_shipyar
             ShipType::SHIP_SURVEYOR,
             ShipType::SHIP_MINING_DRONE,
             ShipType::SHIP_MINING_DRONE,
-            ShipType::SHIP_MINING_DRONE,
         ],
     ]
     .concat();
