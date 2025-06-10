@@ -1050,24 +1050,31 @@ Fleet Budgets after rebalancing
                 ConstructJumpGateCfg(cfg) => {
                     let mut new_construction_fleet_tasks: HashMap<ShipSymbol, ShipTask> = HashMap::new();
 
-                    let (unassigned_ships_of_fleet, blocked_budget) = if let Some((command_ship, required_budget_for_contracts)) =
-                        potentially_assign_contracting_to_command_ship(
+                    let is_it_time_for_contracting = ships_of_fleet.len() > 1;
+
+                    // only do contracts, if we have a hauler available
+                    // could be improved by integrating the profitability of trades into the trading calculations, but that's already too complex imo
+                    let (unassigned_ships_of_fleet, blocked_budget) = if !is_it_time_for_contracting {
+                        (unassigned_ships_of_fleet, 0.into())
+                    } else {
+                        if let Some((command_ship, required_budget_for_contracts)) = potentially_assign_contracting_to_command_ship(
                             &unassigned_ships_of_fleet,
                             &maybe_current_contract,
                             &fleet_budget,
                             &latest_market_data,
                             &waypoints,
                         )? {
-                        new_construction_fleet_tasks.insert(command_ship.clone(), ShipTask::ExecuteContracts);
+                            new_construction_fleet_tasks.insert(command_ship.clone(), ShipTask::ExecuteContracts);
 
-                        let other_ships = unassigned_ships_of_fleet
-                            .iter()
-                            .filter(|s| s.symbol != command_ship)
-                            .cloned()
-                            .collect_vec();
-                        (other_ships, required_budget_for_contracts)
-                    } else {
-                        (unassigned_ships_of_fleet, 0.into())
+                            let other_ships = unassigned_ships_of_fleet
+                                .iter()
+                                .filter(|s| s.symbol != command_ship)
+                                .cloned()
+                                .collect_vec();
+                            (other_ships, required_budget_for_contracts)
+                        } else {
+                            (unassigned_ships_of_fleet, 0.into())
+                        }
                     };
 
                     let either_compute_task_result = ConstructJumpGateFleet::compute_ship_tasks(
