@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nselect entry as \"entry: Json<Contract>\",\n       created_at\n  from contracts\n  order by created_at desc\n  limit 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entry: Json<Contract>",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "cffd15f03ba39b8d01d9ae5360a6093ffe2513bd9f00c80597001a7f8c16bf32"
+}
