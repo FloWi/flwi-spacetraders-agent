@@ -126,7 +126,9 @@ pub fn PriceCellRenderer<F: 'static>(class: String, value: Signal<i32>, row: RwS
 #[component]
 pub fn CreditCellRenderer<F: 'static>(class: String, value: Signal<Credits>, row: RwSignal<F>, index: usize) -> impl IntoView {
     view! {
-        <td class=class>{move || format!("{}c", value.get_untracked().0.separate_with_commas())}</td>
+        <td class=class>
+            {move || format!("{}c", value.get_untracked().0.separate_with_commas())}
+        </td>
     }
 }
 

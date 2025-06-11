@@ -215,7 +215,10 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                         <h2 class="text-2xl font-bold">"Explanation"</h2>
                                                         <pre>{materialized_supply_chain.explanation}</pre>
                                                         <div class="w-1/2">
-                                                            {render_mermaid_chains(supply_chain, &materialized_supply_chain.goods_of_interest)
+                                                            {render_mermaid_chains(
+                                                                    supply_chain,
+                                                                    &materialized_supply_chain.goods_of_interest,
+                                                                )
                                                                 .into_any()}
                                                         </div>
                                                         <h2 class="text-2xl font-bold">"Raw Delivery Routes"</h2>
@@ -284,7 +287,7 @@ pub fn SupplyChainPage() -> impl IntoView {
             <script type="module">
                 r#"import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
                   mermaid.initialize({ startOnLoad: false, theme: 'dark' });
-
+                
                   // Function to render mermaid diagrams
                   function renderMermaid() {
                     const elements = document.querySelectorAll('pre code.language-mermaid, .mermaid');
@@ -296,7 +299,7 @@ pub fn SupplyChainPage() -> impl IntoView {
                       });
                     });
                   }
-
+                
                   // Run after DOM is loaded and on updates
                   document.addEventListener('DOMContentLoaded', renderMermaid);
                   // // For Leptos reactivity, you might need to call this after updates
@@ -332,7 +335,7 @@ fn render_mermaid_chains(supply_chain: SupplyChain, goods_of_interest: &[TradeGo
                         <div class="flex flex-col">
                             <h2 class="text-2xl font-bold">{trade_good.to_string()}</h2>
                             <pre class="mermaid">{chain.to_mermaid()}</pre>
-                            // <pre class="no-mermaid">{chain.to_mermaid()}</pre>
+                        // <pre class="no-mermaid">{chain.to_mermaid()}</pre>
                         </div>
                     }
                 })

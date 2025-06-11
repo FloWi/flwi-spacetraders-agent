@@ -237,12 +237,12 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                     // Looks like sugiyama doesn't render independent graphs (no common nodes)
                                                     // disabling this for now and rendering the chains individually
                                                     // <div class="flex flex-col gap-4">
-                                                    //     <SupplyChainGraph
-                                                    //         routes=materialized_supply_chain.all_routes.clone()
-                                                    //         label="Combined Supply Chain".to_string()
-                                                    //     />
-                                                    //     <pre>{serde_json::to_string(&materialized_supply_chain.all_routes).unwrap()}</pre>
-                                                    //
+                                                    // <SupplyChainGraph
+                                                    // routes=materialized_supply_chain.all_routes.clone()
+                                                    // label="Combined Supply Chain".to_string()
+                                                    // />
+                                                    // <pre>{serde_json::to_string(&materialized_supply_chain.all_routes).unwrap()}</pre>
+                                                    // 
                                                     // </div>
                                                     <div>
                                                         <h2 class="text-2xl font-bold my-4">
@@ -402,11 +402,15 @@ fn render_overview_of_trade_goods(materialized_supply_chain: &MaterializedSupply
                 <pre>{trade_pairs_for_construction_materials_str}</pre>
             </div>
             <div>
-                <h3 class="text-xl font-bold">"Trade Pairs For Goods For Sale Not Conflicting With Construction"</h3>
+                <h3 class="text-xl font-bold">
+                    "Trade Pairs For Goods For Sale Not Conflicting With Construction"
+                </h3>
                 <pre>{trade_pairs_for_goods_for_sale_not_conflicting_with_construction_str}</pre>
             </div>
             <div>
-                <h3 class="text-xl font-bold">"Trade Pairs For Goods For Sale Conflicting With Construction"</h3>
+                <h3 class="text-xl font-bold">
+                    "Trade Pairs For Goods For Sale Conflicting With Construction"
+                </h3>
                 <pre>{trade_pairs_for_goods_for_sale_conflicting_with_construction_str}</pre>
             </div>
             <div>
