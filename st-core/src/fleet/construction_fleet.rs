@@ -12,7 +12,7 @@ use st_domain::budgeting::treasury_redesign::{
     PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails, ThreadSafeTreasurer,
 };
 use st_domain::{
-    calc_scored_supply_chain_routes, trading, Cargo, ConstructJumpGateFleetConfig, Construction, Contract, ContractEvaluationResult,
+    calc_scored_supply_chain_routes, trading, ActivityLevel, Cargo, ConstructJumpGateFleetConfig, Construction, Contract, ContractEvaluationResult,
     EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetTask, FleetTaskCompletion, Inventory, LabelledCoordinate, MarketEntry,
     MarketTradeGood, MaterializedSupplyChain, ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, StationaryProbeLocation,
     SupplyLevel, TicketId, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol,
@@ -194,7 +194,9 @@ impl ConstructJumpGateFleet {
             */
         }
 
-        let new_tasks: Vec<PotentialConstructionTask> = if admiral.ship_purchase_demand.is_empty() {
+        let has_some_trades = fleet_ships.len() > 2;
+
+        let new_tasks: Vec<PotentialConstructionTask> = if has_some_trades {
             let best_actions_for_ships = determine_construction_fleet_actions(
                 admiral,
                 &fleet.id,
@@ -339,19 +341,6 @@ async fn determine_construction_fleet_actions(
     fleet_budget: &FleetBudget,
     best_new_trading_opportunities: &[EvaluatedTradingOpportunity],
 ) -> Result<HashMap<ShipSymbol, ConstructionFleetAction>> {
-    let active_trades = admiral
-        .treasurer
-        .get_fleet_tickets()
-        .await?
-        .get(my_fleet_id)
-        .cloned()
-        .unwrap_or_default();
-
-    let cargo_sizes = unassigned_ships_of_fleet
-        .iter()
-        .map(|s| (s.symbol.clone(), s.cargo.capacity))
-        .collect::<HashMap<_, _>>();
-
     let profitable_trading_actions = best_new_trading_opportunities
         .iter()
         .take(unassigned_ships_of_fleet.len())
@@ -402,15 +391,12 @@ async fn determine_construction_fleet_actions(
             .unwrap_or_default();
 
         let priority_map_of_construction_materials = HashMap::from([(TradeGoodSymbol::FAB_MATS, 1), (TradeGoodSymbol::ADVANCED_CIRCUITRY, 2)]);
+        let budget_limits_for_construction_materials = HashMap::from([
+            (TradeGoodSymbol::FAB_MATS, 125_000),
+            (TradeGoodSymbol::ADVANCED_CIRCUITRY, 750_000),
+        ]);
 
-        let goods_of_interest: Vec<TradeGoodSymbol> = vec![
-            //TradeGoodSymbol::ADVANCED_CIRCUITRY,
-            //TradeGoodSymbol::FAB_MATS,
-            TradeGoodSymbol::SHIP_PLATING,
-            TradeGoodSymbol::SHIP_PARTS,
-            TradeGoodSymbol::MICROPROCESSORS,
-            TradeGoodSymbol::CLOTHING,
-        ];
+        let goods_of_interest = materialized_supply_chain.goods_of_interest.clone();
 
         let goods_of_interest_in_order = required_construction_materials
             .keys()
@@ -447,11 +433,23 @@ async fn determine_construction_fleet_actions(
         let construction_material_deliveries: Vec<ConstructionFleetAction> = export_markets_of_construction_materials
             .iter()
             .filter(|(mtg, wps, _)| {
-                mtg.supply >= SupplyLevel::High
-                    && active_trade_routes
-                        .iter()
-                        .any(|atr| atr.from == *wps && atr.trade_good == mtg.symbol)
-                        .not()
+                // trying whyando's condition
+                let should_buy = match mtg.activity.as_ref().unwrap() {
+                    ActivityLevel::Strong => mtg.supply >= SupplyLevel::High,
+                    _ => mtg.supply >= SupplyLevel::Moderate,
+                };
+                let budget_limit_for_construction_material: Credits = budget_limits_for_construction_materials
+                    .get(&mtg.symbol)
+                    .unwrap_or(&100_000_000)
+                    .clone()
+                    .into();
+                let has_met_budget_requirement = available_capital > budget_limit_for_construction_material;
+                let no_ongoing_delivery = active_trade_routes
+                    .iter()
+                    .any(|atr| atr.from == *wps && atr.trade_good == mtg.symbol)
+                    .not();
+                let is_ok = should_buy && has_met_budget_requirement && no_ongoing_delivery;
+                is_ok
             })
             .map(|(mtg, wps, qty_missing)| {
                 // Don't deliver more than necessary

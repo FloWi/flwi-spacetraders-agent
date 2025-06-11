@@ -1307,7 +1307,7 @@ impl ScoredSupplyChainSupportRoute {
             .max()
             .unwrap();
 
-        let score = if is_spread_ok && supply_level_at_source != SupplyLevel::Scarce {
+        let score = if is_spread_ok && supply_level_at_source > SupplyLevel::Scarce {
             (import_supply_level_score + import_activity_level_score) * level_score * max_prio_score as i32
         } else {
             0
