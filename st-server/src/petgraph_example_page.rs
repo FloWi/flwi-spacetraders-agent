@@ -183,7 +183,7 @@ async fn get_materialized_supply_chain() -> Result<Option<(MaterializedSupplyCha
 #[component]
 pub fn TechTreePetgraph() -> impl IntoView {
     // Define hardcoded tech tree data
-    let resource = OnceResource::new(get_materialized_supply_chain());
+    let resource = Resource::new(|| {}, |_| get_materialized_supply_chain());
 
     view! {
         // <Title text="Leptos + Tailwindcss" />

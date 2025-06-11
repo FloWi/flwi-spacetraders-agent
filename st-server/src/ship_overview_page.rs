@@ -7,9 +7,7 @@ use leptos::{component, view, IntoView};
 use leptos_use::use_interval_fn;
 use phosphor_leptos::{Icon, ATOM, BINOCULARS, BRIEFCASE, CLOCK, COMPASS_ROSE, GAS_PUMP, HAMMER, HOURGLASS, MONEY_WAVY, PACKAGE, ROCKET, SUITCASE, TRUCK};
 use serde::{Deserialize, Serialize};
-use st_domain::budgeting::treasury_redesign::{
-    ActiveTrade, FinanceTicket, FinanceTicketDetails, FinanceTicketState, ImprovedTreasurer, LedgerEntry,
-};
+use st_domain::budgeting::treasury_redesign::{ActiveTrade, FinanceTicket, FinanceTicketDetails, FinanceTicketState, ImprovedTreasurer, LedgerEntry};
 use st_domain::{Fleet, NavStatus, Ship, ShipSymbol, ShipTask, TicketId, TradeGoodSymbol};
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
