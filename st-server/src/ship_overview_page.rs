@@ -1,3 +1,4 @@
+use crate::components::treasury_overview::TreasuryOverview;
 use crate::format_duration;
 use crate::tables::fleet_overview_table::FleetOverviewRow;
 use crate::tables::renderers::format_number;
@@ -343,7 +344,7 @@ pub fn FleetOverview<'a>(
     fleet: &'a Fleet,
     ships_of_fleet: &'a [Ship],
     ship_tasks: &'a HashMap<ShipSymbol, ShipTask>,
-    treasurer: ImprovedTreasurer,
+    treasurer: &'a ImprovedTreasurer,
 ) -> impl IntoView {
     let ships_with_tasks = ships_of_fleet
         .iter()
@@ -351,15 +352,16 @@ pub fn FleetOverview<'a>(
         .collect_vec();
 
     let active_trades = treasurer.compute_active_trades();
-    let budgets = treasurer.get_fleet_budgets().unwrap_or_default();
-    let fleet_budget = budgets.get(&fleet.id).cloned().unwrap_or_default();
+
+    let single_fleet_vec = vec![fleet.clone()];
 
     view! {
         <div class="flex flex-col gap-4 p-4">
             <h2 class="font-bold text-xl">
                 {format!("Fleet {} with {} ships", fleet.cfg.to_string(), ships_of_fleet.len())}
             </h2>
-            <FleetBudgetOverview fleet_budget=&fleet_budget />
+            <TreasuryOverview treasurer fleets=&single_fleet_vec />
+
             <div class="grid grid-cols-4 gap-4">
                 {ships_with_tasks
                     .iter()
@@ -408,30 +410,15 @@ pub fn ShipOverviewPage() -> impl IntoView {
                     {move || {
                         match ships_resource.get() {
                             Some(Ok(ships_overview)) => {
-                                let fleet_budgets = ships_overview.treasurer.get_fleet_budgets().unwrap_or_default();
-                                let fleet_overview_table_data: Vec<FleetOverviewRow> = fleet_budgets.iter().filter_map(|(fleet_id, fleet_budget)| {
-                                  ships_overview.fleets.iter().find(|f| &f.id == fleet_id).map(|fleet| (fleet.clone(), fleet_budget.clone()) )
-                                })
-                                .sorted_by_key(|(fleet, _)| fleet.id.0.clone())
-                                .map(|(fleet, fleet_budget)| {
-                                    FleetOverviewRow::from((fleet, fleet_budget))
-                                })
-                                .collect_vec();
-
                                 view! {
                                     <div class="flex flex-col gap-4 p-4">
                                         <p>
                                             {format!("Last Update: {:?}", ships_overview.last_update)}
                                         </p>
-                                       <div class="rounded-md overflow-clip border dark:border-gray-700 w-fit mt-4">
-                                         <table class="text-sm text-left mb-[-1px]">
-                                             <TableContent
-                                                 rows=fleet_overview_table_data
-                                                 scroll_container="html"
-                                             />
-                                         </table>
-                                        </div>
-
+                                        <TreasuryOverview
+                                            treasurer=&ships_overview.treasurer
+                                            fleets=&ships_overview.fleets
+                                        />
                                         <div class="flex flex-col">
                                             {ships_overview
                                                 .grouped_ships
@@ -443,7 +430,7 @@ pub fn ShipOverviewPage() -> impl IntoView {
                                                             fleet
                                                             ships_of_fleet
                                                             ship_tasks=&ships_overview.ship_tasks
-                                                            treasurer=ships_overview.treasurer.clone()
+                                                            treasurer=&ships_overview.treasurer
                                                         />
                                                     }
                                                 })
@@ -462,25 +449,6 @@ pub fn ShipOverviewPage() -> impl IntoView {
                     }}
                 </Transition>
             </div>
-        </div>
-    }
-}
-
-#[component]
-pub fn FleetBudgetOverview<'a>(fleet_budget: &'a FleetBudget) -> impl IntoView {
-    let FleetBudget {
-        current_capital,
-        reserved_capital,
-        budget,
-        operating_reserve,
-    } = fleet_budget.clone();
-
-    view! {
-        <div class="grid grid-cols-2 gap-2 w-fit">
-            <p>"Current Capital"</p><p class="text-right">{format!("{}c", current_capital.0.separate_with_commas())}</p>
-            <p>"Reserved Capital"</p><p class="text-right">{format!("{}c", reserved_capital.0.separate_with_commas())}</p>
-            <p>"Budget"</p><p class="text-right">{format!("{}c", budget.0.separate_with_commas())}</p>
-            <p>"Operating Reserve"</p><p class="text-right">{format!("{}c", operating_reserve.0.separate_with_commas())}</p>
         </div>
     }
 }
