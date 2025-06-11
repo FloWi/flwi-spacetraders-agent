@@ -2,6 +2,7 @@ use crate::components::clipboard_button::ClipboardButton;
 use crate::tables::trading_opportunity_table::TradingOpportunityRow;
 use anyhow::anyhow;
 use itertools::Itertools;
+use leptos::html::Div;
 use leptos::prelude::*;
 use leptos_meta::Title;
 use leptos_struct_table::*;
@@ -52,10 +53,10 @@ async fn get_supply_chain_data() -> Result<
             .unwrap()
             .unwrap();
 
-        println!("loaded supply_chain");
+        // println!("loaded supply_chain");
 
         let agent = bmc.agent_bmc().load_agent(&Ctx::Anonymous).await?;
-        println!("loaded agent");
+        // println!("loaded agent");
 
         let headquarters_waypoint = agent.headquarters;
 
@@ -71,7 +72,7 @@ async fn get_supply_chain_data() -> Result<
             .await?;
 
         let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
-        println!("loaded market_data");
+        // println!("loaded market_data");
 
         let maybe_construction_site = bmc
             .construction_bmc()
@@ -98,12 +99,12 @@ async fn get_supply_chain_data() -> Result<
 
         let ships = bmc.ship_bmc().get_ships(&Ctx::Anonymous, None).await?;
 
-        println!("loaded ships");
+        // println!("loaded ships");
 
         let trading_opportunities =
             trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(&market_data, &waypoint_map, &materialized_supply_chain.no_go_trades);
 
-        println!("calculated {} trading_opportunities", trading_opportunities.len());
+        // println!("calculated {} trading_opportunities", trading_opportunities.len());
 
         let maybe_construction_fleet = fleets
             .iter()
@@ -123,18 +124,18 @@ async fn get_supply_chain_data() -> Result<
             vec![]
         };
 
-        println!("found {} ships in construction_fleet", trading_ships.len());
+        // println!("found {} ships in construction_fleet", trading_ships.len());
 
         let evaluated_trading_opportunities: Vec<EvaluatedTradingOpportunity> =
             trading::evaluate_trading_opportunities(&trading_ships, &waypoint_map, &trading_opportunities, agent.credits);
 
-        println!("calculated {} evaluated_trading_opportunities", evaluated_trading_opportunities.len());
+        // println!("calculated {} evaluated_trading_opportunities", evaluated_trading_opportunities.len());
 
         let active_trades = HashSet::new();
 
         let trading_decision = trading::find_optimal_trading_routes_exhaustive(&evaluated_trading_opportunities, &active_trades);
 
-        println!("calculated {} trading_decision(s)", trading_decision.len());
+        // println!("calculated {} trading_decision(s)", trading_decision.len());
 
         Ok((
             supply_chain,
@@ -153,19 +154,7 @@ async fn get_supply_chain_data() -> Result<
 
 #[component]
 pub fn SupplyChainPage() -> impl IntoView {
-    // Use create_resource which is the standard way to handle async data in Leptos
-    let goods_of_interest = vec![
-        TradeGoodSymbol::ADVANCED_CIRCUITRY,
-        TradeGoodSymbol::FAB_MATS,
-        TradeGoodSymbol::SHIP_PLATING,
-        TradeGoodSymbol::SHIP_PARTS,
-        TradeGoodSymbol::MICROPROCESSORS,
-        TradeGoodSymbol::CLOTHING,
-        TradeGoodSymbol::FUEL,
-        TradeGoodSymbol::EQUIPMENT,
-    ];
-
-    let supply_chain_resource = OnceResource::new(get_supply_chain_data());
+    let supply_chain_resource = Resource::new(|| {}, |_| get_supply_chain_data());
 
     view! {
         <Title text="Leptos + Tailwindcss" />
@@ -225,6 +214,10 @@ pub fn SupplyChainPage() -> impl IntoView {
 
                                                         <h2 class="text-2xl font-bold">"Explanation"</h2>
                                                         <pre>{materialized_supply_chain.explanation}</pre>
+                                                        <div class="w-1/2">
+                                                            {render_mermaid_chains(supply_chain, &materialized_supply_chain.goods_of_interest)
+                                                                .into_any()}
+                                                        </div>
                                                         <h2 class="text-2xl font-bold">"Raw Delivery Routes"</h2>
                                                         <ClipboardButton
                                                             clipboard_text=serde_json::to_string_pretty(
@@ -274,10 +267,6 @@ pub fn SupplyChainPage() -> impl IntoView {
                                                         <h2 class="text-2xl font-bold">"Market Data"</h2>
                                                         <pre>{serde_json::to_string_pretty(&market_data)}</pre>
                                                     </div>
-                                                    <div class="w-1/2">
-                                                        {render_mermaid_chains(supply_chain, &goods_of_interest)
-                                                            .into_any()}
-                                                    </div>
 
                                                 </div>
                                             }
@@ -293,7 +282,26 @@ pub fn SupplyChainPage() -> impl IntoView {
                 </Transition>
             </div>
             <script type="module">
-                "import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';"
+                r#"import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+                  mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+                  // Function to render mermaid diagrams
+                  function renderMermaid() {
+                    const elements = document.querySelectorAll('pre code.language-mermaid, .mermaid');
+                    elements.forEach((element, index) => {
+                      const graphDefinition = element.textContent;
+                      const graphId = `mermaid-${index}`;
+                      mermaid.render(graphId, graphDefinition).then(({svg}) => {
+                        element.innerHTML = svg;
+                      });
+                    });
+                  }
+
+                  // Run after DOM is loaded and on updates
+                  document.addEventListener('DOMContentLoaded', renderMermaid);
+                  // // For Leptos reactivity, you might need to call this after updates
+                  // setTimeout(renderMermaid, 10);
+                "#
             </script>
         </main>
     }
@@ -324,7 +332,7 @@ fn render_mermaid_chains(supply_chain: SupplyChain, goods_of_interest: &[TradeGo
                         <div class="flex flex-col">
                             <h2 class="text-2xl font-bold">{trade_good.to_string()}</h2>
                             <pre class="mermaid">{chain.to_mermaid()}</pre>
-                            <pre class="no-mermaid">{chain.to_mermaid()}</pre>
+                            // <pre class="no-mermaid">{chain.to_mermaid()}</pre>
                         </div>
                     }
                 })
