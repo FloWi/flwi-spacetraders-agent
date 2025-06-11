@@ -31,8 +31,14 @@ pub fn find_trading_opportunities_sorted_by_profit_per_distance_unit(
         .filter(|(wp_sym, mtg)| mtg.trade_good_type == TradeGoodType::Import || mtg.trade_good_type == TradeGoodType::Exchange)
         .collect_vec();
 
+    let forbidden_trade_symbols = no_go_trades
+        .iter()
+        .map(|(from, to)| from.clone())
+        .collect::<HashSet<_>>();
+
     let trades_by_profit = exports
         .iter()
+        .filter(|(export_wps, export_mtg)| !forbidden_trade_symbols.contains(&export_mtg.symbol))
         .flat_map(|(export_wps, export_mtg)| {
             let export_wp = waypoint_map.get(export_wps).unwrap();
             imports
@@ -40,7 +46,6 @@ pub fn find_trading_opportunities_sorted_by_profit_per_distance_unit(
                 .filter(move |(import_wps, import_mtg)| {
                     export_wps != import_wps && export_mtg.symbol == import_mtg.symbol && import_mtg.sell_price > export_mtg.purchase_price
                 })
-                .filter(move |(import_wps, import_mtg)| !no_go_trades.contains(&(export_mtg.symbol.clone(), import_mtg.symbol.clone())))
                 .map(|(import_wps, import_mtg)| {
                     let import_wp = waypoint_map.get(import_wps).unwrap();
                     let profit_per_unit = (import_mtg.sell_price - export_mtg.purchase_price) as u64;
