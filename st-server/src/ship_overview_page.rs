@@ -162,7 +162,7 @@ fn render_active_trade(trade: ActiveTrade) -> impl IntoView {
         );
 
         view! {
-            <div>
+            <div class="flex flex-col gap-1">
                 <p class="font-bold">{trade_summary}</p>
                 <p class="">{purchase_summary}</p>
                 <p class="">{delivery_summary}</p>
@@ -172,11 +172,9 @@ fn render_active_trade(trade: ActiveTrade) -> impl IntoView {
     } else {
         // single trade action
         let trade_summary = trade.delivery.details.get_description();
-
         view! {
-            <div>
+            <div class="flex flex-col gap-1">
                 <p class="font-bold">{trade_summary}</p>
-                <p class="">{delivery_summary}</p>
             </div>
         }
         .into_any()
@@ -251,20 +249,22 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
 
     view! {
         <div class="p-3 border-4 border-blue-900 text-slate-400">
-            <div class="flex flex-row gap-4 items-center">
-                <Icon icon=ship_icon size="3em" />
-                <div class="flex flex-col gap-1">
-                    <h3 class="text-xl text-white">{ship.symbol.0.to_string()}</h3>
-                    <p class="text-slate-400">
-                        {maybe_ship_task
-                            .clone()
-                            .map(|t| t.to_string())
-                            .unwrap_or("---".to_string())}
-                    </p>
-                    <div class="text-slate-400">{move || render_trades(active_trades.clone())}</div>
+            <div class="flex flex-col gap-2">
+                <div class="flex flex-row gap-4 items-start">
+                    <Icon icon=ship_icon size="3em" />
+                    <div class="flex flex-col gap-1">
+                        <h3 class="text-xl text-white">{ship.symbol.0.to_string()}</h3>
+                        <p class="text-slate-400">
+                            {maybe_ship_task
+                                .clone()
+                                .map(|t| t.to_string())
+                                .unwrap_or("---".to_string())}
+                        </p>
+                    </div>
                 </div>
+                <div class="text-slate-400">{move || render_trades(active_trades.clone())}</div>
             </div>
-            <div class="flex flex-col gap-1">
+            <div class="pt-2 flex flex-col gap-1">
                 <div class="flex flex-row gap-2 items-center">
                     <Icon icon=TRUCK />
                     <p>{ship.nav.waypoint_symbol.0.to_string()}</p>
