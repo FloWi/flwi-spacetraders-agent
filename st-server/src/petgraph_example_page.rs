@@ -165,16 +165,7 @@ async fn get_materialized_supply_chain() -> Result<Option<(MaterializedSupplyCha
         .expect("collect_fleet_decision_facts");
 
     if let Some(materialized_supply_chain) = facts.materialized_supply_chain {
-        let goods_of_interest_in_order: Vec<TradeGoodSymbol> = vec![
-            TradeGoodSymbol::ADVANCED_CIRCUITRY,
-            TradeGoodSymbol::FAB_MATS,
-            TradeGoodSymbol::SHIP_PLATING,
-            TradeGoodSymbol::SHIP_PARTS,
-            TradeGoodSymbol::MICROPROCESSORS,
-            TradeGoodSymbol::CLOTHING,
-        ];
-
-        let scored_supply_chain_routes = calc_scored_supply_chain_routes(&materialized_supply_chain, goods_of_interest_in_order);
+        let scored_supply_chain_routes = calc_scored_supply_chain_routes(&materialized_supply_chain, materialized_supply_chain.goods_of_interest.clone());
         assert!(
             materialized_supply_chain
                 .raw_delivery_routes
@@ -243,12 +234,16 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                     <div>
                                                         {render_overview_of_trade_goods(&materialized_supply_chain)}
                                                     </div>
-                                                    <div>
-                                                        <SupplyChainGraph
-                                                            routes=materialized_supply_chain.all_routes.clone()
-                                                            label="Combined Supply Chain".to_string()
-                                                        />
-                                                    </div>
+                                                    // Looks like sugiyama doesn't render independent graphs (no common nodes)
+                                                    // disabling this for now and rendering the chains individually
+                                                    // <div class="flex flex-col gap-4">
+                                                    //     <SupplyChainGraph
+                                                    //         routes=materialized_supply_chain.all_routes.clone()
+                                                    //         label="Combined Supply Chain".to_string()
+                                                    //     />
+                                                    //     <pre>{serde_json::to_string(&materialized_supply_chain.all_routes).unwrap()}</pre>
+                                                    //
+                                                    // </div>
                                                     <div>
                                                         <h2 class="text-2xl font-bold my-4">
                                                             "Individual Supply Chains for goods of interest"
