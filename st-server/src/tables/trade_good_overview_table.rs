@@ -1,11 +1,13 @@
 use itertools::Itertools;
-use leptos::prelude::*;
-use leptos_struct_table::*;
+
 use serde::{Deserialize, Serialize};
 use st_domain::TradeGoodSymbol;
 
+// IMPORTANT: all these imports are required, dear copy-and-paster
 use crate::tables::renderers::*;
 use crate::tailwind::TailwindClassesPreset;
+use leptos::prelude::*;
+use leptos_struct_table::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug, TableRow)]
 #[table(impl_vec_data_provider, sortable, classes_provider = "TailwindClassesPreset")]

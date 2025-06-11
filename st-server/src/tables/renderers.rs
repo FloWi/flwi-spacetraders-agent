@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use leptos::prelude::*;
+use st_domain::budgeting::credits::Credits;
 use st_domain::{ActivityLevel, SupplyLevel, TradeGoodSymbol, TradeGoodType, WaypointSymbol};
 use thousands::Separable;
 
@@ -118,6 +119,14 @@ pub fn format_number(value: f64) -> String {
 pub fn PriceCellRenderer<F: 'static>(class: String, value: Signal<i32>, row: RwSignal<F>, index: usize) -> impl IntoView {
     view! {
         <td class=class>{move || format!("{}c", value.get_untracked().separate_with_commas())}</td>
+    }
+}
+
+// CreditCellRenderer
+#[component]
+pub fn CreditCellRenderer<F: 'static>(class: String, value: Signal<Credits>, row: RwSignal<F>, index: usize) -> impl IntoView {
+    view! {
+        <td class=class>{move || format!("{}c", value.get_untracked().0.separate_with_commas())}</td>
     }
 }
 
