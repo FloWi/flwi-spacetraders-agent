@@ -8,7 +8,7 @@ use leptos_use::use_interval_fn;
 use phosphor_leptos::{Icon, ATOM, BINOCULARS, BRIEFCASE, CLOCK, COMPASS_ROSE, GAS_PUMP, HAMMER, HOURGLASS, MONEY_WAVY, PACKAGE, ROCKET, SUITCASE, TRUCK};
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::treasury_redesign::{
-    compute_active_trades_from_ledger_entries, ActiveTrade, FinanceTicket, FinanceTicketDetails, FinanceTicketState, ImprovedTreasurer, LedgerEntry,
+    ActiveTrade, FinanceTicket, FinanceTicketDetails, FinanceTicketState, ImprovedTreasurer, LedgerEntry,
 };
 use st_domain::{Fleet, NavStatus, Ship, ShipSymbol, ShipTask, TicketId, TradeGoodSymbol};
 use std::collections::{HashMap, HashSet};
@@ -19,7 +19,7 @@ use thousands::Separable;
 pub struct ShipsOverview {
     grouped_ships: Vec<(Fleet, Vec<Ship>)>,
     ship_tasks: HashMap<ShipSymbol, ShipTask>,
-    active_trades: HashMap<ShipSymbol, Vec<ActiveTrade>>,
+    treasurer: ImprovedTreasurer,
     last_update: DateTime<Utc>,
 }
 
@@ -59,13 +59,14 @@ async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOvervie
         .await
         .expect("get_ledger_entries");
 
-    let active_trades: HashMap<ShipSymbol, Vec<ActiveTrade>> = compute_active_trades_from_ledger_entries(ledger_entries);
+    let treasurer = ImprovedTreasurer::from_ledger(ledger_entries).expect("treasurer");
 
     let fleets = bmc
         .fleet_bmc()
         .load_fleets(&Ctx::Anonymous)
         .await
         .expect("load_fleets");
+
     let ship_fleet_assignment = bmc
         .fleet_bmc()
         .load_ship_fleet_assignment(&Ctx::Anonymous)
@@ -100,7 +101,7 @@ async fn get_ships_overview(get_ships_mode: GetShipsMode) -> Result<ShipsOvervie
     Ok(ShipsOverview {
         grouped_ships,
         ship_tasks,
-        active_trades,
+        treasurer,
         last_update: Utc::now(),
     })
 }
@@ -337,12 +338,14 @@ pub fn FleetOverview<'a>(
     fleet: &'a Fleet,
     ships_of_fleet: &'a [Ship],
     ship_tasks: &'a HashMap<ShipSymbol, ShipTask>,
-    active_trades: &'a HashMap<ShipSymbol, Vec<ActiveTrade>>,
+    treasurer: ImprovedTreasurer,
 ) -> impl IntoView {
     let ships_with_tasks = ships_of_fleet
         .iter()
         .map(|ship| (ship.clone(), ship_tasks.get(&ship.symbol)))
         .collect_vec();
+
+    let active_trades = treasurer.compute_active_trades();
 
     view! {
         <div class="flex flex-col gap-4 p-4">
@@ -414,7 +417,7 @@ pub fn ShipOverviewPage() -> impl IntoView {
                                                             fleet
                                                             ships_of_fleet
                                                             ship_tasks=&ships_overview.ship_tasks
-                                                            active_trades=&ships_overview.active_trades
+                                                            treasurer=ships_overview.treasurer.clone()
                                                         />
                                                     }
                                                 })

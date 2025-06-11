@@ -2,7 +2,7 @@ use crate::{serialize_as_sorted_map, ContractId};
 use anyhow::anyhow;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::ops::Not;
 
@@ -619,90 +619,6 @@ where {
     }
 }
 
-pub fn compute_active_trades_from_ledger_entries(ledger_entries: Vec<LedgerEntry>) -> HashMap<ShipSymbol, Vec<ActiveTrade>> {
-    /*
-    Purchase of 60 units of LIQUID_HYDROGEN à 27c/unit at X1-DK73-C40 for a total of 1620c 0959a818-089d-407b-b35c-5bb0c5abbaa1
-    Purchase of 60 units of LIQUID_HYDROGEN à 27c/unit at X1-DK73-C40 for a total of 1620c (Open) 0959a818-089d-407b-b35c-5bb0c5abbaa1
-    Sell of 60 units of LIQUID_HYDROGEN à 1c/unit at X1-DK73-G49 for a total of 60c
-    */
-
-    let mut active_tickets: HashMap<TicketId, FinanceTicket> = HashMap::new();
-    let mut completed_tickets: HashMap<TicketId, FinanceTicket> = HashMap::new();
-    for entry in ledger_entries.iter() {
-        match entry {
-            LedgerEntry::TicketCreated { ticket_details, .. } => {
-                if completed_tickets
-                    .contains_key(&ticket_details.ticket_id)
-                    .not()
-                {
-                    active_tickets.insert(ticket_details.ticket_id.clone(), ticket_details.clone());
-                }
-            }
-            LedgerEntry::TicketCompleted {
-                fleet_id,
-                finance_ticket,
-                actual_units,
-                actual_price_per_unit,
-                total,
-            } => {
-                completed_tickets.insert(finance_ticket.ticket_id.clone(), finance_ticket.clone());
-                active_tickets.remove(&finance_ticket.ticket_id);
-            }
-            _ => {}
-        }
-    }
-
-    let get_ticket_with_state = |id: &TicketId| {
-        active_tickets
-            .get(id)
-            .map(|ticket| (ticket.clone(), FinanceTicketState::Open))
-            .or_else(|| {
-                completed_tickets
-                    .get(&id)
-                    .map(|ticket| (ticket.clone(), FinanceTicketState::Completed))
-            })
-    };
-
-    let mut active_trades: HashMap<ShipSymbol, Vec<ActiveTrade>> = HashMap::new();
-
-    for ticket in active_tickets.values() {
-        let maybe_matching_purchase_ticket = match &ticket.details {
-            FinanceTicketDetails::SupplyConstructionSite(d) => d
-                .maybe_matching_purchase_ticket
-                .and_then(|purchase_ticket_id| get_ticket_with_state(&purchase_ticket_id)),
-            FinanceTicketDetails::SellTradeGoods(d) => d
-                .maybe_matching_purchase_ticket
-                .and_then(|purchase_ticket_id| get_ticket_with_state(&purchase_ticket_id)),
-            FinanceTicketDetails::PurchaseTradeGoods(_) => None,
-            FinanceTicketDetails::PurchaseShip(_) => None,
-            FinanceTicketDetails::RefuelShip(_) => None,
-            FinanceTicketDetails::DeliverContractCargo(_) => None,
-        };
-
-        let is_trade_closing_ticket = match &ticket.details {
-            FinanceTicketDetails::SellTradeGoods(_) => true,
-            FinanceTicketDetails::SupplyConstructionSite(_) => true,
-            FinanceTicketDetails::PurchaseShip(_) => true,
-            FinanceTicketDetails::DeliverContractCargo(_) => true,
-            FinanceTicketDetails::RefuelShip(_) => true,
-            FinanceTicketDetails::PurchaseTradeGoods(_) => false,
-        };
-
-        // if we reach a purchase-ticket, we just ignore it.
-        // It will be added when we reach the sell/supplyConstructionSite ticket as a matching purchase ticket
-        if is_trade_closing_ticket {
-            let mut tickets_of_ship = active_trades.entry(ticket.ship_symbol.clone()).or_default();
-
-            tickets_of_ship.push(ActiveTrade {
-                maybe_purchase: maybe_matching_purchase_ticket,
-                delivery: ticket.clone(),
-            });
-        }
-    }
-
-    active_trades
-}
-
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ImprovedTreasurer {
     treasury_fund: Credits,
@@ -777,6 +693,55 @@ impl ImprovedTreasurer {
 
     pub fn current_treasury_fund(&self) -> Credits {
         self.treasury_fund
+    }
+
+    pub fn compute_active_trades(&self) -> HashMap<ShipSymbol, Vec<ActiveTrade>> {
+        let mut active_trades: HashMap<ShipSymbol, Vec<ActiveTrade>> = HashMap::new();
+        // println!(
+        //     "inside compute_active_trades()\nactive_tickets: {}",
+        //     serde_json::to_string(&self.active_tickets).unwrap()
+        // );
+
+        let all_referenced_matching_purchase_tickets = self
+            .active_tickets
+            .values()
+            .filter_map(|active_ticket| match &active_ticket.details {
+                FinanceTicketDetails::SellTradeGoods(d) => d.maybe_matching_purchase_ticket.clone(),
+                FinanceTicketDetails::SupplyConstructionSite(d) => d.maybe_matching_purchase_ticket.clone(),
+                FinanceTicketDetails::PurchaseTradeGoods(_) => None,
+                FinanceTicketDetails::PurchaseShip(_) => None,
+                FinanceTicketDetails::RefuelShip(_) => None,
+                FinanceTicketDetails::DeliverContractCargo(_) => None,
+            })
+            .collect::<HashSet<_>>();
+
+        for active_ticket in self.active_tickets.values() {
+            if all_referenced_matching_purchase_tickets.contains(&active_ticket.ticket_id) {
+                // if this ticket is referenced from another ticket, we don't include it here as an orphaned ticket
+                continue;
+            }
+            let maybe_matching_purchase_ticket_id = match &active_ticket.details {
+                FinanceTicketDetails::SellTradeGoods(d) => d.maybe_matching_purchase_ticket.clone(),
+                FinanceTicketDetails::SupplyConstructionSite(d) => d.maybe_matching_purchase_ticket.clone(),
+                FinanceTicketDetails::PurchaseTradeGoods(_) => None,
+                FinanceTicketDetails::PurchaseShip(_) => None,
+                FinanceTicketDetails::RefuelShip(_) => None,
+                FinanceTicketDetails::DeliverContractCargo(_) => None,
+            };
+
+            let maybe_matching_purchase_ticket = maybe_matching_purchase_ticket_id.and_then(|ticket_id| self.get_ticket_with_state(&ticket_id));
+
+            let active_trades_of_ship = active_trades
+                .entry(active_ticket.ship_symbol.clone())
+                .or_default();
+
+            active_trades_of_ship.push(ActiveTrade {
+                maybe_purchase: maybe_matching_purchase_ticket,
+                delivery: active_ticket.clone(),
+            });
+        }
+
+        active_trades
     }
 
     fn create_fleet(&mut self, fleet_id: &FleetId, total_capital: Credits) -> Result<()> {
@@ -1477,11 +1442,12 @@ mod tests {
     use crate::budgeting::test_sync_ledger::create_test_ledger_setup;
     use crate::budgeting::treasury_redesign::LedgerEntry::{ArchivedFleetBudget, TransferredFundsFromFleetToTreasury, TransferredFundsFromTreasuryToFleet};
     use crate::budgeting::treasury_redesign::{
-        compute_active_trades_from_ledger_entries, ActiveTradeRoute, FleetBudget, ImprovedTreasurer, LedgerEntry, PurchaseCargoReason, ThreadSafeTreasurer,
+        ActiveTrade, ActiveTradeRoute, FleetBudget, ImprovedTreasurer, LedgerEntry, PurchaseCargoReason, ThreadSafeTreasurer,
     };
     use crate::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
     use anyhow::Result;
     use itertools::Itertools;
+    use std::collections::HashMap;
 
     use tokio::test;
 
@@ -1492,8 +1458,9 @@ mod tests {
             "/fixtures/active_trades_from_ledger_entries_creates_duplicates.json"
         ));
 
-        let ledger_entries = serde_json::from_str::<Vec<LedgerEntry>>(json_str).unwrap();
-        let active_trades = compute_active_trades_from_ledger_entries(ledger_entries);
+        let ledger_entries = serde_json::from_str::<Vec<LedgerEntry>>(json_str)?;
+        let treasurer = ImprovedTreasurer::from_ledger(ledger_entries)?;
+        let active_trades: HashMap<ShipSymbol, Vec<ActiveTrade>> = treasurer.compute_active_trades();
 
         let trades_in_question = active_trades
             .get(&ShipSymbol("FLWI_2_TEST-1".to_string()))
@@ -1515,6 +1482,9 @@ mod tests {
             .collect_vec();
 
         let duplicates = ticket_ids.iter().duplicates().cloned().collect_vec();
+
+        println!("{}", serde_json::to_string(&trades_in_question)?);
+
         assert_eq!(duplicates, vec![]);
 
         Ok(())
