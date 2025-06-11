@@ -1,6 +1,6 @@
 use crate::{
     get_exploration_tasks_for_waypoint, Construction, Contract, CreateSurveyResponse, CreateSurveyResponseBody, ExplorationTask, Extraction, FleetId, JumpGate,
-    MarketData, MarketEntry, MaterializedSupplyChain, MiningOpsConfig, Shipyard, Survey, SystemSymbol, TravelAction, Waypoint, WaypointModifier,
+    MarketData, MarketEntry, MaterializedSupplyChain, MiningOpsConfig, Ship, Shipyard, Survey, SystemSymbol, TravelAction, Waypoint, WaypointModifier,
     WaypointSymbol,
 };
 use async_trait::async_trait;
@@ -17,6 +17,7 @@ pub trait BlackboardOps: Send + Sync {
         current_fuel: u32,
         fuel_capacity: u32,
     ) -> anyhow::Result<Vec<TravelAction>>;
+    async fn upsert_ship(&self, ship: &Ship) -> anyhow::Result<()>;
     async fn insert_waypoint(&self, waypoint: &Waypoint) -> anyhow::Result<()>;
     async fn insert_market(&self, market_data: MarketData) -> anyhow::Result<()>;
 

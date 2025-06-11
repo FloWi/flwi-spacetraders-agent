@@ -7,7 +7,7 @@ use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
     Construction, Contract, CreateSurveyResponse, Extraction, FleetId, JumpGate, LabelledCoordinate, MarketData, MarketEntry, MaterializedSupplyChain,
-    MiningOpsConfig, Shipyard, Survey, SystemSymbol, TravelAction, Waypoint, WaypointModifier, WaypointSymbol,
+    MiningOpsConfig, Ship, Shipyard, Survey, SystemSymbol, TravelAction, Waypoint, WaypointModifier, WaypointSymbol,
 };
 use st_store::bmc::Bmc;
 use st_store::Ctx;
@@ -63,6 +63,13 @@ impl BlackboardOps for BmcBlackboard {
             Some(path) => Ok(path),
             None => Err(anyhow!("No path found from {:?} to {:?}", from, to)),
         }
+    }
+
+    async fn upsert_ship(&self, ship: &Ship) -> anyhow::Result<()> {
+        self.bmc
+            .ship_bmc()
+            .upsert_ships(&Ctx::Anonymous, &vec![ship.clone()], Utc::now())
+            .await
     }
 
     async fn insert_waypoint(&self, waypoint: &Waypoint) -> anyhow::Result<()> {

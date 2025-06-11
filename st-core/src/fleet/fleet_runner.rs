@@ -520,11 +520,7 @@ impl FleetRunner {
         }
     }
 
-    pub async fn listen_to_ship_changes_and_persist(
-        ship_bmc: Arc<dyn ShipBmcTrait>,
-        fleet_admiral: Arc<Mutex<FleetAdmiral>>,
-        mut ship_updated_rx: Receiver<ShipOperations>,
-    ) -> Result<()> {
+    pub async fn listen_to_ship_changes_and_persist(fleet_admiral: Arc<Mutex<FleetAdmiral>>, mut ship_updated_rx: Receiver<ShipOperations>) -> Result<()> {
         while let Some(updated_ship) = ship_updated_rx.recv().await {
             let mut admiral = fleet_admiral.lock().await;
             let maybe_old_ship = admiral.all_ships.get(&updated_ship.symbol).cloned();
@@ -536,9 +532,6 @@ impl FleetRunner {
                 }
                 _ => {
                     //event!(Level::DEBUG, "Ship {} updated", updated_ship.symbol.0);
-                    ship_bmc
-                        .upsert_ships(&Ctx::Anonymous, &vec![updated_ship.ship.clone()], Utc::now())
-                        .await?;
                     admiral
                         .all_ships
                         .insert(updated_ship.symbol.clone(), updated_ship.ship);
@@ -1039,7 +1032,6 @@ impl FleetRunner {
         let ship_updated_listener_join_handle = tokio::spawn(async move {
             let result = tokio::select! {
                 r = Self::listen_to_ship_changes_and_persist(
-                    bmc_for_updated.ship_bmc(),
                     fleet_admiral_for_updated,
                     ship_updated_rx,
                 ) => r,

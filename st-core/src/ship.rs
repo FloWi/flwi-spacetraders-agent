@@ -47,24 +47,16 @@ impl ShipOperations {
         self.ship.nav.waypoint_symbol.clone()
     }
 
-    pub(crate) fn current_travel_action(&self) -> Option<&TravelAction> {
-        self.travel_action_queue.front()
+    pub(crate) fn current_travel_action(&self) -> Option<TravelAction> {
+        self.travel_action_queue.front().cloned()
     }
 
-    pub fn last_travel_action(&self) -> Option<&TravelAction> {
-        self.travel_action_queue.back()
-    }
-
-    pub(crate) fn set_nav(&mut self, new_nav: Nav) {
-        self.nav = new_nav;
+    pub fn last_travel_action(&self) -> Option<TravelAction> {
+        self.travel_action_queue.back().cloned()
     }
 
     pub(crate) fn set_contract(&mut self, contract: Contract) {
         self.maybe_contract = Some(contract);
-    }
-
-    pub(crate) fn set_fuel(&mut self, new_fuel: Fuel) {
-        self.fuel = new_fuel;
     }
 
     pub fn set_route(&mut self, new_route: Vec<TravelAction>) {
@@ -132,8 +124,9 @@ impl ShipOperations {
         self.permanent_observation_location = Some(waypoint_symbol);
     }
 
-    pub async fn dock(&mut self) -> Result<Nav> {
+    pub async fn perform_dock(&mut self) -> Result<Nav> {
         let response = self.client.dock_ship(self.ship.symbol.clone()).await?;
+        self.nav = response.data.nav.clone();
         Ok(response.data.nav)
     }
 
@@ -161,7 +154,7 @@ impl ShipOperations {
         Ok(response)
     }
 
-    pub async fn siphon_resources(&mut self) -> Result<SiphonResourcesResponse> {
+    pub async fn perform_siphon_resources(&mut self) -> Result<SiphonResourcesResponse> {
         let response = self
             .client
             .siphon_resources(self.ship.symbol.clone())
@@ -173,7 +166,7 @@ impl ShipOperations {
         Ok(response)
     }
 
-    pub(crate) async fn jettison_everything_not_on_list(&mut self, allow_list: HashSet<TradeGoodSymbol>) -> Result<Vec<JettisonCargoResponse>> {
+    pub(crate) async fn perform_jettison_everything_not_on_list(&mut self, allow_list: HashSet<TradeGoodSymbol>) -> Result<Vec<JettisonCargoResponse>> {
         let cargo_units_before = self.cargo.units;
 
         let items_to_jettison = self
@@ -191,7 +184,9 @@ impl ShipOperations {
         let mut responses = vec![];
 
         for item in items_to_jettison.iter() {
-            let response = self.jettison_cargo(&item.symbol, item.units).await?;
+            let response = self
+                .perform_jettison_cargo(&item.symbol, item.units)
+                .await?;
             responses.push(response);
         }
         let cargo_units_after = self.cargo.units;
@@ -220,7 +215,7 @@ impl ShipOperations {
         Ok(responses)
     }
 
-    pub async fn jettison_cargo(&mut self, trade_good_symbol: &TradeGoodSymbol, units: u32) -> Result<JettisonCargoResponse> {
+    pub async fn perform_jettison_cargo(&mut self, trade_good_symbol: &TradeGoodSymbol, units: u32) -> Result<JettisonCargoResponse> {
         let response = self
             .client
             .jettison_cargo(self.ship.symbol.clone(), trade_good_symbol.clone(), units)
@@ -231,7 +226,7 @@ impl ShipOperations {
         Ok(response)
     }
 
-    pub(crate) async fn get_market(&self) -> Result<MarketData> {
+    pub(crate) async fn perform_get_market(&self) -> Result<MarketData> {
         let response = self
             .client
             .get_marketplace(self.nav.waypoint_symbol.clone())
@@ -239,7 +234,7 @@ impl ShipOperations {
         Ok(response.data)
     }
 
-    pub(crate) async fn transfer_cargo(&mut self, to_ship_id: ShipSymbol, trade_symbol: TradeGoodSymbol, units: u32) -> Result<TransferCargoResponse> {
+    pub(crate) async fn perform_transfer_cargo(&mut self, to_ship_id: ShipSymbol, trade_symbol: TradeGoodSymbol, units: u32) -> Result<TransferCargoResponse> {
         let response = self
             .client
             .transfer_cargo(self.symbol.clone(), to_ship_id, trade_symbol, units)
@@ -249,7 +244,7 @@ impl ShipOperations {
         Ok(response)
     }
 
-    pub(crate) async fn get_jump_gate(&self) -> Result<JumpGate> {
+    pub(crate) async fn perform_get_jump_gate(&self) -> Result<JumpGate> {
         let response = self
             .client
             .get_jump_gate(self.nav.waypoint_symbol.clone())
@@ -257,7 +252,7 @@ impl ShipOperations {
         Ok(response.data)
     }
 
-    pub(crate) async fn get_shipyard(&self) -> Result<Shipyard> {
+    pub(crate) async fn perform_get_shipyard(&self) -> Result<Shipyard> {
         let response = self
             .client
             .get_shipyard(self.nav.waypoint_symbol.clone())
@@ -265,30 +260,36 @@ impl ShipOperations {
         Ok(response.data)
     }
 
-    pub(crate) async fn chart_waypoint(&self) -> Result<CreateChartBody> {
+    pub(crate) async fn perform_chart_waypoint(&self) -> Result<CreateChartBody> {
         let response = self.client.create_chart(self.symbol.clone()).await?;
         Ok(response.data)
     }
 
-    pub(crate) async fn set_flight_mode(&self, mode: &FlightMode) -> Result<NavAndFuelResponse> {
+    pub(crate) async fn perform_set_flight_mode(&mut self, mode: &FlightMode) -> Result<NavAndFuelResponse> {
         let response = self
             .client
             .set_flight_mode(self.ship.symbol.clone(), mode)
             .await?;
+
+        self.nav = response.data.nav.clone();
+        self.fuel = response.data.fuel.clone();
         Ok(response.data)
     }
 
-    pub async fn orbit(&mut self) -> Result<Nav> {
+    pub async fn perform_orbit(&mut self) -> Result<Nav> {
         let response = self.client.orbit_ship(self.ship.symbol.clone()).await?;
+        self.nav = response.data.nav.clone();
         Ok(response.data.nav)
     }
 
-    pub async fn navigate(&self, to: &WaypointSymbol) -> Result<NavAndFuelResponse> {
+    pub async fn perform_navigate(&mut self, to: &WaypointSymbol) -> Result<NavAndFuelResponse> {
         let response = self.client.navigate(self.ship.symbol.clone(), to).await?;
+        self.nav = response.data.nav.clone();
+        self.fuel = response.data.fuel.clone();
         Ok(response.data)
     }
 
-    pub(crate) async fn refuel(&mut self, from_cargo: bool) -> Result<RefuelShipResponse> {
+    pub(crate) async fn perform_refuel(&mut self, from_cargo: bool) -> Result<RefuelShipResponse> {
         let amount = self.fuel.capacity - self.fuel.current;
 
         let response = self
@@ -301,7 +302,7 @@ impl ShipOperations {
         Ok(response)
     }
 
-    pub async fn sell_trade_good(&mut self, quantity: u32, trade_good: TradeGoodSymbol) -> Result<SellTradeGoodResponse> {
+    pub async fn perform_sell_trade_good(&mut self, quantity: u32, trade_good: TradeGoodSymbol) -> Result<SellTradeGoodResponse> {
         let response = self
             .client
             .sell_trade_good(self.symbol.clone(), quantity, trade_good.clone())
@@ -311,7 +312,7 @@ impl ShipOperations {
         Ok(response)
     }
 
-    pub async fn purchase_trade_good(&mut self, quantity: u32, trade_good_symbol: TradeGoodSymbol) -> Result<PurchaseTradeGoodResponse> {
+    pub async fn perform_purchase_trade_good(&mut self, quantity: u32, trade_good_symbol: TradeGoodSymbol) -> Result<PurchaseTradeGoodResponse> {
         let response = self
             .client
             .purchase_trade_good(self.symbol.clone(), quantity, trade_good_symbol)
@@ -321,7 +322,7 @@ impl ShipOperations {
         Ok(response)
     }
 
-    pub async fn supply_construction_site(
+    pub async fn perform_supply_construction_site(
         &mut self,
         quantity: u32,
         trade_good: &TradeGoodSymbol,
@@ -336,7 +337,7 @@ impl ShipOperations {
         Ok(response)
     }
 
-    pub async fn deliver_cargo_to_contract(
+    pub async fn perform_deliver_cargo_to_contract(
         &mut self,
         contract_id: &ContractId,
         quantity: u32,
@@ -351,7 +352,7 @@ impl ShipOperations {
         Ok(response)
     }
 
-    pub async fn extract_resources(&mut self, maybe_survey: Option<Survey>) -> Result<ExtractResourcesResponse> {
+    pub async fn perform_extract_resources(&mut self, maybe_survey: Option<Survey>) -> Result<ExtractResourcesResponse> {
         let response = match maybe_survey {
             Some(survey) => {
                 self.client
@@ -362,11 +363,12 @@ impl ShipOperations {
         };
 
         self.cargo = response.data.cargo.clone();
+        self.cooldown = response.data.cooldown.clone();
 
         Ok(response)
     }
 
-    pub async fn purchase_ship(&self, ship_type: &ShipType, waypoint_symbol: &WaypointSymbol) -> Result<PurchaseShipResponse> {
+    pub async fn perform_purchase_ship(&self, ship_type: &ShipType, waypoint_symbol: &WaypointSymbol) -> Result<PurchaseShipResponse> {
         let response = self
             .client
             .purchase_ship(*ship_type, waypoint_symbol.clone())

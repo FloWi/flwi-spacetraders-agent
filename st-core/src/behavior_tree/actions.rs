@@ -158,7 +158,7 @@ impl Actionable for ShipAction {
                 if let Some(action) = state.current_travel_action() {
                     match action {
                         TravelAction::Navigate { mode, .. } => {
-                            let current_mode = &state.get_ship().nav.flight_mode;
+                            let current_mode = state.get_ship().nav.flight_mode.clone();
                             if current_mode == mode {
                                 Ok(Success)
                             } else {
@@ -176,7 +176,7 @@ impl Actionable for ShipAction {
                 Some(action) => {
                     let is_done = match action {
                         TravelAction::Navigate { to, .. } => {
-                            let is_arrived = state.nav.waypoint_symbol == *to && state.nav.status != NavStatus::InTransit;
+                            let is_arrived = state.nav.waypoint_symbol == to && state.nav.status != NavStatus::InTransit;
                             if !is_arrived {
                                 event!(Level::DEBUG, "MarkTravelActionAsCompleteIfPossible: ship has not arrived yet");
                             }
@@ -184,7 +184,7 @@ impl Actionable for ShipAction {
                         }
                         TravelAction::Refuel { at, .. } => {
                             let has_refueled =
-                                state.nav.waypoint_symbol == *at && state.nav.status != NavStatus::InTransit && state.fuel.current == state.fuel.capacity;
+                                state.nav.waypoint_symbol == at && state.nav.status != NavStatus::InTransit && state.fuel.current == state.fuel.capacity;
                             if !has_refueled {
                                 event!(Level::DEBUG, "MarkTravelActionAsCompleteIfPossible: ship has not refueled yet");
                             }
@@ -241,7 +241,9 @@ impl Actionable for ShipAction {
             ShipAction::Refuel => {
                 let ref response @ RefuelShipResponse {
                     data: RefuelShipResponseBody { fuel: ref new_fuel, .. },
-                } = state.refuel(false).await?;
+                } = state.perform_refuel(false).await?;
+
+                args.upsert_ship(&state.ship).await?;
 
                 args.treasurer
                     .report_expense(
@@ -267,24 +269,25 @@ impl Actionable for ShipAction {
             }
 
             ShipAction::Dock => {
-                let new_nav = state.dock().await?;
-                state.set_nav(new_nav);
+                state.perform_dock().await?;
+                args.upsert_ship(&state.ship).await?;
                 Ok(Success)
             }
 
             ShipAction::Orbit => {
-                let new_nav = state.orbit().await?;
-                state.set_nav(new_nav);
+                state.perform_orbit().await?;
+                args.upsert_ship(&state.ship).await?;
+
                 Ok(Success)
             }
 
             ShipAction::SetFlightMode => {
-                if let Some(action) = state.current_travel_action() {
+                if let Some(action) = state.current_travel_action().clone() {
                     match action {
                         TravelAction::Navigate { mode, .. } => {
-                            let response = state.set_flight_mode(mode).await?;
-                            state.set_nav(response.nav);
-                            state.set_fuel(response.fuel);
+                            state.perform_set_flight_mode(&mode).await?;
+                            args.upsert_ship(&state.ship).await?;
+
                             Ok(Success)
                         }
                         TravelAction::Refuel { .. } => Err(anyhow!("Failed - no travel mode on refuel action")),
@@ -297,9 +300,9 @@ impl Actionable for ShipAction {
                 if let Some(action) = state.current_travel_action() {
                     match action {
                         TravelAction::Navigate { to, .. } => {
-                            let nav_response = state.navigate(to).await?;
-                            state.set_nav(nav_response.nav.clone());
-                            state.set_fuel(nav_response.fuel.clone());
+                            state.perform_navigate(&to).await?;
+                            args.upsert_ship(&state.ship).await?;
+
                             Ok(Success)
                         }
                         TravelAction::Refuel { .. } => Err(anyhow!("Failed - can't navigate - current action is refuel action")),
@@ -429,7 +432,7 @@ impl Actionable for ShipAction {
 
                 let is_uncharted = exploration_tasks.contains(&ExplorationTask::CreateChart);
                 if is_uncharted {
-                    let charted_waypoint = state.chart_waypoint().await?;
+                    let charted_waypoint = state.perform_chart_waypoint().await?;
                     args.insert_waypoint(&charted_waypoint.waypoint)
                         .await
                         .map_err(|_| anyhow!("inserting waypoint failed"))?;
@@ -450,15 +453,15 @@ impl Actionable for ShipAction {
                     match task {
                         ExplorationTask::CreateChart => return Err(anyhow!("Waypoint should have been charted by now")),
                         ExplorationTask::GetMarket => {
-                            let market = state.get_market().await?;
+                            let market = state.perform_get_market().await?;
                             args.insert_market(market).await?;
                         }
                         ExplorationTask::GetJumpGate => {
-                            let jump_gate = state.get_jump_gate().await?;
+                            let jump_gate = state.perform_get_jump_gate().await?;
                             args.insert_jump_gate(jump_gate).await?;
                         }
                         ExplorationTask::GetShipyard => {
-                            let shipyard = state.get_shipyard().await?;
+                            let shipyard = state.perform_get_shipyard().await?;
                             args.insert_shipyard(shipyard).await?;
                         }
                     }
@@ -579,10 +582,10 @@ impl Actionable for ShipAction {
                         match &finance_ticket.details {
                             PurchaseTradeGoods(details) => {
                                 let response = state
-                                    .purchase_trade_good(details.quantity, details.trade_good.clone())
+                                    .perform_purchase_trade_good(details.quantity, details.trade_good.clone())
                                     .await?;
 
-                                state.cargo = response.data.cargo.clone();
+                                args.upsert_ship(&state.ship).await?;
 
                                 args.mark_purchase_as_completed(finance_ticket.clone(), &response)
                                     .await?;
@@ -601,10 +604,11 @@ impl Actionable for ShipAction {
                             }
                             SellTradeGoods(details) => {
                                 let response = state
-                                    .sell_trade_good(details.quantity, details.trade_good.clone())
+                                    .perform_sell_trade_good(details.quantity, details.trade_good.clone())
                                     .await?;
 
                                 state.cargo = response.data.cargo.clone();
+                                args.upsert_ship(&state.ship).await?;
 
                                 args.mark_sell_as_completed(finance_ticket.clone(), &response)
                                     .await?;
@@ -623,7 +627,7 @@ impl Actionable for ShipAction {
                             }
                             FinanceTicketDetails::PurchaseShip(details) => {
                                 let response = state
-                                    .purchase_ship(&details.ship_type, &details.waypoint_symbol)
+                                    .perform_purchase_ship(&details.ship_type, &details.waypoint_symbol)
                                     .await?;
 
                                 args.mark_ship_purchase_as_completed(finance_ticket.clone(), &response)
@@ -644,13 +648,13 @@ impl Actionable for ShipAction {
                             RefuelShip(_details) => {}
                             FinanceTicketDetails::SupplyConstructionSite(details) => {
                                 let response = state
-                                    .supply_construction_site(details.quantity, &details.trade_good, &details.waypoint_symbol)
+                                    .perform_supply_construction_site(details.quantity, &details.trade_good, &details.waypoint_symbol)
                                     .await?;
 
                                 args.mark_construction_delivery_as_completed(finance_ticket.clone(), &response)
                                     .await?;
 
-                                state.cargo = response.data.cargo.clone();
+                                args.upsert_ship(&state.ship).await?;
 
                                 args.blackboard
                                     .update_construction_site(&response.data.construction)
@@ -670,7 +674,7 @@ impl Actionable for ShipAction {
                             }
                             FinanceTicketDetails::DeliverContractCargo(details) => {
                                 let response = state
-                                    .deliver_cargo_to_contract(&details.contract_id, details.quantity, &details.trade_good)
+                                    .perform_deliver_cargo_to_contract(&details.contract_id, details.quantity, &details.trade_good)
                                     .await?;
 
                                 args.blackboard
@@ -681,6 +685,7 @@ impl Actionable for ShipAction {
                                     .await?;
 
                                 state.cargo = response.data.cargo;
+                                args.upsert_ship(&state.ship).await?;
                             }
                         }
                         completed_tickets.insert(finance_ticket.clone());
@@ -744,7 +749,8 @@ impl Actionable for ShipAction {
                 Ok(Success)
             }
             ShipAction::SiphonResources => {
-                state.siphon_resources().await?;
+                state.perform_siphon_resources().await?;
+                args.upsert_ship(&state.ship).await?;
 
                 Ok(Success)
             }
@@ -754,8 +760,9 @@ impl Actionable for ShipAction {
                     .get_siphoning_ops_config_for_system(state.nav.system_symbol.clone())
                 {
                     let _responses = state
-                        .jettison_everything_not_on_list(cfg.demanded_goods)
+                        .perform_jettison_everything_not_on_list(cfg.demanded_goods)
                         .await?;
+                    args.upsert_ship(&state.ship).await?;
                 }
 
                 Ok(Success)
@@ -869,7 +876,7 @@ impl Actionable for ShipAction {
                     .get_mining_ops_config_for_system(state.nav.system_symbol.clone())
                 {
                     let _responses = state
-                        .jettison_everything_not_on_list(cfg.demanded_goods)
+                        .perform_jettison_everything_not_on_list(cfg.demanded_goods)
                         .await?;
                 }
 
@@ -890,16 +897,17 @@ impl Actionable for ShipAction {
                             .get_best_survey_for_current_demand(&cfg, &msc)
                             .await?;
 
-                        match state.extract_resources(maybe_survey.clone()).await {
-                            Ok(result) => {
-                                state.cargo = result.data.cargo.clone();
-                                state.cooldown = result.data.cooldown.clone();
+                        match state.perform_extract_resources(maybe_survey.clone()).await {
+                            Ok(response) => {
+                                args.upsert_ship(&state.ship).await?;
+
                                 if let Some(survey) = maybe_survey.clone() {
                                     args.blackboard
-                                        .log_survey_usage(survey, result.data.extraction.clone())
+                                        .log_survey_usage(survey, response.data.extraction.clone())
                                         .await?;
                                 }
-                                if let Some(critical_limit_modifier) = result
+
+                                if let Some(critical_limit_modifier) = response
                                     .data
                                     .modifiers
                                     .unwrap_or_default()
@@ -940,6 +948,8 @@ impl Actionable for ShipAction {
             }
             ShipAction::Survey => {
                 let survey_response = state.perform_survey().await;
+                args.upsert_ship(&state.ship).await?;
+
                 match survey_response {
                     Ok(survey_response) => {
                         args.blackboard
@@ -1001,6 +1011,8 @@ impl Actionable for ShipAction {
                             transfer_tasks,
                         } => {
                             state.cargo = updated_miner_cargo;
+                            args.upsert_ship(&state.ship).await?;
+
                             println!(
                                 "Ship {} transferred cargo to haulers in {} transfers: {:?}",
                                 state.symbol,
@@ -1020,6 +1032,7 @@ impl Actionable for ShipAction {
                 let (tx, mut rx) = tokio::sync::mpsc::channel::<(ShipSymbol, Cargo)>(2);
 
                 let state_clone_for_intermediate_updates = state.clone();
+                let args_clone_for_intermediate_updates = args.clone();
 
                 tokio::spawn({
                     async move {
@@ -1030,6 +1043,11 @@ impl Actionable for ShipAction {
                                 message = "Hauler got notified about cargo transfer. Sending update to state_changed_tx",
                             );
                             state_clone_for_intermediate_updates.cargo = updated_cargo;
+                            args_clone_for_intermediate_updates
+                                .upsert_ship(&state_clone_for_intermediate_updates.ship)
+                                .await
+                                .expect("failed to upsert ship msg after cargo update of hauler");
+
                             state_changed_tx
                                 .send(state_clone_for_intermediate_updates.clone())
                                 .await
@@ -1044,13 +1062,15 @@ impl Actionable for ShipAction {
                     .await;
 
                 match hauler_wait_result {
-                    Ok(res) => {
-                        state.cargo = res.cargo.clone();
+                    Ok(response) => {
+                        state.cargo = response.cargo.clone();
+                        args.upsert_ship(&state.ship).await?;
+
                         event!(
                             Level::INFO,
                             message = "Hauler successfully received cargo",
-                            num_transfers = res.transfers.len(),
-                            total_wait_time = format!("{}s", res.total_wait_time().num_seconds())
+                            num_transfers = response.transfers.len(),
+                            total_wait_time = format!("{}s", response.total_wait_time().num_seconds())
                         );
 
                         Ok(Success)
@@ -1463,7 +1483,7 @@ mod tests {
         let ship = TestObjects::test_ship(500);
 
         let mut ship_ops = ShipOperations::new(ship, Arc::new(mock_client), FleetId(42));
-        let result = ship_ops.dock().await;
+        let result = ship_ops.perform_dock().await;
         assert!(result.is_ok());
     }
 
