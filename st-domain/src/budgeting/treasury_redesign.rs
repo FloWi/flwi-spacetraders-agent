@@ -1148,15 +1148,29 @@ impl ImprovedTreasurer {
     pub fn complete_ticket(&mut self, fleet_id: &FleetId, finance_ticket: &FinanceTicket, actual_price_per_unit: Credits) -> Result<()> {
         let quantity: u32 = finance_ticket.details.get_units();
 
+        let total = actual_price_per_unit * quantity * finance_ticket.details.signum();
+
         self.process_ledger_entry(TicketCompleted {
             fleet_id: fleet_id.clone(),
             finance_ticket: finance_ticket.clone(),
             actual_units: quantity,
             actual_price_per_unit,
-            total: actual_price_per_unit * quantity * finance_ticket.details.signum(),
+            total: total.clone(),
         })?;
 
-        self.transfer_excess_funds_from_fleet_to_treasury_if_necessary(fleet_id)?;
+        let is_expense = finance_ticket.details.signum() < 0;
+
+        if is_expense {
+            let has_spent_more_than_allocated = finance_ticket.allocated_credits < total.abs();
+            if has_spent_more_than_allocated {
+                let diff = total.abs() - finance_ticket.allocated_credits;
+                self.reimburse_expense(fleet_id, diff)?;
+            } else {
+                self.transfer_excess_funds_from_fleet_to_treasury_if_necessary(fleet_id)?;
+            }
+        } else {
+            self.transfer_excess_funds_from_fleet_to_treasury_if_necessary(fleet_id)?;
+        }
 
         Ok(())
     }
@@ -1331,8 +1345,8 @@ impl ImprovedTreasurer {
                     } else {
                         return Err(anyhow!(
                             "Insufficient funds for creating ticket {} for fleet #{}. available_capital: {}; allocated_credits: {}",
-                            fleet_id,
                             ticket_details.ticket_id,
+                            fleet_id,
                             budget.current_capital,
                             allocated_credits
                         ));
@@ -1461,14 +1475,13 @@ impl ImprovedTreasurer {
 mod tests {
     use crate::budgeting::credits::Credits;
     use crate::budgeting::test_sync_ledger::create_test_ledger_setup;
-    use crate::budgeting::treasury_redesign::LedgerEntry::{ArchivedFleetBudget, TransferredFundsFromFleetToTreasury};
+    use crate::budgeting::treasury_redesign::LedgerEntry::{ArchivedFleetBudget, TransferredFundsFromFleetToTreasury, TransferredFundsFromTreasuryToFleet};
     use crate::budgeting::treasury_redesign::{
-        compute_active_trades_from_ledger_entries, ActiveTradeRoute, FleetBudget, ImprovedTreasurer, LedgerEntry, ThreadSafeTreasurer,
+        compute_active_trades_from_ledger_entries, ActiveTradeRoute, FleetBudget, ImprovedTreasurer, LedgerEntry, PurchaseCargoReason, ThreadSafeTreasurer,
     };
     use crate::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
     use anyhow::Result;
     use itertools::Itertools;
-    use std::slice::Iter;
 
     use tokio::test;
 
@@ -1571,6 +1584,7 @@ mod tests {
                 ship_symbol.clone(),
                 40,
                 Credits(1_000.into()),
+                Some(PurchaseCargoReason::TradeProfitably),
             )
             .await?;
 
@@ -1951,7 +1965,15 @@ mod tests {
         let from_wps = WaypointSymbol("FROM".to_string());
         let to_wps = WaypointSymbol("TO".to_string());
         let completed_purchase_ticket_1 = treasurer
-            .create_purchase_trade_goods_ticket(fleet_id, trade_good.clone(), from_wps.clone(), ship_symbol.clone(), 40, Credits(1_000.into()))
+            .create_purchase_trade_goods_ticket(
+                fleet_id,
+                trade_good.clone(),
+                from_wps.clone(),
+                ship_symbol.clone(),
+                40,
+                Credits(1_000.into()),
+                Some(PurchaseCargoReason::TradeProfitably),
+            )
             .await?;
 
         treasurer
@@ -1959,7 +1981,15 @@ mod tests {
             .await?;
 
         let purchase_ticket_2 = treasurer
-            .create_purchase_trade_goods_ticket(fleet_id, trade_good.clone(), from_wps.clone(), ship_symbol.clone(), 40, Credits(1_000.into()))
+            .create_purchase_trade_goods_ticket(
+                fleet_id,
+                trade_good.clone(),
+                from_wps.clone(),
+                ship_symbol.clone(),
+                40,
+                Credits(1_000.into()),
+                Some(PurchaseCargoReason::TradeProfitably),
+            )
             .await?;
 
         let _sell_ticket_1 = treasurer
@@ -2240,6 +2270,7 @@ mod tests {
                 ship_symbol.clone(),
                 40,
                 Credits(1_000.into()),
+                Some(PurchaseCargoReason::TradeProfitably),
             )
             .await?;
 
@@ -2295,8 +2326,114 @@ mod tests {
     }
 
     #[test]
+    async fn test_purchasing_ship_for_more_money_than_allocated() -> Result<()> {
+        //treasurer should reimburse the overpaid credits immediately
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
+
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone()).await;
+
+        treasurer.create_fleet(&FleetId(1), Credits::new(0)).await?;
+
+        let market_observation_fleet_id = &FleetId(1);
+        let ship_symbol = &ShipSymbol("FLWI-1".to_string());
+
+        let ship_purchase_ticket = treasurer
+            .create_ship_purchase_ticket_financed_from_global_treasury(
+                market_observation_fleet_id,
+                ShipType::SHIP_PROBE,
+                25_000.into(),
+                WaypointSymbol("FROM".to_string()),
+                ship_symbol.clone(),
+            )
+            .await?;
+
+        assert_eq!(
+            treasurer
+                .get_fleet_budget(market_observation_fleet_id)
+                .await?
+                .current_capital,
+            Credits::new(25_000)
+        );
+
+        treasurer
+            .complete_ticket(market_observation_fleet_id, &ship_purchase_ticket, 26_000.into())
+            .await?;
+
+        assert_eq!(
+            treasurer
+                .get_fleet_budget(market_observation_fleet_id)
+                .await?
+                .current_capital,
+            Credits::new(0)
+        );
+
+        assert!(treasurer
+            .get_ledger_entries()
+            .await?
+            .contains(&TransferredFundsFromTreasuryToFleet {
+                fleet_id: market_observation_fleet_id.clone(),
+                credits: 1_000.into()
+            }));
+
+        Ok(())
+    }
+
+    #[test]
+    async fn test_purchasing_ship_for_less_money_than_allocated() -> Result<()> {
+        //treasurer should reimburse the overpaid credits immediately
+        let (test_archiver, task_sender) = create_test_ledger_setup().await;
+
+        let treasurer = ThreadSafeTreasurer::new(175_000.into(), task_sender.clone()).await;
+
+        treasurer.create_fleet(&FleetId(1), Credits::new(0)).await?;
+
+        let market_observation_fleet_id = &FleetId(1);
+        let ship_symbol = &ShipSymbol("FLWI-1".to_string());
+
+        let ship_purchase_ticket = treasurer
+            .create_ship_purchase_ticket_financed_from_global_treasury(
+                market_observation_fleet_id,
+                ShipType::SHIP_PROBE,
+                25_000.into(),
+                WaypointSymbol("FROM".to_string()),
+                ship_symbol.clone(),
+            )
+            .await?;
+
+        assert_eq!(
+            treasurer
+                .get_fleet_budget(market_observation_fleet_id)
+                .await?
+                .current_capital,
+            Credits::new(25_000)
+        );
+
+        treasurer
+            .complete_ticket(market_observation_fleet_id, &ship_purchase_ticket, 24_000.into())
+            .await?;
+
+        assert_eq!(
+            treasurer
+                .get_fleet_budget(market_observation_fleet_id)
+                .await?
+                .current_capital,
+            Credits::new(0)
+        );
+
+        assert!(treasurer
+            .get_ledger_entries()
+            .await?
+            .contains(&TransferredFundsFromFleetToTreasury {
+                fleet_id: market_observation_fleet_id.clone(),
+                credits: 1_000.into()
+            }));
+
+        Ok(())
+    }
+
+    #[test]
     async fn test_from_ledger_entries() -> Result<()> {
-        let ledger_entries_str = include_str!("treasurer_test_ledger_data.json");
+        let ledger_entries_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/treasurer_test_ledger_data.json"));
         let ledger_entries = serde_json::from_str::<Vec<LedgerEntry>>(&ledger_entries_str)?;
 
         let mut treasurer = ImprovedTreasurer::new();
@@ -2310,7 +2447,7 @@ mod tests {
             if before.is_some() || after.is_some() {
                 println!("\n========================================================================================");
                 println!("\nledger_entry: {}", serde_json::to_string(&entry)?);
-                println!("\nbefore: {}", serde_json::to_string(&before)?);
+                println!("\nbefore fleet budget: {}", serde_json::to_string(&before)?);
                 println!(
                     "before_available_capital: {}",
                     before
@@ -2318,7 +2455,7 @@ mod tests {
                         .unwrap_or("---".to_string())
                 );
 
-                println!("\nafter: {}", serde_json::to_string(&after)?);
+                println!("\nafter fleet budget: {}", serde_json::to_string(&after)?);
                 println!(
                     "after_available_capital: {}",
                     after
@@ -2333,7 +2470,10 @@ mod tests {
 
     #[test]
     async fn test_2_from_ledger_entries() -> Result<()> {
-        let ledger_entries_str = include_str!("treasurer_test_ledger_data_failed_completion_of_ship_purchase_after_restart_of_treasurer.json");
+        let ledger_entries_str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fixtures/treasurer_test_ledger_data_failed_completion_of_ship_purchase_after_restart_of_treasurer.json"
+        ));
         let ledger_entries = serde_json::from_str::<Vec<LedgerEntry>>(&ledger_entries_str)?;
 
         let mut treasurer = ImprovedTreasurer::new();
@@ -2347,7 +2487,7 @@ mod tests {
             if before.is_some() || after.is_some() {
                 println!("\n========================================================================================");
                 println!("\nledger_entry: {}", serde_json::to_string(&entry)?);
-                println!("\nbefore: {}", serde_json::to_string(&before)?);
+                println!("\nbefore fleet budget: {}", serde_json::to_string(&before)?);
                 println!(
                     "before_available_capital: {}",
                     before
@@ -2355,7 +2495,7 @@ mod tests {
                         .unwrap_or("---".to_string())
                 );
 
-                println!("\nafter: {}", serde_json::to_string(&after)?);
+                println!("\nafter fleet budget: {}", serde_json::to_string(&after)?);
                 println!(
                     "after_available_capital: {}",
                     after
