@@ -1297,7 +1297,7 @@ impl ImprovedTreasurer {
     /// This is a "stupid" function that just processes the ledger entry.
     /// e.g. no transfer of excess funds after selling trade goods with a profit to keep available capital below total capital.
     /// This will be done by subsequent calls with new ledger entries.
-    /// So don't do recursive calls here - we want ot keep replayability    
+    /// So don't do recursive calls here - we want ot keep replayability
     pub fn process_ledger_entry(&mut self, ledger_entry: LedgerEntry) -> Result<()> {
         let entry = ledger_entry.clone();
         match entry {
@@ -2483,6 +2483,50 @@ mod tests {
             let before = treasurer.fleet_budgets.get(&construction_fleet_id).cloned();
             treasurer.process_ledger_entry(entry.clone())?;
             let after = treasurer.fleet_budgets.get(&construction_fleet_id).cloned();
+
+            if before.is_some() || after.is_some() {
+                println!("\n========================================================================================");
+                println!("\nledger_entry: {}", serde_json::to_string(&entry)?);
+                println!("\nbefore fleet budget: {}", serde_json::to_string(&before)?);
+                println!(
+                    "before_available_capital: {}",
+                    before
+                        .map(|b| b.available_capital().to_string())
+                        .unwrap_or("---".to_string())
+                );
+
+                println!("\nafter fleet budget: {}", serde_json::to_string(&after)?);
+                println!(
+                    "after_available_capital: {}",
+                    after
+                        .map(|b| b.available_capital().to_string())
+                        .unwrap_or("---".to_string())
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    async fn test_3_from_ledger_entries() -> Result<()> {
+        let ledger_entries_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/latest_ledger_entries_for_testing.json"));
+
+        let ledger_entries = serde_json::from_str::<Vec<LedgerEntry>>(&ledger_entries_str)?;
+
+        let mut treasurer = ImprovedTreasurer::new();
+
+        let market_observation_fleet = FleetId(1);
+        for entry in ledger_entries {
+            let before = treasurer
+                .fleet_budgets
+                .get(&market_observation_fleet)
+                .cloned();
+            treasurer.process_ledger_entry(entry.clone())?;
+            let after = treasurer
+                .fleet_budgets
+                .get(&market_observation_fleet)
+                .cloned();
 
             if before.is_some() || after.is_some() {
                 println!("\n========================================================================================");
