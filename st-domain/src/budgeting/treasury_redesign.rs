@@ -194,6 +194,20 @@ pub enum Income {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TreasurerArchiveEntry {
+    from_ledger_id: u64,
+    to_ledger_id: u64,
+    entry: ImprovedTreasurer,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LedgerArchiveEntry {
+    id: u64,
+    entry: LedgerEntry,
+    created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum LedgerEntry {
     TreasuryCreated {
         credits: Credits,
@@ -277,6 +291,7 @@ use crate::budgeting::credits::Credits;
 use crate::budgeting::treasury_redesign::LedgerEntry::*;
 use crate::{FleetId, ShipSymbol, ShipType, TicketId, TradeGoodSymbol, WaypointSymbol};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use std::sync::Arc;
 use strum::Display;
@@ -624,6 +639,7 @@ pub struct ImprovedTreasurer {
     treasury_fund: Credits,
 
     // we keep it around for testing and debugging - can be removed at one point
+    #[serde(skip)]
     ledger_entries: VecDeque<LedgerEntry>,
 
     #[serde(serialize_with = "serialize_as_sorted_map")]
@@ -1442,7 +1458,8 @@ mod tests {
     use crate::budgeting::test_sync_ledger::create_test_ledger_setup;
     use crate::budgeting::treasury_redesign::LedgerEntry::{ArchivedFleetBudget, TransferredFundsFromFleetToTreasury, TransferredFundsFromTreasuryToFleet};
     use crate::budgeting::treasury_redesign::{
-        ActiveTrade, ActiveTradeRoute, FleetBudget, ImprovedTreasurer, LedgerEntry, PurchaseCargoReason, ThreadSafeTreasurer,
+        load_from_ledger_archive_entries, ActiveTrade, ActiveTradeRoute, FleetBudget, ImprovedTreasurer, LedgerArchiveEntry, LedgerEntry, PurchaseCargoReason,
+        ThreadSafeTreasurer,
     };
     use crate::{FleetId, ShipSymbol, ShipType, TradeGoodSymbol, WaypointSymbol};
     use anyhow::Result;
@@ -2521,4 +2538,80 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    async fn test_archiving_treasurers_from_series_of_ledger_entries_should_yield_same_result() -> Result<()> {
+        let ledger_archive_entries_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/ledger_entry_export/export.json"));
+
+        let ledger_archive_entries = serde_json::from_str::<Vec<LedgerArchiveEntry>>(&ledger_archive_entries_str)?;
+        let ledger_entries = ledger_archive_entries
+            .iter()
+            .map(|a| a.entry.clone())
+            .collect_vec();
+        let expected_num_chunks = ledger_entries.len().div_ceil(100);
+        let actual_chunks = load_from_ledger_archive_entries(None, ledger_archive_entries, 100)?;
+
+        assert_eq!(expected_num_chunks, actual_chunks.len());
+
+        let actual_final_treasurer_from_chunks = actual_chunks.last().unwrap().clone().entry;
+
+        let treasurer_from_whole_ledger = ImprovedTreasurer::from_ledger(ledger_entries)?;
+
+        assert_eq!(actual_final_treasurer_from_chunks, treasurer_from_whole_ledger);
+
+        Ok(())
+    }
+}
+
+fn load_from_ledger_archive_entries(
+    latest_treasurer: Option<TreasurerArchiveEntry>,
+    ledger_archive_entries: Vec<LedgerArchiveEntry>,
+    chunk_size: usize,
+) -> Result<Vec<TreasurerArchiveEntry>> {
+    let from_id = latest_treasurer
+        .clone()
+        .map(|t| t.to_ledger_id + 1)
+        .unwrap_or_default();
+
+    let mut treasurer_archive_entries: Vec<TreasurerArchiveEntry> = latest_treasurer.iter().cloned().collect_vec();
+
+    for chunk in &ledger_archive_entries
+        .into_iter()
+        .skip_while(|archive_entry| archive_entry.id < from_id)
+        .chunks(chunk_size)
+    {
+        if let Some(current) = treasurer_archive_entries.last() {
+            let mut first = None;
+            let mut last = None;
+            let mut new_treasurer = current.entry.clone();
+            for ledger_entry in chunk {
+                if first.is_none() {
+                    first = Some(ledger_entry.clone());
+                }
+                new_treasurer.process_ledger_entry(ledger_entry.entry.clone())?;
+                last = Some(ledger_entry);
+            }
+
+            treasurer_archive_entries.push(TreasurerArchiveEntry {
+                from_ledger_id: first.unwrap().id,
+                to_ledger_id: last.unwrap().id,
+                entry: new_treasurer,
+            })
+        } else {
+            // no treasurer yet - we start a new one
+            let serialized_chunk = chunk.collect_vec();
+            let first = serialized_chunk.first().cloned().unwrap();
+            let last = serialized_chunk.last().cloned().unwrap();
+            let ledger_entries_of_chunk = serialized_chunk.into_iter().map(|x| x.entry).collect_vec();
+            let new_treasurer = ImprovedTreasurer::from_ledger(ledger_entries_of_chunk)?;
+
+            treasurer_archive_entries.push(TreasurerArchiveEntry {
+                from_ledger_id: first.id,
+                to_ledger_id: last.id,
+                entry: new_treasurer,
+            })
+        }
+    }
+
+    Ok(treasurer_archive_entries)
 }
