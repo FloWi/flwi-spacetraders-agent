@@ -81,6 +81,14 @@ pub async fn prepare_database_schema(api_status: &StStatusResponse, connection_s
                 rename_schema(&pg_connection_pool, "public", archive_schema_name).await?;
                 create_schema(&pg_connection_pool, "public").await?;
                 perform_migration(&pg_connection_pool).await?;
+                insert_status(
+                    &pg_connection_pool,
+                    DbStatus {
+                        reset_date: api_status.reset_date.clone(),
+                        entry: Json(api_status.clone()),
+                    },
+                )
+                    .await?;
 
                 Ok(pg_connection_pool)
             }
