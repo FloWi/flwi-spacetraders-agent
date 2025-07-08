@@ -111,5 +111,5 @@ fn get_closest_waypoint<'a>(
         .filter(|(wps, _)| filter_list.contains(wps))
         .map(|(_, wp)| (wp, wp.distance_to(own_location)))
         .min_by_key(|(_wp, distance)| *distance)
-        .map(|(wp, _)| wp.clone())
+        .map(|(&wp, _)| wp)
 }

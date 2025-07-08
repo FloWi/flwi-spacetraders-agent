@@ -3,8 +3,7 @@ use itertools::Itertools;
 use metrics::IntoF64;
 use st_domain::cargo_transfer::TransferCargoError::{ReceiveShipDoesntExist, SendingUpdateMessageFailed};
 use st_domain::cargo_transfer::{
-    HaulerTransferSummary, InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoToHaulerResult,
-    TransferCargoError,
+    HaulerTransferSummary, InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoToHaulerResult, TransferCargoError,
 };
 use st_domain::{Cargo, Inventory, ShipSymbol, WaypointSymbol};
 use std::collections::{HashMap, HashSet};
@@ -158,7 +157,7 @@ fn find_transfer_task(
         .max_by_key(|(_, _, _, total_score)| total_score)
         .cloned();
 
-    maybe_best_hauler.map(|(ss, cargo, _, _)| InternalTransferCargoRequest {
+    maybe_best_hauler.map(|(ss, _, _, _)| InternalTransferCargoRequest {
         sending_ship,
         receiving_ship: ss.clone(),
         trade_good_symbol: cargo_item_to_transfer.symbol.clone(),
@@ -179,7 +178,8 @@ fn find_transfer_tasks(
             if let Some((summary, _sender)) = hauler_cargos.get_mut(&task.receiving_ship) {
                 if let Ok(()) = summary
                     .cargo
-                    .with_item_added_mut(task.trade_good_symbol.clone(), task.units) {
+                    .with_item_added_mut(task.trade_good_symbol.clone(), task.units)
+                {
                     tasks.push(task);
                 }
             }

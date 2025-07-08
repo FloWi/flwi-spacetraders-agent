@@ -1,9 +1,8 @@
 use crate::{calculate_fuel_consumption, calculate_time};
-use futures::StreamExt;
 use itertools::Itertools;
 use pathfinding::prelude::astar;
 use serde::{Deserialize, Serialize};
-use st_domain::{distance_to, FlightMode, LabelledCoordinate, TradeGoodSymbol, TravelAction};
+use st_domain::{distance_to, FlightMode, TradeGoodSymbol, TravelAction};
 use st_domain::{MarketData, Waypoint, WaypointSymbol};
 
 pub fn all_trade_goods(market_data: &MarketData) -> Vec<TradeGoodSymbol> {

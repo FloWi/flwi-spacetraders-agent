@@ -1,6 +1,5 @@
 use crate::{calc_batches_based_on_volume_constraint, get_closest_waypoint};
 use anyhow::{anyhow, Result};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::{
@@ -8,14 +7,14 @@ use st_domain::budgeting::treasury_redesign::{
 };
 use st_domain::trading::group_markets_by_type;
 use st_domain::{
-    combine_maps, trading, Cargo, Contract, ContractEvaluationResult, MarketEntry, MarketTradeGood,
-    TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol,
+    combine_maps, trading, Cargo, Contract, ContractEvaluationResult, MarketEntry, MarketTradeGood, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug)]
 pub struct ContractManager {
+    #[allow(dead_code)]
     contract: Arc<Mutex<Option<Contract>>>,
 }
 
@@ -229,8 +228,8 @@ pub(crate) fn create_sell_tickets_for_cargo_items(
 mod tests {
     use super::*;
     use crate::universe_server::universe_server::InMemoryUniverse;
-    use itertools::assert_equal;
-    use st_domain::{ActivityLevel, ContractId, ContractTerms, Delivery, MarketData, Payment, SupplyLevel, TradeGood, WaypointType};
+    use itertools::Itertools;
+    use st_domain::{ContractId, ContractTerms, Delivery, Inventory, Payment, WaypointType};
 
     #[test]
     fn test_calculate_necessary_tickets_for_contract_should_create_sell_cargo_tickets() {

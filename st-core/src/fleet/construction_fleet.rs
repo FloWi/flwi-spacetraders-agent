@@ -275,10 +275,10 @@ fn create_tasks_for_ships_with_cargo(
 ) -> HashMap<ShipSymbol, Vec<CargoDeliveryAction>> {
     ships_with_cargo
         .iter()
-        .map(|ship| {
+        .map(|&ship| {
             (
                 ship.symbol.clone(),
-                create_delivery_tasks_for_ship_with_cargo(ship.clone(), latest_market_entries, waypoint_map, maybe_construction_site),
+                create_delivery_tasks_for_ship_with_cargo(ship, latest_market_entries, waypoint_map, maybe_construction_site),
             )
         })
         .collect()
@@ -603,17 +603,21 @@ fn find_best_combination(
         .chain(already_assigned_ships)
         .collect();
 
-    if let Some(_) = result.iter().find_map(|(ss, action)| {
-        if let Some(ship) = ships.iter().find(|ship| ship.symbol == *ss) {
-            if action.units() > ship.cargo.capacity as u32 {
-                Some((ship, action.clone()))
+    if result
+        .iter()
+        .find_map(|(ss, action)| {
+            if let Some(ship) = ships.iter().find(|ship| ship.symbol == *ss) {
+                if action.units() > ship.cargo.capacity as u32 {
+                    Some((ship, action.clone()))
+                } else {
+                    None
+                }
             } else {
                 None
             }
-        } else {
-            None
-        }
-    }) {
+        })
+        .is_some()
+    {
         println!("cargo doesn't fit");
     }
 
@@ -963,7 +967,7 @@ mod tests {
     use super::*;
     use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
     use st_domain::budgeting::test_sync_ledger::create_test_ledger_setup;
-    use st_domain::budgeting::treasury_redesign::ImprovedTreasurer;
+    use st_domain::budgeting::treasury_redesign::{ImprovedTreasurer, ThreadSafeTreasurer};
     use tokio::test;
 
     #[test]

@@ -3,7 +3,7 @@ use std::future::Future;
 
 use anyhow::Result;
 use chrono::{DateTime, Local, Utc};
-use futures::future::{self, TryFutureExt};
+use futures::future;
 use serde::Deserialize;
 use st_domain::Meta;
 use tracing::log::trace;

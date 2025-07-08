@@ -28,7 +28,7 @@ impl SystemSpawningFleet {
         let _enter = ship_span.enter();
 
         let result: Option<ShipTaskCompletionAnalysis> = match ship_task {
-            ShipTask::ObserveAllWaypointsOnce { waypoint_symbols } => {
+            ShipTask::ObserveAllWaypointsOnce { .. } => {
                 let marketplaces_to_explore = diff_waypoint_symbols(&cfg.marketplace_waypoints_of_interest, &facts.marketplaces_with_up_to_date_infos);
                 let shipyards_to_explore = diff_waypoint_symbols(&cfg.shipyard_waypoints_of_interest, &facts.shipyards_with_up_to_date_infos);
 
@@ -103,9 +103,9 @@ impl SystemSpawningFleet {
     }
 
     pub fn compute_ship_tasks(
-        admiral: &FleetAdmiral,
+        _admiral: &FleetAdmiral,
         cfg: &SystemSpawningFleetConfig,
-        fleet: &Fleet,
+        _fleet: &Fleet,
         facts: &FleetDecisionFacts,
         ships: &[&Ship],
     ) -> Result<HashMap<ShipSymbol, ShipTask>> {

@@ -199,7 +199,7 @@ impl Actionable for ShipAction {
             ShipAction::CanSkipRefueling => match state.current_travel_action() {
                 None => Err(anyhow!("Called CanSkipRefueling, but current action is None",)),
                 Some(TravelAction::Navigate { .. }) => Err(anyhow!("Called CanSkipRefueling, but current action is Navigate",)),
-                Some(TravelAction::Refuel { at, .. }) => {
+                Some(TravelAction::Refuel { .. }) => {
                     // we can skip refueling, if
                     // - queued_action #1 is: go_to_waypoint X
                     // - queued_action #2 is: refuel_at_waypoint X
@@ -237,7 +237,7 @@ impl Actionable for ShipAction {
 
             ShipAction::Refuel => {
                 let ref response @ RefuelShipResponse {
-                    data: RefuelShipResponseBody { fuel: ref new_fuel, .. },
+                    data: RefuelShipResponseBody { .. },
                 } = state.perform_refuel(false).await?;
 
                 args.upsert_ship(&state.ship).await?;
@@ -433,10 +433,6 @@ impl Actionable for ShipAction {
                     args.insert_waypoint(&charted_waypoint.waypoint)
                         .await
                         .map_err(|_| anyhow!("inserting waypoint failed"))?;
-                }
-
-                if state.symbol.0.ends_with("-1").not() {
-                    let foo = 1 + 41; // just for the breakpoint
                 }
 
                 let exploration_tasks = if is_uncharted {
@@ -686,11 +682,6 @@ impl Actionable for ShipAction {
                             }
                         }
                         completed_tickets.insert(finance_ticket.clone());
-                        let still_open_tickets = finance_tickets
-                            .iter()
-                            .filter(|t| completed_tickets.contains(t).not())
-                            .cloned()
-                            .collect_vec();
                     }
 
                     Ok(Success)

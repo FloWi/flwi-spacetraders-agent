@@ -1183,7 +1183,7 @@ Fleet Budgets after rebalancing
                                     None
                                 };
 
-                                if let Some(_) = maybe_purchase_ticket.zip(maybe_sell_ticket) {
+                                if maybe_purchase_ticket.zip(maybe_sell_ticket).is_some() {
                                     new_construction_fleet_tasks.insert(potential_construction_task.ship_symbol.clone(), ShipTask::Trade);
                                 }
                             }

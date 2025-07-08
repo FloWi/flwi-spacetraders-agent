@@ -1,24 +1,19 @@
-use st_store::{
-    db, upsert_systems_from_receiver,
-    upsert_waypoints_from_receiver, DbSystemCoordinateData,
-};
+use st_store::{db, upsert_systems_from_receiver, upsert_waypoints_from_receiver, DbSystemCoordinateData};
 
 use anyhow::Result;
 use chrono::{Local, Utc};
-use futures::StreamExt;
 use itertools::Itertools;
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tracing::{event, Level};
-use tracing_subscriber::prelude::*;
 
 use crate::fleet::fleet::FleetAdmiral;
 use crate::format_time_delta_hh_mm_ss;
 use crate::pagination::{fetch_all_pages_into_queue, PaginationInput};
 use crate::st_client::{StClient, StClientTrait};
 use crate::transfer_cargo_manager::TransferCargoManager;
-use st_domain::{LabelledCoordinate, StStatusResponse, SystemSymbol, WaypointSymbol};
+use st_domain::{StStatusResponse, SystemSymbol, WaypointSymbol};
 use st_store::bmc::Bmc;
 
 pub async fn run_agent(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>, transfer_cargo_manager: Arc<TransferCargoManager>) -> Result<()> {
@@ -49,6 +44,7 @@ pub async fn run_agent(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>, transf
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn load_home_system_and_waypoints_if_necessary(client: &StClient, pool: &Pool<Postgres>, headquarters_system_symbol: &SystemSymbol) -> Result<()> {
     let maybe_home_system = db::select_system(pool, headquarters_system_symbol).await?;
 
@@ -73,6 +69,7 @@ async fn load_home_system_and_waypoints_if_necessary(client: &StClient, pool: &P
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn load_systems_and_waypoints_if_necessary(
     status: StStatusResponse,
     authenticated_client: &dyn StClientTrait,
@@ -129,6 +126,7 @@ async fn load_systems_and_waypoints_if_necessary(
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn collect_all_systems(client: &dyn StClientTrait, pool: &Pool<Postgres>) -> Result<()> {
     let (tx, rx) = mpsc::channel(100); // Buffer up to 100 pages
 
@@ -138,6 +136,7 @@ async fn collect_all_systems(client: &dyn StClientTrait, pool: &Pool<Postgres>) 
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn collect_marketplaces(client: &StClient, marketplace_waypoint_symbols: &[WaypointSymbol], pool: &Pool<Postgres>) -> Result<()> {
     event!(
         Level::INFO,
@@ -152,6 +151,7 @@ async fn collect_marketplaces(client: &StClient, marketplace_waypoint_symbols: &
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn collect_shipyards(client: &StClient, shipyard_waypoint_symbols: &[WaypointSymbol], pool: &Pool<Postgres>) -> Result<()> {
     event!(
         Level::INFO,
@@ -166,6 +166,7 @@ async fn collect_shipyards(client: &StClient, shipyard_waypoint_symbols: &[Waypo
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn collect_waypoints_for_systems(
     client: &dyn StClientTrait,
     systems: &[DbSystemCoordinateData],
@@ -220,6 +221,7 @@ async fn collect_waypoints_for_systems(
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn collect_waypoints_of_system(client: &dyn StClientTrait, pool: &Pool<Postgres>, system_symbol: SystemSymbol) -> Result<()> {
     let (tx, rx) = mpsc::channel(100); // Buffer up to 100 pages
 

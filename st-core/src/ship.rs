@@ -5,10 +5,9 @@ use itertools::Itertools;
 use serde::Serialize;
 use st_domain::{
     AcceptContractResponse, Contract, ContractId, CreateChartBody, CreateSurveyResponse, DeliverCargoToContractResponse, ExtractResourcesResponse, FleetId,
-    FlightMode, FulfillContractResponse, JettisonCargoResponse, JumpGate, MarketData, Nav, NavAndFuelResponse,
-    NegotiateContractResponse, PurchaseShipResponse, PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipSymbol,
-    ShipType, Shipyard, SiphonResourcesResponse, SupplyConstructionSiteResponse, Survey, TradeGoodSymbol, TransferCargoResponse,
-    TravelAction, WaypointSymbol,
+    FlightMode, FulfillContractResponse, JettisonCargoResponse, JumpGate, MarketData, Nav, NavAndFuelResponse, NegotiateContractResponse, PurchaseShipResponse,
+    PurchaseTradeGoodResponse, RefuelShipResponse, SellTradeGoodResponse, Ship, ShipType, Shipyard, SiphonResourcesResponse, SupplyConstructionSiteResponse,
+    Survey, TradeGoodSymbol, TravelAction, WaypointSymbol,
 };
 use std::collections::{HashSet, VecDeque};
 use std::ops::{Deref, DerefMut, Not};
@@ -231,16 +230,6 @@ impl ShipOperations {
             .get_marketplace(self.nav.waypoint_symbol.clone())
             .await?;
         Ok(response.data)
-    }
-
-    pub(crate) async fn perform_transfer_cargo(&mut self, to_ship_id: ShipSymbol, trade_symbol: TradeGoodSymbol, units: u32) -> Result<TransferCargoResponse> {
-        let response = self
-            .client
-            .transfer_cargo(self.symbol.clone(), to_ship_id, trade_symbol, units)
-            .await?;
-
-        self.cargo = response.data.cargo.clone();
-        Ok(response)
     }
 
     pub(crate) async fn perform_get_jump_gate(&self) -> Result<JumpGate> {

@@ -65,7 +65,6 @@ impl Middleware for ResetDetectionMiddleware {
         // Check for reset conditions in the response
         if let Ok(resp) = &response {
             let status_code = resp.status();
-            let status_code_u16 = status_code.as_u16();
 
             if status_code == StatusCode::UNAUTHORIZED {
                 // 401

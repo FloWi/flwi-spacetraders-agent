@@ -864,11 +864,11 @@ pub struct TotalExtractionYield {
 
 #[async_trait]
 impl StClientTrait for InMemoryUniverseClient {
-    async fn register(&self, registration_request: RegistrationRequest) -> anyhow::Result<Data<RegistrationResponse>> {
+    async fn register(&self, _registration_request: RegistrationRequest) -> anyhow::Result<Data<RegistrationResponse>> {
         todo!()
     }
 
-    async fn get_public_agent(&self, agent_symbol: &AgentSymbol) -> anyhow::Result<AgentResponse> {
+    async fn get_public_agent(&self, _agent_symbol: &AgentSymbol) -> anyhow::Result<AgentResponse> {
         todo!()
     }
 
@@ -1140,7 +1140,7 @@ impl StClientTrait for InMemoryUniverseClient {
             Ok(res) => {
                 let transaction = match res {
                     RefuelTaskAnalysisSuccess::CanRefuelFromMarket {
-                        barrels,
+                        barrels: _barrels,
                         fuel_units,
                         transaction,
                     } => {
@@ -1149,7 +1149,7 @@ impl StClientTrait for InMemoryUniverseClient {
                         transaction
                     }
                     RefuelTaskAnalysisSuccess::CanRefuelFromCargo {
-                        barrels,
+                        barrels: _barrels,
                         fuel_units,
                         new_cargo,
                         empty_transaction,
@@ -1373,7 +1373,7 @@ impl StClientTrait for InMemoryUniverseClient {
         Ok(resp)
     }
 
-    async fn get_ship(&self, ship_symbol: ShipSymbol) -> anyhow::Result<Data<Ship>> {
+    async fn get_ship(&self, _ship_symbol: ShipSymbol) -> anyhow::Result<Data<Ship>> {
         todo!()
     }
 
@@ -1415,11 +1415,11 @@ impl StClientTrait for InMemoryUniverseClient {
         Ok(resp)
     }
 
-    async fn list_systems_page(&self, pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<SystemsPageData>> {
+    async fn list_systems_page(&self, _pagination_input: PaginationInput) -> anyhow::Result<PaginatedResponse<SystemsPageData>> {
         todo!()
     }
 
-    async fn get_system(&self, system_symbol: &SystemSymbol) -> anyhow::Result<GetSystemResponse> {
+    async fn get_system(&self, _system_symbol: &SystemSymbol) -> anyhow::Result<GetSystemResponse> {
         todo!()
     }
 
@@ -1494,11 +1494,11 @@ impl StClientTrait for InMemoryUniverseClient {
         }
     }
 
-    async fn create_chart(&self, ship_symbol: ShipSymbol) -> anyhow::Result<CreateChartResponse> {
+    async fn create_chart(&self, _ship_symbol: ShipSymbol) -> anyhow::Result<CreateChartResponse> {
         todo!()
     }
 
-    async fn list_agents_page(&self, pagination_input: PaginationInput) -> anyhow::Result<ListAgentsResponse> {
+    async fn list_agents_page(&self, _pagination_input: PaginationInput) -> anyhow::Result<ListAgentsResponse> {
         todo!()
     }
 
@@ -1506,24 +1506,24 @@ impl StClientTrait for InMemoryUniverseClient {
         todo!()
     }
 
-    async fn negotiate_contract(&self, ship_symbol: ShipSymbol) -> Result<NegotiateContractResponse> {
+    async fn negotiate_contract(&self, _ship_symbol: ShipSymbol) -> Result<NegotiateContractResponse> {
         todo!()
     }
 
-    async fn accept_contract(&self, contract_id: ContractId) -> Result<AcceptContractResponse> {
+    async fn accept_contract(&self, _contract_id: ContractId) -> Result<AcceptContractResponse> {
         todo!()
     }
 
-    async fn fulfill_contract(&self, contract_id: ContractId) -> Result<FulfillContractResponse> {
+    async fn fulfill_contract(&self, _contract_id: ContractId) -> Result<FulfillContractResponse> {
         todo!()
     }
 
     async fn deliver_cargo_to_contract(
         &self,
-        ship_symbol: ShipSymbol,
-        contract_id: ContractId,
-        units: u32,
-        trade_symbol: TradeGoodSymbol,
+        _ship_symbol: ShipSymbol,
+        _contract_id: ContractId,
+        _units: u32,
+        _trade_symbol: TradeGoodSymbol,
     ) -> Result<DeliverCargoToContractResponse> {
         todo!()
     }

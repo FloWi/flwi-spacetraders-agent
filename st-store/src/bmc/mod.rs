@@ -50,6 +50,7 @@ pub struct DbBmc {
     jump_gate_bmc: Arc<DbJumpGateBmc>,
     shipyard_bmc: Arc<DbShipyardBmc>,
     supply_chain_bmc: Arc<DbSupplyChainBmc>,
+    #[allow(dead_code)]
     status_bmc: Arc<DbStatusBmc>,
     ledger_bmc: Arc<DbLedgerBmc>,
     contract_bmc: Arc<DbContractBmc>,

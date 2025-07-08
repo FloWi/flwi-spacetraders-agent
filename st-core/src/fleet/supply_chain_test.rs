@@ -1,207 +1,4 @@
-use comfy_table::presets::UTF8_FULL;
-use comfy_table::*;
-use comfy_table::{ContentArrangement, Table};
-use itertools::Itertools;
-use st_domain::{
-    ActivityLevel, DeliveryRoute, MaterializedIndividualSupplyChain,
-    SupplyLevel, WaypointSymbol,
-};
-use strum::IntoEnumIterator;
 use thousands::Separable;
-
-struct TradingOppRow {
-    purchase_market_trade_good_entry: String,
-    purchase_waypoint_symbol: String,
-    sell_waypoint_symbol: String,
-    direct_distance: u32,
-    profit_per_unit: u32,
-    profit_per_unit_per_distance: f64,
-}
-
-fn render_cli_table_trading_opp(rows: &[TradingOppRow]) -> String {
-    let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .force_no_tty()
-        .enforce_styling()
-        .set_content_arrangement(ContentArrangement::Dynamic)
-        .set_header(vec![
-            "purchase market trade good entry",
-            "purchase waypoint symbol",
-            "sell waypoint symbol",
-            "direct distance",
-            "profit per unit",
-            "profit per unit per distance",
-        ]);
-
-    for row in rows.iter() {
-        table.add_row(vec![
-            row.purchase_waypoint_symbol.as_str(),
-            row.sell_waypoint_symbol.as_str(),
-            row.purchase_market_trade_good_entry.as_str(),
-            row.direct_distance.separate_with_commas().as_str(),
-            row.profit_per_unit.separate_with_commas().as_str(),
-            format_number(row.profit_per_unit_per_distance).as_str(),
-        ]);
-    }
-
-    for col_idx in 3..=5 {
-        table
-            .column_mut(col_idx)
-            .unwrap()
-            .set_cell_alignment(CellAlignment::Right);
-    }
-
-    table.to_string()
-}
-
-struct SupplyChainRouteLeg {
-    from: WaypointSymbol,
-    to: WaypointSymbol,
-    rank: u32,
-    purchase_price: u32,
-    sell_price: u32,
-    purchase_supply: SupplyLevel,
-    sell_supply: SupplyLevel,
-    purchase_activity: ActivityLevel,
-    sell_activity: ActivityLevel,
-    purchase_trade_volume: u32,
-    sell_trade_volume: u32,
-}
-
-fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -> String {
-    let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .force_no_tty()
-        .enforce_styling()
-        .set_content_arrangement(ContentArrangement::Dynamic)
-        .set_header(vec![
-            "rank",
-            "trade_good",
-            "from",
-            "to",
-            "destination",
-            "source type",
-            "destination type",
-            "purchase_price",
-            "sell_price",
-            "purchase_supply",
-            "sell_supply",
-            "purchase_activity",
-            "sell_activity",
-            "purchase_trade_volume",
-            "sell_trade_volume",
-        ]);
-
-    let final_export_market_entry = chain.all_routes.iter().find_map(|route| match route {
-        DeliveryRoute::Raw(_) => None,
-        DeliveryRoute::Processed { route, rank } => {
-            (route.producing_trade_good == chain.trade_good).then_some((route.delivery_location.clone(), route.producing_market_entry.clone()))
-        }
-    });
-
-    chain
-        .all_routes
-        .iter()
-        .sorted_by_key(|delivery_route| match delivery_route {
-            DeliveryRoute::Raw(_) => 0,
-            DeliveryRoute::Processed { rank, .. } => *rank,
-        })
-        .for_each(|route| {
-            match &route {
-                DeliveryRoute::Raw(raw) => {
-                    table.add_row(vec![
-                        Cell::new(0),
-                        Cell::new(raw.source.trade_good.to_string()),
-                        Cell::new(raw.source.source_waypoint.to_string()),
-                        Cell::new(raw.delivery_location.to_string()),
-                        Cell::new(raw.export_entry.symbol.to_string()),
-                        Cell::new(raw.source.source_type.to_string()),
-                        Cell::new(raw.delivery_market_entry.trade_good_type.to_string()),
-                        Cell::new("---"),
-                        Cell::new(raw.delivery_market_entry.sell_price),
-                        Cell::new("---"),
-                        Cell::new(raw.delivery_market_entry.supply.to_string()),
-                        Cell::new("---"),
-                        Cell::new(
-                            raw.delivery_market_entry
-                                .activity
-                                .clone()
-                                .map(|act| act.to_string())
-                                .unwrap_or_default(),
-                        ),
-                        Cell::new("---"),
-                        Cell::new(raw.delivery_market_entry.trade_volume),
-                    ]);
-                }
-                DeliveryRoute::Processed { route, rank } => {
-                    table.add_row(vec![
-                        Cell::new(rank),
-                        Cell::new(route.trade_good.to_string()),
-                        Cell::new(route.source_location.to_string()),
-                        Cell::new(route.delivery_location.to_string()),
-                        Cell::new(route.producing_market_entry.symbol.to_string()),
-                        Cell::new(route.source_market_entry.trade_good_type.to_string()),
-                        Cell::new(route.delivery_market_entry.trade_good_type.to_string()),
-                        Cell::new(route.source_market_entry.purchase_price),
-                        Cell::new(route.delivery_market_entry.sell_price),
-                        Cell::new(route.source_market_entry.supply.to_string()),
-                        Cell::new(route.delivery_market_entry.supply.to_string()),
-                        Cell::new(
-                            route
-                                .source_market_entry
-                                .activity
-                                .clone()
-                                .map(|act| act.to_string())
-                                .unwrap_or_default(),
-                        ),
-                        Cell::new(
-                            route
-                                .delivery_market_entry
-                                .activity
-                                .clone()
-                                .map(|act| act.to_string())
-                                .unwrap_or_default(),
-                        ),
-                        Cell::new(route.source_market_entry.trade_volume),
-                        Cell::new(route.delivery_market_entry.trade_volume),
-                    ]);
-                }
-            };
-        });
-
-    match final_export_market_entry {
-        None => {}
-        Some((wp, export_entry)) => {
-            table.add_row(vec![
-                Cell::new("---"),                                    //rank
-                Cell::new(export_entry.symbol.to_string()),          //trade_good
-                Cell::new(wp.to_string()),                           //from
-                Cell::new("---"),                                    //to
-                Cell::new("Jump gate"),                              //destination
-                Cell::new(export_entry.trade_good_type.to_string()), //source
-                Cell::new("---".to_string()),                        //destination
-                Cell::new(export_entry.purchase_price),              //purchase_price
-                Cell::new("---"),                                    //sell_price
-                Cell::new(export_entry.supply.to_string()),          //purchase_supply
-                Cell::new("---".to_string()),                        //sell_supply
-                Cell::new(
-                    export_entry
-                        .activity
-                        .clone()
-                        .map(|act| act.to_string())
-                        .unwrap_or_default(),
-                ), //purchase_activity
-                Cell::new("---"),                                    //sell_activity
-                Cell::new(export_entry.trade_volume),                //purchase_trade_volume
-                Cell::new("---"),                                    //sell_trade_volume
-            ]);
-        }
-    }
-
-    table.to_string()
-}
 
 /// Print a number with 2 decimal places and comma-separated
 pub fn format_number(value: f64) -> String {
@@ -225,14 +22,18 @@ pub fn format_number(value: f64) -> String {
 mod tests {
     use crate::bmc_blackboard::BmcBlackboard;
     use crate::fleet::fleet::collect_fleet_decision_facts;
-    use crate::fleet::fleet_runner::FleetRunner;
     use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
-    use crate::fleet::supply_chain_test::{render_cli_table_trading_opp, TradingOppRow};
+    use crate::fleet::supply_chain_test::format_number;
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient, InMemoryUniverseOverrides};
     use anyhow::Result;
+    use comfy_table::presets::UTF8_FULL;
+    use comfy_table::{Cell, CellAlignment, ContentArrangement, Table};
     use itertools::Itertools;
-    use st_domain::{trading, FleetPhaseName, MarketTradeGood, ShipSymbol, TradeGoodSymbol, Waypoint, WaypointSymbol};
+    use st_domain::{
+        trading, ActivityLevel, DeliveryRoute, FleetPhaseName, MarketTradeGood, MaterializedIndividualSupplyChain, ShipSymbol, SupplyLevel, TradeGoodSymbol,
+        Waypoint, WaypointSymbol,
+    };
     use st_store::bmc::contract_bmc::InMemoryContractBmc;
     use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
     use st_store::bmc::ship_bmc::{InMemoryShips, InMemoryShipsBmc};
@@ -248,6 +49,7 @@ mod tests {
     use std::ops::Not;
     use std::sync::Arc;
     use test_log::test;
+    use thousands::Separable;
 
     #[test(tokio::test)]
     //#[tokio::test] // for accessing runtime-infos with tokio-console
@@ -485,5 +287,199 @@ mod tests {
         println!("{}", render_cli_table_trading_opp(&trades_of_top_10_products));
 
         Ok(())
+    }
+
+    struct TradingOppRow {
+        purchase_market_trade_good_entry: String,
+        purchase_waypoint_symbol: String,
+        sell_waypoint_symbol: String,
+        direct_distance: u32,
+        profit_per_unit: u32,
+        profit_per_unit_per_distance: f64,
+    }
+
+    fn render_cli_table_trading_opp(rows: &[TradingOppRow]) -> String {
+        let mut table = Table::new();
+        table
+            .load_preset(UTF8_FULL)
+            .force_no_tty()
+            .enforce_styling()
+            .set_content_arrangement(ContentArrangement::Dynamic)
+            .set_header(vec![
+                "purchase market trade good entry",
+                "purchase waypoint symbol",
+                "sell waypoint symbol",
+                "direct distance",
+                "profit per unit",
+                "profit per unit per distance",
+            ]);
+
+        for row in rows.iter() {
+            table.add_row(vec![
+                row.purchase_waypoint_symbol.as_str(),
+                row.sell_waypoint_symbol.as_str(),
+                row.purchase_market_trade_good_entry.as_str(),
+                row.direct_distance.separate_with_commas().as_str(),
+                row.profit_per_unit.separate_with_commas().as_str(),
+                format_number(row.profit_per_unit_per_distance).as_str(),
+            ]);
+        }
+
+        for col_idx in 3..=5 {
+            table
+                .column_mut(col_idx)
+                .unwrap()
+                .set_cell_alignment(CellAlignment::Right);
+        }
+
+        table.to_string()
+    }
+
+    struct SupplyChainRouteLeg {
+        from: WaypointSymbol,
+        to: WaypointSymbol,
+        rank: u32,
+        purchase_price: u32,
+        sell_price: u32,
+        purchase_supply: SupplyLevel,
+        sell_supply: SupplyLevel,
+        purchase_activity: ActivityLevel,
+        sell_activity: ActivityLevel,
+        purchase_trade_volume: u32,
+        sell_trade_volume: u32,
+    }
+
+    fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -> String {
+        let mut table = Table::new();
+        table
+            .load_preset(UTF8_FULL)
+            .force_no_tty()
+            .enforce_styling()
+            .set_content_arrangement(ContentArrangement::Dynamic)
+            .set_header(vec![
+                "rank",
+                "trade_good",
+                "from",
+                "to",
+                "destination",
+                "source type",
+                "destination type",
+                "purchase_price",
+                "sell_price",
+                "purchase_supply",
+                "sell_supply",
+                "purchase_activity",
+                "sell_activity",
+                "purchase_trade_volume",
+                "sell_trade_volume",
+            ]);
+
+        let final_export_market_entry = chain.all_routes.iter().find_map(|route| match route {
+            DeliveryRoute::Raw(_) => None,
+            DeliveryRoute::Processed { route, .. } => {
+                (route.producing_trade_good == chain.trade_good).then_some((route.delivery_location.clone(), route.producing_market_entry.clone()))
+            }
+        });
+
+        chain
+            .all_routes
+            .iter()
+            .sorted_by_key(|delivery_route| match delivery_route {
+                DeliveryRoute::Raw(_) => 0,
+                DeliveryRoute::Processed { rank, .. } => *rank,
+            })
+            .for_each(|route| {
+                match &route {
+                    DeliveryRoute::Raw(raw) => {
+                        table.add_row(vec![
+                            Cell::new(0),
+                            Cell::new(raw.source.trade_good.to_string()),
+                            Cell::new(raw.source.source_waypoint.to_string()),
+                            Cell::new(raw.delivery_location.to_string()),
+                            Cell::new(raw.export_entry.symbol.to_string()),
+                            Cell::new(raw.source.source_type.to_string()),
+                            Cell::new(raw.delivery_market_entry.trade_good_type.to_string()),
+                            Cell::new("---"),
+                            Cell::new(raw.delivery_market_entry.sell_price),
+                            Cell::new("---"),
+                            Cell::new(raw.delivery_market_entry.supply.to_string()),
+                            Cell::new("---"),
+                            Cell::new(
+                                raw.delivery_market_entry
+                                    .activity
+                                    .clone()
+                                    .map(|act| act.to_string())
+                                    .unwrap_or_default(),
+                            ),
+                            Cell::new("---"),
+                            Cell::new(raw.delivery_market_entry.trade_volume),
+                        ]);
+                    }
+                    DeliveryRoute::Processed { route, rank } => {
+                        table.add_row(vec![
+                            Cell::new(rank),
+                            Cell::new(route.trade_good.to_string()),
+                            Cell::new(route.source_location.to_string()),
+                            Cell::new(route.delivery_location.to_string()),
+                            Cell::new(route.producing_market_entry.symbol.to_string()),
+                            Cell::new(route.source_market_entry.trade_good_type.to_string()),
+                            Cell::new(route.delivery_market_entry.trade_good_type.to_string()),
+                            Cell::new(route.source_market_entry.purchase_price),
+                            Cell::new(route.delivery_market_entry.sell_price),
+                            Cell::new(route.source_market_entry.supply.to_string()),
+                            Cell::new(route.delivery_market_entry.supply.to_string()),
+                            Cell::new(
+                                route
+                                    .source_market_entry
+                                    .activity
+                                    .clone()
+                                    .map(|act| act.to_string())
+                                    .unwrap_or_default(),
+                            ),
+                            Cell::new(
+                                route
+                                    .delivery_market_entry
+                                    .activity
+                                    .clone()
+                                    .map(|act| act.to_string())
+                                    .unwrap_or_default(),
+                            ),
+                            Cell::new(route.source_market_entry.trade_volume),
+                            Cell::new(route.delivery_market_entry.trade_volume),
+                        ]);
+                    }
+                };
+            });
+
+        match final_export_market_entry {
+            None => {}
+            Some((wp, export_entry)) => {
+                table.add_row(vec![
+                    Cell::new("---"),                                    //rank
+                    Cell::new(export_entry.symbol.to_string()),          //trade_good
+                    Cell::new(wp.to_string()),                           //from
+                    Cell::new("---"),                                    //to
+                    Cell::new("Jump gate"),                              //destination
+                    Cell::new(export_entry.trade_good_type.to_string()), //source
+                    Cell::new("---".to_string()),                        //destination
+                    Cell::new(export_entry.purchase_price),              //purchase_price
+                    Cell::new("---"),                                    //sell_price
+                    Cell::new(export_entry.supply.to_string()),          //purchase_supply
+                    Cell::new("---".to_string()),                        //sell_supply
+                    Cell::new(
+                        export_entry
+                            .activity
+                            .clone()
+                            .map(|act| act.to_string())
+                            .unwrap_or_default(),
+                    ), //purchase_activity
+                    Cell::new("---"),                                    //sell_activity
+                    Cell::new(export_entry.trade_volume),                //purchase_trade_volume
+                    Cell::new("---"),                                    //sell_trade_volume
+                ]);
+            }
+        }
+
+        table.to_string()
     }
 }

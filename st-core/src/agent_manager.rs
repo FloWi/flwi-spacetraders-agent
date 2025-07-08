@@ -5,7 +5,6 @@ use crate::st_client::{StClient, StClientTrait};
 use crate::transfer_cargo_manager::TransferCargoManager;
 use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient};
 use anyhow::Result;
-use futures::StreamExt;
 use sqlx::{Pool, Postgres};
 use st_domain::{FactionSymbol, RegistrationRequest};
 use st_store::bmc::jump_gate_bmc::InMemoryJumpGateBmc;
@@ -25,7 +24,6 @@ use tokio::sync::watch::Receiver;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tracing::{event, Level};
-use tracing_subscriber::prelude::*;
 
 pub struct AgentManager {
     reset_rx: mpsc::Receiver<ResetSignal>,
@@ -171,7 +169,6 @@ impl AgentManager {
         bmc: Arc<dyn Bmc>,
         transfer_cargo_manager: Arc<TransferCargoManager>,
     ) -> JoinHandle<()> {
-        
         tokio::spawn(async move {
             // Run agent with the authenticated client
             let agent_task = async {
