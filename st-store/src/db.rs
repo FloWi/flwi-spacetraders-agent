@@ -88,7 +88,7 @@ pub async fn prepare_database_schema(api_status: &StStatusResponse, connection_s
                         entry: Json(api_status.clone()),
                     },
                 )
-                    .await?;
+                .await?;
 
                 Ok(pg_connection_pool)
             }

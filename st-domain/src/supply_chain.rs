@@ -402,23 +402,23 @@ pub fn materialize_supply_chain(
 
         let relevant_supply_chain = find_complete_supply_chain(&relevant_products, &supply_chain.trade_map);
 
-        let all_routes = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data)?;
-
-        let total_distance: u32 = all_routes
-            .iter()
-            .map(|r| match r {
-                DeliveryRoute::Raw(r) => r.distance,
-                DeliveryRoute::Processed { route, .. } => route.distance,
-            })
-            .sum();
-        individual_routes_of_goods_for_sale.insert(
-            p.clone(),
-            MaterializedIndividualSupplyChain {
-                trade_good: p.clone(),
-                total_distance,
-                all_routes,
-            },
-        );
+        if let Ok(all_routes) = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data) {
+            let total_distance: u32 = all_routes
+                .iter()
+                .map(|r| match r {
+                    DeliveryRoute::Raw(r) => r.distance,
+                    DeliveryRoute::Processed { route, .. } => route.distance,
+                })
+                .sum();
+            individual_routes_of_goods_for_sale.insert(
+                p.clone(),
+                MaterializedIndividualSupplyChain {
+                    trade_good: p.clone(),
+                    total_distance,
+                    all_routes,
+                },
+            );
+        }
     }
 
     // println!(
@@ -742,7 +742,7 @@ fn compute_all_routes(
         let node = relevant_supply_chain
             .iter()
             .find(|scn| scn.good == candidate)
-            .unwrap_or_else(|| panic!("Unable to find supply_chain node for candidate {}", candidate));
+            .ok_or(anyhow!("Unable to find supply_chain node for candidate {}", candidate))?;
 
         let dependency_providers = node
             .dependencies
