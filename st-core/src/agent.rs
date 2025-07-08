@@ -1,6 +1,6 @@
 use st_store::{
-    db, select_latest_marketplace_entry_of_system, select_latest_shipyard_entry_of_system, select_waypoints_of_system, upsert_systems_from_receiver,
-    upsert_waypoints_from_receiver, DbModelManager, DbSystemCoordinateData,
+    db, upsert_systems_from_receiver,
+    upsert_waypoints_from_receiver, DbSystemCoordinateData,
 };
 
 use anyhow::Result;
@@ -9,22 +9,17 @@ use futures::StreamExt;
 use itertools::Itertools;
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
-use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{mpsc, Mutex};
 use tracing::{event, Level};
 use tracing_subscriber::prelude::*;
 
-use crate::configuration::AgentConfiguration;
 use crate::fleet::fleet::FleetAdmiral;
 use crate::format_time_delta_hh_mm_ss;
-use crate::marketplaces::marketplaces::{find_marketplaces_to_collect_remotely, find_shipyards_to_collect_remotely};
 use crate::pagination::{fetch_all_pages_into_queue, PaginationInput};
-use crate::ship::ShipOperations;
 use crate::st_client::{StClient, StClientTrait};
 use crate::transfer_cargo_manager::TransferCargoManager;
-use crate::universe_server::universe_server::InMemoryUniverseClient;
-use st_domain::{LabelledCoordinate, StStatusResponse, SupplyChain, SystemSymbol, WaypointSymbol, WaypointType};
-use st_store::bmc::{Bmc, DbBmc, InMemoryBmc};
+use st_domain::{LabelledCoordinate, StStatusResponse, SystemSymbol, WaypointSymbol};
+use st_store::bmc::Bmc;
 
 pub async fn run_agent(client: Arc<dyn StClientTrait>, bmc: Arc<dyn Bmc>, transfer_cargo_manager: Arc<TransferCargoManager>) -> Result<()> {
     let headquarters_system_symbol = client.get_agent().await?.data.headquarters.system_symbol();

@@ -1,25 +1,28 @@
 use crate::{calc_batches_based_on_volume_constraint, get_closest_waypoint};
 use anyhow::{anyhow, Result};
-use itertools::Either::{Left, Right};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::credits::Credits;
-use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::SellTradeGoods;
 use st_domain::budgeting::treasury_redesign::{
-    DeliverCargoContractTicketDetails, FinanceTicket, PurchaseCargoReason, PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails,
+    DeliverCargoContractTicketDetails, PurchaseCargoReason, PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails,
 };
 use st_domain::trading::group_markets_by_type;
 use st_domain::{
-    combine_maps, trading, Cargo, Contract, ContractEvaluationResult, ContractId, FleetId, Inventory, MarketEntry, MarketTradeGood, ShipSymbol,
+    combine_maps, trading, Cargo, Contract, ContractEvaluationResult, MarketEntry, MarketTradeGood,
     TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol,
 };
-use std::collections::{HashMap, HashSet};
-use std::ops::Not;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug)]
 pub struct ContractManager {
     contract: Arc<Mutex<Option<Contract>>>,
+}
+
+impl Default for ContractManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ContractManager {
@@ -79,7 +82,7 @@ fn split_cargo_into_usable_and_excess_entries_for_contract_usage(ship_cargo: &Ca
             let open_quantity = delivery_entry.units_required - delivery_entry.units_fulfilled;
             let provided_from_cargo_quantity = usable_for_contract
                 .get(&delivery_entry.trade_symbol)
-                .map(|(quantity, _)| quantity.clone())
+                .map(|(quantity, _)| *quantity)
                 .unwrap_or_default();
             let still_open_quantity = open_quantity - provided_from_cargo_quantity;
             (still_open_quantity > 0).then_some((
@@ -162,7 +165,7 @@ pub fn calculate_necessary_tickets_for_contract(
         delivery_tickets.push(DeliverCargoContractTicketDetails {
             waypoint_symbol: destination_wps.clone(),
             trade_good: trade_symbol.clone(),
-            quantity: quantity,
+            quantity,
             contract_id: contract.id.clone(),
         })
     }
@@ -187,13 +190,13 @@ pub(crate) fn create_sell_tickets_for_cargo_items(
     let mut sell_ticket_details = Vec::new();
 
     let waypoint_map: HashMap<WaypointSymbol, &Waypoint> = waypoints_of_system
-        .into_iter()
+        .iter()
         .map(|wp| (wp.symbol.clone(), wp))
         .collect();
 
     for (trade_good_to_sell, quantity) in inventory_entries_to_sell {
         let demand_markets = all_demand_markets
-            .get(&trade_good_to_sell)
+            .get(trade_good_to_sell)
             .cloned()
             .unwrap_or_default();
         let waypoint_of_demand_markets = demand_markets.iter().map(|(wps, _)| wps.clone()).collect();
@@ -210,9 +213,9 @@ pub(crate) fn create_sell_tickets_for_cargo_items(
                 sell_ticket_details.push(SellTradeGoodsTicketDetails {
                     waypoint_symbol: closest_wp.symbol.clone(),
                     trade_good: closest_delivery_market_entry.symbol.clone(),
-                    expected_price_per_unit: expected_price_per_unit.into(),
+                    expected_price_per_unit,
                     quantity: *sell_batch,
-                    expected_total_sell_price: total.into(),
+                    expected_total_sell_price: total,
                     maybe_matching_purchase_ticket: None,
                 })
             }

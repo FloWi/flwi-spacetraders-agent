@@ -18,7 +18,6 @@ use st_store::{
     db, DbModelManager, InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc,
     InMemorySystemsBmc,
 };
-use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -172,7 +171,8 @@ impl AgentManager {
         bmc: Arc<dyn Bmc>,
         transfer_cargo_manager: Arc<TransferCargoManager>,
     ) -> JoinHandle<()> {
-        let handle = tokio::spawn(async move {
+        
+        tokio::spawn(async move {
             // Run agent with the authenticated client
             let agent_task = async {
                 match run_agent(client, bmc, transfer_cargo_manager).await {
@@ -205,8 +205,7 @@ impl AgentManager {
                     event!(Level::INFO, "Agent shutdown requested");
                 }
             }
-        });
-        handle
+        })
     }
 
     async fn initialize_and_start_db_agent(&mut self, shutdown_rx: watch::Receiver<bool>) -> Result<JoinHandle<()>> {

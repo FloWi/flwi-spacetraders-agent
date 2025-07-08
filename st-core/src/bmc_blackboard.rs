@@ -6,7 +6,7 @@ use chrono::Utc;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::{
-    Construction, Contract, CreateSurveyResponse, Extraction, FleetId, JumpGate, LabelledCoordinate, MarketData, MarketEntry, MaterializedSupplyChain,
+    Construction, Contract, CreateSurveyResponse, Extraction, JumpGate, LabelledCoordinate, MarketData, MarketEntry, MaterializedSupplyChain,
     MiningOpsConfig, Ship, Shipyard, Survey, SystemSymbol, TravelAction, Waypoint, WaypointModifier, WaypointSymbol,
 };
 use st_store::bmc::Bmc;
@@ -142,7 +142,7 @@ impl BlackboardOps for BmcBlackboard {
         let waypoints: Vec<Waypoint> = self
             .bmc
             .system_bmc()
-            .get_waypoints_of_system(&Ctx::Anonymous, &system_symbol)
+            .get_waypoints_of_system(&Ctx::Anonymous, system_symbol)
             .await?;
 
         Ok(waypoints)

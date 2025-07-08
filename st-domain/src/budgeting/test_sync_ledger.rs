@@ -7,6 +7,12 @@ pub struct TestLedgerArchiver {
     entries: Arc<Mutex<VecDeque<LedgerEntry>>>,
 }
 
+impl Default for TestLedgerArchiver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TestLedgerArchiver {
     pub fn new() -> Self {
         Self {

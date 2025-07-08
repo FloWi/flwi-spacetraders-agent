@@ -2,7 +2,6 @@ use crate::behavior_tree::behavior_args::BehaviorArgs;
 use crate::behavior_tree::behavior_tree::Response::Success;
 use crate::behavior_tree::behavior_tree::{ActionEvent, Actionable, Response};
 use crate::behavior_tree::ship_behaviors::ShipAction;
-use crate::contract_manager;
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
 use anyhow::Result;
@@ -15,18 +14,16 @@ use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::{PurchaseTradeGoods, RefuelShip, SellTradeGoods};
 use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails, Income};
 use st_domain::cargo_transfer::{InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoToHaulerResult, TransferCargoError};
-use st_domain::TradeGoodSymbol::MOUNT_GAS_SIPHON_I;
 use st_domain::TransactionActionEvent::{PurchasedShip, PurchasedTradeGoods, SoldTradeGoods, SuppliedConstructionSite};
 use st_domain::{
     get_exploration_tasks_for_waypoint, Cargo, Contract, ExplorationTask, NavStatus, OperationExpenseEvent, RefuelShipResponse, RefuelShipResponseBody,
     ShipSymbol, Survey, TradeGoodSymbol, TravelAction, WaypointModifierSymbol,
 };
-use std::collections::{HashMap, HashSet};
-use std::hint::unreachable_unchecked;
+use std::collections::HashSet;
 use std::ops::{Add, Not};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tracing::{error, event, info};
+use tracing::{event, info};
 use tracing_core::Level;
 
 #[async_trait]
@@ -570,7 +567,7 @@ impl Actionable for ShipAction {
                     let mut completed_tickets: HashSet<FinanceTicket> = HashSet::new();
 
                     while let Some(finance_ticket) = find_completable_tickets_based_on_ship_state(
-                        &state,
+                        state,
                         &finance_tickets
                             .iter()
                             .filter(|t| completed_tickets.contains(t).not())
@@ -814,7 +811,7 @@ impl Actionable for ShipAction {
                             }
                         });
 
-                    if cargo_items_without_delivery_location.len() > 0 {
+                    if !cargo_items_without_delivery_location.is_empty() {
                         let items = cargo_items_without_delivery_location
                             .iter()
                             .map(|inv| inv.symbol.clone().to_string())
@@ -919,7 +916,7 @@ impl Actionable for ShipAction {
                                         asteroid_waypoint_symbol = &state.nav.waypoint_symbol.0
                                     );
                                     args.blackboard
-                                        .mark_asteroid_has_reached_critical_limit(&state.nav.waypoint_symbol, &critical_limit_modifier)
+                                        .mark_asteroid_has_reached_critical_limit(&state.nav.waypoint_symbol, critical_limit_modifier)
                                         .await?;
                                 }
                                 break Ok(Success);

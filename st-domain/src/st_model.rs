@@ -1462,8 +1462,8 @@ pub struct Cargo {
 
 impl Cargo {
     pub fn available_cargo_space(&self) -> u32 {
-        let available_space = (self.capacity - self.units) as u32;
-        available_space
+        
+        (self.capacity - self.units) as u32
     }
 
     pub fn with_item_added_mut(&mut self, new_item: TradeGoodSymbol, units: u32) -> Result<(), NotEnoughSpaceError> {

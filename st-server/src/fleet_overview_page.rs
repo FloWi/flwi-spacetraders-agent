@@ -4,11 +4,9 @@ use chrono::{DateTime, Utc};
 use itertools::*;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
-use leptos_use::{use_interval, use_interval_fn, UseIntervalReturn};
+use leptos_use::use_interval_fn;
 use serde::{Deserialize, Serialize};
-use st_domain::{DeliveryRoute, FleetDecisionFacts, FleetPhase, FleetsOverview, Ship, WaypointSymbol};
-use std::collections::HashSet;
-use std::sync::Arc;
+use st_domain::{FleetDecisionFacts, FleetPhase, FleetsOverview, Ship};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {

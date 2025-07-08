@@ -1,17 +1,14 @@
 use crate::components::clipboard_button::ClipboardButton;
 use crate::tables::trading_opportunity_table::TradingOpportunityRow;
-use anyhow::anyhow;
 use itertools::Itertools;
-use leptos::html::Div;
 use leptos::prelude::*;
 use leptos_meta::Title;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    find_complete_supply_chain, Construction, DeliveryRoute, EvaluatedTradingOpportunity, FleetConfig, GetConstructionResponse, MarketTradeGood,
-    MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, Waypoint, WaypointSymbol,
+    find_complete_supply_chain, Construction, EvaluatedTradingOpportunity, MarketTradeGood,
+    MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol,
 };
-use std::collections::{HashMap, HashSet};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RelevantMarketData {

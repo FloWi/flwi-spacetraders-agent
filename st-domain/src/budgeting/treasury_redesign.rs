@@ -4,7 +4,6 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
-use std::ops::Not;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub struct FinanceTicket {
@@ -652,17 +651,23 @@ pub struct ImprovedTreasurer {
     completed_tickets: HashMap<TicketId, FinanceTicket>,
 }
 
+impl Default for ImprovedTreasurer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ImprovedTreasurer {
     pub fn new() -> Self {
-        let mut treasurer = Self {
+        
+
+        Self {
             treasury_fund: Default::default(),
             ledger_entries: Default::default(),
             fleet_budgets: Default::default(),
             active_tickets: Default::default(),
             completed_tickets: Default::default(),
-        };
-
-        treasurer
+        }
     }
 
     pub fn from_ledger(ledger: Vec<LedgerEntry>) -> Result<Self> {
@@ -722,8 +727,8 @@ impl ImprovedTreasurer {
             .active_tickets
             .values()
             .filter_map(|active_ticket| match &active_ticket.details {
-                FinanceTicketDetails::SellTradeGoods(d) => d.maybe_matching_purchase_ticket.clone(),
-                FinanceTicketDetails::SupplyConstructionSite(d) => d.maybe_matching_purchase_ticket.clone(),
+                FinanceTicketDetails::SellTradeGoods(d) => d.maybe_matching_purchase_ticket,
+                FinanceTicketDetails::SupplyConstructionSite(d) => d.maybe_matching_purchase_ticket,
                 FinanceTicketDetails::PurchaseTradeGoods(_) => None,
                 FinanceTicketDetails::PurchaseShip(_) => None,
                 FinanceTicketDetails::RefuelShip(_) => None,
@@ -737,8 +742,8 @@ impl ImprovedTreasurer {
                 continue;
             }
             let maybe_matching_purchase_ticket_id = match &active_ticket.details {
-                FinanceTicketDetails::SellTradeGoods(d) => d.maybe_matching_purchase_ticket.clone(),
-                FinanceTicketDetails::SupplyConstructionSite(d) => d.maybe_matching_purchase_ticket.clone(),
+                FinanceTicketDetails::SellTradeGoods(d) => d.maybe_matching_purchase_ticket,
+                FinanceTicketDetails::SupplyConstructionSite(d) => d.maybe_matching_purchase_ticket,
                 FinanceTicketDetails::PurchaseTradeGoods(_) => None,
                 FinanceTicketDetails::PurchaseShip(_) => None,
                 FinanceTicketDetails::RefuelShip(_) => None,
@@ -820,9 +825,9 @@ impl ImprovedTreasurer {
             .values()
             .filter_map(|t| match &t.details {
                 FinanceTicketDetails::SupplyConstructionSite(d) => {
-                    Some((d.waypoint_symbol.clone(), d.trade_good.clone(), d.maybe_matching_purchase_ticket.clone()))
+                    Some((d.waypoint_symbol.clone(), d.trade_good.clone(), d.maybe_matching_purchase_ticket))
                 }
-                FinanceTicketDetails::SellTradeGoods(d) => Some((d.waypoint_symbol.clone(), d.trade_good.clone(), d.maybe_matching_purchase_ticket.clone())),
+                FinanceTicketDetails::SellTradeGoods(d) => Some((d.waypoint_symbol.clone(), d.trade_good.clone(), d.maybe_matching_purchase_ticket)),
                 FinanceTicketDetails::PurchaseTradeGoods(_) => None,
                 FinanceTicketDetails::PurchaseShip(_) => None,
                 FinanceTicketDetails::RefuelShip(_) => None,
@@ -1048,7 +1053,7 @@ impl ImprovedTreasurer {
         shipyard_waypoint_symbol: WaypointSymbol,
         ship_symbol: ShipSymbol,
     ) -> Result<FinanceTicket> {
-        match self.try_finance_purchase_for_fleet(fleet_id, expected_purchase_price.clone())? {
+        match self.try_finance_purchase_for_fleet(fleet_id, expected_purchase_price)? {
             FinanceResult::FleetAlreadyHadSufficientFunds => {}
             FinanceResult::TransferSuccessful { .. } => {}
             FinanceResult::TransferFailed { .. } => {
@@ -1109,7 +1114,7 @@ impl ImprovedTreasurer {
 
         self.process_ledger_entry(ExpenseLogged {
             fleet_id: fleet_id.clone(),
-            maybe_ticket_id: maybe_ticket.map(|t| t.ticket_id.clone()),
+            maybe_ticket_id: maybe_ticket.map(|t| t.ticket_id),
             trade_good_symbol,
             units,
             price_per_unit,
@@ -1136,7 +1141,7 @@ impl ImprovedTreasurer {
             finance_ticket: finance_ticket.clone(),
             actual_units: quantity,
             actual_price_per_unit,
-            total: total.clone(),
+            total,
         })?;
 
         let is_expense = finance_ticket.details.signum() < 0;
@@ -1172,7 +1177,7 @@ impl ImprovedTreasurer {
     }
 
     fn try_finance_purchase_for_fleet(&mut self, fleet_id: &FleetId, required_credits: Credits) -> Result<FinanceResult> {
-        if let Some(_) = self.fleet_budgets.get_mut(fleet_id) {
+        if self.fleet_budgets.get_mut(fleet_id).is_some() {
             if required_credits.is_negative() || required_credits.is_zero() {
                 // no need to transfer - fleet has enough budget
                 Ok(FinanceResult::FleetAlreadyHadSufficientFunds)
@@ -1452,6 +1457,59 @@ impl ImprovedTreasurer {
     }
 }
 
+fn load_from_ledger_archive_entries(
+    latest_treasurer: Option<TreasurerArchiveEntry>,
+    ledger_archive_entries: Vec<LedgerArchiveEntry>,
+    chunk_size: usize,
+) -> Result<Vec<TreasurerArchiveEntry>> {
+    let from_id = latest_treasurer
+        .clone()
+        .map(|t| t.to_ledger_id + 1)
+        .unwrap_or_default();
+
+    let mut treasurer_archive_entries: Vec<TreasurerArchiveEntry> = latest_treasurer.iter().cloned().collect_vec();
+
+    for chunk in &ledger_archive_entries
+        .into_iter()
+        .skip_while(|archive_entry| archive_entry.id < from_id)
+        .chunks(chunk_size)
+    {
+        if let Some(current) = treasurer_archive_entries.last() {
+            let mut first = None;
+            let mut last = None;
+            let mut new_treasurer = current.entry.clone();
+            for ledger_entry in chunk {
+                if first.is_none() {
+                    first = Some(ledger_entry.clone());
+                }
+                new_treasurer.process_ledger_entry(ledger_entry.entry.clone())?;
+                last = Some(ledger_entry);
+            }
+
+            treasurer_archive_entries.push(TreasurerArchiveEntry {
+                from_ledger_id: first.unwrap().id,
+                to_ledger_id: last.unwrap().id,
+                entry: new_treasurer,
+            })
+        } else {
+            // no treasurer yet - we start a new one
+            let serialized_chunk = chunk.collect_vec();
+            let first = serialized_chunk.first().cloned().unwrap();
+            let last = serialized_chunk.last().cloned().unwrap();
+            let ledger_entries_of_chunk = serialized_chunk.into_iter().map(|x| x.entry).collect_vec();
+            let new_treasurer = ImprovedTreasurer::from_ledger(ledger_entries_of_chunk)?;
+
+            treasurer_archive_entries.push(TreasurerArchiveEntry {
+                from_ledger_id: first.id,
+                to_ledger_id: last.id,
+                entry: new_treasurer,
+            })
+        }
+    }
+
+    Ok(treasurer_archive_entries)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::budgeting::credits::Credits;
@@ -1486,7 +1544,7 @@ mod tests {
         let ticket_ids = trades_in_question
             .iter()
             .flat_map(|trade| {
-                let this_ticket_id = vec![trade.delivery.ticket_id.clone()];
+                let this_ticket_id = vec![trade.delivery.ticket_id];
                 let maybe_purchase_ticket_id = trade
                     .maybe_purchase
                     .clone()
@@ -2278,7 +2336,7 @@ mod tests {
             .await?;
 
         // we tested the ledger entries up to this point in a different test, so we assume they're correct
-        let mut expected_ledger_entries = treasurer
+        let expected_ledger_entries = treasurer
             .get_ledger_entries()
             .await?
             .into_iter()
@@ -2421,7 +2479,7 @@ mod tests {
     #[test]
     async fn test_from_ledger_entries() -> Result<()> {
         let ledger_entries_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/treasurer_test_ledger_data.json"));
-        let ledger_entries = serde_json::from_str::<Vec<LedgerEntry>>(&ledger_entries_str)?;
+        let ledger_entries = serde_json::from_str::<Vec<LedgerEntry>>(ledger_entries_str)?;
 
         let mut treasurer = ImprovedTreasurer::new();
 
@@ -2461,7 +2519,7 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/fixtures/treasurer_test_ledger_data_failed_completion_of_ship_purchase_after_restart_of_treasurer.json"
         ));
-        let ledger_entries = serde_json::from_str::<Vec<LedgerEntry>>(&ledger_entries_str)?;
+        let ledger_entries = serde_json::from_str::<Vec<LedgerEntry>>(ledger_entries_str)?;
 
         let mut treasurer = ImprovedTreasurer::new();
 
@@ -2499,7 +2557,7 @@ mod tests {
     async fn test_3_from_ledger_entries() -> Result<()> {
         let ledger_entries_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/latest_ledger_entries_for_testing.json"));
 
-        let ledger_entries = serde_json::from_str::<Vec<LedgerEntry>>(&ledger_entries_str)?;
+        let ledger_entries = serde_json::from_str::<Vec<LedgerEntry>>(ledger_entries_str)?;
 
         let mut treasurer = ImprovedTreasurer::new();
 
@@ -2543,7 +2601,7 @@ mod tests {
     async fn test_archiving_treasurers_from_series_of_ledger_entries_should_yield_same_result() -> Result<()> {
         let ledger_archive_entries_str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/ledger_entry_export/export.json"));
 
-        let ledger_archive_entries = serde_json::from_str::<Vec<LedgerArchiveEntry>>(&ledger_archive_entries_str)?;
+        let ledger_archive_entries = serde_json::from_str::<Vec<LedgerArchiveEntry>>(ledger_archive_entries_str)?;
         let ledger_entries = ledger_archive_entries
             .iter()
             .map(|a| a.entry.clone())
@@ -2561,57 +2619,4 @@ mod tests {
 
         Ok(())
     }
-}
-
-fn load_from_ledger_archive_entries(
-    latest_treasurer: Option<TreasurerArchiveEntry>,
-    ledger_archive_entries: Vec<LedgerArchiveEntry>,
-    chunk_size: usize,
-) -> Result<Vec<TreasurerArchiveEntry>> {
-    let from_id = latest_treasurer
-        .clone()
-        .map(|t| t.to_ledger_id + 1)
-        .unwrap_or_default();
-
-    let mut treasurer_archive_entries: Vec<TreasurerArchiveEntry> = latest_treasurer.iter().cloned().collect_vec();
-
-    for chunk in &ledger_archive_entries
-        .into_iter()
-        .skip_while(|archive_entry| archive_entry.id < from_id)
-        .chunks(chunk_size)
-    {
-        if let Some(current) = treasurer_archive_entries.last() {
-            let mut first = None;
-            let mut last = None;
-            let mut new_treasurer = current.entry.clone();
-            for ledger_entry in chunk {
-                if first.is_none() {
-                    first = Some(ledger_entry.clone());
-                }
-                new_treasurer.process_ledger_entry(ledger_entry.entry.clone())?;
-                last = Some(ledger_entry);
-            }
-
-            treasurer_archive_entries.push(TreasurerArchiveEntry {
-                from_ledger_id: first.unwrap().id,
-                to_ledger_id: last.unwrap().id,
-                entry: new_treasurer,
-            })
-        } else {
-            // no treasurer yet - we start a new one
-            let serialized_chunk = chunk.collect_vec();
-            let first = serialized_chunk.first().cloned().unwrap();
-            let last = serialized_chunk.last().cloned().unwrap();
-            let ledger_entries_of_chunk = serialized_chunk.into_iter().map(|x| x.entry).collect_vec();
-            let new_treasurer = ImprovedTreasurer::from_ledger(ledger_entries_of_chunk)?;
-
-            treasurer_archive_entries.push(TreasurerArchiveEntry {
-                from_ledger_id: first.id,
-                to_ledger_id: last.id,
-                entry: new_treasurer,
-            })
-        }
-    }
-
-    Ok(treasurer_archive_entries)
 }

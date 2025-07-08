@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use itertools::Itertools;
 use mockall::automock;
-use st_domain::budgeting::treasury_redesign::{LedgerArchiveTask, LedgerEntry};
+use st_domain::budgeting::treasury_redesign::LedgerEntry;
 use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::sync::Arc;

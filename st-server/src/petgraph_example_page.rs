@@ -2,17 +2,15 @@ use leptos::html::*;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    calc_scored_supply_chain_routes, ActivityLevel, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource,
+    ActivityLevel, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource,
     ScoredSupplyChainSupportRoute, SupplyLevel, TradeGoodSymbol, WaypointSymbol,
 };
-use std::collections::HashSet;
 
 use crate::components::supply_chain_graph::{get_activity_fill_color, get_supply_fill_color, SupplyChainGraph};
 use crate::tables::scored_supply_chain_route_table::ScoredSupplyChainRouteRow;
 use crate::tables::trade_good_overview_table::TradeGoodsOverviewRow;
 use itertools::Itertools;
 use leptos_struct_table::TableContent;
-use st_domain::DeliveryRoute;
 use std::ops::Not;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

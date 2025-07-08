@@ -70,7 +70,7 @@ impl SystemSpawningFleet {
                     // Not completed
                     let open_waypoint_symbols = marketplaces_to_explore
                         .into_iter()
-                        .chain(shipyards_to_explore.into_iter())
+                        .chain(shipyards_to_explore)
                         .unique()
                         .collect_vec();
                     Some(ShipTaskCompletionAnalysis::ShipTaskNotDone(ShipTask::ObserveAllWaypointsOnce {

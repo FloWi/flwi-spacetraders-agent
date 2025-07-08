@@ -1,10 +1,8 @@
-use crate::fleet::fleet::FleetAdmiral;
-use anyhow::anyhow;
 use st_domain::{
-    Fleet, FleetDecisionFacts, MarketObservationFleetConfig, MiningFleetConfig, RawDeliveryRoute, RawMaterialSource, RawMaterialSourceType, Ship, ShipSymbol,
-    ShipTask, SupplyLevel, SystemSpawningFleetConfig, TradeGoodSymbol, WaypointSymbol,
+    MiningFleetConfig, Ship, ShipSymbol,
+    ShipTask,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use tracing::event;
 use tracing_core::Level;
 
@@ -18,7 +16,7 @@ impl MiningFleet {
 
         let new_tasks: HashMap<ShipSymbol, ShipTask> = ships
             .iter()
-            .filter_map(|s| match Self::calc_ship_task(*s, cfg) {
+            .filter_map(|s| match Self::calc_ship_task(s, cfg) {
                 Ok(task) => Some((s.symbol.clone(), task)),
                 Err(e) => {
                     event!(Level::ERROR, "Failed to compute ship task: {:?}", e);

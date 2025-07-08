@@ -135,7 +135,7 @@ pub fn ship_behaviors() -> Behaviors {
         Behavior::new_action(ShipAction::PrintTravelActions),
     ]);
 
-    let mut wait_for_cooldown_bt = Behavior::new_sequence(vec![Behavior::new_action(ShipAction::WaitForCooldown)]);
+    let wait_for_cooldown_bt = Behavior::new_sequence(vec![Behavior::new_action(ShipAction::WaitForCooldown)]);
 
     let mut orbit_if_necessary = Behavior::new_select(vec![
         Behavior::new_action(ShipAction::IsInOrbit),

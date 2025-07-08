@@ -3,7 +3,7 @@ use anyhow::*;
 use itertools::Itertools;
 use petgraph::visit::Walker;
 use st_domain::{FleetId, MarketObservationFleetConfig, Ship, ShipSymbol, ShipTask, WaypointSymbol};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ops::Not;
 
 pub struct MarketObservationFleet;

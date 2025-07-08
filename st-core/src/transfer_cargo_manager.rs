@@ -3,7 +3,7 @@ use itertools::Itertools;
 use metrics::IntoF64;
 use st_domain::cargo_transfer::TransferCargoError::{ReceiveShipDoesntExist, SendingUpdateMessageFailed};
 use st_domain::cargo_transfer::{
-    HaulerTransferSummary, HaulerTransferSummaryEntry, InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoToHaulerResult,
+    HaulerTransferSummary, InternalTransferCargoRequest, InternalTransferCargoResponse, InternalTransferCargoToHaulerResult,
     TransferCargoError,
 };
 use st_domain::{Cargo, Inventory, ShipSymbol, WaypointSymbol};
@@ -16,6 +16,12 @@ use tokio::sync::Mutex;
 pub struct TransferCargoManager {
     // Haulers waiting at each location
     waiting_haulers: Arc<Mutex<HashMap<WaypointSymbol, HashMap<ShipSymbol, (HaulerTransferSummary, Sender<(ShipSymbol, Cargo)>)>>>>,
+}
+
+impl Default for TransferCargoManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TransferCargoManager {
@@ -171,14 +177,10 @@ fn find_transfer_tasks(
     for inventory in miner_cargo.inventory {
         if let Some(task) = find_transfer_task(miner_ship_symbol.clone(), inventory, &hauler_cargos) {
             if let Some((summary, _sender)) = hauler_cargos.get_mut(&task.receiving_ship) {
-                match summary
+                if let Ok(()) = summary
                     .cargo
-                    .with_item_added_mut(task.trade_good_symbol.clone(), task.units)
-                {
-                    Ok(()) => {
-                        tasks.push(task);
-                    }
-                    Err(_) => {}
+                    .with_item_added_mut(task.trade_good_symbol.clone(), task.units) {
+                    tasks.push(task);
                 }
             }
         }

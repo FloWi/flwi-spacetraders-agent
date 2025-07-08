@@ -1,22 +1,18 @@
 use crate::components::treasury_overview::TreasuryOverview;
 use crate::format_duration;
-use crate::tables::fleet_overview_table::FleetOverviewRow;
-use crate::tables::renderers::format_number;
 use chrono::{DateTime, Utc};
 use itertools::*;
 use leptos::html::*;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
-use leptos_struct_table::TableContent;
 use leptos_use::use_interval_fn;
-use phosphor_leptos::{Icon, ATOM, BINOCULARS, BRIEFCASE, CLOCK, COMPASS_ROSE, GAS_PUMP, HAMMER, HOURGLASS, MONEY_WAVY, PACKAGE, ROCKET, SUITCASE, TRUCK};
+use phosphor_leptos::{Icon, ATOM, BINOCULARS, BRIEFCASE, CLOCK, COMPASS_ROSE, GAS_PUMP, HAMMER, HOURGLASS, MONEY_WAVY, PACKAGE, ROCKET, TRUCK};
 use serde::{Deserialize, Serialize};
 use st_domain::budgeting::treasury_redesign::{
-    ActiveTrade, FinanceTicket, FinanceTicketDetails, FinanceTicketState, FleetBudget, ImprovedTreasurer, LedgerEntry,
+    ActiveTrade, FinanceTicketDetails, FinanceTicketState, ImprovedTreasurer,
 };
-use st_domain::{Fleet, NavStatus, Ship, ShipSymbol, ShipTask, TicketId, TradeGoodSymbol};
-use std::collections::{HashMap, HashSet};
-use std::ops::Not;
+use st_domain::{Fleet, NavStatus, Ship, ShipSymbol, ShipTask, TradeGoodSymbol};
+use std::collections::HashMap;
 use thousands::Separable;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -119,13 +115,13 @@ fn render_active_trade(trade: ActiveTrade) -> impl IntoView {
     Delivery: X1-AM58-H54 (95,760c total for 4,788c/unit)
          */
 
-    let sell_total = trade.delivery.allocated_credits.clone();
+    let sell_total = trade.delivery.allocated_credits;
     let sell_waypoint = trade.delivery.details.get_waypoint();
     let sell_price_per_unit = trade.delivery.details.get_price_per_unit();
 
     let (delivery_label, sell_total, trade_good_str) = match &trade.delivery.details {
         FinanceTicketDetails::PurchaseTradeGoods(d) => ("Purchase", 0.into(), d.trade_good.to_string()),
-        FinanceTicketDetails::SellTradeGoods(s) => ("Sell", s.expected_total_sell_price.clone(), s.trade_good.to_string()),
+        FinanceTicketDetails::SellTradeGoods(s) => ("Sell", s.expected_total_sell_price, s.trade_good.to_string()),
         FinanceTicketDetails::SupplyConstructionSite(d) => ("Supply", 0.into(), d.trade_good.to_string()),
         FinanceTicketDetails::PurchaseShip(d) => ("PurchaseShip", 0.into(), d.ship_type.to_string()),
         FinanceTicketDetails::RefuelShip(d) => ("Refuel", 0.into(), TradeGoodSymbol::FUEL.to_string()),
@@ -142,7 +138,7 @@ fn render_active_trade(trade: ActiveTrade) -> impl IntoView {
 
     // complete trade (purchase & sell)
     if let Some((purchase_ticket, state)) = trade.maybe_purchase.clone() {
-        let purchase_total = purchase_ticket.allocated_credits.clone();
+        let purchase_total = purchase_ticket.allocated_credits;
         let purchase_waypoint = purchase_ticket.details.get_waypoint();
         let purchase_price_per_unit = purchase_ticket.details.get_price_per_unit();
         let units = purchase_ticket.details.get_units();
@@ -218,7 +214,7 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
             .and_then(|delta| (delta.num_seconds() >= 0).then_some(delta)) // ship nav status might not have been fixed after we've arrived
     };
 
-    let maybe_cooldown_expiration = ship.cooldown.expiration.clone();
+    let maybe_cooldown_expiration = ship.cooldown.expiration;
 
     let calc_cooldown_time_left = move || {
         maybe_cooldown_expiration.and_then(|expiration_time| {
@@ -233,7 +229,8 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
     let (maybe_cooldown_time_left, set_maybe_cooldown_time_left) = signal(calc_cooldown_time_left());
 
     let ship_icon = if let Some(ship_task) = &maybe_ship_task {
-        let icon = match ship_task {
+        
+        match ship_task {
             ShipTask::ObserveWaypointDetails { .. } => COMPASS_ROSE,
             ShipTask::ObserveAllWaypointsOnce { .. } => COMPASS_ROSE,
             ShipTask::MineMaterialsAtWaypoint { .. } => HAMMER,
@@ -243,8 +240,7 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
             ShipTask::PrepositionShipForTrade { .. } => TRUCK,
             ShipTask::SiphonCarboHydratesAtWaypoint { .. } => ATOM,
             ShipTask::ExecuteContracts => BRIEFCASE,
-        };
-        icon
+        }
     } else {
         ROCKET
     };
@@ -263,7 +259,6 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
                         <h3 class="text-xl text-white">{ship.symbol.0.to_string()}</h3>
                         <p class="text-slate-400">
                             {maybe_ship_task
-                                .clone()
                                 .map(|t| t.to_string())
                                 .unwrap_or("---".to_string())}
                         </p>
@@ -326,7 +321,7 @@ pub fn ShipCard<'a>(ship: &'a Ship, maybe_ship_task: Option<&'a ShipTask>, activ
                                         {format!(
                                             "{} {}",
                                             inventory_entry.units,
-                                            inventory_entry.symbol.to_string(),
+                                            inventory_entry.symbol,
                                         )}
                                     </li>
                                 }
@@ -358,7 +353,7 @@ pub fn FleetOverview<'a>(
     view! {
         <div class="flex flex-col gap-4 p-4">
             <h2 class="font-bold text-xl">
-                {format!("Fleet {} with {} ships", fleet.cfg.to_string(), ships_of_fleet.len())}
+                {format!("Fleet {} with {} ships", fleet.cfg, ships_of_fleet.len())}
             </h2>
             <TreasuryOverview treasurer fleets=&single_fleet_vec />
 
@@ -368,8 +363,7 @@ pub fn FleetOverview<'a>(
                     .sorted_by_key(|(ship, maybe_ship_task)| {
                         format!(
                             "{}-{}",
-                            maybe_ship_task
-                                .clone()
+                            (*maybe_ship_task)
                                 .map(|st| st.to_string())
                                 .unwrap_or("None".to_string()),
                             ship.symbol.0.clone(),
@@ -384,7 +378,7 @@ pub fn FleetOverview<'a>(
                         view! {
                             <ShipCard
                                 ship=ship
-                                maybe_ship_task=maybe_ship_task.clone()
+                                maybe_ship_task=*maybe_ship_task
                                 active_trades
                             />
                         }

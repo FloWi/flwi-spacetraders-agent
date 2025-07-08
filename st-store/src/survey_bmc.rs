@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use mockall::automock;
 use st_domain::{Extraction, Survey, SurveySignature, WaypointSymbol};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -91,7 +91,7 @@ impl SurveyBmcTrait for InMemorySurveyBmc {
         let now = Utc::now();
 
         for survey in surveys {
-            let mut surveys_at_wp = in_memory_surveys
+            let surveys_at_wp = in_memory_surveys
                 .surveys
                 .entry(survey.waypoint_symbol.clone())
                 .or_default();

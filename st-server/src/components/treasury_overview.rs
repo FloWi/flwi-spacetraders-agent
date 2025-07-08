@@ -18,7 +18,7 @@ pub fn TreasuryOverview<'a>(treasurer: &'a ImprovedTreasurer, fleets: &'a [Fleet
                 .find(|f| &f.id == fleet_id)
                 .map(|fleet| (fleet.clone(), fleet_budget.clone()))
         })
-        .sorted_by_key(|(fleet, _)| fleet.id.0.clone())
+        .sorted_by_key(|(fleet, _)| fleet.id.0)
         .map(|(fleet, fleet_budget)| FleetOverviewRow::from((fleet, fleet_budget)))
         .collect_vec();
 

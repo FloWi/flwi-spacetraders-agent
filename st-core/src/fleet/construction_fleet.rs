@@ -1,6 +1,6 @@
 use crate::fleet::construction_fleet::ConstructionFleetAction::{BoostSupplyChain, DeliverConstructionMaterials, TradeProfitably};
 use crate::fleet::fleet::FleetAdmiral;
-use crate::{calc_batches_based_on_volume_constraint, contract_manager};
+use crate::calc_batches_based_on_volume_constraint;
 use anyhow::*;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
@@ -9,11 +9,11 @@ use st_domain::budgeting::credits::Credits;
 use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::SellTradeGoods;
 use st_domain::budgeting::treasury_redesign::{
     ActiveTradeRoute, DeliverConstructionMaterialsTicketDetails, FinanceTicketDetails, FleetBudget, LedgerEntry, PurchaseCargoReason,
-    PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails, ThreadSafeTreasurer,
+    PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails,
 };
 use st_domain::{
-    calc_scored_supply_chain_routes, trading, ActivityLevel, Cargo, ConstructJumpGateFleetConfig, Construction, Contract, ContractEvaluationResult,
-    EvaluatedTradingOpportunity, Fleet, FleetDecisionFacts, FleetId, FleetPhase, FleetTask, FleetTaskCompletion, Inventory, LabelledCoordinate, MarketEntry,
+    calc_scored_supply_chain_routes, trading, ActivityLevel, ConstructJumpGateFleetConfig, Construction,
+    EvaluatedTradingOpportunity, Fleet, FleetId, FleetPhase, FleetTask, FleetTaskCompletion, Inventory, LabelledCoordinate, MarketEntry,
     MarketTradeGood, MaterializedSupplyChain, ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, StationaryProbeLocation,
     SupplyLevel, TicketId, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol,
 };
@@ -345,7 +345,7 @@ async fn determine_construction_fleet_actions(
         .iter()
         .take(unassigned_ships_of_fleet.len())
         .cloned()
-        .map(|(e)| {
+        .map(|e| {
             let volume = e
                 .trading_opportunity
                 .purchase_market_trade_good_entry
@@ -403,7 +403,7 @@ async fn determine_construction_fleet_actions(
             .cloned()
             .sorted_by_key(|trade_good_symbol| {
                 priority_map_of_construction_materials
-                    .get(&trade_good_symbol)
+                    .get(trade_good_symbol)
                     .cloned()
                     .unwrap_or_default()
             })
@@ -415,7 +415,7 @@ async fn determine_construction_fleet_actions(
 
         let available_capital = fleet_budget.available_capital();
 
-        let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&latest_market_entries);
+        let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(latest_market_entries);
         let flattened_market_data: Vec<(MarketTradeGood, WaypointSymbol)> = market_data
             .iter()
             .flat_map(|(wps, mtg_vec)| mtg_vec.iter().map(|mtg| (mtg.clone(), wps.clone())))
@@ -438,18 +438,17 @@ async fn determine_construction_fleet_actions(
                     ActivityLevel::Strong => mtg.supply >= SupplyLevel::High,
                     _ => mtg.supply >= SupplyLevel::Moderate,
                 };
-                let budget_limit_for_construction_material: Credits = budget_limits_for_construction_materials
+                let budget_limit_for_construction_material: Credits = (*budget_limits_for_construction_materials
                     .get(&mtg.symbol)
-                    .unwrap_or(&100_000_000)
-                    .clone()
+                    .unwrap_or(&100_000_000))
                     .into();
                 let has_met_budget_requirement = available_capital > budget_limit_for_construction_material;
                 let no_ongoing_delivery = active_trade_routes
                     .iter()
                     .any(|atr| atr.from == *wps && atr.trade_good == mtg.symbol)
                     .not();
-                let is_ok = should_buy && has_met_budget_requirement && no_ongoing_delivery;
-                is_ok
+                
+                should_buy && has_met_budget_requirement && no_ongoing_delivery
             })
             .map(|(mtg, wps, qty_missing)| {
                 // Don't deliver more than necessary
@@ -503,7 +502,7 @@ async fn determine_construction_fleet_actions(
                 .chain(boosted_trade_routes)
                 .chain(profitable_trading_actions.values().cloned())
                 .collect_vec();
-            find_best_combination(unassigned_ships_of_fleet, &prioritized_actions, &waypoint_map, fleet_budget)
+            find_best_combination(unassigned_ships_of_fleet, &prioritized_actions, waypoint_map, fleet_budget)
         }
     } else {
         event!(
@@ -513,7 +512,7 @@ async fn determine_construction_fleet_actions(
         find_best_combination(
             unassigned_ships_of_fleet,
             &profitable_trading_actions.values().cloned().collect_vec(),
-            &waypoint_map,
+            waypoint_map,
             fleet_budget,
         )
     };
@@ -567,7 +566,7 @@ fn find_best_combination(
         .collect_vec();
 
     let ships = ships
-        .into_iter()
+        .iter()
         .filter(|s| already_assigned_ships.contains_key(&s.symbol).not())
         .collect_vec();
 
@@ -590,7 +589,7 @@ fn find_best_combination(
 
                 // Store this assignment
 
-                let cargo_adjusted_action = action.adjusted_for_cargo_space(&ship);
+                let cargo_adjusted_action = action.adjusted_for_cargo_space(ship);
                 if cargo_adjusted_action.units() > ship.cargo.capacity as u32 {
                     println!("cargo doesn't fit");
                 }
@@ -732,9 +731,9 @@ impl ConstructionFleetAction {
 impl ConstructionFleetAction {
     pub fn estimated_costs(&self) -> Credits {
         match self {
-            BoostSupplyChain { estimated_costs, .. } => estimated_costs.clone(),
-            TradeProfitably { estimated_costs, .. } => estimated_costs.clone(),
-            DeliverConstructionMaterials { estimated_costs, .. } => estimated_costs.clone(),
+            BoostSupplyChain { estimated_costs, .. } => *estimated_costs,
+            TradeProfitably { estimated_costs, .. } => *estimated_costs,
+            DeliverConstructionMaterials { estimated_costs, .. } => *estimated_costs,
         }
     }
 
@@ -947,11 +946,9 @@ fn find_best_selling_location_for_inventory_entry(
         .flat_map(|(wps, entries_for_waypoint)| {
             let market_waypoint = waypoint_map.get(&wps).unwrap();
             entries_for_waypoint
-                .iter()
-                .cloned()
-                .filter(|mtg| {
+                .iter().filter(|&mtg| {
                     mtg.symbol == inventory_entry.symbol && (mtg.trade_good_type == TradeGoodType::Import || mtg.trade_good_type == TradeGoodType::Exchange)
-                })
+                }).cloned()
                 .map(|mtg| {
                     let distance = ship_location_waypoint.distance_to(market_waypoint);
                     let distance = if distance < 1 { 1 } else { distance };
@@ -960,7 +957,7 @@ fn find_best_selling_location_for_inventory_entry(
                 })
                 .collect_vec()
         })
-        .max_by_key(|(_, _, profit_per_distance_unit)| profit_per_distance_unit.clone())
+        .max_by_key(|(_, _, profit_per_distance_unit)| *profit_per_distance_unit)
         .map(|(sell_wps, mtg, _)| (sell_wps, mtg.clone()));
 
     maybe_best

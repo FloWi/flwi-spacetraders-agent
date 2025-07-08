@@ -75,12 +75,12 @@ impl InMemoryUniverse {
             .ok_or(anyhow!("No ship docked at waypoint {}", waypoint_symbol.0.clone()))
     }
 
-    fn validate_ship(&self, ship_symbol: ShipSymbol) -> Result<(&Ship)> {
+    fn validate_ship(&self, ship_symbol: ShipSymbol) -> Result<&Ship> {
         self.ships
             .get(&ship_symbol)
             .ok_or(anyhow!("Ship not found"))
     }
-    fn validate_waypoint(&self, waypoint_symbol: WaypointSymbol) -> Result<(&Waypoint)> {
+    fn validate_waypoint(&self, waypoint_symbol: WaypointSymbol) -> Result<&Waypoint> {
         self.waypoints
             .get(&waypoint_symbol)
             .ok_or(anyhow!("Waypoint not found"))
@@ -1639,7 +1639,7 @@ fn generate_random_surveys(waypoint: &Waypoint, ship_mounts: &[Mount]) -> Vec<Su
 
     let ship_mount_details: Vec<(ShipMountSymbol, Option<i32>, Vec<TradeGoodSymbol>)> = ship_mounts
         .iter()
-        .map(|m| (m.symbol.clone(), m.strength.clone(), m.deposits.clone().unwrap_or_default()))
+        .map(|m| (m.symbol.clone(), m.strength, m.deposits.clone().unwrap_or_default()))
         .collect_vec();
 
     generate_random_surveys_internal(waypoint.symbol.clone(), &waypoint_traits, &ship_mount_details)
@@ -1678,7 +1678,7 @@ fn generate_random_surveys_internal(
                 let random_expiration = now.add(TimeDelta::minutes(random_minutes));
 
                 surveys.push(Survey {
-                    signature: SurveySignature(format!("{}-{}", waypoint_symbol.clone(), Uuid::new_v4().to_string())),
+                    signature: SurveySignature(format!("{}-{}", waypoint_symbol.clone(), Uuid::new_v4())),
                     waypoint_symbol: waypoint_symbol.clone(),
                     deposits: random_elements
                         .into_iter()
@@ -1701,7 +1701,7 @@ fn get_possible_extraction_materials_by_waypoint_traits(waypoint_trait_symbols: 
         .iter()
         .flat_map(|wp_trait_symbol| {
             trade_symbols_by_waypoint_trait_map
-                .get(&wp_trait_symbol)
+                .get(wp_trait_symbol)
                 .cloned()
                 .unwrap_or_default()
         })

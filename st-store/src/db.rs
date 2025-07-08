@@ -11,7 +11,6 @@ use sqlx::{ConnectOptions, Pool, Postgres};
 use tracing::log::LevelFilter;
 use tracing::{event, Level};
 
-use crate::DbModelManager;
 use st_domain::budgeting::treasury_redesign::LedgerEntry;
 use st_domain::{
     distance_to, Construction, Contract, Data, Extraction, JumpGate, MarketData, MarketEntry, RegistrationResponse, Ship, ShipTask, Shipyard, ShipyardData,
@@ -861,7 +860,7 @@ pub(crate) async fn upsert_surveys(pool: &Pool<Postgres>, surveys: Vec<Survey>, 
             signature: s.signature.0.clone(),
             entry: Json(s.clone()),
             created_at: now,
-            expires_at: s.expiration.clone(),
+            expires_at: s.expiration,
             is_discarded: false,
         })
         .collect();

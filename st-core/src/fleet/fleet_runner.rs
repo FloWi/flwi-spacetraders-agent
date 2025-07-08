@@ -6,23 +6,19 @@ use crate::fleet::fleet::{
     recompute_tasks_after_ship_finishing_behavior_tree, FleetAdmiral, NewTaskResult, ShipStatusReport,
 };
 use crate::fleet::ship_runner::ship_behavior_runner;
-use crate::pagination::fetch_all_pages;
 use crate::ship::ShipOperations;
 use crate::st_client::StClientTrait;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
-use std::cmp::min;
 
 use crate::bmc_blackboard::BmcBlackboard;
-use crate::marketplaces::marketplaces::filter_waypoints_with_trait;
-use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
 use crate::transfer_cargo_manager::TransferCargoManager;
 use itertools::Itertools;
 use st_domain::blackboard_ops::BlackboardOps;
 use st_domain::budgeting::treasury_redesign::ThreadSafeTreasurer;
 use st_domain::{
     get_exploration_tasks_for_waypoint, FleetId, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, StationaryProbeLocation,
-    TransactionActionEvent, WaypointTraitSymbol, WaypointType,
+    TransactionActionEvent,
 };
 use st_store::bmc::ship_bmc::ShipBmcTrait;
 use st_store::bmc::Bmc;
@@ -184,7 +180,7 @@ impl FleetRunner {
         //     return Ok(());
         // }
         let mut guard = runner.lock().await;
-        let fleet_id = ship_fleet_assignment.get(&ss).unwrap();
+        let fleet_id = ship_fleet_assignment.get(ss).unwrap();
 
         println!("DEBUG: Creating new ship_op_mutex for ship: {}", ss.0);
 
@@ -1102,7 +1098,7 @@ impl FleetRunner {
                     let admiral_guard = admiral.lock().await;
                     let all_ships = admiral_guard.all_ships.keys().cloned().collect();
                     let ship_tasks = admiral_guard.ship_tasks.clone();
-                    let sleep_duration = sleep_duration.clone();
+                    let sleep_duration = sleep_duration;
                     let ship_fleet_assignment = admiral_guard.ship_fleet_assignment.clone();
                     (all_ships, ship_tasks, sleep_duration, ship_fleet_assignment)
                 };

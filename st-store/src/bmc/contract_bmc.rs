@@ -75,7 +75,7 @@ impl ContractBmcTrait for InMemoryContractBmc {
     }
 
     async fn get_youngest_contract(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Option<Contract>> {
-        let mut guard = self.in_memory_contracts.read().await;
+        let guard = self.in_memory_contracts.read().await;
 
         let contracts_of_system = guard
             .contracts

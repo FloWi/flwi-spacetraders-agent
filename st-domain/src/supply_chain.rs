@@ -173,8 +173,8 @@ pub fn score_demand_and_activity(supply: &SupplyLevel, maybe_activity: &Option<A
             ActivityLevel::Restricted => 1,
         },
     };
-    let supply_level_score = MAX_SUPPLY_LEVEL_SCORE.clone() - supply_level_score_worst_to_best;
-    let activity_level_score = MAX_ACTIVITY_LEVEL_SCORE.clone() - activity_score_worst_to_best;
+    let supply_level_score = *MAX_SUPPLY_LEVEL_SCORE - supply_level_score_worst_to_best;
+    let activity_level_score = *MAX_ACTIVITY_LEVEL_SCORE - activity_score_worst_to_best;
 
     if supply == &SupplyLevel::Abundant && maybe_activity == &Some(ActivityLevel::Restricted) {
         // A market becomes restricted when the supplyLevel of the export is restricted (full storage)
@@ -1390,7 +1390,7 @@ pub fn calc_scored_supply_chain_routes(
                 &priorities_of_products_to_boost,
             )),
         })
-        .sorted_by_key(|r| (r.score * -1, r.spread * -1))
+        .sorted_by_key(|r| (-r.score, -r.spread))
         .collect_vec();
 
     scored_supply_routes

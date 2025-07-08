@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use st_domain::{
-    DeliveryRoute, MaterializedSupplyChain, MiningOpsConfig, RawDeliveryRoute, RawMaterialSource, RawMaterialSourceType, SiphoningOpsConfig, SupplyLevel,
+    MaterializedSupplyChain, MiningOpsConfig, RawDeliveryRoute, RawMaterialSource, RawMaterialSourceType, SiphoningOpsConfig, SupplyLevel,
     SystemSymbol, TradeGoodSymbol, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet};
@@ -11,6 +11,12 @@ use tracing::debug;
 #[derive(Clone, Debug)]
 pub struct MaterializedSupplyChainManager {
     materialized_supply_chain: Arc<Mutex<HashMap<SystemSymbol, MaterializedSupplyChain>>>,
+}
+
+impl Default for MaterializedSupplyChainManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MaterializedSupplyChainManager {
@@ -82,7 +88,7 @@ impl MaterializedSupplyChainManager {
             .materialized_supply_chain
             .lock()
             .map_err(|_| anyhow!("Lock poisoned"))?
-            .get(&system_symbol)
+            .get(system_symbol)
             .cloned()
         {
             let raw_routes = msc
@@ -116,7 +122,7 @@ fn get_locations_and_demand_for_raw_material(
         .iter()
         .filter_map(|route| match &route.source {
             RawMaterialSource { trade_good, source_type, .. } if *source_type == raw_material_source_type => {
-                let is_supply_too_low = (route.delivery_market_entry.supply < SupplyLevel::High);
+                let is_supply_too_low = route.delivery_market_entry.supply < SupplyLevel::High;
 
                 is_supply_too_low.then_some(trade_good.clone())
             }

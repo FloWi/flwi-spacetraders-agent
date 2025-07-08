@@ -1,22 +1,17 @@
 use anyhow::Result;
 use st_domain::blackboard_ops::BlackboardOps;
-use std::collections::{HashMap, HashSet};
 
 use crate::contract_manager;
 use crate::contract_manager::calculate_necessary_tickets_for_contract;
 use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
 use crate::transfer_cargo_manager::TransferCargoManager;
-use st_domain::budgeting::credits::Credits;
-use st_domain::budgeting::treasury_redesign::FinanceTicketDetails::SellTradeGoods;
 use st_domain::budgeting::treasury_redesign::{
-    DeliverCargoContractTicketDetails, DeliverConstructionMaterialsTicketDetails, FinanceTicket, FinanceTicketDetails, SellTradeGoodsTicketDetails,
+    FinanceTicket, FinanceTicketDetails,
     ThreadSafeTreasurer,
 };
-use st_domain::trading::group_markets_by_type;
 use st_domain::{
-    combine_maps, trading, Cargo, Contract, DeliverCargoToContractResponse, FleetId, Inventory, LabelledCoordinate, MarketEntry, MarketTradeGood,
-    PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, ShipSymbol, SupplyConstructionSiteResponse, SystemSymbol, TradeGoodSymbol,
-    TradeGoodType, Waypoint, WaypointSymbol,
+    Cargo, Contract, DeliverCargoToContractResponse, FleetId, MarketEntry,
+    PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, ShipSymbol, SupplyConstructionSiteResponse, WaypointSymbol,
 };
 use std::sync::Arc;
 
@@ -119,7 +114,7 @@ impl BehaviorArgs {
             .get_waypoints_of_system(&ship_location.system_symbol())
             .await?;
 
-        let result = calculate_necessary_tickets_for_contract(&ship_cargo, ship_location, contract, &latest_market_entries, &waypoints_of_system)?;
+        let result = calculate_necessary_tickets_for_contract(ship_cargo, ship_location, contract, &latest_market_entries, &waypoints_of_system)?;
 
         let required_capital = result.required_capital();
 

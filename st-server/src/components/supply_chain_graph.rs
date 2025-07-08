@@ -1,7 +1,6 @@
 use crate::petgraph_example_page::{ColoredLabel, Point, TechEdge, TechNode, TechNodeSource};
 use itertools::Itertools;
 use leptos::html::Pre;
-use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use petgraph::graph::NodeIndex;
