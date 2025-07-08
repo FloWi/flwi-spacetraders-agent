@@ -4,7 +4,7 @@ use st_domain::{ActivityLevel, ScoredSupplyChainSupportRoute, SupplyLevel, Trade
 // IMPORTANT: all these imports are required, dear copy-and-paster
 use crate::tables::renderers::*;
 use crate::tailwind::TailwindClassesPreset;
-#[allow(unused_variables)]
+#[allow(unused_imports)]
 use leptos::prelude::*;
 use leptos_struct_table::*;
 

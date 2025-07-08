@@ -7,7 +7,7 @@ use crate::components;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MermaidString(String);
 
-#[cfg(feature="ssr")]
+#[cfg(feature = "ssr")]
 use itertools::Itertools;
 
 #[server]
