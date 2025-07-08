@@ -728,11 +728,9 @@ fn compute_all_routes(
 
     let rest: Vec<TradeGoodSymbol> = all_products_involved
         .iter()
-        .filter(|tg| raw_input_sources.contains_key(tg.clone()).not() && input_sources.contains_key(tg.clone()).not())
+        .filter(|&tg| raw_input_sources.contains_key(tg).not() && input_sources.contains_key(tg).not())
         .cloned()
         .collect();
-
-    //assert_eq!(rest.len() + raw_input_sources.len() + input_sources.len(), all_products_involved.len());
 
     let mut rest_queue = VecDeque::from_iter(rest.iter().cloned());
     let mut higher_delivery_routes = vec![];

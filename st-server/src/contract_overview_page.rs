@@ -1,13 +1,13 @@
 use crate::ship_overview_page::ShipCard;
-use anyhow::{anyhow, Result};
 use leptos::html::*;
 use leptos::prelude::*;
-use st_domain::{ContractEvaluationResult, Ship, ShipRegistrationRole};
+use st_domain::{ContractEvaluationResult, Ship};
 
 #[server]
 async fn get_contract() -> Result<(Option<ContractEvaluationResult>, Ship), ServerFnError> {
+    use anyhow::anyhow;
     use st_core::contract_manager;
-    use st_store::bmc::Bmc;
+    use st_domain::ShipRegistrationRole;
     use st_store::Ctx;
 
     async fn anyhow_fn() -> anyhow::Result<(Option<ContractEvaluationResult>, Ship)> {
@@ -127,7 +127,7 @@ pub fn ContractOverviewPage() -> impl IntoView {
                                             }
                                                 .into_any()
                                         }
-                                        Ok((None, command_ship)) => {
+                                        Ok((None, _command_ship)) => {
                                             view! { <p>{"no contract found"}</p> }.into_any()
                                         }
                                         Err(error) => {

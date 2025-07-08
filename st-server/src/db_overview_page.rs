@@ -12,7 +12,7 @@ pub struct DbOverview {
 
 #[server]
 async fn get_db_overview() -> Result<DbOverview, ServerFnError> {
-    use st_store::{Ctx, StatusBmc};
+    use st_store::Ctx;
 
     let state = expect_context::<crate::app::AppState>();
     let bmc = state.bmc;

@@ -645,26 +645,6 @@ where system_symbol = $1
     Ok(maybe_system.map(|db_system| db_system.entry.0))
 }
 
-pub(crate) async fn select_jump_gate(pool: &Pool<Postgres>, waypoint_symbol: &WaypointSymbol) -> Result<Option<DbJumpGateData>> {
-    let maybe_jump_gate_data: Option<DbJumpGateData> = sqlx::query_as!(
-        DbJumpGateData,
-        r#"
-select system_symbol
-     , waypoint_symbol
-     , entry as "entry: Json<JumpGate>"
-     , created_at
-     , updated_at
-from waypoints
-where system_symbol = $1
-    "#,
-        waypoint_symbol.0
-    )
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(maybe_jump_gate_data)
-}
-
 pub async fn insert_jump_gates(pool: &Pool<Postgres>, jump_gates: Vec<JumpGate>, now: DateTime<Utc>) -> Result<()> {
     let db_entries: Vec<DbJumpGateData> = jump_gates
         .iter()

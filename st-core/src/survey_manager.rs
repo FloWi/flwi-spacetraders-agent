@@ -1,7 +1,6 @@
 use itertools::Itertools;
 use st_domain::{MaterializedSupplyChain, Survey, TradeGoodSymbol};
 use std::collections::HashMap;
-use strum::IntoEnumIterator;
 
 pub(crate) fn pick_best_survey(all_surveys: Vec<Survey>, materialized_supply_chain: &MaterializedSupplyChain) -> Option<(Survey, i32)> {
     let demand_for_raw_materials = materialized_supply_chain.calc_demand_for_raw_materials();

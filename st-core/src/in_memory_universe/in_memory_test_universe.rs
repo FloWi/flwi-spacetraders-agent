@@ -25,21 +25,9 @@ pub async fn get_test_universe() -> (Arc<dyn Bmc>, Arc<dyn StClientTrait>) {
 
     let in_memory_universe = InMemoryUniverse::from_snapshot(json_path).expect("InMemoryUniverse::from_snapshot");
 
-    let shipyard_waypoints = in_memory_universe
-        .shipyards
-        .keys()
-        .cloned()
-        .collect::<HashSet<_>>();
-    let marketplace_waypoints = in_memory_universe
-        .marketplaces
-        .keys()
-        .cloned()
-        .collect::<HashSet<_>>();
-
     let in_memory_client = InMemoryUniverseClient::new(in_memory_universe);
 
     let agent = in_memory_client.get_agent().await.expect("agent").data;
-    let hq_system_symbol = agent.headquarters.system_symbol();
 
     let ship_bmc = InMemoryShipsBmc::new(InMemoryShips::new());
     let agent_bmc = InMemoryAgentBmc::new(agent);

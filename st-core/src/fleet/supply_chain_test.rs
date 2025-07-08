@@ -206,71 +206,6 @@ fn render_supply_chain_routes_table(chain: &MaterializedIndividualSupplyChain) -
     table.to_string()
 }
 
-fn calc_trading_decisions(
-    facts: &FleetDecisionFacts,
-    phase: &FleetPhaseName,
-    active_trades: &[(ShipSymbol, (TradeGoodSymbol, WaypointSymbol), (TradeGoodSymbol, WaypointSymbol), u32)],
-    active_construction_deliveries: &[(ShipSymbol, (TradeGoodSymbol, u32))],
-    materialized_supply_chain: &MaterializedSupplyChain,
-    market_data: &[(WaypointSymbol, Vec<MarketTradeGood>)],
-    waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
-) -> Result<()> {
-    let missing_construction_material: HashMap<TradeGoodSymbol, u32> = facts.missing_construction_materials();
-
-    let missing_construction_material: HashMap<TradeGoodSymbol, u32> = missing_construction_material
-        .into_iter()
-        .map(|(good, amount)| {
-            // Calculate how much of this good is already being delivered
-            let en_route_amount = active_construction_deliveries
-                .iter()
-                .filter(|(_, (delivery_good, _))| delivery_good == &good)
-                .map(|(_, (_, delivery_amount))| delivery_amount)
-                .sum::<u32>();
-
-            // Return the good and the remaining amount needed (if any)
-            (good, amount.saturating_sub(en_route_amount))
-        })
-        // Filter out materials that are fully covered by en-route deliveries
-        .filter(|(_, remaining_amount)| *remaining_amount > 0)
-        .collect();
-
-    //Check supply chain health of construction materials
-    println!("Checking health of supply chain routes for construction material");
-    missing_construction_material
-        .keys()
-        .for_each(|missing_construction_mat| {
-            if let Some(chain) = materialized_supply_chain
-                .individual_routes_of_goods_for_sale
-                .get(missing_construction_mat)
-            {
-                let construction_site_wps = facts.construction_site.clone().unwrap().symbol;
-                let construction_site_wp = waypoint_map.get(&construction_site_wps).unwrap();
-
-                println!(
-                    "\nEvaluation of supply chain for {}\n{}",
-                    missing_construction_mat,
-                    render_supply_chain_routes_table(chain)
-                )
-            }
-        });
-
-    println!(
-        "Found {} out of {} trade goods for sale that don't conflict with the supply chains of the construction materials:\nnon conflicting goods: {:?}\n    conflicting_goods: {:?}",
-        materialized_supply_chain.goods_for_sale_not_conflicting_with_construction.len(),
-        materialized_supply_chain.goods_with_export_market.len(),
-        materialized_supply_chain.goods_for_sale_not_conflicting_with_construction,
-        materialized_supply_chain.goods_for_sale_conflicting_with_construction,
-    );
-
-    let trading_opportunities =
-        find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map, &materialized_supply_chain.no_go_trades);
-    //evaluate_trading_opportunities()
-
-    println!("found {} trading opportunities", trading_opportunities.len());
-
-    Ok(())
-}
-
 /// Print a number with 2 decimal places and comma-separated
 pub fn format_number(value: f64) -> String {
     // thousands will format floating point numbers just fine, but we can't
@@ -295,7 +230,7 @@ mod tests {
     use crate::fleet::fleet::collect_fleet_decision_facts;
     use crate::fleet::fleet_runner::FleetRunner;
     use crate::fleet::initial_data_collector::load_and_store_initial_data_in_bmcs;
-    use crate::fleet::supply_chain_test::{calc_trading_decisions, render_cli_table_trading_opp, TradingOppRow};
+    use crate::fleet::supply_chain_test::{render_cli_table_trading_opp, TradingOppRow};
     use crate::st_client::StClientTrait;
     use crate::universe_server::universe_server::{InMemoryUniverse, InMemoryUniverseClient, InMemoryUniverseOverrides};
     use anyhow::Result;
@@ -516,8 +451,6 @@ mod tests {
         let materialized_supply_chain = facts.materialized_supply_chain.clone().unwrap();
 
         let market_data: Vec<(WaypointSymbol, Vec<MarketTradeGood>)> = trading::to_trade_goods_with_locations(&market_data);
-
-        calc_trading_decisions(&facts, &phase, &active_trades, &[], &materialized_supply_chain, &market_data, &waypoint_map)?;
 
         assert!(
             materialized_supply_chain

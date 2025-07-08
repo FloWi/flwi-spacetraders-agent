@@ -1,7 +1,6 @@
 use crate::fleet::fleet::FleetAdmiral;
 use anyhow::*;
 use itertools::Itertools;
-use petgraph::visit::Walker;
 use st_domain::{FleetId, MarketObservationFleetConfig, Ship, ShipSymbol, ShipTask, WaypointSymbol};
 use std::collections::HashMap;
 use std::ops::Not;
@@ -12,7 +11,6 @@ impl MarketObservationFleet {
     pub fn compute_ship_tasks(
         admiral: &FleetAdmiral,
         cfg: &MarketObservationFleetConfig,
-        ships_without_tasks: &[&Ship],
         all_ships_of_fleet: &[&Ship],
         fleet_id: &FleetId,
     ) -> Result<HashMap<ShipSymbol, ShipTask>> {

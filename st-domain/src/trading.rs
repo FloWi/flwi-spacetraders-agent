@@ -23,22 +23,22 @@ pub fn find_trading_opportunities_sorted_by_profit_per_distance_unit(
 
     let exports = denormalized_trade_goods_with_wp_symbols
         .iter()
-        .filter(|(wp_sym, mtg)| mtg.trade_good_type == TradeGoodType::Export || mtg.trade_good_type == TradeGoodType::Exchange)
+        .filter(|(_wp_sym, mtg)| mtg.trade_good_type == TradeGoodType::Export || mtg.trade_good_type == TradeGoodType::Exchange)
         .collect_vec();
 
     let imports = denormalized_trade_goods_with_wp_symbols
         .iter()
-        .filter(|(wp_sym, mtg)| mtg.trade_good_type == TradeGoodType::Import || mtg.trade_good_type == TradeGoodType::Exchange)
+        .filter(|(_wp_sym, mtg)| mtg.trade_good_type == TradeGoodType::Import || mtg.trade_good_type == TradeGoodType::Exchange)
         .collect_vec();
 
     let forbidden_trade_symbols = no_go_trades
         .iter()
-        .map(|(from, to)| from.clone())
+        .map(|(from, _to)| from.clone())
         .collect::<HashSet<_>>();
 
     let trades_by_profit = exports
         .iter()
-        .filter(|(export_wps, export_mtg)| !forbidden_trade_symbols.contains(&export_mtg.symbol))
+        .filter(|(_export_wps, export_mtg)| !forbidden_trade_symbols.contains(&export_mtg.symbol))
         .flat_map(|(export_wps, export_mtg)| {
             let export_wp = waypoint_map.get(export_wps).unwrap();
             imports

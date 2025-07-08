@@ -1,14 +1,10 @@
 use crate::components::clipboard_button::ClipboardButton;
-use std::collections::HashSet;
-use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use itertools::*;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
-use leptos_use::use_interval_fn;
 use serde::{Deserialize, Serialize};
-use st_domain::{FleetDecisionFacts, FleetPhase, FleetsOverview, Ship, WaypointSymbol};
+use st_domain::{FleetDecisionFacts, FleetPhase, FleetsOverview, Ship};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShipsOverview {
@@ -26,6 +22,7 @@ pub enum GetShipsMode {
 async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, FleetsOverview, FleetPhase), ServerFnError> {
     use st_core::fleet::fleet;
     use st_store::Ctx;
+    use std::sync::Arc;
 
     let state = expect_context::<crate::app::AppState>();
     let bmc = state.bmc;
@@ -46,13 +43,6 @@ async fn get_fleet_decision_facts() -> Result<(FleetDecisionFacts, FleetsOvervie
         .await
         .expect("load_overview");
 
-    let marketplaces_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(decision_facts.marketplaces_of_interest.iter().cloned());
-    let shipyards_of_interest: HashSet<WaypointSymbol> = HashSet::from_iter(decision_facts.shipyards_of_interest.iter().cloned());
-    let marketplaces_ex_shipyards: Vec<WaypointSymbol> = marketplaces_of_interest
-        .difference(&shipyards_of_interest)
-        .cloned()
-        .collect_vec();
-
     // Create a construction fleet phase
     let fleet_phase = fleet::compute_fleet_phase_with_tasks(home_system_symbol, &decision_facts, &fleet_overview.completed_fleet_tasks);
 
@@ -64,7 +54,7 @@ pub fn FleetOverviewPage() -> impl IntoView {
     let fleet_decision_facts_resource = Resource::new(|| {}, |_| get_fleet_decision_facts());
 
     #[cfg(not(feature = "ssr"))]
-    let _handle = use_interval_fn(move || fleet_decision_facts_resource.refetch(), 5_000);
+    let _handle = leptos_use::use_interval_fn(move || fleet_decision_facts_resource.refetch(), 5_000);
 
     view! {
         <div class="bg-blue-950 text-white flex flex-col min-h-screen">

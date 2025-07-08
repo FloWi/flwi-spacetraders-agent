@@ -20,7 +20,6 @@ use st_domain::{
     get_exploration_tasks_for_waypoint, FleetId, OperationExpenseEvent, Ship, ShipFrameSymbol, ShipSymbol, ShipTask, StationaryProbeLocation,
     TransactionActionEvent,
 };
-use st_store::bmc::ship_bmc::ShipBmcTrait;
 use st_store::bmc::Bmc;
 use st_store::{upsert_fleets_data, Ctx};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -163,7 +162,7 @@ impl FleetRunner {
             .await?;
         }
 
-        tokio::join!(msg_listeners_join_handle, treasurer_archiver_join_handle);
+        let _ = tokio::join!(msg_listeners_join_handle, treasurer_archiver_join_handle);
 
         Ok(())
     }
@@ -777,12 +776,8 @@ impl FleetRunner {
                     );
                 }
             },
-            ShipStatusReport::TransactionCompleted(_, transaction_event, trade_ticket) => match &transaction_event {
-                TransactionActionEvent::PurchasedTradeGoods {
-                    ticket_id,
-                    ticket_details,
-                    response,
-                } => {
+            ShipStatusReport::TransactionCompleted(_, transaction_event, _) => match &transaction_event {
+                TransactionActionEvent::PurchasedTradeGoods { response, .. } => {
                     event!(
                         Level::INFO,
                         message = "ShipStatusReport",
@@ -796,11 +791,7 @@ impl FleetRunner {
                         treasurer_credits
                     );
                 }
-                TransactionActionEvent::SoldTradeGoods {
-                    ticket_id,
-                    ticket_details,
-                    response,
-                } => {
+                TransactionActionEvent::SoldTradeGoods { response, .. } => {
                     event!(
                         Level::INFO,
                         message = "ShipStatusReport",
@@ -814,11 +805,7 @@ impl FleetRunner {
                         treasurer_credits
                     );
                 }
-                TransactionActionEvent::SuppliedConstructionSite {
-                    ticket_id,
-                    ticket_details,
-                    response,
-                } => {
+                TransactionActionEvent::SuppliedConstructionSite { ticket_details, response, .. } => {
                     let overview_str = response
                         .data
                         .construction
@@ -837,11 +824,7 @@ impl FleetRunner {
                         treasurer_credits
                     );
                 }
-                TransactionActionEvent::PurchasedShip {
-                    ticket_id,
-                    ticket_details,
-                    response,
-                } => {
+                TransactionActionEvent::PurchasedShip { ticket_details, response, .. } => {
                     event!(
                         Level::INFO,
                         message = "ShipStatusReport",
@@ -1015,7 +998,6 @@ impl FleetRunner {
         let ship_action_token = cancel_token.clone();
         let ship_status_token = cancel_token.clone();
 
-        let bmc_for_updated = Arc::clone(&bmc);
         let bmc_for_status = Arc::clone(&bmc);
         let fleet_admiral_for_updated = Arc::clone(&fleet_admiral);
         let fleet_admiral_for_status = Arc::clone(&fleet_admiral);
@@ -1134,17 +1116,6 @@ impl FleetRunner {
         }
 
         event!(Level::WARN, "All listeners have exited, fleet runner will no longer process messages");
-    }
-
-    async fn stop_ship(fleet_runner: Arc<Mutex<FleetRunner>>, ship_symbol: &ShipSymbol) -> Result<()> {
-        let mut runner_guard = fleet_runner.lock().await;
-        if let Some(join_handle) = runner_guard.ship_fibers.get(ship_symbol) {
-            join_handle.abort();
-        };
-        runner_guard.ship_fibers.remove(ship_symbol);
-        runner_guard.ship_ops.remove(ship_symbol);
-
-        Ok(())
     }
 }
 

@@ -308,14 +308,6 @@ pub async fn upsert_fleets_data(
         .save_ship_tasks(_ctx, ship_task_assignment)
         .await?;
 
-    // fleet_bmc.upsert_ship_task_assignment(_ctx, &ship_task_assignment).await?;
-
-    let trade_bmc = bmc.trade_bmc();
-
-    // for (ss, ticket) in active_trades {
-    //     trade_bmc.upsert_ticket(&Ctx::Anonymous, ss, &ticket.ticket_id(), ticket, ticket.is_complete()).await?
-    // }
-
     Ok(())
 }
 

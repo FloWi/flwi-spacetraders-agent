@@ -86,7 +86,7 @@ impl InMemorySurveyBmc {
 
 #[async_trait]
 impl SurveyBmcTrait for InMemorySurveyBmc {
-    async fn save_surveys(&self, ctx: &Ctx, surveys: Vec<Survey>) -> Result<()> {
+    async fn save_surveys(&self, _ctx: &Ctx, surveys: Vec<Survey>) -> Result<()> {
         let mut in_memory_surveys = self.in_memory_surveys.write().await;
         let now = Utc::now();
 

@@ -6,19 +6,34 @@ use thousands::Separable;
 
 // WaypointSymbolCellRenderer (you already had this one)
 #[component]
-pub fn WaypointSymbolCellRenderer<F: 'static>(class: String, value: Signal<WaypointSymbol>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn WaypointSymbolCellRenderer<F: 'static>(
+    class: String,
+    value: Signal<WaypointSymbol>,
+    #[allow(unused_variables)] row: RwSignal<F>,
+    #[allow(unused_variables)] index: usize,
+) -> impl IntoView {
     view! { <td class=class>{move || value.get_untracked().symbol_ex_system_symbol()}</td> }
 }
 
 // TradeGoodTypeCellRenderer
 #[component]
-pub fn TradeGoodTypeCellRenderer<F: 'static>(class: String, value: Signal<TradeGoodType>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn TradeGoodTypeCellRenderer<F: 'static>(
+    class: String,
+    value: Signal<TradeGoodType>,
+    #[allow(unused_variables)] row: RwSignal<F>,
+    #[allow(unused_variables)] index: usize,
+) -> impl IntoView {
     view! { <td class=class>{move || format!("{:?}", value.get_untracked())}</td> }
 }
 
 // SupplyLevelCellRenderer
 #[component]
-pub fn SupplyLevelCellRenderer<F: 'static>(class: String, value: Signal<SupplyLevel>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn SupplyLevelCellRenderer<F: 'static>(
+    class: String,
+    value: Signal<SupplyLevel>,
+    #[allow(unused_variables)] row: RwSignal<F>,
+    #[allow(unused_variables)] index: usize,
+) -> impl IntoView {
     let supply_class = move || match value.get_untracked() {
         SupplyLevel::Scarce => "text-red-600",       // Bright red for urgency/scarcity
         SupplyLevel::Limited => "text-amber-500",    // Amber/orange for caution
@@ -36,7 +51,12 @@ pub fn SupplyLevelCellRenderer<F: 'static>(class: String, value: Signal<SupplyLe
 
 // ActivityLevelCellRenderer
 #[component]
-pub fn ActivityLevelCellRenderer<F: 'static>(class: String, value: Signal<Option<ActivityLevel>>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn ActivityLevelCellRenderer<F: 'static>(
+    class: String,
+    value: Signal<Option<ActivityLevel>>,
+    #[allow(unused_variables)] row: RwSignal<F>,
+    #[allow(unused_variables)] index: usize,
+) -> impl IntoView {
     let activity_text = move || match value.get_untracked() {
         Some(activity) => format!("{:?}", activity),
         None => "N/A".to_string(),
@@ -63,7 +83,12 @@ pub fn ActivityLevelCellRenderer<F: 'static>(class: String, value: Signal<Option
 
 // ProfitCellRenderer
 #[component]
-pub fn ProfitCellRenderer<F: 'static>(class: String, value: Signal<u64>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn ProfitCellRenderer<F: 'static>(
+    class: String,
+    value: Signal<u64>,
+    #[allow(unused_variables)] row: RwSignal<F>,
+    #[allow(unused_variables)] index: usize,
+) -> impl IntoView {
     let profit_class = move || {
         let profit = value.get_untracked();
         if profit > 10000 {
@@ -88,7 +113,12 @@ pub fn ProfitCellRenderer<F: 'static>(class: String, value: Signal<u64>, row: Rw
 
 // ProfitCellRenderer
 #[component]
-pub fn FloatCellRenderer<F: 'static>(class: String, value: Signal<f64>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn FloatCellRenderer<F: 'static>(
+    class: String,
+    value: Signal<f64>,
+    #[allow(unused_variables)] row: RwSignal<F>,
+    #[allow(unused_variables)] index: usize,
+) -> impl IntoView {
     view! {
         <td class=class>
             <span>{move || format!("{}c", format_number(value.get_untracked()))}</span>
@@ -116,7 +146,12 @@ pub fn format_number(value: f64) -> String {
 
 // PriceCellRenderer (for purchase_price and sell_price)
 #[component]
-pub fn PriceCellRenderer<F: 'static>(class: String, value: Signal<i32>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn PriceCellRenderer<F: 'static>(
+    class: String,
+    value: Signal<i32>,
+    #[allow(unused_variables)] row: RwSignal<F>,
+    #[allow(unused_variables)] index: usize,
+) -> impl IntoView {
     view! {
         <td class=class>{move || format!("{}c", value.get_untracked().separate_with_commas())}</td>
     }
@@ -124,7 +159,12 @@ pub fn PriceCellRenderer<F: 'static>(class: String, value: Signal<i32>, row: RwS
 
 // CreditCellRenderer
 #[component]
-pub fn CreditCellRenderer<F: 'static>(class: String, value: Signal<Credits>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn CreditCellRenderer<F: 'static>(
+    class: String,
+    value: Signal<Credits>,
+    #[allow(unused_variables)] row: RwSignal<F>,
+    #[allow(unused_variables)] index: usize,
+) -> impl IntoView {
     view! {
         <td class=class>
             {move || format!("{}c", value.get_untracked().0.separate_with_commas())}
@@ -134,19 +174,34 @@ pub fn CreditCellRenderer<F: 'static>(class: String, value: Signal<Credits>, row
 
 // TradeVolumeCellRenderer
 #[component]
-pub fn TradeVolumeCellRenderer<F: 'static>(class: String, value: Signal<i32>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn TradeVolumeCellRenderer<F: 'static>(
+    class: String,
+    value: Signal<i32>,
+    #[allow(unused_variables)] row: RwSignal<F>,
+    #[allow(unused_variables)] index: usize,
+) -> impl IntoView {
     view! { <td class=class>{move || format!("{}", value.get_untracked())}</td> }
 }
 
 // TradeGoodSymbolCellRenderer
 #[component]
-pub fn TradeGoodSymbolCellRenderer<F: 'static>(class: String, value: Signal<TradeGoodSymbol>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn TradeGoodSymbolCellRenderer<F: 'static>(
+    class: String,
+    value: Signal<TradeGoodSymbol>,
+    #[allow(unused_variables)] row: RwSignal<F>,
+    #[allow(unused_variables)] index: usize,
+) -> impl IntoView {
     view! { <td class=class>{move || format!("{}", value.get_untracked())}</td> }
 }
 
 // TradeGoodSymbolListCellRenderer
 #[component]
-pub fn TradeGoodSymbolListCellRenderer<F: 'static>(class: String, value: Signal<Vec<TradeGoodSymbol>>, row: RwSignal<F>, index: usize) -> impl IntoView {
+pub fn TradeGoodSymbolListCellRenderer<F: 'static>(
+    class: String,
+    value: Signal<Vec<TradeGoodSymbol>>,
+    #[allow(unused_variables)] row: RwSignal<F>,
+    #[allow(unused_variables)] index: usize,
+) -> impl IntoView {
     view! {
         <td class=class>
             {move || {

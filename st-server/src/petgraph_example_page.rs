@@ -2,8 +2,8 @@ use leptos::html::*;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    calc_scored_supply_chain_routes, ActivityLevel, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource,
-    ScoredSupplyChainSupportRoute, SupplyLevel, TradeGoodSymbol, WaypointSymbol,
+    ActivityLevel, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource, ScoredSupplyChainSupportRoute, SupplyLevel,
+    TradeGoodSymbol, WaypointSymbol,
 };
 
 use crate::components::supply_chain_graph::{get_activity_fill_color, get_supply_fill_color, SupplyChainGraph};
@@ -45,10 +45,6 @@ pub struct ColoredLabel {
 }
 
 impl ColoredLabel {
-    pub(crate) fn empty() -> ColoredLabel {
-        Self::new("".to_string(), "".to_string())
-    }
-
     pub fn new(label: String, color_class: String) -> Self {
         Self { label, color_class }
     }
@@ -141,7 +137,6 @@ impl Point {
 #[server]
 async fn get_materialized_supply_chain() -> Result<Option<(MaterializedSupplyChain, Vec<ScoredSupplyChainSupportRoute>)>, ServerFnError> {
     use st_core::fleet::fleet::collect_fleet_decision_facts;
-    use st_store::bmc::Bmc;
     use st_store::Ctx;
 
     let state = expect_context::<crate::app::AppState>();
@@ -161,7 +156,8 @@ async fn get_materialized_supply_chain() -> Result<Option<(MaterializedSupplyCha
         .expect("collect_fleet_decision_facts");
 
     if let Some(materialized_supply_chain) = facts.materialized_supply_chain {
-        let scored_supply_chain_routes = calc_scored_supply_chain_routes(&materialized_supply_chain, materialized_supply_chain.goods_of_interest.clone());
+        let scored_supply_chain_routes =
+            st_domain::calc_scored_supply_chain_routes(&materialized_supply_chain, materialized_supply_chain.goods_of_interest.clone());
         assert!(
             materialized_supply_chain
                 .raw_delivery_routes

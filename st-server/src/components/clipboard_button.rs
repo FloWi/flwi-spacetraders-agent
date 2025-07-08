@@ -30,6 +30,7 @@ pub fn ClipboardButton(clipboard_text: String, label: String) -> impl IntoView {
             on:click=move |_| spawn_local(write_to_clipboard(clipboard_text.clone()))
         >
             <Icon icon=COPY_SIMPLE size="2em" />
+            <p>{label}</p>
         </button>
     }
 }

@@ -1,20 +1,21 @@
-use itertools::Itertools;
 use leptos::prelude::*;
 use leptos_meta::Title;
-use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 use crate::components;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MermaidString(String);
 
+#[cfg(feature="ssr")]
+use itertools::Itertools;
+
 #[server]
 async fn get_behavior_trees() -> Result<Vec<(String, MermaidString)>, ServerFnError> {
     use st_core;
     use st_core::behavior_tree::behavior_tree::Behavior;
     use st_core::behavior_tree::ship_behaviors::ShipAction;
+    use std::collections::HashMap;
 
     let behaviors = st_core::behavior_tree::ship_behaviors::ship_behaviors();
     let labelled_behaviors: HashMap<String, Behavior<ShipAction>> = behaviors.to_labelled_sub_behaviors();
@@ -32,6 +33,7 @@ async fn get_trading_behavior() -> Result<Vec<(String, MermaidString)>, ServerFn
     use st_core;
     use st_core::behavior_tree::behavior_tree::Behavior;
     use st_core::behavior_tree::ship_behaviors::ShipAction;
+    use std::collections::HashMap;
 
     let behavior = st_core::behavior_tree::ship_behaviors::ship_behaviors().trading_behavior;
     let all_behaviors = st_core::behavior_tree::ship_behaviors::ship_behaviors();
@@ -58,7 +60,6 @@ async fn get_trading_behavior() -> Result<Vec<(String, MermaidString)>, ServerFn
 pub fn BehaviorTreePage() -> impl IntoView {
     // Use create_resource which is the standard way to handle async data in Leptos
     let explorer_behavior_resource = OnceResource::new(get_trading_behavior());
-    let behavior_trees_resource = OnceResource::new(get_behavior_trees());
 
     view! {
         <Title text="Leptos + Tailwindcss" />

@@ -35,7 +35,7 @@ impl SystemBmcTrait for DbSystemBmc {
         db::select_waypoints_of_system(self.mm.pool(), system_symbol).await
     }
 
-    async fn save_waypoints_of_system(&self, _ctx: &Ctx, system_symbol: &SystemSymbol, waypoints: Vec<Waypoint>) -> Result<()> {
+    async fn save_waypoints_of_system(&self, _ctx: &Ctx, _system_symbol: &SystemSymbol, waypoints: Vec<Waypoint>) -> Result<()> {
         db::upsert_waypoints(self.mm.pool(), waypoints, Utc::now()).await
     }
 

@@ -71,7 +71,7 @@ pub async fn load_and_store_initial_data_in_bmcs(client: Arc<dyn StClientTrait>,
         .find(|wp| wp.r#type == WaypointType::JUMP_GATE)
         .expect("home system should have a jump-gate");
 
-    let construction_site = match bmc
+    match bmc
         .construction_bmc()
         .get_construction_site_for_system(ctx, headquarters_system_symbol)
         .await

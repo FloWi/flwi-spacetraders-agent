@@ -1,6 +1,5 @@
 use crate::petgraph_example_page::{ColoredLabel, Point, TechEdge, TechNode, TechNodeSource};
 use itertools::Itertools;
-use leptos::html::Pre;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use petgraph::graph::NodeIndex;
@@ -12,6 +11,7 @@ use std::collections::HashMap;
 use thousands::Separable;
 
 enum Orientation {
+    #[allow(dead_code)]
     TopDown,
     LeftRight,
 }
@@ -19,7 +19,6 @@ enum Orientation {
 #[component]
 pub fn SupplyChainGraph(routes: Vec<DeliveryRoute>, label: String) -> impl IntoView {
     // Container reference for the output
-    let container_ref: NodeRef<Pre> = NodeRef::new();
 
     let orientation = Orientation::LeftRight;
 
@@ -585,7 +584,7 @@ fn build_supply_chain_layout(
     let mut best_layout_index = 0;
     let mut best_layout_metric = 0.0; // Or some other appropriate initial value
 
-    for (i, (layout, width, height)) in built_layouts.iter().enumerate() {
+    for (i, (_layout, width, height)) in built_layouts.iter().enumerate() {
         // Define some metric to evaluate layout quality
         // For example, you might prefer layouts with more balanced width/height ratio
         let layout_metric = (*width as f64) / (*height as f64);
@@ -600,7 +599,7 @@ fn build_supply_chain_layout(
     // log!("Found {} layouts. Best one is idx #{}", built_layouts.len(), best_layout_index);
 
     // Use the best layout instead of just the first
-    if let Some((layout, width, height)) = built_layouts.get(best_layout_index) {
+    if let Some((layout, _width, _height)) = built_layouts.get(best_layout_index) {
         for (node_idx, (x, y)) in layout.iter() {
             let node_id = &graph[*node_idx];
             if let Some(&pos) = node_positions.get(node_id) {
@@ -718,7 +717,7 @@ fn to_nodes_and_edges(routes: &[DeliveryRoute]) -> (Vec<TechNode>, Vec<TechEdge>
                         producing_market_entry,
                         ..
                     },
-                rank,
+                rank: _,
             } => {
                 let target_id = format!("{} at {}", producing_trade_good, delivery_location);
                 let node = TechNode {

@@ -5,13 +5,10 @@ use crate::contract_manager;
 use crate::contract_manager::calculate_necessary_tickets_for_contract;
 use crate::materialized_supply_chain_manager::MaterializedSupplyChainManager;
 use crate::transfer_cargo_manager::TransferCargoManager;
-use st_domain::budgeting::treasury_redesign::{
-    FinanceTicket, FinanceTicketDetails,
-    ThreadSafeTreasurer,
-};
+use st_domain::budgeting::treasury_redesign::{FinanceTicket, FinanceTicketDetails, ThreadSafeTreasurer};
 use st_domain::{
-    Cargo, Contract, DeliverCargoToContractResponse, FleetId, MarketEntry,
-    PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, ShipSymbol, SupplyConstructionSiteResponse, WaypointSymbol,
+    Cargo, Contract, DeliverCargoToContractResponse, FleetId, MarketEntry, PurchaseShipResponse, PurchaseTradeGoodResponse, SellTradeGoodResponse, ShipSymbol,
+    SupplyConstructionSiteResponse, WaypointSymbol,
 };
 use std::sync::Arc;
 
@@ -48,7 +45,7 @@ impl BehaviorArgs {
         Ok(())
     }
 
-    pub(crate) async fn mark_construction_delivery_as_completed(&self, ticket: FinanceTicket, response: &SupplyConstructionSiteResponse) -> Result<()> {
+    pub(crate) async fn mark_construction_delivery_as_completed(&self, ticket: FinanceTicket, _response: &SupplyConstructionSiteResponse) -> Result<()> {
         self.treasurer
             .complete_ticket(&ticket.fleet_id, &ticket, 0.into())
             .await?;
@@ -56,7 +53,7 @@ impl BehaviorArgs {
         Ok(())
     }
 
-    pub(crate) async fn mark_deliver_contract_cargo_completed(&self, ticket: FinanceTicket, response: &DeliverCargoToContractResponse) -> Result<()> {
+    pub(crate) async fn mark_deliver_contract_cargo_completed(&self, ticket: FinanceTicket, _response: &DeliverCargoToContractResponse) -> Result<()> {
         self.treasurer
             .complete_ticket(&ticket.fleet_id, &ticket, 0.into())
             .await?;
