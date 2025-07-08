@@ -78,7 +78,7 @@ impl MaterializedIndividualSupplyChain {
             .iter()
             .filter_map(|r| match r {
                 DeliveryRoute::Raw(_) => None,
-                DeliveryRoute::Processed { route, rank } => Some(route),
+                DeliveryRoute::Processed { route, .. } => Some(route),
             })
             .cloned()
             .collect_vec()
@@ -231,7 +231,7 @@ fn calc_trade_map(trade_relations: &[TradeRelation]) -> HashMap<TradeGoodSymbol,
     trade_relations
         .iter()
         .map(|relation| (relation.export.clone(), relation.imports.clone()))
-        .filter(|(exp, imp)| {
+        .filter(|(_exp, imp)| {
             // if the only import is MACHINERY || EXPLOSIVES, we filter it out
             match imp.as_slice() {
                 [TradeGoodSymbol::EXPLOSIVES] | [TradeGoodSymbol::MACHINERY] => false,
@@ -402,7 +402,7 @@ pub fn materialize_supply_chain(
 
         let relevant_supply_chain = find_complete_supply_chain(&relevant_products, &supply_chain.trade_map);
 
-        if let Ok(all_routes) = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data) {
+        if let Ok(all_routes) = compute_all_routes(&raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data) {
             let total_distance: u32 = all_routes
                 .iter()
                 .map(|r| match r {
@@ -463,7 +463,7 @@ pub fn materialize_supply_chain(
 
     let relevant_supply_chain = find_complete_supply_chain(&relevant_products, &supply_chain.trade_map);
 
-    let all_routes = compute_all_routes(&relevant_products, &raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data)?;
+    let all_routes = compute_all_routes(&raw_delivery_routes, &relevant_supply_chain, waypoint_map, market_data)?;
 
     let trading_opportunities = trading::find_trading_opportunities_sorted_by_profit_per_distance_unit(market_data, waypoint_map, &no_go_trades);
 
@@ -538,7 +538,7 @@ fn calc_construction_related_trade_good_overview(
 
             let no_conflict_with_construction_chains = construction_material_chains
                 .iter()
-                .all(|(construction_material, construction_products_involved)| {
+                .all(|(_construction_material, construction_products_involved)| {
                     let intersection = products_involved
                         .intersection(construction_products_involved)
                         .collect_vec();
@@ -625,7 +625,7 @@ fn calc_construction_related_trade_good_overview(
     // So, we find all trades, where any end of the trade contains one of the goods included in the construction
     let all_producing_goods_inside_construction_chain = trade_pairs_for_construction_materials
         .iter()
-        .map(|(from, to)| to.clone())
+        .map(|(_from, to)| to.clone())
         .collect::<HashSet<_>>();
 
     let allowed_trade_pairs: HashSet<(TradeGoodSymbol, TradeGoodSymbol)> = trade_pairs_for_construction_materials
@@ -635,7 +635,7 @@ fn calc_construction_related_trade_good_overview(
 
     let no_go_trades: HashSet<(TradeGoodSymbol, TradeGoodSymbol)> = trade_pairs_for_goods_for_sale_conflicting_with_construction
         .iter()
-        .filter(|(from, to)| all_producing_goods_inside_construction_chain.contains(from))
+        .filter(|(from, _to)| all_producing_goods_inside_construction_chain.contains(from))
         .filter(|no_go_tuple| {
             // this will also catch e.g. IRON_ORE -> IRON, but we don't want this listed as a no-go-trade, so we filter it out
             !allowed_trade_pairs.contains(no_go_tuple)
@@ -663,7 +663,6 @@ pub struct DumpSupplyChainStateForComputeAllRoutes {
 }
 
 fn compute_all_routes(
-    relevant_products: &[TradeGoodSymbol],
     raw_delivery_routes: &[RawDeliveryRoute],
     relevant_supply_chain: &[SupplyChainNode],
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
@@ -809,7 +808,7 @@ fn compute_all_routes(
 
                 let Some((provider_wps, providing_mtg)) = relevant_supply_markets
                     .iter()
-                    .find(|(wps, export_or_exchange_mtg)| dep_wps == wps)
+                    .find(|(wps, _)| dep_wps == wps)
                     .cloned()
                 else {
                     anyhow::bail!("An export/exchange market of {} should exist at {}", dep_trade_good, dep_wps);
@@ -918,12 +917,6 @@ pub fn compute_raw_delivery_routes(
         .cloned()
         .collect::<HashSet<_>>();
 
-    let end_products = outputs
-        .iter()
-        .filter(|t| intermediates.contains(t).not() && inputs.contains(t).not())
-        .cloned()
-        .collect::<HashSet<_>>();
-
     let source_type_map: HashMap<TradeGoodSymbol, RawMaterialSourceType> = get_raw_material_source();
     let source_waypoints: HashMap<RawMaterialSourceType, Vec<Waypoint>> = get_sourcing_waypoints(waypoint_map);
 
@@ -968,7 +961,7 @@ pub fn compute_raw_delivery_routes(
             let raw_trade_good = rms.trade_good.clone();
             let markets = flattened_market_data
                 .iter()
-                .filter(|(mtg, wps)| mtg.symbol == rms.trade_good && mtg.trade_good_type == TradeGoodType::Exchange)
+                .filter(|(mtg, _wps)| mtg.symbol == rms.trade_good && mtg.trade_good_type == TradeGoodType::Exchange)
                 .cloned()
                 .collect_vec();
             (raw_trade_good, markets)
@@ -987,7 +980,7 @@ pub fn compute_raw_delivery_routes(
                     let export_trade_symbol = tr.export.clone();
                     let export_markets = flattened_market_data
                         .iter()
-                        .filter(|(mtg, wps)| mtg.symbol == export_trade_symbol && mtg.trade_good_type == TradeGoodType::Export)
+                        .filter(|(mtg, _wps)| mtg.symbol == export_trade_symbol && mtg.trade_good_type == TradeGoodType::Export)
                         .cloned()
                         .collect_vec();
                     export_markets

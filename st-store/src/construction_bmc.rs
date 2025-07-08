@@ -3,7 +3,6 @@ use crate::{db, DbConstructionSiteEntry, DbModelManager};
 use anyhow::*;
 use async_trait::async_trait;
 use chrono::Utc;
-use itertools::Itertools;
 use mockall::automock;
 use sqlx::types::Json;
 use st_domain::{Construction, SystemSymbol};
@@ -26,7 +25,7 @@ pub trait ConstructionBmcTrait: Send + Sync + Debug {
 
 #[async_trait]
 impl ConstructionBmcTrait for DbConstructionBmc {
-    async fn get_construction_site_for_system(&self, ctx: &Ctx, system_symbol: SystemSymbol) -> Result<Option<Construction>> {
+    async fn get_construction_site_for_system(&self, _ctx: &Ctx, system_symbol: SystemSymbol) -> Result<Option<Construction>> {
         let waypoint_symbol_pattern = format!("{}%", system_symbol.0);
 
         let maybe_construction_entry: Option<DbConstructionSiteEntry> = sqlx::query_as!(
@@ -48,7 +47,7 @@ SELECT waypoint_symbol
         Ok(maybe_construction_entry.map(|db_entry| db_entry.entry.0))
     }
 
-    async fn save_construction_site(&self, ctx: &Ctx, construction_site: Construction) -> Result<()> {
+    async fn save_construction_site(&self, _ctx: &Ctx, construction_site: Construction) -> Result<()> {
         db::upsert_construction_site(self.mm.pool(), construction_site, Utc::now()).await
     }
 }

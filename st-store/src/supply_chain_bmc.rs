@@ -3,7 +3,6 @@ use crate::{db, DbModelManager};
 use anyhow::*;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use itertools::Itertools;
 use mockall::automock;
 use st_domain::SupplyChain;
 use std::fmt::Debug;
@@ -21,7 +20,7 @@ impl SupplyChainBmcTrait for DbSupplyChainBmc {
         db::load_supply_chain(self.mm.pool()).await
     }
 
-    async fn insert_supply_chain(&self, ctx: &Ctx, supply_chain: SupplyChain, now: DateTime<Utc>) -> Result<()> {
+    async fn insert_supply_chain(&self, _ctx: &Ctx, supply_chain: SupplyChain, now: DateTime<Utc>) -> Result<()> {
         db::insert_supply_chain(self.mm.pool(), supply_chain, now).await
     }
 }
@@ -49,7 +48,7 @@ impl SupplyChainBmcTrait for InMemorySupplyChainBmc {
             .clone())
     }
 
-    async fn insert_supply_chain(&self, ctx: &Ctx, supply_chain: SupplyChain, now: DateTime<Utc>) -> Result<()> {
+    async fn insert_supply_chain(&self, _ctx: &Ctx, supply_chain: SupplyChain, _now: DateTime<Utc>) -> Result<()> {
         self.in_memory_supply_chain.write().await.supply_chain = Some(supply_chain.clone());
         Ok(())
     }

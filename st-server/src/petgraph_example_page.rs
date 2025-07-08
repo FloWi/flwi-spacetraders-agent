@@ -2,7 +2,7 @@ use leptos::html::*;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    ActivityLevel, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource,
+    calc_scored_supply_chain_routes, ActivityLevel, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, RawMaterialSource,
     ScoredSupplyChainSupportRoute, SupplyLevel, TradeGoodSymbol, WaypointSymbol,
 };
 
@@ -141,8 +141,6 @@ impl Point {
 #[server]
 async fn get_materialized_supply_chain() -> Result<Option<(MaterializedSupplyChain, Vec<ScoredSupplyChainSupportRoute>)>, ServerFnError> {
     use st_core::fleet::fleet::collect_fleet_decision_facts;
-    use st_core::fleet::fleet_runner::FleetRunner;
-    use st_core::st_client::StClientTrait;
     use st_store::bmc::Bmc;
     use st_store::Ctx;
 
@@ -240,7 +238,7 @@ pub fn TechTreePetgraph() -> impl IntoView {
                                                     // label="Combined Supply Chain".to_string()
                                                     // />
                                                     // <pre>{serde_json::to_string(&materialized_supply_chain.all_routes).unwrap()}</pre>
-                                                    // 
+                                                    //
                                                     // </div>
                                                     <div>
                                                         <h2 class="text-2xl font-bold my-4">

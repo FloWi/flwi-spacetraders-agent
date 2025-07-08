@@ -2,7 +2,6 @@ use crate::ctx::Ctx;
 use crate::{db, DbModelManager};
 use anyhow::*;
 use async_trait::async_trait;
-use itertools::Itertools;
 use mockall::automock;
 use sqlx::types::Json;
 use st_domain::{Agent, Contract};
@@ -31,19 +30,19 @@ pub trait AgentBmcTrait: Send + Sync + Debug {
 #[async_trait]
 
 impl AgentBmcTrait for DbAgentBmc {
-    async fn get_initial_contract(&self, ctx: &Ctx) -> Result<Option<Contract>> {
+    async fn get_initial_contract(&self, _ctx: &Ctx) -> Result<Option<Contract>> {
         let registration_response = db::load_registration(self.mm.pool()).await?;
 
         Ok(registration_response.map(|r| r.entry.data.contract.clone()))
     }
 
-    async fn get_initial_agent(&self, _ctx: &Ctx) -> Result<Agent> {
+    async fn get_initial_agent(&self, __ctx: &Ctx) -> Result<Agent> {
         let registration_response = db::load_registration(self.mm.pool()).await?;
 
         Ok(registration_response.unwrap().entry.data.agent.clone())
     }
 
-    async fn load_agent(&self, _ctx: &Ctx) -> Result<Agent> {
+    async fn load_agent(&self, __ctx: &Ctx) -> Result<Agent> {
         let agent_entry: DbAgentEntry = sqlx::query_as!(
             DbAgentEntry,
             r#"
@@ -82,19 +81,19 @@ pub struct InMemoryAgentBmc {
 
 #[async_trait]
 impl AgentBmcTrait for InMemoryAgentBmc {
-    async fn get_initial_contract(&self, ctx: &Ctx) -> Result<Option<Contract>> {
+    async fn get_initial_contract(&self, _ctx: &Ctx) -> Result<Option<Contract>> {
         Ok(None)
     }
 
-    async fn get_initial_agent(&self, ctx: &Ctx) -> Result<Agent> {
+    async fn get_initial_agent(&self, _ctx: &Ctx) -> Result<Agent> {
         Ok(self.in_memory_agent.read().await.clone())
     }
 
-    async fn load_agent(&self, ctx: &Ctx) -> Result<Agent> {
+    async fn load_agent(&self, _ctx: &Ctx) -> Result<Agent> {
         Ok(self.in_memory_agent.read().await.clone())
     }
 
-    async fn store_agent(&self, ctx: &Ctx, agent: &Agent) -> Result<()> {
+    async fn store_agent(&self, _ctx: &Ctx, agent: &Agent) -> Result<()> {
         // println!("Storing agent");
         let mut a = self.in_memory_agent.write().await;
         *a = agent.clone();

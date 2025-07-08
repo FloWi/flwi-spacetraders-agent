@@ -6,9 +6,10 @@ use leptos_meta::Title;
 use leptos_struct_table::*;
 use serde::{Deserialize, Serialize};
 use st_domain::{
-    find_complete_supply_chain, Construction, EvaluatedTradingOpportunity, MarketTradeGood,
-    MaterializedSupplyChain, SupplyChain, SupplyChainNodeVecExt, TradeGoodSymbol, WaypointSymbol,
+    find_complete_supply_chain, Construction, EvaluatedTradingOpportunity, FleetConfig, MarketTradeGood, MaterializedSupplyChain, SupplyChain,
+    SupplyChainNodeVecExt, TradeGoodSymbol, Waypoint, WaypointSymbol,
 };
+use std::collections::{HashMap, HashSet};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RelevantMarketData {
@@ -30,7 +31,6 @@ async fn get_supply_chain_data() -> Result<
 > {
     use st_core;
     use st_domain::trading;
-    use st_store::db;
     use st_store::*;
 
     async fn anyhow_fn() -> anyhow::Result<(

@@ -27,19 +27,19 @@ pub trait SurveyBmcTrait: Send + Sync + Debug {
 
 #[async_trait]
 impl SurveyBmcTrait for DbSurveyBmc {
-    async fn save_surveys(&self, ctx: &Ctx, surveys: Vec<Survey>) -> Result<()> {
+    async fn save_surveys(&self, _ctx: &Ctx, surveys: Vec<Survey>) -> Result<()> {
         db::upsert_surveys(self.mm.pool(), surveys, Utc::now()).await
     }
 
-    async fn get_all_valid_surveys_for_waypoint(&self, ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Vec<Survey>> {
+    async fn get_all_valid_surveys_for_waypoint(&self, _ctx: &Ctx, waypoint_symbol: &WaypointSymbol) -> Result<Vec<Survey>> {
         db::get_valid_surveys_for_waypoint(self.mm.pool(), waypoint_symbol.clone(), Utc::now()).await
     }
 
-    async fn mark_survey_as_exhausted(&self, ctx: &Ctx, _waypoint_symbol: &WaypointSymbol, survey_signature: &SurveySignature) -> Result<()> {
+    async fn mark_survey_as_exhausted(&self, _ctx: &Ctx, _waypoint_symbol: &WaypointSymbol, survey_signature: &SurveySignature) -> Result<()> {
         db::mark_survey_as_exhausted(self.mm.pool(), survey_signature.clone()).await
     }
 
-    async fn log_survey_usage(&self, ctx: &Ctx, survey_signature: &SurveySignature, extraction: &Extraction) -> Result<()> {
+    async fn log_survey_usage(&self, _ctx: &Ctx, survey_signature: &SurveySignature, extraction: &Extraction) -> Result<()> {
         db::insert_survey_usage(self.mm.pool(), survey_signature.clone(), extraction.clone(), Utc::now()).await
     }
 }

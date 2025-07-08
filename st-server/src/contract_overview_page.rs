@@ -1,8 +1,8 @@
 use crate::ship_overview_page::ShipCard;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use leptos::html::*;
 use leptos::prelude::*;
-use st_domain::{ContractEvaluationResult, Ship};
+use st_domain::{ContractEvaluationResult, Ship, ShipRegistrationRole};
 
 #[server]
 async fn get_contract() -> Result<(Option<ContractEvaluationResult>, Ship), ServerFnError> {

@@ -32,12 +32,12 @@ impl ShipyardBmcTrait for DbShipyardBmc {
         Ok(ship_price_info)
     }
 
-    async fn get_latest_shipyard_entries_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<ShipyardData>> {
+    async fn get_latest_shipyard_entries_of_system(&self, _ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<ShipyardData>> {
         let shipyards = db::select_latest_shipyard_entry_of_system(self.mm.pool(), system_symbol).await?;
         Ok(shipyards)
     }
 
-    async fn save_shipyard_data(&self, ctx: &Ctx, shipyard: Shipyard, now: DateTime<Utc>) -> Result<()> {
+    async fn save_shipyard_data(&self, _ctx: &Ctx, shipyard: Shipyard, now: DateTime<Utc>) -> Result<()> {
         db::insert_shipyards(self.mm.pool(), vec![shipyard], now).await
     }
 }
@@ -74,7 +74,7 @@ impl InMemoryShipyardBmc {
 
 #[async_trait]
 impl ShipyardBmcTrait for InMemoryShipyardBmc {
-    async fn get_latest_ship_prices(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<ShipPriceInfo> {
+    async fn get_latest_ship_prices(&self, _ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<ShipPriceInfo> {
         let shipyards = self
             .in_memory_shipyards
             .read()
@@ -90,7 +90,7 @@ impl ShipyardBmcTrait for InMemoryShipyardBmc {
         Ok(ship_price_info)
     }
 
-    async fn get_latest_shipyard_entries_of_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<ShipyardData>> {
+    async fn get_latest_shipyard_entries_of_system(&self, _ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<ShipyardData>> {
         let shipyards = self
             .in_memory_shipyards
             .read()
@@ -105,7 +105,7 @@ impl ShipyardBmcTrait for InMemoryShipyardBmc {
         Ok(shipyards)
     }
 
-    async fn save_shipyard_data(&self, ctx: &Ctx, shipyard: Shipyard, now: DateTime<Utc>) -> Result<()> {
+    async fn save_shipyard_data(&self, _ctx: &Ctx, shipyard: Shipyard, now: DateTime<Utc>) -> Result<()> {
         let mut guard = self.in_memory_shipyards.write().await;
         guard
             .shipyards

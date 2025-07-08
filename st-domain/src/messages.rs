@@ -302,7 +302,7 @@ impl ShipPriceInfo {
     ) -> Option<(WaypointSymbol, u32)> {
         purchase_price_map
             .get(ship_type)
-            .and_then(|prices| prices.iter().min_by_key(|(wps, p)| p))
+            .and_then(|prices| prices.iter().min_by_key(|(_, p)| p))
             .cloned()
             .or_else(|| {
                 purchase_location_map.get(ship_type).and_then(|waypoints| {

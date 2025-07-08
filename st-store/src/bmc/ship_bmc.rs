@@ -30,7 +30,7 @@ pub struct DbShipBmc {
 
 #[async_trait]
 impl ShipBmcTrait for DbShipBmc {
-    async fn get_ships(&self, ctx: &Ctx, timestamp_filter_gte: Option<DateTime<Utc>>) -> Result<Vec<Ship>> {
+    async fn get_ships(&self, _ctx: &Ctx, timestamp_filter_gte: Option<DateTime<Utc>>) -> Result<Vec<Ship>> {
         let fallback = DateTime::<Utc>::from_timestamp(0, 0).unwrap();
 
         let ship_entries: Vec<DbShipEntry> = sqlx::query_as!(
@@ -53,7 +53,7 @@ select ship_symbol
         anyhow::Ok(ships)
     }
 
-    async fn get_ship(&self, ctx: &Ctx, ship_symbol: ShipSymbol) -> Result<Ship> {
+    async fn get_ship(&self, _ctx: &Ctx, ship_symbol: ShipSymbol) -> Result<Ship> {
         let ship_entry: DbShipEntry = sqlx::query_as!(
             DbShipEntry,
             r#"
@@ -72,7 +72,7 @@ select ship_symbol
         anyhow::Ok(ship_entry.entry.0)
     }
 
-    async fn load_ship_tasks(&self, ctx: &Ctx) -> Result<HashMap<ShipSymbol, ShipTask>> {
+    async fn load_ship_tasks(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, ShipTask>> {
         let entries: Vec<DbShipTaskEntry> = sqlx::query_as!(
             DbShipTaskEntry,
             r#"
@@ -92,7 +92,7 @@ select ship_symbol
         )
     }
 
-    async fn save_ship_tasks(&self, ctx: &Ctx, ship_task_assignments: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
+    async fn save_ship_tasks(&self, _ctx: &Ctx, ship_task_assignments: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
         for (ship_symbol, task) in ship_task_assignments {
             sqlx::query!(
                 r#"
@@ -109,7 +109,7 @@ on conflict (ship_symbol) do update set task = excluded.task
         anyhow::Ok(())
     }
 
-    async fn get_stationary_probes(&self, ctx: &Ctx) -> Result<Vec<StationaryProbeLocation>> {
+    async fn get_stationary_probes(&self, _ctx: &Ctx) -> Result<Vec<StationaryProbeLocation>> {
         let entries: Vec<DbStationaryProbeLocation> = sqlx::query_as!(
             DbStationaryProbeLocation,
             r#"
@@ -134,7 +134,7 @@ select waypoint_symbol
         )
     }
 
-    async fn insert_stationary_probe(&self, ctx: &Ctx, location: StationaryProbeLocation) -> Result<()> {
+    async fn insert_stationary_probe(&self, _ctx: &Ctx, location: StationaryProbeLocation) -> Result<()> {
         sqlx::query!(
             r#"
 insert into stationary_probe_locations ( waypoint_symbol, probe_ship_symbol, exploration_tasks )
@@ -154,7 +154,7 @@ on conflict (waypoint_symbol) do update
         anyhow::Ok(())
     }
 
-    async fn upsert_ships(&self, ctx: &Ctx, ships: &[Ship], now: DateTime<Utc>) -> Result<()> {
+    async fn upsert_ships(&self, _ctx: &Ctx, ships: &[Ship], now: DateTime<Utc>) -> Result<()> {
         db::upsert_ships(self.mm.pool(), ships, now).await?;
 
         Ok(())
@@ -206,7 +206,7 @@ impl InMemoryShipsBmc {
 
 #[async_trait]
 impl ShipBmcTrait for InMemoryShipsBmc {
-    async fn get_ships(&self, ctx: &Ctx, timestamp_filter_gte: Option<DateTime<Utc>>) -> Result<Vec<Ship>> {
+    async fn get_ships(&self, _ctx: &Ctx, _timestamp_filter_gte: Option<DateTime<Utc>>) -> Result<Vec<Ship>> {
         Ok(self
             .in_memory_ships
             .read()
@@ -217,7 +217,7 @@ impl ShipBmcTrait for InMemoryShipsBmc {
             .collect_vec())
     }
 
-    async fn get_ship(&self, ctx: &Ctx, ship_symbol: ShipSymbol) -> Result<Ship> {
+    async fn get_ship(&self, _ctx: &Ctx, ship_symbol: ShipSymbol) -> Result<Ship> {
         let read_data = self.in_memory_ships.read().await;
 
         read_data
@@ -227,17 +227,17 @@ impl ShipBmcTrait for InMemoryShipsBmc {
             .ok_or(anyhow!("Ship not found"))
     }
 
-    async fn load_ship_tasks(&self, ctx: &Ctx) -> Result<HashMap<ShipSymbol, ShipTask>> {
+    async fn load_ship_tasks(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, ShipTask>> {
         Ok(self.in_memory_ships.read().await.ship_tasks.clone())
     }
 
-    async fn save_ship_tasks(&self, ctx: &Ctx, ship_task_assignments: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
+    async fn save_ship_tasks(&self, _ctx: &Ctx, ship_task_assignments: &HashMap<ShipSymbol, ShipTask>) -> Result<()> {
         self.in_memory_ships.write().await.ship_tasks = ship_task_assignments.clone();
 
         Ok(())
     }
 
-    async fn get_stationary_probes(&self, ctx: &Ctx) -> Result<Vec<StationaryProbeLocation>> {
+    async fn get_stationary_probes(&self, _ctx: &Ctx) -> Result<Vec<StationaryProbeLocation>> {
         Ok(self
             .in_memory_ships
             .read()
@@ -248,7 +248,7 @@ impl ShipBmcTrait for InMemoryShipsBmc {
             .collect_vec())
     }
 
-    async fn insert_stationary_probe(&self, ctx: &Ctx, location: StationaryProbeLocation) -> Result<()> {
+    async fn insert_stationary_probe(&self, _ctx: &Ctx, location: StationaryProbeLocation) -> Result<()> {
         self.in_memory_ships
             .write()
             .await
@@ -257,7 +257,7 @@ impl ShipBmcTrait for InMemoryShipsBmc {
         Ok(())
     }
 
-    async fn upsert_ships(&self, ctx: &Ctx, ships: &[Ship], now: DateTime<Utc>) -> Result<()> {
+    async fn upsert_ships(&self, _ctx: &Ctx, ships: &[Ship], _now: DateTime<Utc>) -> Result<()> {
         let mut guard = self.in_memory_ships.write().await;
         for ship in ships {
             guard.ships.insert(ship.symbol.clone(), ship.clone());

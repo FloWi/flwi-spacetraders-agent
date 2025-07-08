@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use anyhow::{Error, Result};
 use chrono::{DateTime, Utc};
-use futures::StreamExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -381,7 +380,6 @@ on conflict (waypoint_symbol) do UPDATE set entry = excluded.entry, updated_at =
         .await?;
 
         let json_array = serde_json::to_value(rest)?;
-        let debug_string = json_array.to_string();
 
         sqlx::query!(
             r#"
@@ -429,7 +427,6 @@ values ($1, $2, $3)
         .await?;
 
         let json_array = serde_json::to_value(rest)?;
-        let debug_string = json_array.clone().to_string();
 
         sqlx::query!(
             r#"
@@ -771,7 +768,6 @@ on conflict (ship_symbol) do UPDATE set entry = excluded.entry, updated_at = exc
         .await?;
 
         let json_array = serde_json::to_value(rest)?;
-        let debug_string = json_array.to_string();
 
         sqlx::query!(
             r#"
@@ -982,7 +978,7 @@ values ($1, $2)
     Ok(())
 }
 
-pub(crate) async fn get_ledger_entries_in_order(pool: &Pool<Postgres>, p1: DateTime<Utc>) -> Result<Vec<LedgerEntry>> {
+pub(crate) async fn get_ledger_entries_in_order(pool: &Pool<Postgres>, _dt_gte: DateTime<Utc>) -> Result<Vec<LedgerEntry>> {
     let entries: Vec<DbLedgerEntry> = sqlx::query_as!(
         DbLedgerEntry,
         r#"
@@ -1021,7 +1017,7 @@ on conflict (id) do UPDATE set entry = excluded.entry, updated_at = excluded.upd
     Ok(())
 }
 
-pub(crate) async fn get_youngest_contract(pool: &Pool<Postgres>, system_symbol: &SystemSymbol) -> Result<Option<Contract>> {
+pub(crate) async fn get_youngest_contract(pool: &Pool<Postgres>, _system_symbol: &SystemSymbol) -> Result<Option<Contract>> {
     let maybe_result = sqlx::query_as!(
         DbContractEntry,
         r#"

@@ -26,7 +26,7 @@ pub trait MarketBmcTrait: Send + Sync + Debug {
 
 #[async_trait]
 impl MarketBmcTrait for DbMarketBmc {
-    async fn get_latest_market_data_for_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>> {
+    async fn get_latest_market_data_for_system(&self, _ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>> {
         let waypoint_symbol_pattern = format!("{}%", system_symbol.0);
 
         let market_entries: Vec<DbMarketEntry> = sqlx::query_as!(
@@ -58,7 +58,7 @@ ORDER BY waypoint_symbol, created_at DESC
         Ok(result)
     }
 
-    async fn save_market_data(&self, ctx: &Ctx, market_entries: Vec<MarketData>, now: DateTime<Utc>) -> Result<()> {
+    async fn save_market_data(&self, _ctx: &Ctx, market_entries: Vec<MarketData>, now: DateTime<Utc>) -> Result<()> {
         db::insert_market_data(self.mm.pool(), market_entries, now).await
     }
 }
@@ -75,7 +75,7 @@ pub struct InMemoryMarketBmc {
 
 #[async_trait]
 impl MarketBmcTrait for InMemoryMarketBmc {
-    async fn get_latest_market_data_for_system(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>> {
+    async fn get_latest_market_data_for_system(&self, _ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Vec<MarketEntry>> {
         Ok(self
             .in_memory_market
             .read()
@@ -89,7 +89,7 @@ impl MarketBmcTrait for InMemoryMarketBmc {
             .collect_vec())
     }
 
-    async fn save_market_data(&self, ctx: &Ctx, market_entries: Vec<MarketData>, now: DateTime<Utc>) -> Result<()> {
+    async fn save_market_data(&self, _ctx: &Ctx, market_entries: Vec<MarketData>, now: DateTime<Utc>) -> Result<()> {
         let mut guard = self.in_memory_market.write().await;
 
         for me in market_entries {

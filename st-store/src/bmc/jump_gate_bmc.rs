@@ -20,7 +20,7 @@ pub struct DbJumpGateBmc {
 
 #[async_trait]
 impl JumpGateBmcTrait for DbJumpGateBmc {
-    async fn save_jump_gate_data(&self, ctx: &Ctx, jump_gate: JumpGate, now: DateTime<Utc>) -> Result<()> {
+    async fn save_jump_gate_data(&self, _ctx: &Ctx, jump_gate: JumpGate, now: DateTime<Utc>) -> Result<()> {
         db::insert_jump_gates(self.mm.pool(), vec![jump_gate], now).await
     }
 }
@@ -59,7 +59,7 @@ impl InMemoryJumpGateBmc {
 
 #[async_trait]
 impl JumpGateBmcTrait for InMemoryJumpGateBmc {
-    async fn save_jump_gate_data(&self, ctx: &Ctx, jump_gate: JumpGate, now: DateTime<Utc>) -> Result<()> {
+    async fn save_jump_gate_data(&self, _ctx: &Ctx, jump_gate: JumpGate, now: DateTime<Utc>) -> Result<()> {
         let mut guard = self.in_memory_jump_gates.write().await;
 
         guard

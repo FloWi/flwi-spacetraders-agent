@@ -65,7 +65,7 @@ pub struct DbFleetBmc {
 
 #[async_trait]
 impl FleetBmcTrait for DbFleetBmc {
-    async fn load_fleet_tasks(&self, ctx: &Ctx) -> Result<HashMap<FleetId, Vec<FleetTask>>> {
+    async fn load_fleet_tasks(&self, _ctx: &Ctx) -> Result<HashMap<FleetId, Vec<FleetTask>>> {
         /*
         fleet_id: Json<FleetId>
         fleet_task: Json<FleetTask>
@@ -87,7 +87,7 @@ SELECT fleet_id
             .collect())
     }
 
-    async fn load_ship_fleet_assignment(&self, ctx: &Ctx) -> Result<HashMap<ShipSymbol, FleetId>> {
+    async fn load_ship_fleet_assignment(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, FleetId>> {
         let assignment_entries: Vec<DbShipFleetAssignment> = sqlx::query_as!(
             DbShipFleetAssignment,
             r#"
@@ -105,7 +105,7 @@ SELECT fleet_id
             .collect())
     }
 
-    async fn load_fleets(&self, ctx: &Ctx) -> Result<Vec<Fleet>> {
+    async fn load_fleets(&self, _ctx: &Ctx) -> Result<Vec<Fleet>> {
         let fleet_entries: Vec<DbFleetEntry> = sqlx::query_as!(
             DbFleetEntry,
             r#"
@@ -382,11 +382,11 @@ impl InMemoryFleetBmc {
 
 #[async_trait]
 impl FleetBmcTrait for InMemoryFleetBmc {
-    async fn load_fleet_tasks(&self, ctx: &Ctx) -> Result<HashMap<FleetId, Vec<FleetTask>>> {
+    async fn load_fleet_tasks(&self, _ctx: &Ctx) -> Result<HashMap<FleetId, Vec<FleetTask>>> {
         Ok(self.in_memory_fleet.read().await.fleet_tasks.clone())
     }
 
-    async fn load_ship_fleet_assignment(&self, ctx: &Ctx) -> Result<HashMap<ShipSymbol, FleetId>> {
+    async fn load_ship_fleet_assignment(&self, _ctx: &Ctx) -> Result<HashMap<ShipSymbol, FleetId>> {
         Ok(self
             .in_memory_fleet
             .read()
@@ -395,7 +395,7 @@ impl FleetBmcTrait for InMemoryFleetBmc {
             .clone())
     }
 
-    async fn load_fleets(&self, ctx: &Ctx) -> Result<Vec<Fleet>> {
+    async fn load_fleets(&self, _ctx: &Ctx) -> Result<Vec<Fleet>> {
         Ok(self
             .in_memory_fleet
             .read()

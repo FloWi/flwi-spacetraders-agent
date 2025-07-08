@@ -21,11 +21,11 @@ pub struct DbContractBmc {
 
 #[async_trait]
 impl ContractBmcTrait for DbContractBmc {
-    async fn upsert_contract(&self, ctx: &Ctx, system_symbol: &SystemSymbol, contract: Contract, now: DateTime<Utc>) -> Result<()> {
+    async fn upsert_contract(&self, _ctx: &Ctx, system_symbol: &SystemSymbol, contract: Contract, now: DateTime<Utc>) -> Result<()> {
         db::upsert_contract(self.mm.pool(), system_symbol, &contract, now).await
     }
 
-    async fn get_youngest_contract(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Option<Contract>> {
+    async fn get_youngest_contract(&self, _ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Option<Contract>> {
         db::get_youngest_contract(self.mm.pool(), system_symbol).await
     }
 }
@@ -62,7 +62,7 @@ impl InMemoryContractBmc {
 
 #[async_trait]
 impl ContractBmcTrait for InMemoryContractBmc {
-    async fn upsert_contract(&self, ctx: &Ctx, system_symbol: &SystemSymbol, contract: Contract, now: DateTime<Utc>) -> Result<()> {
+    async fn upsert_contract(&self, _ctx: &Ctx, system_symbol: &SystemSymbol, contract: Contract, now: DateTime<Utc>) -> Result<()> {
         let mut guard = self.in_memory_contracts.write().await;
 
         guard
@@ -74,7 +74,7 @@ impl ContractBmcTrait for InMemoryContractBmc {
         Ok(())
     }
 
-    async fn get_youngest_contract(&self, ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Option<Contract>> {
+    async fn get_youngest_contract(&self, _ctx: &Ctx, system_symbol: &SystemSymbol) -> Result<Option<Contract>> {
         let guard = self.in_memory_contracts.read().await;
 
         let contracts_of_system = guard

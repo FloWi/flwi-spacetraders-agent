@@ -1,6 +1,6 @@
+use crate::calc_batches_based_on_volume_constraint;
 use crate::fleet::construction_fleet::ConstructionFleetAction::{BoostSupplyChain, DeliverConstructionMaterials, TradeProfitably};
 use crate::fleet::fleet::FleetAdmiral;
-use crate::calc_batches_based_on_volume_constraint;
 use anyhow::*;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
@@ -12,10 +12,10 @@ use st_domain::budgeting::treasury_redesign::{
     PurchaseTradeGoodsTicketDetails, SellTradeGoodsTicketDetails,
 };
 use st_domain::{
-    calc_scored_supply_chain_routes, trading, ActivityLevel, ConstructJumpGateFleetConfig, Construction,
-    EvaluatedTradingOpportunity, Fleet, FleetId, FleetPhase, FleetTask, FleetTaskCompletion, Inventory, LabelledCoordinate, MarketEntry,
-    MarketTradeGood, MaterializedSupplyChain, ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, StationaryProbeLocation,
-    SupplyLevel, TicketId, TradeGoodSymbol, TradeGoodType, Waypoint, WaypointSymbol,
+    calc_scored_supply_chain_routes, trading, ActivityLevel, ConstructJumpGateFleetConfig, Construction, EvaluatedTradingOpportunity, Fleet, FleetId,
+    FleetPhase, FleetTask, FleetTaskCompletion, Inventory, LabelledCoordinate, MarketEntry, MarketTradeGood, MaterializedSupplyChain,
+    ScoredSupplyChainSupportRoute, Ship, ShipPriceInfo, ShipSymbol, ShipTask, ShipType, StationaryProbeLocation, SupplyLevel, TicketId, TradeGoodSymbol,
+    TradeGoodType, Waypoint, WaypointSymbol,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Not;
@@ -71,10 +71,6 @@ impl ConstructJumpGateFleet {
         blocked_budget_for_contracts: Credits,
     ) -> Result<NewTasksResultForConstructionFleet> {
         let fleet_ships: Vec<&Ship> = admiral.get_ships_of_fleet(fleet);
-        let fleet_ship_symbols = fleet_ships.iter().map(|&s| s.symbol.clone()).collect_vec();
-
-        // println!("facts:\n{}", serde_json::to_string(&facts)?);
-        // println!("latest_market_data: {}", serde_json::to_string(&latest_market_data)?);
 
         if unassigned_ships_of_fleet.is_empty() {
             return Ok(NewTasksResultForConstructionFleet {
@@ -203,7 +199,6 @@ impl ConstructJumpGateFleet {
                 latest_market_entries,
                 &maybe_materialized_supply_chain,
                 maybe_construction_site,
-                ship_prices,
                 &waypoint_map,
                 &unassigned_ships_to_check,
                 active_trade_routes,
@@ -334,7 +329,6 @@ async fn determine_construction_fleet_actions(
     latest_market_entries: &Vec<MarketEntry>,
     maybe_materialized_supply_chain: &Option<MaterializedSupplyChain>,
     maybe_construction_site: &Option<Construction>,
-    ship_prices: &ShipPriceInfo,
     waypoint_map: &HashMap<WaypointSymbol, &Waypoint>,
     unassigned_ships_of_fleet: &[&Ship],
     active_trade_routes: &HashSet<ActiveTradeRoute>,
@@ -441,13 +435,13 @@ async fn determine_construction_fleet_actions(
                 let budget_limit_for_construction_material: Credits = (*budget_limits_for_construction_materials
                     .get(&mtg.symbol)
                     .unwrap_or(&100_000_000))
-                    .into();
+                .into();
                 let has_met_budget_requirement = available_capital > budget_limit_for_construction_material;
                 let no_ongoing_delivery = active_trade_routes
                     .iter()
                     .any(|atr| atr.from == *wps && atr.trade_good == mtg.symbol)
                     .not();
-                
+
                 should_buy && has_met_budget_requirement && no_ongoing_delivery
             })
             .map(|(mtg, wps, qty_missing)| {
@@ -609,7 +603,7 @@ fn find_best_combination(
         .chain(already_assigned_ships)
         .collect();
 
-    if let Some((ship, action)) = result.iter().find_map(|(ss, action)| {
+    if let Some(_) = result.iter().find_map(|(ss, action)| {
         if let Some(ship) = ships.iter().find(|ship| ship.symbol == *ss) {
             if action.units() > ship.cargo.capacity as u32 {
                 Some((ship, action.clone()))
@@ -835,11 +829,10 @@ impl PotentialConstructionTask {
             }
             BoostSupplyChain {
                 trade_good_symbol,
-                from,
                 to,
                 scored_supply_chain_support_route,
                 units,
-                estimated_costs,
+                ..
             } => {
                 let sell_price = scored_supply_chain_support_route
                     .tgr
@@ -946,9 +939,11 @@ fn find_best_selling_location_for_inventory_entry(
         .flat_map(|(wps, entries_for_waypoint)| {
             let market_waypoint = waypoint_map.get(&wps).unwrap();
             entries_for_waypoint
-                .iter().filter(|&mtg| {
+                .iter()
+                .filter(|&mtg| {
                     mtg.symbol == inventory_entry.symbol && (mtg.trade_good_type == TradeGoodType::Import || mtg.trade_good_type == TradeGoodType::Exchange)
-                }).cloned()
+                })
+                .cloned()
                 .map(|mtg| {
                     let distance = ship_location_waypoint.distance_to(market_waypoint);
                     let distance = if distance < 1 { 1 } else { distance };
