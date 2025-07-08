@@ -1,10 +1,8 @@
 use anyhow::Result;
 use clap;
 use clap::{Parser, Subcommand};
-use itertools::Itertools;
 use lazy_static::lazy_static;
 use st_core::agent_manager::AgentManager;
-use st_core::behavior_tree::behavior_tree::Actionable;
 use st_core::configuration::AgentConfiguration;
 use st_server::cli_args::AppConfig;
 use time::format_description;
