@@ -9,7 +9,6 @@ use st_store::shipyard_bmc::InMemoryShipyardBmc;
 use st_store::survey_bmc::InMemorySurveyBmc;
 use st_store::trade_bmc::InMemoryTradeBmc;
 use st_store::{InMemoryAgentBmc, InMemoryConstructionBmc, InMemoryFleetBmc, InMemoryMarketBmc, InMemoryStatusBmc, InMemorySupplyChainBmc, InMemorySystemsBmc};
-use std::collections::HashSet;
 use std::sync::Arc;
 
 pub async fn get_test_universe() -> (Arc<dyn Bmc>, Arc<dyn StClientTrait>) {

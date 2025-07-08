@@ -1,14 +1,11 @@
-use anyhow::Result;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::*;
 use comfy_table::{ContentArrangement, Table};
 use itertools::Itertools;
-use st_domain::trading::find_trading_opportunities_sorted_by_profit_per_distance_unit;
 use st_domain::{
-    ActivityLevel, DeliveryRoute, FleetDecisionFacts, FleetPhaseName, MarketTradeGood, MaterializedIndividualSupplyChain, MaterializedSupplyChain, ShipSymbol,
-    SupplyLevel, TradeGoodSymbol, Waypoint, WaypointSymbol,
+    ActivityLevel, DeliveryRoute, MaterializedIndividualSupplyChain,
+    SupplyLevel, WaypointSymbol,
 };
-use std::collections::HashMap;
 use strum::IntoEnumIterator;
 use thousands::Separable;
 
